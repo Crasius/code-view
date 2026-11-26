@@ -1,6 +1,6 @@
 # Release builds and CI
 
-The source of truth is the project on a self-managed GitLab instance, the remote `origin`; GitHub carries its public mirror, the remote `github` (rule `git-flow`). The GitLab pipeline (`.gitlab-ci.yml`, `ci/checks.yml`, scripts in `ci/`) checks every merge request and every push to `main` (Pipelines). A release tag builds the app for every platform and publishes those builds to Creative Downloads, in one release with a depot per platform. `.github/workflows/macos.yml` is separate: it tests on a real Mac when GitHub Actions run for the mirror (`docs/macos.md`).
+The source of truth is the project on a self-managed GitLab instance, the remote `origin`; GitHub carries its public mirror, the remote `github` (rule `git-flow`). The GitLab pipeline (`.gitlab-ci.yml`, `ci/checks.yml`, scripts in `ci/`) checks every merge request and every push to `main` (Pipelines). A release tag builds the app for every platform and publishes those builds to Creative Downloads, in one release with a depot per platform. `.github/workflows/macos.yml` is separate and the only workflow on GitHub: it checks pull requests on a real Mac, and a maintainer's manual run also packages the app (`docs/macos.md`). No push starts it.
 
 This page is the maintainer's runbook. Building on your own machine is on the platform pages: `docs/windows.md`, `docs/macos.md`, `docs/linux.md`.
 
