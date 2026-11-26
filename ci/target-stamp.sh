@@ -13,7 +13,9 @@
 #            When the two ids differ, the archives come from two builds (a job cancelled between
 #            its two uploads, two pipelines writing one key at once): the fingerprints would judge
 #            test executables of the other build fresh, so it deletes every test executable and
-#            cargo links them again.
+#            cargo links them again. It leaves a mark for save: that job writes its cache back
+#            whatever its build cost, or every later job would restore the same pair and link
+#            everything again.
 # Content, not commit dates, decides: a cache of an older commit is as safe as one of the parent
 # commit. Files outside git (registry sources, OUT_DIR) are cargo's to judge.
 #   save <build seconds> <upload seconds>  as save, and marks the cache to stay as it is when the
@@ -25,6 +27,8 @@ record=target/ci-tree.txt
 # The build id in the archive with the record, and in the one with the test executables.
 id=target/ci-build-id
 bins_id=target/ci-build-id-bins
+# Left by restore when the two ids differed; in no cache archive (ci/checks.yml).
+refresh=target/ci-refresh-cache
 old=200101010000
 
 # Every folder that holds one of the paths on stdin, each once, one per line.
@@ -54,7 +58,10 @@ case "${1:-}" in
         echo "target-stamp: recorded the tree of $(git rev-parse --short HEAD), build $build"
         # A build shorter than the upload of its cache would take saves the next job less than the
         # upload costs this one: mark the cache to stay as it is (drop-if-cheap).
-        if [ -n "${2:-}" ] && [ "$2" -lt "${3:?Name the seconds an upload costs.}" ]; then
+        if [ -f "$refresh" ]; then
+            rm -f "$refresh"
+            echo "target-stamp: the restored archives were of two builds; this build replaces them"
+        elif [ -n "${2:-}" ] && [ "$2" -lt "${3:?Name the seconds an upload costs.}" ]; then
             : > target/ci-keep-cache
             echo "target-stamp: the build took $2 s, less than the $3 s an upload costs; the cache stays"
         fi
@@ -78,6 +85,7 @@ case "${1:-}" in
         if [ -z "$built" ] || [ "$built" != "$bins" ]; then
             echo "target-stamp: the test executables are of build '${bins:-none}', the record of build '${built:-none}'; deleting the test executables"
             test_executables | tr '\n' '\0' | xargs -0 rm -f
+            : > "$refresh"
         fi
         now="$(mktemp)"
         git ls-files -s > "$now"
