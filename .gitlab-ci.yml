@@ -79,9 +79,26 @@ main-checks:
 
 # ---------------- build ----------------
 # After the test stage, so that a red commit spends no build time. Every platform on a tag and by
-# hand; a merge request builds Linux x64 when a cargo input changed and the others on a manual
-# start; a push to main builds nothing, since the release tag's pipeline builds and publishes its
-# own (docs/release.md, Cut a release).
+# hand; a merge request builds Linux x64 by itself only when what a release build adds to the checks
+# changed (.release-inputs), and every platform on a manual start; a push to main builds nothing,
+# since the release tag's pipeline builds and publishes its own (docs/release.md, Cut a release).
+# What a release build checks beyond lint and test: the dependency set and its licenses
+# (cargo-about stops on a license outside ci/about.toml), the release profile, the build scripts
+# and the release scripts. A code change compiles in lint and test already; build-linux-x64 waits
+# for a manual start then (8 to 13 minutes, measured 2026-11-22 to 24).
+.release-inputs:
+  - Cargo.toml
+  - Cargo.lock
+  - crates/*/Cargo.toml
+  - tools/*/Cargo.toml
+  - crates/*/build.rs
+  - rust-toolchain.toml
+  - .cargo/**/*
+  - .gitlab-ci.yml
+  - ci/build-release.sh
+  - ci/install-build-deps.sh
+  - ci/about.*
+
 .release-build:
   stage: build
   extends: .rust
@@ -106,8 +123,9 @@ build-linux-x64:
     - if: $CI_COMMIT_TAG || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        paths: !reference [.rust-inputs]
+        paths: !reference [.release-inputs]
         compare_to: refs/heads/main
+    - !reference [.release-build, rules]
   variables:
     PLATFORM: linux-x64
 

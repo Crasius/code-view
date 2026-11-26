@@ -104,7 +104,7 @@ default:
 # The downloads both jobs share, and `target` of one job kind: keyed by the lockfile and the
 # toolchain, so a dependency or toolchain change starts that kind cold. A cache of an older
 # commit or another branch is safe (ci/target-stamp.sh). Each archive stays below the runner's
-# 2 GiB (docs/release.md, Runner).
+# upload limit of 1 GiB (docs/release.md, Runner).
 .cargo-downloads:
   key:
     prefix: cargo-downloads
@@ -129,7 +129,9 @@ lint:
     - cargo clippy --locked --workspace -- -D warnings
     - sh ci/target-stamp.sh save
 
-# Every test the change needs, with cargo-nextest (ci/test.sh).
+# Every test the change needs, with cargo-nextest (ci/test.sh). Its `target` zips to about 1.2 GB,
+# above the runner's upload limit of 1 GiB [observed 2026-11-26, pipeline 4900], so it is two
+# archives: the test executables (deps/<name>-<16 hex>, no extension) and everything else.
 test:
   extends: .cargo-checks
   cache:
@@ -137,7 +139,17 @@ test:
     - key:
         prefix: target-test
         files: [Cargo.lock, rust-toolchain.toml]
-      paths: [target/]
+      paths:
+        - target/ci-tree.txt
+        - target/debug/.fingerprint
+        - target/debug/build
+        - target/debug/examples
+        - target/debug/deps/*.*
+    - key:
+        prefix: target-test-bins
+        files: [Cargo.lock, rust-toolchain.toml]
+      paths:
+        - target/debug/deps/*-????????????????
   script:
     - sh ci/install-build-deps.sh cargo-nextest
     - sh ci/test.sh

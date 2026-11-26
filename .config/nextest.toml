@@ -1,5 +1,17 @@
 # cargo-nextest, the test runner of both CIs (docs/release.md, Tests). Locally `cargo test` and
-# `cargo nextest run` both work; the default profile is nextest's own.
+# `cargo nextest run` both work.
+
+# The longest tests start first, so that the short ones fill the cores beside them: the run ends
+# with the longest test instead of after it. On the runner these walkthroughs take 15 to 60 s each,
+# most other tests well under one [observed 2026-11-26, pipeline 4900]. A renamed module only
+# loses its place in the queue.
+[[profile.default.overrides]]
+filter = 'package(=review-app) & test(/::(memory_walkthrough|clip_audit|overview_walkthrough|layout_walkthrough)::/)'
+priority = 100
+
+[[profile.default.overrides]]
+filter = 'package(=review-app)'
+priority = 50
 
 [profile.ci]
 # Every failure of a run, not only the first.

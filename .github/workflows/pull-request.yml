@@ -1,0 +1,333 @@
+# The checks of a pull request on GitHub, the public mirror; the main work and its pipeline are on
+# GitLab (docs/release.md). No push starts this workflow. A plan job decides from the changed paths
+# what runs (ci/github-plan.sh): format, repository rules, both clippy passes natively and for
+# aarch64-apple-darwin and the tests the change needs on Linux; on a Mac only the tests of the
+# crates with macOS code and the native traffic-light check, when such a crate or the dependency set
+# changed. `required` is the one check to require.
+# Pull requests only read the build caches. The scheduled and the manual run on main write them,
+# with the same keys and the same cargo commands, and skip every job whose cache for the current
+# commit exists. A maintainer's manual run also packages Code View as a universal (Apple silicon +
+# Intel) app bundle, signed ad hoc (docs/macos.md).
+name: Pull request
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * *"
+
+# Pull requests come from anyone: the jobs only read the repository. Every action is pinned to a
+# full commit SHA, its version in the comment; update both together.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The same in every job that shares a cache, or the fingerprints differ (docs/release.md, Build
+# cache).
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  BUILD_DEPS: ${{ github.workspace }}/.build-deps
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+      deps: ${{ steps.key.outputs.deps }}
+      tests: ${{ steps.plan.outputs.tests }}
+      mac-tests: ${{ steps.plan.outputs.mac-tests }}
+      lint: ${{ github.event_name == 'pull_request' && steps.plan.outputs.rust || steps.lint.outputs.cache-hit != 'true' }}
+      lint-apple: ${{ github.event_name == 'pull_request' && steps.plan.outputs.rust || steps.lint-apple.outputs.cache-hit != 'true' }}
+      test: ${{ github.event_name == 'pull_request' && steps.plan.outputs.test || steps.test.outputs.cache-hit != 'true' }}
+      macos: ${{ github.event_name == 'pull_request' && steps.plan.outputs.macos || steps.macos.outputs.cache-hit != 'true' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The merge commit and its parents.
+          fetch-depth: 2
+          persist-credentials: false
+      # Cache keys: the lockfile and the toolchain, then the commit, so that a pull request restores
+      # the newest cache main made for its dependency set.
+      - id: key
+        run: |
+          echo "deps=${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}" >> "$GITHUB_OUTPUT"
+          echo "key=${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+      # cargo metadata --no-deps only; the runner's stable cargo reads the workspace as well.
+      - id: plan
+        env:
+          RUSTUP_TOOLCHAIN: stable
+        run: sh ci/github-plan.sh "${{ github.event_name }}"
+      # The warm-up skips a job whose cache for this commit exists.
+      - id: lint
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: lint-linux-${{ steps.key.outputs.key }}
+          lookup-only: true
+      - id: lint-apple
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: lint-apple-${{ steps.key.outputs.key }}
+          lookup-only: true
+      - id: test
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: test-linux-${{ steps.key.outputs.key }}
+          lookup-only: true
+      - id: macos
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: test-macos-${{ steps.key.outputs.key }}
+          lookup-only: true
+
+  # Format, repository rules and both clippy passes. --all-targets unifies the dev-dependency
+  # features, so the first pass lints every library with test-support on; the second lints the
+  # shipped variant, the only one that sees cfg(not(any(test, feature = "test-support"))).
+  lint:
+    needs: plan
+    if: needs.plan.outputs.lint == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # repo-lint compares the length allowlist with the base or the pushed-over commit.
+          fetch-depth: 0
+          persist-credentials: false
+      # The toolchain rust-toolchain.toml pins (RS-DO-02), read from that file: it is the one place
+      # that names the version.
+      - id: pin
+        run: echo "channel=$(grep '^channel' rust-toolchain.toml | cut -d '"' -f 2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master, 2026-11-15
+        with:
+          toolchain: ${{ steps.pin.outputs.channel }}
+          components: clippy, rustfmt
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: lint-linux-${{ needs.plan.outputs.key }}
+          restore-keys: lint-linux-${{ needs.plan.outputs.deps }}-
+      - run: sh ci/target-stamp.sh restore
+      - name: Format
+        run: cargo fmt --all --check
+      # RL002 compares the length allowlist with the pull request's base. Other runs have none and
+      # compare with the parent commit.
+      - name: Repository rules (tools/repo-lint)
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git cat-file -e "${BASE:-none}^{commit}" 2>/dev/null || BASE=HEAD~1
+          cargo run --locked -p repo-lint -- --base "$BASE"
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Clippy (shipped features)
+        run: cargo clippy --locked --workspace -- -D warnings
+      - run: sh ci/target-stamp.sh save
+      - if: github.event_name != 'pull_request'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: lint-linux-${{ needs.plan.outputs.key }}
+
+  # Both clippy passes for Apple silicon from Linux: type checks and lints of the macOS code. The
+  # target's dependencies need no C compiler, and nothing links.
+  lint-apple:
+    needs: plan
+    if: needs.plan.outputs.lint-apple == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - id: pin
+        run: echo "channel=$(grep '^channel' rust-toolchain.toml | cut -d '"' -f 2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master, 2026-11-15
+        with:
+          toolchain: ${{ steps.pin.outputs.channel }}
+          targets: aarch64-apple-darwin
+          components: clippy
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: lint-apple-${{ needs.plan.outputs.key }}
+          restore-keys: lint-apple-${{ needs.plan.outputs.deps }}-
+      - run: sh ci/target-stamp.sh restore
+      - name: Clippy (aarch64-apple-darwin)
+        run: cargo clippy --locked --workspace --all-targets --target aarch64-apple-darwin -- -D warnings
+      - name: Clippy (aarch64-apple-darwin, shipped features)
+        run: cargo clippy --locked --workspace --target aarch64-apple-darwin -- -D warnings
+      - run: sh ci/target-stamp.sh save
+      - if: github.event_name != 'pull_request'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: lint-apple-${{ needs.plan.outputs.key }}
+
+  # The tests the change needs, in GitLab's test image (docs/linux.md, Tests in a container): its
+  # git and its DejaVu fonts are all the tests need. Same script as GitLab's test job.
+  test:
+    needs: plan
+    if: needs.plan.outputs.test == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: rust:1.99.1-bookworm@sha256:7085845219c18e7c5b1f34ed9ce89b84f822f2e3d54a02774cedc996ac0f304f
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      # In a container github.workspace names the host's folder; GITHUB_WORKSPACE is the one inside.
+      # The downloads move into the workspace, as on GitLab, so the cache paths are relative.
+      - run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          echo "CARGO_HOME=$GITHUB_WORKSPACE/.cargo-home" >> "$GITHUB_ENV"
+          echo "BUILD_DEPS=$GITHUB_WORKSPACE/.build-deps" >> "$GITHUB_ENV"
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cargo-home/registry/index
+            .cargo-home/registry/cache
+            .cargo-home/git/db
+            target
+          key: test-linux-${{ needs.plan.outputs.key }}
+          restore-keys: test-linux-${{ needs.plan.outputs.deps }}-
+      - run: sh ci/install-build-deps.sh cargo-nextest
+      - run: sh ci/target-stamp.sh restore
+      - name: Tests
+        env:
+          FILTER: ${{ needs.plan.outputs.tests }}
+        run: |
+          export PATH="$BUILD_DEPS/usr/bin:$PATH"
+          cargo nextest run --locked --workspace --profile ci --no-tests=pass -E "$FILTER"
+          cargo test --locked --workspace --doc
+      - run: sh ci/target-stamp.sh save
+      - if: github.event_name != 'pull_request'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cargo-home/registry/index
+            .cargo-home/registry/cache
+            .cargo-home/git/db
+            target
+          key: test-linux-${{ needs.plan.outputs.key }}
+
+  # What needs a real Mac: the tests of the crates with macOS code that the change needs, and the
+  # native traffic-light alignment, which opens a window.
+  macos:
+    needs: plan
+    if: needs.plan.outputs.macos == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - id: pin
+        run: echo "channel=$(grep '^channel' rust-toolchain.toml | cut -d '"' -f 2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master, 2026-11-15
+        with:
+          toolchain: ${{ steps.pin.outputs.channel }}
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: test-macos-${{ needs.plan.outputs.key }}
+          restore-keys: test-macos-${{ needs.plan.outputs.deps }}-
+      - run: sh ci/install-build-deps.sh cargo-nextest
+      - run: sh ci/target-stamp.sh restore
+      - name: Native traffic-light alignment
+        run: cargo run --locked -p cv-base --example check_macos_traffic_lights
+      - name: Tests of the crates with macOS code
+        env:
+          FILTER: ${{ needs.plan.outputs.mac-tests }}
+        run: |
+          export PATH="$BUILD_DEPS/usr/bin:$PATH"
+          cargo nextest run --locked --workspace --profile ci --no-tests=pass -E "$FILTER"
+      - run: sh ci/target-stamp.sh save
+      - if: github.event_name != 'pull_request'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: test-macos-${{ needs.plan.outputs.key }}
+
+  # The one check to require: green when every job the plan started passed. A job the plan skipped
+  # counts as passed.
+  required:
+    needs: [plan, lint, lint-apple, test, macos]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          case " $RESULTS " in *" failure "* | *" cancelled "*) exit 1 ;; esac
+
+  # Only a maintainer's manual run packages; a pull request needs the checks alone.
+  bundle:
+    needs: required
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - id: pin
+        run: echo "channel=$(grep '^channel' rust-toolchain.toml | cut -d '"' -f 2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master, 2026-11-15
+        with:
+          toolchain: ${{ steps.pin.outputs.channel }}
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Install cargo-bundle
+        run: cargo install cargo-bundle --version 0.12.0 --locked
+      - name: Build and package the universal app
+        run: ./scripts/package-macos.sh --universal
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: CodeView-macos-universal
+          path: |
+            dist/CodeView-macos-universal.dmg
+            dist/CodeView-macos-universal.zip
+          if-no-files-found: error

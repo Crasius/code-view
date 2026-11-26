@@ -1,6 +1,6 @@
 # Release builds and CI
 
-The source of truth is the project on a self-managed GitLab instance, the remote `origin`; GitHub carries its public mirror, the remote `github` (rule `git-flow`). The GitLab pipeline (`.gitlab-ci.yml`, `ci/checks.yml`, scripts in `ci/`) checks every merge request and every push to `main` (Pipelines). A release tag builds the app for every platform and publishes those builds to Creative Downloads, in one release with a depot per platform. `.github/workflows/macos.yml` is separate and the only workflow on GitHub: it checks pull requests on a real Mac, and a maintainer's manual run also packages the app (`docs/macos.md`). No push starts it.
+The source of truth is the project on a self-managed GitLab instance, the remote `origin`; GitHub carries its public mirror, the remote `github` (rule `git-flow`). The GitLab pipeline (`.gitlab-ci.yml`, `ci/checks.yml`, scripts in `ci/`) checks every merge request and every push to `main` (Pipelines). A release tag builds the app for every platform and publishes those builds to Creative Downloads, in one release with a depot per platform. `.github/workflows/pull-request.yml` is separate and the only workflow on GitHub: it checks pull requests (GitHub), a daily run keeps its caches warm, and a maintainer's manual run also packages the app (`docs/macos.md`). No push starts it.
 
 This page is the maintainer's runbook. Building on your own machine is on the platform pages: `docs/windows.md`, `docs/macos.md`, `docs/linux.md`.
 
@@ -18,13 +18,15 @@ The instance has one shared runner, so a pipeline runs only what verifies someth
 
 | Pipeline | Jobs |
 |---|---|
-| Merge request that changes a cargo input | `check`, `secret-scan`, `build-linux-x64`; the other four builds wait for a manual start |
+| Merge request that changes a cargo input | `lint`, `test`, `secret-scan` side by side; `build-linux-x64` after them when a release input changed; every other build waits for a manual start |
 | Merge request that changes no cargo input (docs, `.agents/rules`, `AGENTS.md`) | `secret-scan` |
-| Push to `main` | `main-scope` and its child pipeline `main-checks`: one short job when the push is a merge GitLab made from a merge request whose head has the same tree, else `check` and `secret-scan` |
-| Protected tag `vX.Y.Z` | `check`, `secret-scan`, the five builds, `creative-downloads` |
-| Run by hand (web, API) | `check`, `secret-scan`, the five builds |
+| Push to `main` | `main-scope` and its child pipeline `main-checks`: one short job when the push is a merge GitLab made from a merge request whose head has the same tree, else `lint`, `test` and `secret-scan` |
+| Protected tag `vX.Y.Z` | `lint`, `test` (every test), `secret-scan`, the five builds, `creative-downloads` |
+| Run by hand (web, API) | `lint`, `test` (every test), `secret-scan`, the five builds |
 
+- `lint` runs format, `repo-check.sh`, repo-lint and both clippy passes; `test` runs the tests the change needs (Tests). Each has its own build cache (Build cache).
 - The cargo inputs are `.rust-inputs` in `ci/checks.yml`. `.gitlab-ci.yml` and `ci/` are on the list, so a CI change runs the jobs it defines.
+- The release inputs are `.release-inputs` in `.gitlab-ci.yml`: the manifests, the lockfile, the build scripts, the toolchain and the release scripts. Only they can break a release build that `lint` and `test` passed, chiefly through a dependency whose license `ci/about.toml` does not accept.
 - `ci/main-scope.sh` relies on the project setting "Pipelines must succeed": GitLab then merges a request only after the pipeline of its head passed. A local merge pushed to `main` has no such pipeline and runs the checks.
 - A new push to a merge request cancels its running pipeline (`auto_cancel`), all jobs but `creative-downloads` are interruptible.
 - `main` builds nothing: the tag's pipeline builds and publishes its own.
@@ -66,10 +68,28 @@ The jobs run on the GitLab instance's shared runner, as pods of the Kubernetes e
 
 - Every capability is dropped: a job's root cannot switch users, change owners or write to another user's files. So `ci/install-build-deps.sh` unpacks a tool into `.build-deps` instead of installing it. `docker run --cap-drop=ALL --security-opt no-new-privileges` behaves the same way on a local machine.
 - A job has 4 CPUs and 8 GiB of memory.
-- A cache archive passes through the helper's `/cache` of 2 GiB, so the cache holds only what cargo and xwin downloaded, not `target`. Every job compiles from scratch.
+- A cache archive passes through the helper's `/cache` of 2 GiB, and the runner uploads none above 1 GiB: a larger one stays on the pod and is lost [observed 2026-11-26, pipeline 4900: "Cache archive size (1158212488) is too big (Limit is set to 1073741824)"]. The release builds cache only what cargo and xwin downloaded; `lint` and `test` each cache their `target`, `test` in two archives (Build cache).
 - A build container may use 8 GiB of disk and the helper 4 GiB, and the job's folder counts towards them. So jobs build without incremental data and without debug info, and each prints what its folders take at its end.
+- Jobs of one pipeline run in pods of their own, side by side [observed 2026-11-26: `lint` and `test` of pipeline 4900 started together].
 
-`check` runs in the official Rust image, the one `docs/linux.md` names: its git and its DejaVu fonts are all the tests need.
+`lint` and `test` run in the official Rust image, the one `docs/linux.md` names: its git and its DejaVu fonts are all the tests need.
+
+## Build cache
+
+`lint` and `test` share no compiled unit (clippy writes check metadata, the tests need code), so each job kind has a cache of its own `target`, keyed by `Cargo.lock` and `rust-toolchain.toml`; the downloads are a third cache both share. Every pipeline that runs the job reads and writes it.
+
+- A fresh clone dates every file to the clone's time, so cargo would take every workspace crate for changed. `ci/target-stamp.sh` fixes that by content: `save` records the tree the cache was built from (`git ls-files -s`), `restore` dates every tracked file and folder back to 2001 and touches only the paths whose blob differs. cargo then rebuilds the crates whose inputs changed and what depends on them, whichever branch or commit wrote the cache.
+- Registry crates are fresh by version, not by time; a lockfile or toolchain change starts a new key, and that job kind builds cold once.
+- Every job that shares a cache uses the same `CARGO_*` profile settings (`.rust` in `ci/checks.yml`), or the units' hashes differ.
+- To start cold, clear the runner caches on the project's CI/CD pipelines page.
+
+## Tests
+
+`test` builds every test of the workspace and runs, with cargo-nextest (pinned in `ci/install-build-deps.sh`, profile `ci` in `.config/nextest.toml`), those the change needs: `scripts/affected-tests.sh` maps the changed files to the packages that own them or whose sources name them, and selects those packages and everything that depends on them (`rdeps`). A change to a shared input (the lockfile, the root manifest, the toolchain, `.cargo/`, `.config/`, the CI files, `cv-testkit`, a build script) selects every test; docs and agent rules select none.
+
+- The build stays `--workspace`: `cargo test -p` resolves features for the selected packages only and rebuilt 124 dependencies for `-p review-app` [observed 2026-11-26, local], which a warm cache would lose. Only the run is filtered.
+- A merge request compares with its diff base, main's child pipeline with the commit before the push (`ci/main-scope.sh`), so every pushed change is in the diff. A tag and a run by hand have no base and run every test.
+- nextest runs each test in a process of its own. It is no faster here (`review-app`'s walkthroughs pay their start-up per test), but it filters the run without changing the build. nextest runs no doctests; `cargo test --doc` follows it.
 
 ## Secret scan
 
