@@ -413,6 +413,7 @@ impl GitLabHost {
             .build()
             .expect("mock runtime");
         let server = runtime.block_on(MockServer::start());
+        cv_testkit::fresh_origin(&server.uri());
         let hits = Arc::new(Mutex::new(Vec::new()));
         let responder = GitLabResponder { hits: hits.clone(), base_url: server.uri() };
         runtime.block_on(
@@ -553,12 +554,9 @@ fn isolated_paths(name: &str) -> AppPaths {
 
 fn start_app(paths: &AppPaths) -> Harness<'static, ReviewApp> {
     let paths = paths.clone();
-    let builder = Harness::builder()
-        .with_size([1440.0, 900.0])
-        .with_step_dt(0.25)
-        .with_max_steps(1_000_000)
-        .allow_missing_glyphs();
-    let mut harness = builder.build_eframe(move |creation| {
+    let builder =
+        Harness::builder().with_size([1440.0, 900.0]).with_step_dt(0.25).allow_missing_glyphs();
+    let mut harness = super::startup::start(builder, move |creation| {
         ReviewApp::new(creation, paths, cv_providers::create_provider)
     });
     harness.state_mut().settings.cli_tools = Some(CliTools::default());

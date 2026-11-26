@@ -58,6 +58,7 @@ impl GitHubHost {
     /// A host whose "mine" search lists `rows` (see [`search_row`]) for the organization `owner`.
     pub fn start(owner: &str, rows: &[Value]) -> Self {
         let server = RUNTIME.block_on(MockServer::start());
+        cv_testkit::fresh_origin(&server.uri());
         let host = Self {
             server,
             owner: owner.to_owned(),

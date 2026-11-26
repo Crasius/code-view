@@ -263,15 +263,13 @@ fn back() -> String {
 }
 
 pub(super) fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
-    Harness::builder().with_size([1280.0, 1000.0]).with_max_steps(100_000).build_eframe(
-        |creation| {
-            let mut app = ReviewApp::new(creation, paths, fake_provider);
-            // The machine's own gh/az never run in tests; both options are shown as if installed.
-            // Set before the harness's first frame, which opens the setup with the tools it has.
-            app.settings.cli_tools = Some(CliTools { github: true, azure: true });
-            app
-        },
-    )
+    super::startup::start(Harness::builder().with_size([1280.0, 1000.0]), |creation| {
+        let mut app = ReviewApp::new(creation, paths, fake_provider);
+        // The machine's own gh/az never run in tests; both options are shown as if installed.
+        // Set before the harness's first frame, which opens the setup with the tools it has.
+        app.settings.cli_tools = Some(CliTools { github: true, azure: true });
+        app
+    })
 }
 
 pub(super) fn isolated_paths(name: &str) -> AppPaths {

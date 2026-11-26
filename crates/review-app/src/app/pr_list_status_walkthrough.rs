@@ -446,6 +446,7 @@ impl Host {
             .build()
             .expect("mock runtime");
         let server = runtime.block_on(MockServer::start());
+        cv_testkit::fresh_origin(&server.uri());
         let scene = Arc::new(Scene { base_url: server.uri(), ..Scene::default() });
         let responder = Responder { scene: Arc::clone(&scene), script };
         runtime.block_on(
@@ -473,14 +474,13 @@ impl Host {
 
     fn harness(&self, width: f32) -> Harness<'static, ReviewApp> {
         let paths = self.paths.clone();
-        let mut harness = Harness::builder()
+        let builder = Harness::builder()
             .with_size([width, 900.0])
             .with_step_dt(STEP_SECONDS)
-            .with_max_steps(1_000_000)
-            .allow_missing_glyphs()
-            .build_eframe(move |creation| {
-                ReviewApp::new(creation, paths, cv_providers::create_provider)
-            });
+            .allow_missing_glyphs();
+        let mut harness = super::startup::start(builder, move |creation| {
+            ReviewApp::new(creation, paths, cv_providers::create_provider)
+        });
         harness.state_mut().settings.cli_tools = Some(CliTools::default());
         harness
     }

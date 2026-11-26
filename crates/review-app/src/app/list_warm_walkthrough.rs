@@ -41,6 +41,7 @@ impl SlowDetail {
             .build()
             .expect("mock runtime");
         let server = runtime.block_on(MockServer::start());
+        cv_testkit::fresh_origin(&server.uri());
         let ok = |body| ResponseTemplate::new(200).set_body_json(body);
         let search = json!({ "data": { "search": {
             "pageInfo": { "hasNextPage": false, "endCursor": null },

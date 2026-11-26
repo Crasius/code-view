@@ -558,13 +558,10 @@ fn live_leaving_a_pull_request_sends_nothing_for_it() {
         .expect("a number");
     let paths = isolated_paths();
     save_anonymous_connection(&paths, &platform);
-    let mut harness = Harness::builder()
-        .with_size([1440.0, 900.0])
-        .with_max_steps(100_000)
-        .allow_missing_glyphs()
-        .build_eframe(|creation| {
-            ReviewApp::new(creation, paths.clone(), cv_providers::create_provider)
-        });
+    let builder = Harness::builder().with_size([1440.0, 900.0]).allow_missing_glyphs();
+    let mut harness = super::startup::start(builder, |creation| {
+        ReviewApp::new(creation, paths.clone(), cv_providers::create_provider)
+    });
     let key = PullRequestKey {
         connection_id: CONNECTION_ID.to_owned(),
         repository_key: repository.clone(),
@@ -667,14 +664,13 @@ fn wait_for_quiet(harness: &mut Harness<'_, ReviewApp>) {
 /// spaces the live probe like the app would, instead of probing every few real seconds.
 fn realtime_harness(paths: &AppPaths) -> Harness<'static, ReviewApp> {
     let paths = paths.clone();
-    Harness::builder()
+    let builder = Harness::builder()
         .with_size([1440.0, 900.0])
         .with_step_dt(1.0 / 60.0)
-        .with_max_steps(100_000)
-        .allow_missing_glyphs()
-        .build_eframe(move |creation| {
-            ReviewApp::new(creation, paths, cv_providers::create_provider)
-        })
+        .allow_missing_glyphs();
+    super::startup::start(builder, move |creation| {
+        ReviewApp::new(creation, paths, cv_providers::create_provider)
+    })
 }
 
 fn diff_label(harness: &Harness<'_, ReviewApp>) -> Option<String> {

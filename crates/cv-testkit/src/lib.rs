@@ -5,9 +5,12 @@
 //!   or waits on the system's token store (the login Keychain prompts when a rebuilt test binary
 //!   reads an item an earlier build wrote, and blocks until someone answers);
 //! - its providers reach loopback hosts only ([`http_client`]): a request to a host no mock
-//!   answers fails at once, naming the host, instead of waiting on the real network;
+//!   answers fails at once, naming the host, instead of waiting on the real network; a mock
+//!   server's origin starts without an earlier test's rate-limit pause ([`fresh_origin`]);
 //! - a [`Watchdog`] stops the test binary with a message once a test runs past [`watchdog_limit`]
-//!   in real time, so a call that never returns fails the run instead of hanging it;
+//!   in real time, so a call that never returns fails the run instead of hanging it; the message
+//!   says where the test was ([`step`], [`frame_started`]: the wait under way, its frames, the
+//!   background work in flight, a panic it hung after);
 //! - at most [`PROCESS_SLOTS`] such tests run at once ([`take_process_slot`]): the processes they
 //!   start (git above all) are started one after another for the whole test binary, so every
 //!   further test adds to each one's wait.
@@ -31,6 +34,9 @@
 #![expect(clippy::cast_possible_truncation, reason = "egui takes f32 seconds from the f64 clock")]
 
 pub mod frame_bench;
+mod trace;
+
+pub use trace::{Step, frame_ended, frame_started, step};
 
 use std::cell::{Cell, OnceCell};
 use std::io::Write;
@@ -38,7 +44,7 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Condvar, Mutex, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use review_store::{AppPaths, TokenVault};
@@ -138,6 +144,18 @@ pub fn http_client() -> reqwest::Client {
         .expect("TLS backend must initialize")
 }
 
+/// Hands a test's mock server over without the rate-limit pauses an earlier test left on its
+/// origin; call it right after the server starts. The request budget pauses a host's requests
+/// after a 429 for the whole process, keyed by origin (`review_core::http::budget`), and
+/// wiremock's `MockServer::start` hands out pooled servers again, port and all, once their test
+/// ended. A test that ended with a pause (a `Retry-After` of 40 minutes it never retried) left
+/// it to the next test on that server: its rows' checks waited out the pause, their updating edge
+/// asked for every frame, and the harness's startup ran frames until the watchdog stopped the
+/// binary (GitLab job 25128).
+pub fn fresh_origin(server_uri: &str) {
+    review_core::http::resume(server_uri.trim_end_matches('/'));
+}
+
 struct LoopbackOnly;
 
 impl Resolve for LoopbackOnly {
@@ -179,6 +197,8 @@ impl Watchdog {
         }
         let limit = watchdog_limit();
         let test = std::thread::current().name().unwrap_or("a test").to_owned();
+        let trace = trace::current();
+        trace::note_panics();
         let (done, waiting) = mpsc::channel::<()>();
         std::thread::Builder::new()
             .name("test watchdog".to_owned())
@@ -190,8 +210,9 @@ impl Watchdog {
                         std::io::stderr(),
                         "\n{test} still runs after {} s: something it waits on never returned (a system dialog such as a \
                          Keychain prompt, a lock, an unmocked host). Stopping the test binary instead of hanging; \
-                         REVIEW_TEST_WATCHDOG_SECS raises the limit.",
-                        limit.as_secs()
+                         REVIEW_TEST_WATCHDOG_SECS raises the limit.{}",
+                        limit.as_secs(),
+                        trace.describe(Instant::now())
                     );
                     std::process::exit(101);
                 }
@@ -305,6 +326,39 @@ mod tests {
         let paths =
             AppPaths::new("config".into(), "cache".into()).with_token_vault(TokenVault::System);
         assert_hermetic(&paths);
+    }
+
+    /// A 429 pauses its origin for the whole process; the next test on that origin (a pooled mock
+    /// server) starts without the pause.
+    #[test]
+    fn a_fresh_origin_carries_no_pause_of_an_earlier_test() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+        let uri = format!("http://{}", listener.local_addr().expect("its address"));
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("the request");
+            let mut request = [0_u8; 4096];
+            let _read = stream.read(&mut request);
+            stream
+                .write_all(
+                    b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 2391\r\nRateLimit-Remaining: 0\r\n\
+                      Content-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .expect("the answer");
+        });
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        let request = http_client().post(format!("{uri}/api/graphql"));
+        let answer =
+            runtime.block_on(review_core::http::without_waiting(review_core::http::send(request)));
+        assert!(answer.is_err(), "the 429 is no answer");
+        let is_paused =
+            || review_core::http::rate_limits().iter().any(|notice| notice.origin == uri);
+        assert!(is_paused(), "the 429 paused its origin");
+
+        super::fresh_origin(&format!("{uri}/"));
+        assert!(!is_paused(), "the next test finds the origin unpaused");
     }
 
     #[test]

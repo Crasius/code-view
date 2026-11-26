@@ -545,6 +545,7 @@ impl MockHost {
             .build()
             .expect("mock runtime");
         let server = runtime.block_on(MockServer::start());
+        cv_testkit::fresh_origin(&server.uri());
         let state = Arc::new(HostState::default());
         state.count.store(count, Ordering::SeqCst);
         let responder = Responder { state: state.clone(), base_url: server.uri() };
@@ -675,12 +676,9 @@ fn start_app(paths: &AppPaths) -> Harness<'static, ReviewApp> {
 
 fn start_app_sized(paths: &AppPaths, height: f32) -> Harness<'static, ReviewApp> {
     let paths = paths.clone();
-    let builder = Harness::builder()
-        .with_size([1440.0, height])
-        .with_step_dt(0.25)
-        .with_max_steps(1_000_000)
-        .allow_missing_glyphs();
-    let mut harness = builder.build_eframe(move |creation| {
+    let builder =
+        Harness::builder().with_size([1440.0, height]).with_step_dt(0.25).allow_missing_glyphs();
+    let mut harness = super::startup::start(builder, move |creation| {
         ReviewApp::new(creation, paths, cv_providers::create_provider)
     });
     harness.state_mut().settings.cli_tools = Some(CliTools::default());

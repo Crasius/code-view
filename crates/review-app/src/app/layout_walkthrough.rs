@@ -442,11 +442,8 @@ fn rects(controls: &[(String, egui::Rect)]) -> Vec<egui::Rect> {
 }
 
 fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
-    Harness::builder()
-        .with_size([1440.0, 900.0])
-        .with_step_dt(1.0 / 60.0)
-        .with_max_steps(100_000)
-        .build_eframe(|creation| ReviewApp::new(creation, paths, local_provider))
+    let builder = Harness::builder().with_size([1440.0, 900.0]).with_step_dt(1.0 / 60.0);
+    super::startup::start(builder, |creation| ReviewApp::new(creation, paths, local_provider))
 }
 
 fn saved(paths: &AppPaths) -> AppSettings {

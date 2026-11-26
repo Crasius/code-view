@@ -243,12 +243,10 @@ fn start_on(
         })
         .expect("store the connection");
     let app_paths = paths.clone();
-    let builder = Harness::builder()
-        .with_size([1280.0, 860.0])
-        .with_step_dt(1.0 / 30.0)
-        .with_max_steps(1_000_000);
-    let mut harness = builder
-        .build_eframe(move |creation| ReviewApp::new(creation, app_paths, scripted_provider));
+    let builder = Harness::builder().with_size([1280.0, 860.0]).with_step_dt(1.0 / 30.0);
+    let mut harness = super::startup::start(builder, move |creation| {
+        ReviewApp::new(creation, app_paths, scripted_provider)
+    });
     harness.state_mut().settings.cli_tools = Some(CliTools::default());
     (harness, paths, calls)
 }

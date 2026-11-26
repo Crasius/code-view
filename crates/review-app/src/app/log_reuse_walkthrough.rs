@@ -112,12 +112,11 @@ fn start() -> AppPaths {
 /// The app on `paths`, at the pull request.
 fn open(paths: &AppPaths) -> Harness<'static, ReviewApp> {
     let app_paths = paths.clone();
-    let mut harness = Harness::builder()
-        .with_size(SIZE)
-        .with_step_dt(1.0 / 60.0)
-        .with_max_steps(100_000)
-        .allow_missing_glyphs()
-        .build_eframe(move |creation| ReviewApp::new(creation, app_paths, scripted_provider));
+    let builder =
+        Harness::builder().with_size(SIZE).with_step_dt(1.0 / 60.0).allow_missing_glyphs();
+    let mut harness = super::startup::start(builder, move |creation| {
+        ReviewApp::new(creation, app_paths, scripted_provider)
+    });
     harness.state_mut().settings.cli_tools = Some(CliTools::default());
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: ID.to_owned(),

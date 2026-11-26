@@ -44,6 +44,7 @@ fn private_image_loads_on_the_open_page_once_the_token_is_fixed() {
     host.render_images_as(TOKEN, &asset);
     let runtime = Runtime::new().expect("runtime");
     let storage = runtime.block_on(MockServer::start());
+    cv_testkit::fresh_origin(&storage.uri());
     runtime.block_on(
         Mock::given(method("GET"))
             .and(path(SIGNED_PATH))

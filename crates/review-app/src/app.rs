@@ -167,6 +167,8 @@ mod settings_walkthrough;
 #[cfg(test)]
 mod setup_walkthrough;
 #[cfg(test)]
+mod startup;
+#[cfg(test)]
 mod storage_walkthrough;
 #[cfg(test)]
 mod thread_code_walkthrough;
@@ -693,6 +695,9 @@ fn history_input(ctx: &egui::Context) -> Option<Step> {
 
 impl eframe::App for ReviewApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        // The test watchdog says whether a hung walkthrough was inside a frame or between two.
+        #[cfg(test)]
+        cv_testkit::frame_started(ui.ctx());
         let ui_started = std::time::Instant::now();
         let ctx = ui.ctx().clone();
         if self.zoom.handle_input(&ctx, &mut self.services.settings) {
@@ -773,6 +778,8 @@ impl eframe::App for ReviewApp {
             self.frame_limiter.held_before(),
             &mut self.services,
         );
+        #[cfg(test)]
+        cv_testkit::frame_ended(self.services.background.running());
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {

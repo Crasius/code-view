@@ -35,11 +35,10 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
         })
         .expect("store the connection");
     let app_paths = paths.clone();
-    let mut harness = Harness::builder()
-        .with_size([1280.0, 1000.0])
-        .with_step_dt(1.0 / 60.0)
-        .with_max_steps(100_000)
-        .build_eframe(move |creation| ReviewApp::new(creation, app_paths, scripted_provider));
+    let builder = Harness::builder().with_size([1280.0, 1000.0]).with_step_dt(1.0 / 60.0);
+    let mut harness = super::startup::start(builder, move |creation| {
+        ReviewApp::new(creation, app_paths, scripted_provider)
+    });
     harness.state_mut().settings.cli_tools = Some(CliTools::default());
     harness.state_mut().navigator.go(Route::Settings);
     settle(&mut harness);
