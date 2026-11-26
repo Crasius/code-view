@@ -8,7 +8,7 @@
 #          every test when a script the job runs changes (ci/, the workflow, the lockfile, ...), and
 #          the crates that depend on a changed one, dev-dependencies included.
 #   mac-tests  the part of tests that macos runs: the crates with macOS code
-# Every other event (the cache warm-up, a manual run) gets everything.
+# A manual run gets everything.
 # Usage: github-plan.sh <event name>
 set -eu
 out="${GITHUB_OUTPUT:?Run it in GitHub Actions.}"
