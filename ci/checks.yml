@@ -139,6 +139,7 @@ test:
     - key:
         prefix: target-test
         files: [Cargo.lock, rust-toolchain.toml]
+      when: always
       paths:
         - target/ci-tree.txt
         - target/debug/.fingerprint
@@ -148,6 +149,7 @@ test:
     - key:
         prefix: target-test-bins
         files: [Cargo.lock, rust-toolchain.toml]
+      when: always
       paths:
         - target/debug/deps/*-????????????????
   script:

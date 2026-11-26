@@ -195,7 +195,8 @@ jobs:
           key: lint-apple-${{ needs.plan.outputs.key }}
 
   # The tests the change needs, in GitLab's test image (docs/linux.md, Tests in a container): its
-  # git and its DejaVu fonts are all the tests need. Same script as GitLab's test job.
+  # git and its DejaVu fonts are all the tests need. GitLab's test job runs the same script
+  # (ci/test.sh).
   test:
     needs: plan
     if: needs.plan.outputs.test == 'true'
@@ -227,12 +228,8 @@ jobs:
       - run: sh ci/target-stamp.sh restore
       - name: Tests
         env:
-          FILTER: ${{ needs.plan.outputs.tests }}
-        run: |
-          export PATH="$BUILD_DEPS/usr/bin:$PATH"
-          cargo nextest run --locked --workspace --profile ci --no-tests=pass -E "$FILTER"
-          cargo test --locked --workspace --doc
-      - run: sh ci/target-stamp.sh save
+          TEST_FILTER: ${{ needs.plan.outputs.tests }}
+        run: PATH="$BUILD_DEPS/usr/bin:$PATH" sh ci/test.sh
       - if: github.event_name != 'pull_request'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -274,11 +271,8 @@ jobs:
         run: cargo run --locked -p cv-base --example check_macos_traffic_lights
       - name: Tests of the crates with macOS code
         env:
-          FILTER: ${{ needs.plan.outputs.mac-tests }}
-        run: |
-          export PATH="$BUILD_DEPS/usr/bin:$PATH"
-          cargo nextest run --locked --workspace --profile ci --no-tests=pass -E "$FILTER"
-      - run: sh ci/target-stamp.sh save
+          TEST_FILTER: ${{ needs.plan.outputs.mac-tests }}
+        run: PATH="$BUILD_DEPS/usr/bin:$PATH" sh ci/test.sh
       - if: github.event_name != 'pull_request'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:

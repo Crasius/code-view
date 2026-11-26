@@ -6,7 +6,9 @@
 #   restore  after the checkout and the cache restore: dates every tracked file and its folders
 #            back to 2001, then touches every path whose blob differs from the recorded tree, and
 #            its folders. cargo then rebuilds exactly the crates whose inputs changed, and what
-#            depends on them. Without a record (a cold cache) it changes nothing.
+#            depends on them. Without a record (a cold cache) it changes nothing. It removes the
+#            record: a build that fails halfway leaves a `target` no recorded tree describes, and
+#            a cache saved from it makes the next job date nothing back.
 # Content, not commit dates, decides: a cache from another branch or an older commit is as safe as
 # one from the parent commit. Files outside git (registry sources, OUT_DIR) are cargo's to judge.
 # Usage: target-stamp.sh save|restore   (in the repository root)
@@ -41,7 +43,7 @@ case "${1:-}" in
         git ls-files | folders | touch_lines -d "$old"
         # The lines of either list that the other lacks: changed, added and removed paths.
         changed="$(sort "$record" "$now" | uniq -u | cut -f 2- | sort -u)"
-        rm -f "$now"
+        rm -f "$now" "$record"
         if [ -n "$changed" ]; then
             printf '%s\n' "$changed" | touch_lines
             printf '%s\n' "$changed" | folders | touch_lines
