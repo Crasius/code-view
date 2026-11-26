@@ -19,6 +19,7 @@ use review_agent::{AgentEvent, AgentKind, FakeAgent, ModelInfo, Usage};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, type_into, wait_for, wait_for_link, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_code::diff_paint::flashed_lines;
 use cv_pr_assistant::mini::{
@@ -118,7 +119,7 @@ fn open_from_the_citation(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
 /// ▶ moves the diff to the next reference's file and lines; over the cited lines the card fades,
 /// unless the pointer is on it.
 fn step_and_fade(harness: &mut Harness<'_, ReviewApp>, room: egui::Rect) {
-    harness.get_by_label(NEXT).click();
+    harness.click_at(harness.get_by_label(NEXT).rect());
     wait_until(harness, "the second reference", |harness| {
         harness.query_by_label("Reference 2 of 4").is_some()
             && harness.query_by_label(&format!("Diff of {LONG}")).is_some()
@@ -148,7 +149,7 @@ fn outside_the_diff(harness: &mut Harness<'_, ReviewApp>) {
         harness.query_by_label(&format!("Diff of {LONG}")).is_some(),
         "the diff stays where it was"
     );
-    harness.get_by_label(SKIP_NEXT).click();
+    harness.click_at(harness.get_by_label(SKIP_NEXT).rect());
     wait_until(harness, "the last reference", |harness| {
         harness.query_by_label("Reference 4 of 4").is_some()
             && harness.query_by_label(&notice).is_none()
@@ -160,7 +161,7 @@ fn outside_the_diff(harness: &mut Harness<'_, ReviewApp>) {
 /// The pill keeps the arrows, then opens again as the card in the same corner.
 fn pill_and_back(harness: &mut Harness<'_, ReviewApp>) {
     let card_rect = drawn(harness).rect;
-    harness.get_by_label(SHRINK).click();
+    harness.click_at(harness.get_by_label(SHRINK).rect());
     wait_until(harness, "the pill", |harness| {
         let shown = drawn(harness);
         shown.is_pill && (shown.rect.height() - 44.0).abs() < 0.5
@@ -171,7 +172,7 @@ fn pill_and_back(harness: &mut Harness<'_, ReviewApp>) {
     wait_until(harness, "a step in the pill", |harness| {
         harness.query_by_label("Assistant · 3 of 4").is_some()
     });
-    harness.get_by_label(OPEN).click();
+    harness.click_at(harness.get_by_label(OPEN).rect());
     wait_until(harness, "the card again", |harness| {
         let shown = drawn(harness);
         !shown.is_pill && (shown.rect.height() - card_rect.height()).abs() < 0.5
@@ -226,7 +227,7 @@ fn follow_up(harness: &mut Harness<'_, ReviewApp>, agent: &mut FakeAgent) {
 #[test]
 fn mini_chat_off_leaves_the_citation_as_it_was() {
     let (mut harness, _agent, _scratch) = answered("mini-chat-off", false);
-    harness.get_by_label_contains("Claude · ").click();
+    harness.click_at(harness.get_by_label_contains("Claude · ").rect());
     wait_until(&mut harness, "the chip's menu", |harness| {
         harness.query_by_label("Keep the answer beside the code").is_some()
     });
@@ -240,15 +241,15 @@ fn mini_chat_off_leaves_the_citation_as_it_was() {
     harness.run_steps(4);
     assert!(!has_card(&harness) && mini::drawn(&harness.ctx).is_none(), "no mini chat");
 
-    harness.get_by_role_and_label(Role::Tab, "Overview").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Overview").rect());
     wait_until(&mut harness, "the chip", |harness| {
         harness.query_by_label_contains("Claude · ").is_some()
     });
-    harness.get_by_label_contains("Claude · ").click();
+    harness.click_at(harness.get_by_label_contains("Claude · ").rect());
     wait_until(&mut harness, "the chip's menu", |harness| {
         harness.query_by_label("Keep the answer beside the code").is_some()
     });
-    harness.get_by_label("Keep the answer beside the code").click();
+    harness.click_at(harness.get_by_label("Keep the answer beside the code").rect());
     harness.run_steps(2);
     assert!(harness.state().services.settings.assistant.mini_chat, "switched on in place");
 }
@@ -307,15 +308,6 @@ fn answer(agent: &FakeAgent, text: &str) {
 }
 
 pub(super) fn primary_click(harness: &mut Harness<'_, ReviewApp>, position: Pos2) {
-    harness.hover_at(position);
+    harness.click_point(position, PointerButton::Primary);
     harness.step();
-    for pressed in [true, false] {
-        harness.event(Event::PointerButton {
-            pos: position,
-            button: PointerButton::Primary,
-            pressed,
-            modifiers: Modifiers::NONE,
-        });
-        harness.step();
-    }
 }

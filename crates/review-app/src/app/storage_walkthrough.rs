@@ -6,6 +6,7 @@ use egui_kittest::kittest::Queryable;
 use review_core::{Connection, ProviderKind};
 use review_store::{ConnectionStore, stable_hash};
 
+use super::clicks::Clicks;
 use super::setup_walkthrough::{harness, isolated_paths, press, wait_for};
 use cv_runtime::route::Route;
 
@@ -33,7 +34,7 @@ fn storage_measures_clears_after_asking_and_forgets_removed_connections() {
     let mut harness = harness(paths);
     harness.state_mut().navigator.go(Route::Settings);
     harness.step();
-    harness.get_by_role_and_label(Role::Tab, "Storage").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Storage").rect());
     wait_for(&mut harness, "the measured log size", |harness| {
         harness.query_by_label("64 B of 1 GB").is_some()
     });
@@ -52,12 +53,12 @@ fn storage_measures_clears_after_asking_and_forgets_removed_connections() {
     assert!(!log.exists());
     assert!(viewed.exists(), "clearing the cache keeps viewed marks");
 
-    harness.get_by_role_and_label(Role::Tab, "Connections").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Connections").rect());
     harness.step();
     wait_for(&mut harness, "the connection's row", |harness| {
         harness.query_by_role_and_label(Role::Button, "Tabletop").is_some()
     });
-    harness.get_by_role_and_label(Role::Button, "Tabletop").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Tabletop").rect());
     wait_for(&mut harness, "the connection's facts", |harness| {
         harness.query_by_label("Remove…").is_some()
     });

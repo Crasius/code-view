@@ -38,6 +38,7 @@ use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use super::request_budget::{
     Text, diff_stats_summaries, harness_builder, harness_from, has, pump, startup_harness_builder,
     user, wait_idle, wait_until,
@@ -334,10 +335,10 @@ fn owner_overview(
     if is_on("menu") {
         let label = if is_on("record") { "Checkout options" } else { "Check out" };
         wait_until(&mut harness, "the checkout button", |harness| has(harness, label));
-        harness.get_by_label(label).click();
+        harness.click_at(harness.get_by_label(label).rect());
         pump(&mut harness, 2.0);
         if is_on("record") && has(&harness, "Show log") {
-            harness.get_by_label("Show log").click();
+            harness.click_at(harness.get_by_label("Show log").rect());
             pump(&mut harness, 2.0);
         }
         harness.key_press(egui::Key::Escape);
@@ -494,7 +495,7 @@ fn review(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture, iid: u64, cur
     curve.measure(harness, &format!("MR {iid}: overview"));
     let files_label = format!("Files ({})", RUST_FILES + 3);
     wait_until(harness, "the file list", |harness| harness.query_by_label(&files_label).is_some());
-    harness.get_by_label(&files_label).click();
+    harness.click_at(harness.get_by_label(&files_label).rect());
     wait_until(harness, "the first file", |harness| {
         current_file(harness).as_deref() == Some("docs/README.md")
     });
@@ -513,7 +514,7 @@ fn review(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture, iid: u64, cur
 
 #[cfg(feature = "measurements")]
 fn pipelines_and_log(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_until(harness, "the jobs", |harness| has(harness, "test-3-1"));
     harness.get_by_label("Filter checks").focus();
     harness.step();
@@ -527,7 +528,7 @@ fn pipelines_and_log(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
 
 #[cfg(feature = "measurements")]
 fn assistant(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
-    harness.get_by_label("Overview").click();
+    harness.click_at(harness.get_by_label("Overview").rect());
     wait_until(harness, "the assistant's card", |harness| {
         harness.query_by_label("Ask about this PR").is_some()
     });

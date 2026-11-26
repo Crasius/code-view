@@ -24,6 +24,7 @@ use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use cv_settings::onboarding::CliTools;
 use cv_testkit as test_support;
 use cv_widgets::numbers::number_prefix;
@@ -83,7 +84,7 @@ fn pr_list_status_github_search_rows_bring_their_checks_and_votes() {
     harness.get_by_role_and_label(Role::Button, &label).focus();
     harness.step();
     assert!(harness.get_by_role_and_label(Role::Button, &label).is_focused());
-    harness.get_by_role_and_label(Role::Button, &label).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, &label).rect());
     harness.step();
     assert_eq!(
         opened_urls(&harness),
@@ -802,7 +803,7 @@ fn template(path: &str) -> String {
 }
 
 fn refresh(harness: &mut Harness<'_, ReviewApp>) {
-    harness.get_by_role_and_label(Role::Button, "Refresh (F5)").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Refresh (F5)").rect());
     harness.step();
 }
 

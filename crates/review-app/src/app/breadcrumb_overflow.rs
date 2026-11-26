@@ -10,6 +10,7 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use review_store::AppPaths;
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use cv_base::platform;
 use cv_runtime::route::{Landing, PullRequestKey, Route};
 use cv_runtime::trail::Trail;
@@ -161,7 +162,7 @@ fn check_layout(harness: &mut Harness<'_, ReviewApp>, width: f32) -> Vec<String>
 }
 
 fn open_overflow(harness: &mut Harness<'_, ReviewApp>) {
-    harness.get_by_role_and_label(Role::Button, OVERFLOW).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, OVERFLOW).rect());
     settle(harness);
 }
 
@@ -193,7 +194,7 @@ fn breadcrumbs_fold_into_an_overflow_list_and_stay_clear_of_the_caption() {
 
         // A folded level leads exactly where its crumb would.
         open_overflow(&mut harness);
-        harness.get_by_role_and_label(Role::MenuItem, CONNECTION).click();
+        harness.click_at(harness.get_by_role_and_label(Role::MenuItem, CONNECTION).rect());
         settle(&mut harness);
         assert_eq!(
             harness.state().route,
@@ -210,7 +211,7 @@ fn breadcrumbs_fold_into_an_overflow_list_and_stay_clear_of_the_caption() {
         if let Some(folder) = FOLDERS.iter().find(|folder| hidden.contains(&(**folder).to_owned()))
         {
             open_overflow(&mut harness);
-            harness.get_by_role_and_label(Role::MenuItem, folder).click();
+            harness.click_at(harness.get_by_role_and_label(Role::MenuItem, folder).rect());
             settle(&mut harness);
             let level = FOLDERS.iter().position(|other| other == folder).map(|index| index + 1);
             assert_eq!(
@@ -266,7 +267,7 @@ fn the_files_trail_ends_at_the_pull_request_whose_crumb_leads_to_all_files() {
     settle(&mut harness);
     let names: Vec<String> = shown_crumbs(&harness).into_iter().map(|(name, _)| name).collect();
     assert_eq!(names, [review_core::APP_NAME, CONNECTION, REPOSITORY, PULL_REQUEST]);
-    harness.get_by_role_and_label(Role::Link, PULL_REQUEST).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, PULL_REQUEST).rect());
     settle(&mut harness);
     assert_eq!(top_bar::take_trail_click(&harness.ctx), Some(0), "the summary of all files");
 

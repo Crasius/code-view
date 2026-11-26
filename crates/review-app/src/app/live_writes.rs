@@ -31,6 +31,7 @@ use serde_json::{Value, json};
 
 use self::hosts::{FILE, Released, State, TestPullRequest};
 use super::ReviewApp;
+use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::{self as test_support, ScratchDir};
 
@@ -146,15 +147,18 @@ fn released_paths(scratch: &ScratchDir, released: &Released) -> AppPaths {
 
 /// Opens [`FILE`] in the Files tab and comments on one of its lines.
 fn comment_on_a_line(harness: &mut Harness<'_, ReviewApp>) {
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     wait_until(harness, "the file tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, FILE).is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, FILE).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, FILE).rect());
     let diff_label = format!("Diff of {FILE}");
     wait_until(harness, "the diff", |harness| {
         harness.query_all_by_label_contains(&diff_label).next().is_some()
@@ -173,12 +177,12 @@ fn comment_on_a_line(harness: &mut Harness<'_, ReviewApp>) {
             y += 3.0;
         }
     }
-    harness.get_by_label("Add comment").click();
+    harness.click_at(harness.get_by_label("Add comment").rect());
     wait_until(harness, "the line composer", |harness| {
         harness.query_by_label_contains("Comment on line").is_some()
     });
     type_into(harness, "Leave a comment", LINE_COMMENT);
-    harness.get_by_role_and_label(Role::Button, "Comment").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Comment").rect());
     wait_for_toast(harness, "Comment added.");
 }
 
@@ -201,7 +205,7 @@ fn reply_edit_resolve_and_reopen(harness: &mut Harness<'_, ReviewApp>) {
     wait_until(harness, "the comment menu", |harness| {
         harness.query_by_role_and_label(Role::MenuItem, "Edit").is_some()
     });
-    harness.get_by_role_and_label(Role::MenuItem, "Edit").click();
+    harness.click_at(harness.get_by_role_and_label(Role::MenuItem, "Edit").rect());
     wait_until(harness, "the edit composer", |harness| {
         harness.query_by_role_and_label(Role::Button, "Save").is_some()
     });
@@ -220,7 +224,7 @@ fn reply_edit_resolve_and_reopen(harness: &mut Harness<'_, ReviewApp>) {
     wait_until(harness, "Reopen", |harness| harness.query_by_label("Reopen").is_some());
     harness.get_by_label("Reopen").scroll_to_me();
     settle(harness, Duration::from_millis(200));
-    harness.get_by_label("Reopen").click();
+    harness.click_at(harness.get_by_label("Reopen").rect());
     wait_for_toast(harness, "Thread reopened.");
 }
 
@@ -412,7 +416,7 @@ fn set_window_focus(harness: &mut Harness<'_, ReviewApp>, is_focused: bool) {
 }
 
 fn tab(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    harness.get_by_role_and_label(Role::Tab, label).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, label).rect());
     settle(harness, Duration::from_millis(500));
 }
 
@@ -467,18 +471,7 @@ fn nearest_below(harness: &Harness<'_, ReviewApp>, role: Role, label: &str, anch
 
 /// Clicks at the middle of `rect` like a pointer.
 fn click(harness: &mut Harness<'_, ReviewApp>, rect: Rect) {
-    let at = rect.center();
-    harness.hover_at(at);
-    harness.step();
-    for pressed in [true, false] {
-        harness.event(egui::Event::PointerButton {
-            pos: at,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: egui::Modifiers::NONE,
-        });
-        harness.step();
-    }
+    harness.click_at(rect);
     settle(harness, Duration::from_millis(200));
 }
 

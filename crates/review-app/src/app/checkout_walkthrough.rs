@@ -17,6 +17,7 @@ use review_store::AppSettings;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, press, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY};
 use cv_runtime::route::Route;
 use cv_services::agents::FakeCli;
@@ -83,7 +84,7 @@ pub(super) fn tap(harness: &mut Harness<'_, ReviewApp>, label: &str) {
 /// The last widget labelled `label`: the popover's button when the header has one of that name.
 pub(super) fn click_last(harness: &mut Harness<'_, ReviewApp>, label: &str) {
     wait_until(harness, label, |harness| harness.query_all_by_label(label).next().is_some());
-    harness.query_all_by_label(label).last().expect("the widget").click();
+    harness.click_at(harness.query_all_by_label(label).last().expect("the widget").rect());
     harness.run_steps(3);
 }
 
@@ -125,15 +126,15 @@ fn checkout_walkthrough_offers_runs_and_opens_claude_in_a_new_worktree() {
     assert!(shows(&harness, "Codex not installed."));
     assert!(harness.query_by_label("Set up in Settings › Assistant").is_some());
 
-    harness.get_by_role_and_label(Role::RadioButton, "Claude Code").click();
+    harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "Claude Code").rect());
     harness.run_steps(3);
     assert!(
         harness.query_by_label("Check out and open Claude Code").is_some(),
         "the button says what opens after"
     );
-    harness.get_by_label("Remember for this repository").click();
+    harness.click_at(harness.get_by_label("Remember for this repository").rect());
     harness.run_steps(3);
-    harness.get_by_label("Check out and open Claude Code").click();
+    harness.click_at(harness.get_by_label("Check out and open Claude Code").rect());
     harness.step();
     harness.step();
 
@@ -241,7 +242,7 @@ fn checkout_walkthrough_cards_lead_on_from_each_dead_end() {
     let text = std::fs::read_to_string(&file).expect("tracked file");
     std::fs::write(&file, format!("// edited\n{text}")).expect("edited file");
     open_form(&mut harness);
-    harness.get_by_role_and_label(Role::RadioButton, "Your clone").click();
+    harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "Your clone").rect());
     harness.run_steps(3);
     assert!(shows(&harness, "YOUR CLONE HAS CHANGES"));
     assert!(shows(&harness, "widgets has 1 uncommitted file"));
@@ -338,7 +339,9 @@ fn checkout_walkthrough_settings_section_lists_clones_folders_and_the_pattern() 
     let Setup { scratch, host: _host, mut harness, clone: _clone } = start("settings");
     harness.state_mut().navigator.go(Route::Settings);
     wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
-    harness.query_all_by_label("Local checkouts").next().expect("the section").click();
+    harness.click_at(
+        harness.query_all_by_label("Local checkouts").next().expect("the section").rect(),
+    );
     wait_until(&mut harness, "the section", |harness| shows(harness, "Folder for new worktrees"));
     assert!(shows(&harness, "Where Check out puts a pull request, and what opens after it."));
     assert!(shows(&harness, "Found by matching the remote URL in the folders below."));

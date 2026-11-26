@@ -21,6 +21,7 @@ use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use super::navigation_walkthrough::{Fixture, create_origin};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
@@ -179,7 +180,7 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
     harness.event(enter(false));
     harness.step();
     // A click (on release) and a middle click open it too.
-    harness.get_by_role_and_label(Role::Link, LINK).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, LINK).rect());
     harness.step();
     assert_eq!(opened_urls(harness), [PAGE], "a click opens the pull request");
     let at = harness.get_by_role_and_label(Role::Link, LINK).rect().center();
@@ -195,24 +196,27 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
     assert!(has(harness, "Right-click for more links"), "the mark's tooltip");
 
     // On the Files tab the menu also offers the shown file.
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     // The tab opens on the summary of the changed files;
     // the card's View opens the file.
     wait_for(harness, "the changed files", |harness| has(harness, "README.md"));
     if let Some(view) = harness.query_by_label("View README.md") {
-        view.click();
+        harness.click_at(view.rect());
         settle(harness);
     }
-    harness.get_by_role_and_label(Role::Link, LINK).click_secondary();
+    harness.secondary_click_at(harness.get_by_role_and_label(Role::Link, LINK).rect());
     settle(harness);
     for item in ["Open pull request on GitHub", "Open this file on GitHub", "Copy link"] {
         assert!(harness.query_by_label(item).is_some(), "menu item {item}");
     }
-    harness.get_by_label("Open this file on GitHub").click();
+    harness.click_at(harness.get_by_label("Open this file on GitHub").rect());
     harness.step();
     let opened = opened_urls(harness);
     assert!(

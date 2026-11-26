@@ -6,7 +6,7 @@
 
 use std::fmt::Write as _;
 
-use egui::{Key, Modifiers, PointerButton, Pos2};
+use egui::{Key, PointerButton, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_agent::{AgentEvent, AgentKind, FakeAgent, ModelInfo, Usage};
@@ -14,6 +14,7 @@ use review_store::DiffLayout;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, type_into, wait_for, wait_for_link};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_code::diff_paint::{flash_asks_for_frames, flashed_lines};
 use cv_code::line_source::Pane;
@@ -156,15 +157,6 @@ fn answer(agent: &FakeAgent, text: &str) {
 }
 
 fn primary_click(harness: &mut Harness<'_, ReviewApp>, position: Pos2) {
-    harness.hover_at(position);
+    harness.click_point(position, PointerButton::Primary);
     harness.step();
-    for pressed in [true, false] {
-        harness.event(egui::Event::PointerButton {
-            pos: position,
-            button: PointerButton::Primary,
-            pressed,
-            modifiers: Modifiers::NONE,
-        });
-        harness.step();
-    }
 }

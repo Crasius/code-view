@@ -12,6 +12,7 @@ use review_store::FilesStart;
 
 use super::ReviewApp;
 use super::action_e2e::{app, has_cached_diff, open_pull_request, settle_background, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_testkit::{self as test_support, ScratchDir};
 
@@ -56,11 +57,14 @@ fn opened_on_first_file(scratch: &ScratchDir) -> (GitHubHost, Harness<'static, R
     let mut harness = app(scratch, &[host.connection("gh", "Acme")]);
     harness.state_mut().services.settings.files_start = FilesStart::FirstFile;
     open_pull_request(&mut harness);
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     wait_until(&mut harness, "the first file's diff", |harness| shows_diff(harness, A));
     (host, harness)
 }
@@ -82,7 +86,7 @@ fn pump(harness: &mut Harness<'_, ReviewApp>, duration: Duration) {
 /// the click to the first frame that shows it.
 fn switch_to(harness: &mut Harness<'_, ReviewApp>, path: &str) -> (Duration, usize) {
     let started = Instant::now();
-    harness.get_by_role_and_label(Role::TreeItem, path).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
     let mut frames = 0;
     loop {
         harness.step();

@@ -82,6 +82,8 @@ mod diff_find_walkthrough;
 #[cfg(test)]
 mod bug_actions_walkthrough;
 #[cfg(test)]
+mod clicks;
+#[cfg(test)]
 #[cfg(debug_assertions)]
 mod clip_audit;
 #[cfg(test)]
@@ -313,6 +315,20 @@ impl ReviewApp {
         }
     }
 
+    /// The banners above the page (none in focus mode), then the page.
+    fn show_content(&mut self, ui: &mut egui::Ui, is_focused: bool) {
+        if !is_focused {
+            rate_limit_banner::show(ui, &self.services);
+            if self.route != Route::Settings {
+                onboarding::show_banner(ui, &mut self.services);
+            }
+        }
+        // Under an id of its own: a banner that opens or closes above the page moves its widgets
+        // but never renames them, so a click pressed before it still counts.
+        let page = egui::UiBuilder::new().scope_id(egui::Id::unique("route_page"));
+        ui.scope_builder(page, |ui| self.show_route(ui));
+    }
+
     fn show_route(&mut self, ui: &mut egui::Ui) {
         let services = &mut self.services;
         let navigator = &mut self.navigator;
@@ -467,10 +483,28 @@ impl ReviewApp {
         self.page_entered_at = Some(now);
     }
 
-    /// Before the page runs: the page asked for, then what to refresh ahead of the user.
+    /// Before the page runs: the page asked for, the answers of the lists not shown, then what to
+    /// refresh ahead of the user.
     fn prepare_page(&mut self, ctx: &egui::Context) {
         self.enter_requested(ctx);
+        self.land_hidden_lists();
         self.anticipate(ctx);
+    }
+
+    /// The pull request lists not shown take in their answers in the frame they arrive
+    /// ([`PullRequestListPage::land`]), so a revisit judges their age right; the shown list does
+    /// in its own frame.
+    fn land_hidden_lists(&mut self) {
+        let services = &mut self.services;
+        if self.route != Route::MyPullRequests {
+            self.my_pull_requests.land(services);
+        }
+        let is_repository_shown = matches!(self.route, Route::RepositoryPullRequests { .. });
+        if let Some(page) = self.repository_pull_requests.as_mut()
+            && !is_repository_shown
+        {
+            page.land(services);
+        }
     }
 
     /// The user came back after a pause or to the window, or wrote to a pull request
@@ -696,13 +730,7 @@ impl eframe::App for ReviewApp {
             .frame(egui::Frame::new().fill(palette.ground))
             .show(ui, |ui| {
                 ui.multiply_opacity(opacity);
-                if !is_focused {
-                    rate_limit_banner::show(ui, &self.services);
-                    if self.route != Route::Settings {
-                        onboarding::show_banner(ui, &mut self.services);
-                    }
-                }
-                self.show_route(ui);
+                self.show_content(ui, is_focused);
             });
         self.autoscroll.set_content_rect(content.response.rect);
         if let Some(connection_id) = settings::take_removed_connection(&ctx) {

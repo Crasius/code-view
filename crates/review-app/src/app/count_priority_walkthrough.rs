@@ -20,6 +20,7 @@ use review_store::{AppPaths, FilesStart};
 
 use super::ReviewApp;
 use super::action_e2e::{app, has_cached_diff, open_pull_request, settle_background, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread, REPOSITORY, THREAD_TEXT};
 use cv_testkit::{self as test_support, ScratchDir};
 
@@ -105,11 +106,14 @@ fn filter_tree(harness: &mut Harness<'_, ReviewApp>, text: &str) {
 }
 
 fn files_tab(harness: &mut Harness<'_, ReviewApp>) {
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
 }
 
 #[test]
@@ -139,7 +143,7 @@ fn count_priority_a_file_opened_deep_in_tree_order_counts_with_its_neighbours_fi
     wait_until(&mut harness, "the deep folder's rows", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, opened).is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, opened).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, opened).rect());
     wait_until(&mut harness, "the deep file's diff", |harness| {
         harness.query_by_label(&format!("Diff of {opened}")).is_some()
     });
@@ -194,7 +198,7 @@ fn click_row_until_shown(
     text: &str,
     path: &str,
 ) -> (usize, bool) {
-    thread_row(harness, text).expect("the thread's row").click();
+    harness.click_at(thread_row(harness, text).expect("the thread's row").rect());
     let started = Instant::now();
     let (mut frames, mut skeleton) = (0, false);
     loop {

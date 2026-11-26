@@ -10,6 +10,7 @@ use review_store::{AppPaths, AppSettings, LastPlace, LastTab, PullRequestStart, 
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_runtime::route::{PullRequestTab, Route};
 use cv_testkit::ScratchDir;
@@ -57,7 +58,7 @@ fn open_on_file(harness: &mut Harness<'_, ReviewApp>, path: &str) {
 fn choose_files_in_settings(harness: &mut Harness<'_, ReviewApp>) {
     harness.state_mut().navigator.go(Route::Settings);
     wait_until(harness, "Settings", |harness| harness.state().route == Route::Settings);
-    harness.get_by_role_and_label(Role::Tab, "Appearance").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Appearance").rect());
     wait_until(harness, "the row", |harness| {
         harness.query_by_label("Pull requests open on").is_some()
     });
@@ -66,7 +67,7 @@ fn choose_files_in_settings(harness: &mut Harness<'_, ReviewApp>) {
     for _ in 0..5 {
         harness.step();
     }
-    harness.get_by_role_and_label(Role::RadioButton, "Files").click();
+    harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "Files").rect());
     wait_until(harness, "the choice", |harness| {
         harness.state().services.settings.pull_request_start == PullRequestStart::Files
     });
@@ -89,7 +90,7 @@ fn open_resume_files_option_and_the_place_left_survive_a_restart() {
     assert_eq!(saved.pull_request_start, PullRequestStart::Files, "the choice is saved");
 
     open_on_file(&mut harness, FIRST);
-    harness.get_by_role_and_label(Role::TreeItem, LAST).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, LAST).rect());
     wait_until(&mut harness, "the last file", |harness| diff_shows(harness, LAST));
     drop(harness);
 
@@ -97,7 +98,7 @@ fn open_resume_files_option_and_the_place_left_survive_a_restart() {
     let mut harness = app(&scratch, std::slice::from_ref(&connection));
     assert_eq!(harness.state().services.settings.pull_request_start, PullRequestStart::Files);
     open_on_file(&mut harness, LAST);
-    harness.get_by_role_and_label(Role::Tab, "Overview").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Overview").rect());
     wait_until(&mut harness, "the Overview", |harness| {
         tab(harness) == Some(PullRequestTab::Overview)
     });
@@ -107,11 +108,14 @@ fn open_resume_files_option_and_the_place_left_survive_a_restart() {
     let mut harness = app(&scratch, std::slice::from_ref(&connection));
     open_pull_request(&mut harness);
     assert_eq!(tab(&harness), Some(PullRequestTab::Overview), "the tab left on");
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     wait_until(&mut harness, "the file left open", |harness| diff_shows(harness, LAST));
     assert!(!diff_shows(&harness, FIRST));
 }

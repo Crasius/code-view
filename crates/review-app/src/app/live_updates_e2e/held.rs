@@ -8,6 +8,7 @@ use egui_kittest::kittest::Queryable;
 
 use super::super::ReviewApp;
 use super::super::action_e2e::{app, open_diff, open_pull_request, press, type_into, wait_until};
+use super::super::clicks::Clicks;
 use super::super::github_mock::{ExtraFile, GitHubHost};
 use super::{commits_tab, reload_button, shows};
 use cv_testkit::ScratchDir;
@@ -30,7 +31,7 @@ fn live_push_to_the_file_of_a_comment_draft_waits_for_reload() {
     assert!(shows(&harness, "1 new commit by Test"), "the card says what came in");
     assert!(commits_tab(&harness, 1), "nothing moves under the draft");
 
-    harness.get_by_role_and_label(Role::Button, "Reload").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Reload").rect());
     wait_until(&mut harness, "the pushed commit", |harness| commits_tab(harness, 2));
     assert!(has_draft(&harness), "the draft stays");
     press(&mut harness, "Show changes");
@@ -55,7 +56,7 @@ fn live_push_to_another_file_applies_beside_a_comment_draft() {
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
     open_diff(&mut harness);
-    harness.get_by_role_and_label(Role::TreeItem, OTHER_FILE).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, OTHER_FILE).rect());
     let label = format!("Diff of {OTHER_FILE}");
     wait_until(&mut harness, "the other file's diff", |harness| {
         harness.query_by_label(&label).is_some()
@@ -82,7 +83,7 @@ fn live_held_update_applies_by_itself_once_the_comment_is_sent() {
 
     host.push_lines_on_top("/// The greeting every caller shows.\n");
     wait_until(&mut harness, "the reload card", |harness| reload_button(harness).is_some());
-    harness.get_by_role_and_label(Role::Button, "Comment").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Comment").rect());
     wait_until(&mut harness, "the pushed commit", |harness| commits_tab(harness, 2));
     assert!(reload_button(&harness).is_none(), "the card left with the draft");
     assert!(!shows(&harness, "Updated: "), "an update applied by itself shows no card");
@@ -99,7 +100,7 @@ fn write_comment(harness: &mut Harness<'_, ReviewApp>, diff: egui::Rect) {
         harness.step();
         y += 3.0;
     }
-    harness.get_by_label("Add comment").click();
+    harness.click_at(harness.get_by_label("Add comment").rect());
     type_into(harness, "Leave a comment", DRAFT);
 }
 

@@ -17,6 +17,7 @@ use review_store::AppPaths;
 use serde_json::{Value, json};
 
 use super::action_e2e::{app, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, HIDDEN_NUMBER, READABLE_NUMBER, REPOSITORY};
 
 const CONNECTION_ID: &str = "gh";
@@ -37,7 +38,7 @@ fn open_on_github_keeps_that_pull_request_in_the_browser() {
     wait_until(&mut harness, "the way out to GitHub", |harness| {
         harness.query_by_role_and_label(Role::Button, "Open on GitHub").is_some()
     });
-    harness.get_by_role_and_label(Role::Button, "Open on GitHub").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Open on GitHub").rect());
     wait_until(&mut harness, "the pass", |_| {
         passes::contains(&list, &key(HIDDEN_NUMBER), SystemTime::now())
     });

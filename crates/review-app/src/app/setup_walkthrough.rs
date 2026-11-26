@@ -19,6 +19,7 @@ use review_store::{AppPaths, ConnectionStore, LINUX_HELP_URL, TokenVault, VaultP
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use cv_settings::onboarding::CliTools;
 use cv_testkit as test_support;
 
@@ -35,9 +36,9 @@ fn setup_wizard_first_run_to_saved_connection() {
     wait_for(&mut harness, "the welcome screen", |harness| {
         harness.query_by_label_contains("GitLab.com or self-managed").is_some()
     });
-    harness.get_by_label_contains("GitLab.com or self-managed").click();
+    harness.click_at(harness.get_by_label_contains("GitLab.com or self-managed").rect());
     wait_for(&mut harness, "the host step", |harness| harness.query_by_label("Continue").is_some());
-    harness.get_by_label("Continue").click();
+    harness.click_at(harness.get_by_label("Continue").rect());
 
     wait_for(&mut harness, "the token step", |harness| {
         harness.query_by_role(Role::PasswordInput).is_some()
@@ -48,7 +49,7 @@ fn setup_wizard_first_run_to_saved_connection() {
     });
     assert!(harness.query_by_label_contains("Needs Merge Request: Read.").is_some());
 
-    harness.get_by_label("Paste a new token").click();
+    harness.click_at(harness.get_by_label("Paste a new token").rect());
     wait_for(&mut harness, "the token step again", |harness| {
         harness.query_by_role(Role::PasswordInput).is_some()
     });
@@ -57,18 +58,18 @@ fn setup_wizard_first_run_to_saved_connection() {
         harness.query_by_label_contains("Everything works with this token").is_some()
     });
 
-    harness.get_by_label("Continue").click();
+    harness.click_at(harness.get_by_label("Continue").rect());
     wait_for(&mut harness, "the groups step", |harness| {
         harness.query_by_label_contains("Only selected groups").is_some()
     });
-    harness.get_by_label_contains("Only selected groups").click();
+    harness.click_at(harness.get_by_label_contains("Only selected groups").rect());
     wait_for(&mut harness, "discovered groups", |harness| {
         harness.query_by_label("TTRPG").is_some()
     });
-    harness.get_by_label("TTRPG").click();
+    harness.click_at(harness.get_by_label("TTRPG").rect());
     settle(&mut harness);
 
-    harness.get_by_label("Save connection").click();
+    harness.click_at(harness.get_by_label("Save connection").rect());
     wait_for(&mut harness, "the saved confirmation", |harness| {
         harness.query_by_label_contains("is connected").is_some()
     });
@@ -91,9 +92,9 @@ fn setup_save_failure_stays_on_the_step_with_its_cause() {
     wait_for(&mut harness, "the welcome screen", |harness| {
         harness.query_by_label_contains("GitLab.com or self-managed").is_some()
     });
-    harness.get_by_label_contains("GitLab.com or self-managed").click();
+    harness.click_at(harness.get_by_label_contains("GitLab.com or self-managed").rect());
     wait_for(&mut harness, "the host step", |harness| harness.query_by_label("Continue").is_some());
-    harness.get_by_label("Continue").click();
+    harness.click_at(harness.get_by_label("Continue").rect());
     wait_for(&mut harness, "the token step", |harness| {
         harness.query_by_role(Role::PasswordInput).is_some()
     });
@@ -101,7 +102,7 @@ fn setup_save_failure_stays_on_the_step_with_its_cause() {
     wait_for(&mut harness, "a complete report", |harness| {
         harness.query_by_label_contains("Everything works with this token").is_some()
     });
-    harness.get_by_label("Continue").click();
+    harness.click_at(harness.get_by_label("Continue").rect());
     wait_for(&mut harness, "the groups step", |harness| {
         harness.query_by_label("Save connection").is_some()
     });
@@ -110,7 +111,7 @@ fn setup_save_failure_stays_on_the_step_with_its_cause() {
     std::fs::create_dir_all(paths.config_dir().parent().expect("the config folder's parent"))
         .expect("the temp root");
     std::fs::write(paths.config_dir(), b"not a folder").expect("block the config folder");
-    harness.get_by_label("Save connection").click();
+    harness.click_at(harness.get_by_label("Save connection").rect());
     wait_for(&mut harness, "the save error", |harness| {
         harness.query_by_label_contains("The connection could not be saved").is_some()
     });
@@ -145,9 +146,9 @@ fn setup_missing_keyring_offers_a_tokenless_save() {
     wait_for(&mut harness, "the welcome screen", |harness| {
         harness.query_by_label_contains("GitLab.com or self-managed").is_some()
     });
-    harness.get_by_label_contains("GitLab.com or self-managed").click();
+    harness.click_at(harness.get_by_label_contains("GitLab.com or self-managed").rect());
     wait_for(&mut harness, "the host step", |harness| harness.query_by_label("Continue").is_some());
-    harness.get_by_label("Continue").click();
+    harness.click_at(harness.get_by_label("Continue").rect());
     wait_for(&mut harness, "the keyring message", |harness| {
         harness.query_by_label_contains(&problem.title).is_some()
     });
@@ -161,7 +162,7 @@ fn setup_missing_keyring_offers_a_tokenless_save() {
     wait_for(&mut harness, "a complete report", |harness| {
         harness.query_by_label_contains("Everything works with this token").is_some()
     });
-    harness.get_by_label("Continue").click();
+    harness.click_at(harness.get_by_label("Continue").rect());
     wait_for(&mut harness, "the groups step", |harness| {
         harness.query_by_label("Save connection").is_some()
     });
@@ -197,9 +198,9 @@ fn setup_token_pages_offer_cli_and_checklists() {
     wait_for(&mut harness, "the welcome screen", |harness| {
         harness.query_by_label_contains("GitHub.com or GitHub").is_some()
     });
-    harness.get_by_label_contains("GitHub.com or GitHub").click();
+    harness.click_at(harness.get_by_label_contains("GitHub.com or GitHub").rect());
     wait_for(&mut harness, "the host step", |harness| harness.query_by_label("Continue").is_some());
-    harness.get_by_label("Continue").click();
+    harness.click_at(harness.get_by_label("Continue").rect());
     wait_for(&mut harness, "the GitHub CLI option", |harness| {
         harness.query_by_label("Use GitHub CLI sign-in").is_some()
     });
@@ -211,7 +212,7 @@ fn setup_token_pages_offer_cli_and_checklists() {
     wait_for(&mut harness, "the platforms", |harness| {
         harness.query_by_label_contains("Azure DevOps Services or").is_some()
     });
-    harness.get_by_label_contains("Azure DevOps Services or").click();
+    harness.click_at(harness.get_by_label_contains("Azure DevOps Services or").rect());
     wait_for(&mut harness, "the organization field", |harness| {
         harness.query_by_role(Role::TextInput).is_some()
     });
@@ -219,7 +220,7 @@ fn setup_token_pages_offer_cli_and_checklists() {
     harness.get_by_role(Role::TextInput).type_text("https://dev.azure.com/contoso/Web/_git/site");
     settle(&mut harness);
     assert!(harness.query_by_label_contains("Connects to dev.azure.com/contoso").is_some());
-    harness.get_by_label("Continue").click();
+    harness.click_at(harness.get_by_label("Continue").rect());
     wait_for(&mut harness, "the Azure checklist", |harness| {
         harness.query_by_label("Code: Read & write").is_some()
     });
@@ -245,7 +246,7 @@ fn setup_fix_token_from_a_denied_request() {
     wait_for(&mut harness, "the access banner", |harness| {
         harness.query_by_label_contains("Tabletop: The fine-grained token").is_some()
     });
-    harness.get_by_label_contains("Fix token").click();
+    harness.click_at(harness.get_by_label_contains("Fix token").rect());
     wait_for(&mut harness, "the fix screen", |harness| {
         harness.query_by_role(Role::PasswordInput).is_some()
     });
@@ -283,7 +284,7 @@ pub(super) fn isolated_paths(name: &str) -> AppPaths {
 pub(super) fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
     harness.get_by_label(label).scroll_to_me();
     settle(harness);
-    harness.get_by_label(label).click();
+    harness.click_at(harness.get_by_label(label).rect());
     harness.step();
 }
 

@@ -12,6 +12,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_core::{MergeStrategy, ProviderKind};
 
+use super::super::clicks::Clicks;
 use super::{
     Calls, POLICIES, ReviewApp, button, has, open, opened_urls, press, start_on, wait_for,
 };
@@ -82,7 +83,7 @@ fn a_refused_auto_merge_offers_the_merge_settings() {
     wait_for(&mut harness, "the refusal", |harness| {
         has(harness, "Enable auto-merge failed: Auto-merge is turned off for contoso/site.")
     });
-    harness.get_by_role_and_label(Role::Button, "Repository settings").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Repository settings").rect());
     harness.step();
     assert_eq!(opened_urls(&harness), [POLICIES], "the way to the merge settings");
     assert!(calls.auto_completes.lock().unwrap().is_empty());

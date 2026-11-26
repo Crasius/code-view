@@ -16,6 +16,7 @@ use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, FILE, GitHubHost};
 use cv_testkit::ScratchDir;
 
@@ -49,11 +50,14 @@ fn counting_walkthrough_diffs_show_while_the_lines_are_counted() {
     // Dropped before the app, so a failing test lets the held downloads go before it shuts down.
     let held = held;
     open_pull_request(&mut harness);
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
 
     wait_until(&mut harness, "the first card's code", |harness| {
         harness.query_by_label(&format!("Diff of {FILE}")).is_some()
@@ -61,7 +65,7 @@ fn counting_walkthrough_diffs_show_while_the_lines_are_counted() {
     assert_counting(&harness, "the folder summary showed its first card");
 
     let opened = "src/part_03.rs";
-    harness.get_by_role_and_label(Role::TreeItem, opened).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, opened).rect());
     wait_until(&mut harness, "the opened file's diff", |harness| {
         harness.query_by_label(&format!("Diff of {opened}")).is_some()
     });

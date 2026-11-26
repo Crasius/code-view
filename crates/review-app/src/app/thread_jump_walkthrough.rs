@@ -13,6 +13,7 @@ use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread};
 use cv_testkit::{self as test_support, ScratchDir};
 
@@ -76,11 +77,14 @@ fn a_thread_in_a_file_never_opened_comes_into_view() {
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     harness.state_mut().services.settings.threads_panel.is_open = true;
     open_pull_request(&mut harness);
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
 
     // A text diff is open; the code thread's file was never opened.
     open_in_tree(&mut harness, FILE);
@@ -113,14 +117,14 @@ fn open_in_tree(harness: &mut Harness<'_, ReviewApp>, path: &str) {
     wait_until(harness, "the file's row in the tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, path).is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, path).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
     harness.step();
 }
 
 /// Clicks the threads panel's row of the thread reading `text`.
 fn click_row(harness: &mut Harness<'_, ReviewApp>, text: &str) {
     wait_until(harness, "the thread's row", |harness| row(harness, text).is_some());
-    row(harness, text).expect("the thread's row").click();
+    harness.click_at(row(harness, text).expect("the thread's row").rect());
     harness.step();
 }
 

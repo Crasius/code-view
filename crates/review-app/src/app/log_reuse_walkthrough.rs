@@ -20,6 +20,7 @@ use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit as test_support;
@@ -128,11 +129,11 @@ fn open(paths: &AppPaths) -> Harness<'static, ReviewApp> {
 
 fn open_run(harness: &mut Harness<'_, ReviewApp>) {
     wait_for(harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_for(harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
-    harness.get_by_label(&format!("{RUN}, Succeeded")).click();
+    harness.click_at(harness.get_by_label(&format!("{RUN}, Succeeded")).rect());
     wait_for(harness, "the stage graph", |harness| harness.query_by_label("Stage test").is_some());
 }
 

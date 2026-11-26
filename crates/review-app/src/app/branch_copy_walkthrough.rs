@@ -11,12 +11,13 @@
 //! header's number and Enter on it, with the check mark that replaces its prefix for a moment.
 //! `cargo test -p review-app number_copy`
 
-use egui::{Event, OutputCommand, PointerButton, Role};
+use egui::{OutputCommand, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, TITLE};
 use cv_runtime::route::Route;
 use cv_testkit::ScratchDir;
@@ -40,7 +41,7 @@ fn branch_copy_from_the_row_menu_and_the_header_chips() {
     wait_until(&mut harness, "the menu entry", |harness| {
         harness.query_by_role_and_label(Role::MenuItem, "Copy source branch").is_some()
     });
-    harness.get_by_role_and_label(Role::MenuItem, "Copy source branch").click();
+    harness.click_at(harness.get_by_role_and_label(Role::MenuItem, "Copy source branch").rect());
     assert_eq!(copied(&mut harness).as_deref(), Some("feature"), "the menu copies the source");
     assert_eq!(harness.state().route, Route::MyPullRequests, "the list stays");
 
@@ -54,7 +55,7 @@ fn branch_copy_from_the_row_menu_and_the_header_chips() {
     harness.get_by_role_and_label(Role::Button, SOURCE_CHIP).hover();
     harness.run_steps(10);
     assert!(harness.query_by_label("Copy branch name").is_some(), "the tooltip");
-    harness.get_by_role_and_label(Role::Button, SOURCE_CHIP).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, SOURCE_CHIP).rect());
     assert_eq!(copied(&mut harness).as_deref(), Some("feature"), "the chip copies the source");
     let confirmed = harness.get_by_role_and_label(Role::Button, "Copied feature").rect();
     assert_eq!(confirmed, source, "the confirmation keeps the chip's place and size");
@@ -93,7 +94,7 @@ fn number_copy_from_the_row_menu_and_the_header_number() {
     wait_until(&mut harness, "the menu entry", |harness| {
         harness.query_by_role_and_label(Role::MenuItem, "Copy link").is_some()
     });
-    harness.get_by_role_and_label(Role::MenuItem, "Copy link").click();
+    harness.click_at(harness.get_by_role_and_label(Role::MenuItem, "Copy link").rect());
     let link = copied(&mut harness).expect("the menu copies the link");
     assert!(link.ends_with(&url_tail), "the row menu copies the web address: {link}");
     assert_eq!(harness.state().route, Route::MyPullRequests, "the list stays");
@@ -107,7 +108,7 @@ fn number_copy_from_the_row_menu_and_the_header_number() {
     harness.get_by_role_and_label(Role::Button, NUMBER_LINK).hover();
     harness.run_steps(10);
     assert!(harness.query_by_label("Copy link to pull request").is_some(), "the tooltip");
-    harness.get_by_role_and_label(Role::Button, NUMBER_LINK).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, NUMBER_LINK).rect());
     // The list and the detail come from different mock payloads; both end in the same path.
     let copy = copied(&mut harness).expect("the number copies the link");
     assert!(copy.ends_with(&url_tail), "the number copies the web address: {copy}");
@@ -138,16 +139,8 @@ fn copied(harness: &mut Harness<'_, ReviewApp>) -> Option<String> {
 }
 
 fn secondary_click(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    let position = harness.get_by_label(label).rect().center();
-    harness.hover_at(position);
+    harness.get_by_label(label).hover();
     harness.step();
-    for pressed in [true, false] {
-        harness.event(Event::PointerButton {
-            pos: position,
-            button: PointerButton::Secondary,
-            pressed,
-            modifiers: egui::Modifiers::NONE,
-        });
-        harness.step();
-    }
+    harness.secondary_click_at(harness.get_by_label(label).rect());
+    harness.step();
 }

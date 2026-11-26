@@ -8,6 +8,7 @@ use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_diff, open_pull_request, press, type_into, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{FILE, GitHubHost, THREAD_TEXT};
 use cv_testkit::ScratchDir;
 
@@ -52,7 +53,7 @@ fn live_reply_while_writing_waits_for_reload_and_keeps_the_draft() {
     );
     assert!(shows(&harness, "1 new comment by dee"), "the card says what came in");
 
-    harness.get_by_role_and_label(Role::Button, "Reload").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Reload").rect());
     wait_until(&mut harness, "the new reply", |harness| {
         harness.query_by_label("Kept it as an alias.").is_some()
     });

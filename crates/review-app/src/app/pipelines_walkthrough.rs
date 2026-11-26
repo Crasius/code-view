@@ -24,6 +24,7 @@ use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit as test_support;
@@ -84,7 +85,7 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
         "collapsed by default"
     );
 
-    harness.get_by_label("Show pipelines").click();
+    harness.click_at(harness.get_by_label("Show pipelines").rect());
     wait_for(&mut harness, "the pipelines", |harness| {
         harness.query_by_role_and_label(Role::Link, "Pipeline #2279, Succeeded").is_some()
     });
@@ -96,7 +97,7 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
     assert!(harness.query_by_label("Detect changes").is_none(), "jobs stay in the Pipelines tab");
 
     // "Open" shows the run full width with its jobs inside the stage cards.
-    harness.get_by_role_and_label(Role::Link, "Pipeline #2279, Succeeded").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, "Pipeline #2279, Succeeded").rect());
     wait_for(&mut harness, "the stage graph", |harness| {
         harness.query_by_label("Stage Analyze").is_some()
     });
@@ -129,37 +130,39 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
     assert!(harness.query_by_label_contains("Pipeline #2279, 1 of 14").is_some(), "K moves back");
 
     // The switcher lists every check; picking one opens it.
-    harness
-        .get_by(|node| {
-            node.role() == Role::ComboBox
-                && node.label().is_some_and(|label| label.contains("Switch check"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::ComboBox
+                    && node.label().is_some_and(|label| label.contains("Switch check"))
+            })
+            .rect(),
+    );
     settle(&mut harness);
     assert!(
         harness.query_by_label("Security scan #88, Succeeded").is_some(),
         "status checks are options"
     );
-    harness.get_by_label("Docs preview #412, Succeeded").click();
+    harness.click_at(harness.get_by_label("Docs preview #412, Succeeded").rect());
     wait_for(&mut harness, "the docs pipeline", |harness| {
         harness.query_by_label("Stage deploy").is_some()
     });
     assert!(harness.query_by_label_contains("Docs preview #412, 12 of 14").is_some());
     // The Jobs pivot shown last does not stick: the next pipeline opens at its stages.
-    harness.get_by_label("Jobs").click();
+    harness.click_at(harness.get_by_label("Jobs").rect());
     settle(&mut harness);
     assert!(harness.query_by_label("Stage deploy").is_none(), "the flat job list");
-    harness.get_by_role_and_label(Role::Link, "Pipelines").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, "Pipelines").rect());
     wait_for(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
-    harness.get_by_label("Pipeline #2279, Succeeded").click();
+    harness.click_at(harness.get_by_label("Pipeline #2279, Succeeded").rect());
     wait_for(&mut harness, "the run again", |harness| {
         harness.query_by_label("Stage Analyze").is_some()
     });
 
     // A job opens its log; the breadcrumb grows by the job, Esc goes back step by step.
-    harness.get_by_label("Quality").click();
+    harness.click_at(harness.get_by_label("Quality").rect());
     wait_for(&mut harness, "the log", |harness| has(harness, "Quality (current page)"));
     assert!(
         harness.query_by_label_contains("Quality, 4 of 14").is_some(),
@@ -177,7 +180,7 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
     );
 
     // The breadcrumb's "Pipelines" leads to the checks table.
-    harness.get_by_role_and_label(Role::Link, "Pipelines").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, "Pipelines").rect());
     wait_for(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
@@ -203,7 +206,7 @@ fn pipelines_overview_card_remembers_open_or_closed_across_restarts() {
     let summary = harness.get_by_label("2 pipelines · 2 succeeded").rect();
 
     // The headline is no button of its own; the line under it takes the click.
-    harness.get_by_label("All pipelines succeeded").click();
+    harness.click_at(harness.get_by_label("All pipelines succeeded").rect());
     wait_for(&mut harness, "the pipelines", is_listed);
     assert!(has(&harness, "Hide pipelines"));
     assert!(saved(&paths).pipelines.is_overview_expanded, "the open card is saved");
@@ -216,7 +219,7 @@ fn pipelines_overview_card_remembers_open_or_closed_across_restarts() {
 
     let mut harness = App::reopen(ID, paths.clone(), SIZE).harness;
     wait_for(&mut harness, "the pipelines, open after the restart", is_listed);
-    harness.get_by_label("Hide pipelines").click();
+    harness.click_at(harness.get_by_label("Hide pipelines").rect());
     wait_for(&mut harness, "the collapsed card", |harness| {
         !is_listed(harness) && has(harness, "Show pipelines")
     });
@@ -234,7 +237,7 @@ fn pipelines_checks_table_sorts_filters_steps_and_reruns_failed() {
     let app = App::start("pipelines-mixed", Scenario::Mixed, [1500.0, 900.0]);
     let mut harness = app.harness;
     wait_for(&mut harness, "the merge status", |harness| has(harness, "1 pipeline failed"));
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_for(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
@@ -260,17 +263,17 @@ fn pipelines_checks_table_sorts_filters_steps_and_reruns_failed() {
     );
 
     // Status chips filter, combine and are remembered.
-    harness.get_by_label("Failed, 3 checks").click();
+    harness.click_at(harness.get_by_label("Failed, 3 checks").rect());
     settle(&mut harness);
     assert_eq!(row_labels(&harness).len(), 3);
-    harness.get_by_label("Running, 2 checks").click();
+    harness.click_at(harness.get_by_label("Running, 2 checks").rect());
     settle(&mut harness);
     assert_eq!(row_labels(&harness).len(), 5, "chips add up");
     assert_eq!(
         saved(&app.paths).pipelines.status_filter,
         [CheckFilter::Failed, CheckFilter::Running].into()
     );
-    harness.get_by_label("All, 20 checks").click();
+    harness.click_at(harness.get_by_label("All, 20 checks").rect());
     settle(&mut harness);
     assert_eq!(row_labels(&harness)[..7], rows[..7]);
     assert!(saved(&app.paths).pipelines.status_filter.is_empty());
@@ -290,7 +293,7 @@ fn pipelines_checks_table_sorts_filters_steps_and_reruns_failed() {
     });
 
     // A job's row opens its log, its run's stages a step back.
-    harness.get_by_label("Build images in Pipeline #2281, Failed").click();
+    harness.click_at(harness.get_by_label("Build images in Pipeline #2281, Failed").rect());
     wait_for(&mut harness, "the job's log", |harness| has(harness, "Build images (current page)"));
     assert!(harness.query_by_label_contains("Build images, 2 of 20").is_some());
     harness.key_press(egui::Key::Escape);
@@ -301,7 +304,7 @@ fn pipelines_checks_table_sorts_filters_steps_and_reruns_failed() {
     });
 
     // "Rerun failed" reruns the failed jobs of the failed pipeline.
-    harness.get_by_label("Rerun failed").click();
+    harness.click_at(harness.get_by_label("Rerun failed").rect());
     wait_for(&mut harness, "the rerun", |harness| has(harness, "Rerun started"));
     assert_eq!(
         app.calls.lock().unwrap_or_else(PoisonError::into_inner).reruns,
@@ -311,7 +314,7 @@ fn pipelines_checks_table_sorts_filters_steps_and_reruns_failed() {
     // "Logs" goes straight to the first failed log.
     let logs =
         harness.query_all_by_label("Logs").next().expect("the failed pipeline offers its logs");
-    logs.click();
+    harness.click_at(logs.rect());
     wait_for(&mut harness, "the failed log", |harness| has(harness, "Build images (current page)"));
 }
 
@@ -325,7 +328,7 @@ fn pipelines_older_runs_stay_listed_but_never_fail_the_summary() {
     let mut harness = app.harness;
     wait_for(&mut harness, "the merge status", |harness| has(harness, "All pipelines succeeded"));
     assert!(has(&harness, "1 pipeline · 1 succeeded"));
-    harness.get_by_label("Show pipelines").click();
+    harness.click_at(harness.get_by_label("Show pipelines").rect());
     wait_for(&mut harness, "the pipelines", |harness| {
         harness.query_by_role_and_label(Role::Link, "Pipeline #2279, Succeeded").is_some()
     });
@@ -334,7 +337,7 @@ fn pipelines_older_runs_stay_listed_but_never_fail_the_summary() {
         "the overview shows the latest run only"
     );
 
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_for(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
@@ -365,17 +368,17 @@ fn pipelines_job_clicks_stay_in_the_app() {
     let mut harness = app.harness;
     let mut opened = Vec::new();
     wait_for(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_for(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
-    harness.get_by_label(&format!("{ADO_RUN}, Running")).click();
+    harness.click_at(harness.get_by_label(&format!("{ADO_RUN}, Running")).rect());
     wait_for(&mut harness, "the stage graph", |harness| {
         harness.query_by_role_and_label(Role::Link, ADO_RUNNING_JOB).is_some()
     });
 
     // The running job has no log of its own yet; its first finished step's log opens.
-    harness.get_by_role_and_label(Role::Link, ADO_RUNNING_JOB).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, ADO_RUNNING_JOB).rect());
     collect_until(&mut harness, &mut opened, "the step's log", |harness| {
         has(harness, "Initialize job (current page)")
     });
@@ -384,7 +387,7 @@ fn pipelines_job_clicks_stay_in_the_app() {
     });
 
     // A job waiting for an agent has no log at all: its state, in the app.
-    harness.get_by_role_and_label(Role::TreeItem, ADO_WAITING_JOB).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, ADO_WAITING_JOB).rect());
     collect_until(&mut harness, &mut opened, "the waiting job", |harness| {
         has(harness, "Waiting for an agent")
     });
@@ -399,7 +402,7 @@ fn pipelines_job_clicks_stay_in_the_app() {
     collect_until(&mut harness, &mut opened, "the stages", |harness| {
         harness.query_by_role_and_label(Role::Link, ADO_SKIPPED_JOB).is_some()
     });
-    harness.get_by_role_and_label(Role::Link, ADO_SKIPPED_JOB).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, ADO_SKIPPED_JOB).rect());
     collect_until(&mut harness, &mut opened, "the skipped job", |harness| {
         has(harness, "was skipped due to conditions")
     });
@@ -413,7 +416,7 @@ fn pipelines_job_clicks_stay_in_the_app() {
         .into_iter()
         .max_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
         .expect("the log pane's action");
-    pane_action.click();
+    harness.click_at(pane_action.rect());
     collect_frames(&mut harness, &mut opened, 10);
     assert_eq!(opened, [format!("{ADO_RESULTS}&view=logs&j=skipped")]);
 }
@@ -430,16 +433,16 @@ fn pipelines_github_running_job_waits_for_its_log_and_loads_it_when_done() {
     let calls = app.calls.clone();
     let logs = || calls.lock().unwrap_or_else(PoisonError::into_inner).logs.clone();
     wait_for(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_for(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
-    harness.get_by_label(&format!("{GH_RUN}, Running")).click();
+    harness.click_at(harness.get_by_label(&format!("{GH_RUN}, Running")).rect());
     wait_for(&mut harness, "the stage graph", |harness| {
         harness.query_by_role_and_label(Role::Link, GH_JOB).is_some()
     });
 
-    harness.get_by_role_and_label(Role::Link, GH_JOB).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, GH_JOB).rect());
     collect_until(&mut harness, &mut opened, "the live state", |harness| {
         has(harness, "Live log only on GitHub")
     });
@@ -447,12 +450,12 @@ fn pipelines_github_running_job_waits_for_its_log_and_loads_it_when_done() {
     assert!(!has(&harness, "BlobNotFound") && !has(&harness, "404"), "no error while the job runs");
 
     // The running step: the pane names it, and watching live opens GitHub at the step.
-    harness.get_by_role_and_label(Role::TreeItem, "Pytest").click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, "Pytest").rect());
     collect_until(&mut harness, &mut opened, "the step", |harness| {
         has(harness, "so the log of Pytest loads here on its own")
     });
     assert!(has(&harness, "Pytest (current page)"), "the breadcrumb names the step");
-    harness.get_by_label("Watch live on GitHub").click();
+    harness.click_at(harness.get_by_label("Watch live on GitHub").rect());
     collect_frames(&mut harness, &mut opened, 10);
     assert_eq!(opened, [format!("{GH_JOB_URL}#step:5:1")]);
     assert_eq!(logs(), Vec::<String>::new(), "no request for a log GitHub does not serve yet");
@@ -490,15 +493,15 @@ fn pipelines_gitlab_running_job_log_follows_the_job() {
             .map_or(0, |(line, _)| line)
     };
     wait_for(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_for(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
-    harness.get_by_label(&format!("{GL_RUN}, Running")).click();
+    harness.click_at(harness.get_by_label(&format!("{GL_RUN}, Running")).rect());
     wait_for(&mut harness, "the stage graph", |harness| {
         harness.query_by_role_and_label(Role::Link, GL_JOB).is_some()
     });
-    harness.get_by_role_and_label(Role::Link, GL_JOB).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, GL_JOB).rect());
 
     wait_for(&mut harness, "the live log", |harness| has(harness, "200 lines · live"));
     let at_open = top_line(&harness);
@@ -588,7 +591,7 @@ fn pipelines_attempts_open_earlier_attempts_in_the_app() {
     let calls = app.calls.clone();
     let attempts_loaded = || calls.lock().unwrap_or_else(PoisonError::into_inner).attempts.clone();
     wait_for(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_for(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
@@ -607,7 +610,7 @@ fn pipelines_attempts_open_earlier_attempts_in_the_app() {
         rows.contains(&format!("{RETRIED_RUN}, Failed")),
         "the run's own status stays the latest attempt's"
     );
-    harness.get_by_label(&format!("{RETRIED_RUN}, Failed")).click();
+    harness.click_at(harness.get_by_label(&format!("{RETRIED_RUN}, Failed")).rect());
     collect_until(&mut harness, &mut opened, "the stage graph", |harness| {
         harness.query_by_label("Stage Build").is_some()
     });
@@ -622,12 +625,12 @@ fn pipelines_attempts_open_earlier_attempts_in_the_app() {
     assert!(attempts_loaded().is_empty(), "no request for attempts before one is opened");
 
     // The badge lists the attempts; attempt 1 loads and its failed log opens in the app.
-    harness.get_by_label(&badge).click();
+    harness.click_at(harness.get_by_label(&badge).rect());
     collect_until(&mut harness, &mut opened, "the attempt list", |harness| {
         harness.query_by_label_contains("Attempt 1, opens on demand").is_some()
     });
     assert!(harness.query_by_label("Attempt 2, Failed, latest").is_some());
-    harness.get_by_label_contains("Attempt 1, opens on demand").click();
+    harness.click_at(harness.get_by_label_contains("Attempt 1, opens on demand").rect());
     collect_until(&mut harness, &mut opened, "attempt 1's log", |harness| {
         has(harness, &format!("{RETRIED_JOB} · Attempt 1 (current page)"))
     });
@@ -649,12 +652,14 @@ fn pipelines_attempts_open_earlier_attempts_in_the_app() {
     );
 
     // A step of attempt 1 opens its own log and stays in attempt 1.
-    harness
-        .get_by_role_and_label(
-            Role::TreeItem,
-            "Checkout dotnet/aspnetcore@refs/pull/69916/merge to s",
-        )
-        .click();
+    harness.click_at(
+        harness
+            .get_by_role_and_label(
+                Role::TreeItem,
+                "Checkout dotnet/aspnetcore@refs/pull/69916/merge to s",
+            )
+            .rect(),
+    );
     collect_until(&mut harness, &mut opened, "the step's log", |_| {
         calls.lock().unwrap_or_else(PoisonError::into_inner).logs.contains(&"1639558:87".to_owned())
     });
@@ -664,16 +669,18 @@ fn pipelines_attempts_open_earlier_attempts_in_the_app() {
     );
 
     // The switcher goes back to the latest attempt.
-    harness
-        .get_by(|node| {
-            node.role() == Role::ComboBox
-                && node.label().is_some_and(|label| label.contains("Switch attempt"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::ComboBox
+                    && node.label().is_some_and(|label| label.contains("Switch attempt"))
+            })
+            .rect(),
+    );
     collect_until(&mut harness, &mut opened, "the switcher's list", |harness| {
         harness.query_by_label("Attempt 2, Failed, latest").is_some()
     });
-    harness.get_by_label("Attempt 2, Failed, latest").click();
+    harness.click_at(harness.get_by_label("Attempt 2, Failed, latest").rect());
     collect_until(&mut harness, &mut opened, "the latest attempt", |harness| {
         has(harness, &format!("{RETRIED_JOB} (current page)"))
     });

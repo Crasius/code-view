@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, press_button, settle_background, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, OwnComment, REPOSITORY, THREAD_TEXT};
 use cv_testkit::ScratchDir;
 
@@ -51,7 +52,7 @@ fn own_comments_can_be_edited_and_deleted() {
     // The menu is as wide as its entries, not as egui's 600-point default area of the first frame.
     let menu_width = harness.get_by_role_and_label(Role::MenuItem, "Delete").rect().width();
     assert!(menu_width < 200.0, "the menu fits its entries, got {menu_width}");
-    harness.get_by_role_and_label(Role::MenuItem, "Edit").click();
+    harness.click_at(harness.get_by_role_and_label(Role::MenuItem, "Edit").rect());
     wait_until(&mut harness, "the edit composer", |harness| {
         harness.query_by_role_and_label(Role::Button, "Save").is_some()
     });
@@ -70,7 +71,7 @@ fn own_comments_can_be_edited_and_deleted() {
             && harness.query_by_role_and_label(Role::Button, "Retry").is_some()
     });
     assert!(has_editor(&harness, &edited), "the composer keeps the text");
-    harness.get_by_role_and_label(Role::Button, "Retry").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Retry").rect());
     wait_until(&mut harness, "the saved comment, marked edited", |harness| {
         harness.query_by_label(&edited).is_some()
             && harness.query_by_label("edited").is_some()
@@ -85,12 +86,12 @@ fn own_comments_can_be_edited_and_deleted() {
 
     // Delete: asked inside the card, then the thread of the last comment leaves the overview.
     open_menu(&mut harness, GONE);
-    harness.get_by_role_and_label(Role::MenuItem, "Delete").click();
+    harness.click_at(harness.get_by_role_and_label(Role::MenuItem, "Delete").rect());
     wait_until(&mut harness, "the delete question", |harness| {
         harness.query_by_label("Delete this comment? This cannot be undone.").is_some()
     });
     assert!(requests(&host, "DELETE", 702).is_empty(), "nothing is deleted before the answer");
-    harness.get_by_role_and_label(Role::Button, "Delete").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Delete").rect());
     wait_until(&mut harness, "the deleted thread gone", |harness| {
         harness.query_by_label("All 2").is_some()
             && harness.query_by_label(GONE).is_none()
@@ -114,18 +115,18 @@ fn editor_modes(harness: &mut Harness<'_, ReviewApp>) {
     });
     assert!(harness.query_by_label("Discard draft?").is_none(), "nothing changed to discard");
     open_menu(harness, KEPT);
-    harness.get_by_role_and_label(Role::MenuItem, "Edit").click();
+    harness.click_at(harness.get_by_role_and_label(Role::MenuItem, "Edit").rect());
     wait_until(harness, "the edit composer again", |harness| {
         harness.query_by_role_and_label(Role::Button, "Save").is_some()
     });
-    mode_tab(harness, "Markdown").click();
+    harness.click_at(mode_tab(harness, "Markdown").rect());
     wait_until(harness, "the Markdown source", |harness| {
         mode_tab(harness, "Markdown").accesskit_node().toggled() == Some(Toggled::True)
             && has_editor(harness, KEPT)
     });
     let saved = AppSettings::load(&harness.state().services.paths.settings_file()).expect("saved");
     assert_eq!(saved.comment_editors.github, CommentEditor::Markdown, "the switch is saved");
-    mode_tab(harness, "Rich text").click();
+    harness.click_at(mode_tab(harness, "Rich text").rect());
     wait_until(harness, "rich text again", |harness| {
         mode_tab(harness, "Rich text").accesskit_node().toggled() == Some(Toggled::True)
     });
@@ -181,7 +182,9 @@ fn open_menu(harness: &mut Harness<'_, ReviewApp>, text: &str) {
     settle_background(harness);
     reveal(harness, text);
     let menu = menu_above(harness, text).expect("the comment's menu");
-    harness.query_all_by_label(MENU).find(|node| node.rect() == menu).expect("menu").click();
+    let target =
+        harness.query_all_by_label(MENU).find(|node| node.rect() == menu).expect("menu").rect();
+    harness.click_at(target);
     wait_until(harness, "the comment menu", |harness| {
         harness.query_all_by_role(Role::MenuItem).next().is_some()
     });
