@@ -72,7 +72,8 @@ pub(super) fn harness(theme: ThemePreference) -> Harness<'static, State> {
         .with_size([1100.0, 360.0])
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            // Motion on, whatever the machine says, so every host runs the same frames.
+            theme::motion::set_reduced(ctx, false);
             keep_copies(ctx);
         })
         .build_ui_state(

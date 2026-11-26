@@ -12,6 +12,7 @@ use review_store::{AppPaths, AppSettings, TreeSide};
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
 use super::github_mock::{ExtraFile, GitHubHost};
+use cv_base::platform::FOCUS_MODE_KEY;
 use cv_shell::focus_mode::{self, Surface};
 use cv_testkit::ScratchDir;
 
@@ -151,7 +152,7 @@ fn the_file_tree_moves_sides_and_keeps_the_open_file() {
     assert!((now - width).abs() < 0.5, "the tree keeps its width: {now} vs {width}");
 
     // Focus mode: the strip's switch sits at the tree's end and its menu moves the tree.
-    harness.key_press(Key::F11);
+    harness.key_press_modifiers(FOCUS_MODE_KEY.modifiers, FOCUS_MODE_KEY.logical_key);
     pump(&mut harness, 3);
     harness.key_press_modifiers(Modifiers::COMMAND, Key::B);
     pump(&mut harness, 3);

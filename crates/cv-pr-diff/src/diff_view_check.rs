@@ -180,7 +180,7 @@ fn the_change_in_focus_survives_rows_rebuilt_for_late_contents_and_threads() {
         .with_size([1180.0, 760.0])
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(
             |ui, state: &mut Late| {

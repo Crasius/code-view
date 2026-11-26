@@ -172,7 +172,7 @@ fn harness(scene: Scene, size: [f32; 2]) -> Harness<'static, Scene> {
         .with_max_steps(MAX_STEPS)
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(show, scene)
 }
@@ -692,7 +692,7 @@ fn a_changed_diagram_shows_old_and_new_side_by_side() {
         .with_max_steps(MAX_STEPS)
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(show, scene);
     step_until(&mut drawn, "both versions drawn", |drawn| {

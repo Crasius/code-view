@@ -131,6 +131,10 @@ fn open_resume_a_vanished_file_falls_back_to_the_first_file() {
     };
     harness.state_mut().services.settings.pull_request_start = PullRequestStart::Files;
     harness.state_mut().services.save_settings();
+    // The first app's background work (the mirror it opens for the page, a git process that
+    // outlives the app) ends before the second app opens the same mirror: two at once fail on
+    // git's config lock ("could not lock config file ... File exists").
+    super::request_budget::wait_idle(&mut harness);
     drop(harness);
 
     let paths = paths(&scratch);

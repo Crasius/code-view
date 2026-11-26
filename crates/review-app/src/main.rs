@@ -94,6 +94,9 @@ fn main() -> eframe::Result<()> {
                 paths.memory_journal_file(),
                 creation.egui_ctx.clone(),
             );
+            // The machine's reduced-motion setting, read here and not in `ReviewApp::new`, so the
+            // whole-app tests that build the app never follow the host's (repo-lint RL016).
+            cv_base::theme::motion::install(&creation.egui_ctx);
             Ok(Box::new(app::ReviewApp::new(creation, paths, cv_providers::create_provider)))
         }),
     )

@@ -77,6 +77,12 @@ fn has(harness: &Harness<'_, ReviewApp>, label: &str) -> bool {
     harness.query_by_label(label).is_some()
 }
 
+/// The system's focus mode key: F11, ⌃⌘F on macOS.
+fn toggle(harness: &mut Harness<'_, ReviewApp>) {
+    let key = platform::FOCUS_MODE_KEY;
+    harness.key_press_modifiers(key.modifiers, key.logical_key);
+}
+
 fn pump(harness: &mut Harness<'_, ReviewApp>, frames: usize) {
     for _ in 0..frames {
         harness.step();
@@ -198,7 +204,7 @@ fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
     assert!(before.0 > 50, "the diff scrolled into the file: {before:?}");
 
     // F11: the diff takes the window; the line at the top stays.
-    harness.key_press(Key::F11);
+    toggle(&mut harness);
     pump(&mut harness, 3);
     assert_eq!(chrome_visible(&harness), [false; 4], "title bar, rail, tabs and header leave");
     assert_eq!(top_line(&harness, Surface::Files), before, "the top line stays exactly in place");
@@ -325,7 +331,7 @@ fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
     );
 
     // F11 while the search box has the keys: the log takes the window, the search stays.
-    harness.key_press(Key::F11);
+    toggle(&mut harness);
     pump(&mut harness, 3);
     assert_eq!(chrome_visible(&harness), [false; 4], "title bar, rail, tabs and header leave");
     assert!(
@@ -412,7 +418,7 @@ fn focus_mode_folds_the_original_versions_banner_into_its_strip() {
     open_origin(&mut harness, &banner);
 
     // F11: the banner's words, Back to latest and Open on GitHub move into the strip.
-    harness.key_press(Key::F11);
+    toggle(&mut harness);
     pump(&mut harness, 3);
     assert_eq!(chrome_visible(&harness), [false; 4], "title bar, rail, tabs and header leave");
     assert_strip(&harness, 1440.0, EXIT_HINT);

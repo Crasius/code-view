@@ -5,20 +5,33 @@
 //! the app's own allocator, not read from the system, so the numbers repeat from run to run.
 //!
 //! The heap is process-wide, so each test runs itself again in a child process where it is the
-//! only test, and checks the curve there. `cargo test -p review-app --bin CodeView memory_ --
-//! --nocapture` prints the curves.
+//! only test, and checks the curve there.
+//!
+//! The measurements (the tests named `memory_*`: a review session of five merge requests until
+//! the heap settles, 3000 idle frames, eight languages' grammars) are their own group: they take
+//! most of the binary's time, so they compile only with the feature `measurements` and the
+//! ordinary `cargo test` leaves them out. They run on `main` and when memory-relevant code
+//! changes (caches, grammars, pages kept or dropped), and print their curves:
+//! `cargo test -p review-app --bin CodeView --features measurements -- app::memory_walkthrough::memory_ --nocapture`.
+//! The hand-run reproductions and probes stay `#[ignore]`, so that command never runs them.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+#[cfg(feature = "measurements")]
+use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use egui_kittest::kittest::{NodeT as _, Queryable};
+#[cfg(feature = "measurements")]
+use egui_kittest::kittest::NodeT as _;
+use egui_kittest::kittest::Queryable;
 use egui_kittest::{Harness, TestRenderer};
-use review_agent::{AgentEvent, AgentKind, ModelInfo, Usage};
+#[cfg(feature = "measurements")]
+use review_agent::{AgentEvent, Usage};
+use review_agent::{AgentKind, ModelInfo};
 use review_core::{Connection, ProviderKind};
 use review_store::{AppPaths, ConnectionStore};
 use serde_json::{Value, json};
@@ -26,13 +39,18 @@ use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
 use super::request_budget::{
-    Text, click_first, diff_stats_summaries, harness_builder, harness_from, has, pump, scroll_list,
-    startup_harness_builder, user, wait_idle, wait_until,
+    Text, diff_stats_summaries, harness_builder, harness_from, has, pump, startup_harness_builder,
+    user, wait_idle, wait_until,
 };
+#[cfg(feature = "measurements")]
+use super::request_budget::{click_first, scroll_list};
 use cv_base::platform::heap::live_bytes;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::agents::FakeCli;
-use cv_syntax::{code_colors, grammar, highlight};
+#[cfg(feature = "measurements")]
+use cv_syntax::code_colors;
+#[cfg(any(windows, feature = "measurements"))]
+use cv_syntax::{grammar, highlight};
 use cv_testkit::{self as test_support, git_in};
 
 const PROJECT: &str = "group/app";
@@ -51,15 +69,18 @@ const MB: usize = 1024 * 1024;
 /// What one kept pull request page may hold once left: our number, the about 6 MB measured here
 /// (its views and the parts the process keeps after the first page; the caches go when it is
 /// left, see `cv_pr_files::tab::hibernate`) with room.
+#[cfg(feature = "measurements")]
 const PAGE_ALLOWANCE: usize = 8 * MB;
 /// The open page on top: our number, its diff, color and text caches (which a left page lets go)
 /// and a file colored and laid out while the next loads.
+#[cfg(feature = "measurements")]
 const IN_FLIGHT: usize = 80 * MB;
 
 /// The scripted review session (165 files opened over five merge requests): the live bytes stay
 /// within the compiled grammars' budget and the kept pages, and once every merge request was left
 /// for the list and the grammars went unused, only the kept pages remain.
 #[test]
+#[cfg(feature = "measurements")]
 fn memory_returns_after_the_merge_requests_are_left() {
     if run_in_child("app::memory_walkthrough::memory_returns_after_the_merge_requests_are_left") {
         return;
@@ -114,7 +135,9 @@ fn memory_returns_after_the_merge_requests_are_left() {
 }
 
 /// Rounds of the idle test; each runs [`IDLE_FRAMES`] frames of [`IDLE_STEP`] seconds.
+#[cfg(feature = "measurements")]
 const IDLE_ROUNDS: usize = 3;
+#[cfg(feature = "measurements")]
 const IDLE_FRAMES: usize = 1000;
 const IDLE_STEP: f64 = 0.5;
 /// What the idle Overview may gain over all rounds: our number, the 1 MB the measurement settles
@@ -126,6 +149,7 @@ const IDLE_GROWTH: usize = MB;
 /// and the live probe runs, for 25 simulated minutes. The live bytes stay where they were once the
 /// page had loaded, and nothing but those timers asks for a frame.
 #[test]
+#[cfg(feature = "measurements")]
 fn memory_stays_flat_while_the_overview_idles() {
     if run_in_child("app::memory_walkthrough::memory_stays_flat_while_the_overview_idles") {
         return;
@@ -434,16 +458,18 @@ fn saved_pages_show_at_once_after_a_restart() {
             test_support::let_threads_run(Duration::from_millis(20));
         }
     }
-    // Twice the time the saved pages get to show: whatever shows by then came from the disk.
-    fixture.delay.store(20_000, Ordering::Relaxed);
+    // Every answer of the restarted app's host comes this long after its request, and no request
+    // leaves before the restart: whatever shows sooner after it came from the disk.
+    let host_delay = Duration::from_secs(10);
+    fixture.delay.store(host_delay.as_millis() as u64, Ordering::Relaxed);
+    let restarted_at = Instant::now();
     let mut harness = fixture.restarted();
     let shows = |harness: &mut Harness<'_, ReviewApp>,
                  done: &dyn Fn(&Harness<'_, ReviewApp>) -> bool| {
-        let started = Instant::now();
         while !done(harness) {
             assert!(
-                started.elapsed() < Duration::from_secs(10),
-                "the saved page shows long before the host answers"
+                restarted_at.elapsed() < host_delay,
+                "the saved page shows before the host can answer"
             );
             harness.step();
             test_support::let_threads_run(Duration::from_millis(10));
@@ -460,6 +486,7 @@ fn saved_pages_show_at_once_after_a_restart() {
 
 /// Opens merge request `iid`, every one of its files in turn (scrolling the large one), and
 /// measures.
+#[cfg(feature = "measurements")]
 fn review(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture, iid: u64, curve: &mut Curve) {
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(iid)));
     wait_until(harness, "the overview", |harness| has(harness, &title(iid)));
@@ -484,6 +511,7 @@ fn review(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture, iid: u64, cur
     curve.measure(harness, &format!("MR {iid}: all files"));
 }
 
+#[cfg(feature = "measurements")]
 fn pipelines_and_log(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
     harness.get_by_label("Pipelines").click();
     wait_until(harness, "the jobs", |harness| has(harness, "test-3-1"));
@@ -497,6 +525,7 @@ fn pipelines_and_log(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
     curve.measure(harness, "MR 1: pipelines and a long log");
 }
 
+#[cfg(feature = "measurements")]
 fn assistant(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
     harness.get_by_label("Overview").click();
     wait_until(harness, "the assistant's card", |harness| {
@@ -528,6 +557,7 @@ fn assistant(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
 }
 
 /// The file open in the Files tab: the path its header shows before its "Copy path" button.
+#[cfg(feature = "measurements")]
 fn current_file(harness: &Harness<'_, ReviewApp>) -> Option<String> {
     let mut path = None;
     for node in harness.query_all_by(|_| true) {
@@ -545,6 +575,7 @@ fn current_file(harness: &Harness<'_, ReviewApp>) -> Option<String> {
 
 /// Drops the compiled grammars as the sweeper does once they were unused for five minutes,
 /// after the colorings still running (whole files of the pages kept) let go of theirs.
+#[cfg(feature = "measurements")]
 fn release_grammars(harness: &mut Harness<'_, ReviewApp>) {
     let started = Instant::now();
     loop {
@@ -611,11 +642,13 @@ impl Curve {
         self.points.iter().map(|point| point.heap).max().unwrap_or(0)
     }
 
+    #[cfg(feature = "measurements")]
     fn peak_textures(&self) -> usize {
         self.points.iter().map(|point| point.textures).max().unwrap_or(0)
     }
 
     /// Whether every point after `step` holds the textures and the font atlas `step` held.
+    #[cfg(feature = "measurements")]
     fn are_textures_flat_after(&self, step: &str) -> bool {
         let Some(start) = self.points.iter().position(|point| point.step == step) else {
             return false;
@@ -1229,7 +1262,8 @@ fn image_file(version: u64) -> Vec<u8> {
 }
 
 /// Code in each of the eight languages of a .NET and web pull request, as fences of its
-/// description and its files show them: a block of the usual shapes, repeated to [`FENCE_BYTES`].
+/// description and its files show them: a block of the usual shapes, repeated to `FENCE_BYTES`.
+#[cfg(any(windows, feature = "measurements"))]
 const EIGHT_LANGUAGES: [(&str, &str); 8] = [
     (
         "ts",
@@ -1266,15 +1300,19 @@ const EIGHT_LANGUAGES: [(&str, &str); 8] = [
 ];
 /// Bytes of each block: within what a fence colors at all (256 KiB), and enough lines that it
 /// reads in parts on several reader threads.
+#[cfg(feature = "measurements")]
 const FENCE_BYTES: usize = 200 * 1024;
 /// Blocks per language, as in a description and its threads' comments.
+#[cfg(feature = "measurements")]
 const FENCES: usize = 2;
 /// The heap the eight languages' grammars may take while they color: our bound. Measured 107 MB
 /// (226 MB with fancy-regex 0.16 and uncapped lazy DFA caches): 85 MB compiled on the warm-up
 /// thread and 7.8 MB for each reader thread that searched with them. Which reader threads take a
 /// block's parts varies, so the bound holds all eight.
+#[cfg(feature = "measurements")]
 const EIGHT_LANGUAGES_PEAK: usize = 150 * MB;
 /// What stays once the grammars went: the fences' colors, within their cache's 4 MB, and room.
+#[cfg(feature = "measurements")]
 const KEPT_COLORS: usize = 8 * MB;
 
 /// A pull request of the eight languages: each is warmed up as its file list asks for, then a long
@@ -1282,6 +1320,7 @@ const KEPT_COLORS: usize = 8 * MB;
 /// reader threads). The live heap's peak stays within [`EIGHT_LANGUAGES_PEAK`], and once the
 /// grammars went unused only the colors are left.
 #[test]
+#[cfg(feature = "measurements")]
 fn memory_of_eight_languages_grammars_stays_small() {
     if run_in_child("app::memory_walkthrough::memory_of_eight_languages_grammars_stays_small") {
         return;

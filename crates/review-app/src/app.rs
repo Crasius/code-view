@@ -133,6 +133,8 @@ mod mini_chat_walkthrough;
 #[cfg(test)]
 mod model_chip_walkthrough;
 #[cfg(test)]
+mod motion_check;
+#[cfg(test)]
 mod navigation_walkthrough;
 #[cfg(test)]
 mod open_path_walkthrough;
@@ -234,7 +236,6 @@ impl ReviewApp {
     ) -> Self {
         let ctx = creation.egui_ctx.clone();
         theme::fonts::install(&ctx);
-        motion::install(&ctx);
         #[cfg(test)]
         a11y_check::install(&ctx);
         ctx.options_mut(|options| {

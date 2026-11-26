@@ -83,7 +83,7 @@ fn harness(scene: Scene) -> Harness<'static, Scene> {
 fn harness_at(scene: Scene, width: f32) -> Harness<'static, Scene> {
     let builder = Harness::builder().with_size([width, 1400.0]).with_context_setup(|ctx| {
         theme::fonts::install(ctx);
-        theme::motion::install(ctx);
+        theme::motion::set_reduced(ctx, false);
     });
     builder.build_ui_state(
         |ui, scene: &mut Scene| {

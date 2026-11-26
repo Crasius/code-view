@@ -101,7 +101,7 @@ fn states_harness(scene: States) -> Harness<'static, States> {
         .with_size([860.0, 2200.0])
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(
             |ui, scene: &mut States| {
@@ -268,7 +268,7 @@ fn panel_scene() -> PanelScene {
 fn panel_harness(scene: PanelScene) -> Harness<'static, PanelScene> {
     let builder = Harness::builder().with_size([1180.0, 800.0]).with_context_setup(|ctx| {
         theme::fonts::install(ctx);
-        theme::motion::install(ctx);
+        theme::motion::set_reduced(ctx, false);
     });
     builder.build_ui_state(
         |ui, scene: &mut PanelScene| {
