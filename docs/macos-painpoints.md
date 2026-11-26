@@ -116,6 +116,38 @@ those that are no connection of yours can go. Some tests used the ids the setup 
 overwritten or deleted: if a connection asks for its token again or answers 401, enter it again
 in Settings.
 
+## Run 3, GitHub run 45853777892 (commit cc50530): the first complete CI run
+
+The first macOS workflow run that got past the lints (`macos-latest`, arm64). Format, repo-lint,
+both clippy passes and the traffic-light example passed. The test step compiled for about four
+minutes, then ran the crates in order up to `cv-pr-pipelines`: every binary before it passed,
+and that one failed 1 of 86 (85 passed, 2 ignored). Without `--no-fail-fast` cargo stopped
+there, so `cv-pr-rendered` and every crate after it (`cv-pr-summary`, `cv-pr-threads`,
+`cv-pr-tree`, `cv-settings`, `review-app` and more) have not run on a Mac in CI yet.
+
+- **The stage graph did not coast after a fling**:
+  `stage_pan_check::a_release_mid_drag_flings_then_stops_repainting`, "the graph coasts on after
+  the release" (`stage_pan_check.rs:172`). It passes on Windows and on Linux.
+  - Found by reading the code: the fling's velocity is set only without reduced motion
+    (`graph/pan_canvas.rs:398`), and the test's harness called `theme::motion::install`, which
+    reads the machine's Reduce Motion setting (`cv-base` `theme/motion.rs:20`,
+    `platform/macos.rs:112`). Every other input on that path is deterministic: kittest sets only
+    `predicted_dt` and no wall-clock time, so egui's pointer time, velocity and `stable_dt` are
+    the same on every host. The same press, moves and release already pan 1:1 in
+    `a_drag_on_empty_canvas_pans`, which passed on the Mac. The runner's Reduce Motion being on
+    is inferred, not seen: NOT-VERIFIED. The workflow now prints it (step "Host motion
+    setting"), and the assertion prints both positions and the motion setting.
+  - **Status:** fixed on `macos-tests`: the harnesses of `cv-pr-pipelines` set motion on
+    themselves (`motion::set_reduced(ctx, false)`) instead of reading the OS. NOT-VERIFIED on a
+    Mac.
+  - Other harnesses still call `motion::install` (in `cv-pr-diff`, `cv-pr-files`, `cv-pr-page`,
+    `cv-pr-rendered`, `cv-pr-summary`, `cv-pr-threads`, `cv-pr-tree`, `cv-settings` and the whole
+    app). None of them asserts motion, so they should pass either way; the first three passed on
+    the Mac.
+- **The workflow**: the test step now runs with `--no-fail-fast`, so one run lists every failing
+  test, and the job stops after 45 minutes (our own budget, from the 20 minutes this run took up
+  to the failing crate), so a hang like run 2's ends the job instead of running for hours.
+
 ## Other friction
 
 - **Nothing to install from.** There is no released `.app`, so testing means installing Rust

@@ -40,7 +40,8 @@ fn harness_for(
         .with_size([1440.0, 820.0])
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            // Motion on, whatever the machine says, so every host draws the same frames.
+            theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(
             |ui, state: &mut State| {

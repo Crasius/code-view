@@ -20,6 +20,9 @@ env:
 jobs:
   check:
     runs-on: macos-latest
+    # Our own budget: the first complete run reached the last test crates after about 20 minutes,
+    # so a hung test ends the job after 45 minutes instead of after GitHub's default six hours.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -54,8 +57,13 @@ jobs:
         run: cargo clippy --locked --workspace -- -D warnings
       - name: Native traffic-light alignment
         run: cargo run --locked -p cv-base --example check_macos_traffic_lights
+      # The runner's Reduce Motion setting, which the app reads at start-up (cv-base
+      # platform::prefers_reduced_motion); tests pin their own, this records what they run beside.
+      - name: Host motion setting
+        run: defaults read com.apple.universalaccess reduceMotion || echo "reduceMotion not set"
+      # Every crate's tests, also after one fails, so one run lists every failure.
       - name: Tests
-        run: cargo test --locked --workspace
+        run: cargo test --locked --workspace --no-fail-fast
 
   # Only a maintainer's manual run packages; a pull request needs the check alone.
   bundle:

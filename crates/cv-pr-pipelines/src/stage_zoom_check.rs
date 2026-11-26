@@ -64,7 +64,8 @@ fn harness() -> Harness<'static, State> {
         .with_max_steps(240)
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            // Motion on, whatever the machine says: the zoom steps glide.
+            theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(
             |ui, state: &mut State| {
