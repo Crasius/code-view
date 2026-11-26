@@ -153,7 +153,7 @@ fn harness(layout: Layout) -> (Harness<'static, Opening>, Sender<FileContents>) 
         .with_size([1180.0, 760.0])
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(show, state);
     start(&harness, diff_sender);
@@ -247,13 +247,19 @@ fn side_by_side_rows_are_colored_in_their_first_frame() {
 /// wait), they fade in over a few frames instead of flashing on; at once under reduced motion.
 #[test]
 fn late_colors_fade_in_instead_of_flashing() {
+    for is_reduced in [false, true] {
+        late_colors_arrive(is_reduced);
+    }
+}
+
+fn late_colors_arrive(is_reduced: bool) {
     let (state, diff_sender, _contents_sender) = opening(Layout::Inline);
     let mut harness = Harness::builder()
         .with_size([1180.0, 760.0])
         .with_step_dt(1.0 / 60.0)
-        .with_context_setup(|ctx| {
+        .with_context_setup(move |ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            theme::motion::set_reduced(ctx, is_reduced);
         })
         .build_ui_state(show, state);
     let diff = fixture_diff();
@@ -270,7 +276,7 @@ fn late_colors_fade_in_instead_of_flashing() {
     let first = glyph_colors(&harness);
     harness.run_steps(20);
     assert!(glyph_colors(&harness).contains(&keyword), "the colors are fully there after the fade");
-    if theme::motion::is_reduced(&harness.ctx) {
+    if is_reduced {
         assert!(first.contains(&keyword), "reduced motion: at once");
     } else {
         assert!(
@@ -367,7 +373,7 @@ fn a_file_opened_right_after_the_pull_request_is_colored_in_its_first_frame() {
         .with_size([1180.0, 760.0])
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(show, state);
     // The file opens at once.

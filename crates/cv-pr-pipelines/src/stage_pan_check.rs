@@ -28,7 +28,9 @@ fn harness() -> Harness<'static, State> {
         .with_max_steps(240)
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            // Motion on, whatever the machine says: the fling below exists only with motion, and
+            // a macOS runner may have Reduce Motion on (`motion::install` reads the OS).
+            theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(
             |ui, state: &mut State| {
@@ -169,9 +171,12 @@ fn a_release_mid_drag_flings_then_stops_repainting() {
     harness.step();
     let released = card(&harness, "Analyze");
     harness.run_steps(5);
+    let coasted = card(&harness, "Analyze");
     assert!(
-        card(&harness, "Analyze").x < released.x - 1.0,
-        "the graph coasts on after the release"
+        coasted.x < released.x - 1.0,
+        "the graph coasts on after the release: at {released:?} on release, {coasted:?} 5 \
+         frames later, reduced motion {}",
+        theme::motion::is_reduced(&harness.ctx)
     );
     harness.run_steps(120);
     let settled = card(&harness, "Analyze");

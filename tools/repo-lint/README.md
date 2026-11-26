@@ -97,6 +97,11 @@ Ids are stable: a rule keeps its id, a retired id is never reused, and a retired
 - Why: the feature exports fakes and probes to the tests of the crates above. In a normal dependency it would link them into `CodeView`; the release build's const assert on `cv_base::TEST_SUPPORT` is the second guard.
 - Enforced by: repo-lint on member manifests.
 
+### RL016 motion-install
+- Rule: `motion::install` appears only in the shipped code of `crates/review-app/src/main.rs`, where the binary creates the app. `ReviewApp::new` does not call it, so the whole-app tests that build the app never read the setting. Test code pins motion with `motion::set_reduced(ctx, false)` (or `true` for a reduced-motion case), or leaves it unset, which animates.
+- Why: `motion::install` reads the machine's reduced-motion setting. A test that calls it runs differently on a machine with Reduce Motion on: GitHub's macOS runners have it on, and a fling test and four whole-app walkthroughs failed only there.
+- Enforced by: repo-lint on code tokens (the path `motion::install`, strings and comments excluded); the test `app::motion_check` proves that a harness-built app animates with the setting unset.
+
 ## Adding a rule
 
 Add a `Rule` variant with the next free id in `src/finding.rs`, a check with focused tests for its parsing or decision logic, and an entry here (Rule, Why, Enforced by). Land it together with the fixes or registry entries for its existing findings, so the repository stays clean.

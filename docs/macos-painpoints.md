@@ -116,6 +116,57 @@ those that are no connection of yours can go. Some tests used the ids the setup 
 overwritten or deleted: if a connection asks for its token again or answers 401, enter it again
 in Settings.
 
+## Run 3, GitHub run 45853777892 (commit cc50530): the first complete CI run
+
+The first macOS workflow run that got past the lints (`macos-latest`, arm64). Format, repo-lint,
+both clippy passes and the traffic-light example passed. The test step compiled for about four
+minutes, then ran the crates in order up to `cv-pr-pipelines`: every binary before it passed,
+and that one failed 1 of 86 (85 passed, 2 ignored). Without `--no-fail-fast` cargo stopped
+there, so `cv-pr-rendered` and every crate after it (`cv-pr-summary`, `cv-pr-threads`,
+`cv-pr-tree`, `cv-settings`, `review-app` and more) have not run on a Mac in CI yet.
+
+- **The stage graph did not coast after a fling**:
+  `stage_pan_check::a_release_mid_drag_flings_then_stops_repainting`, "the graph coasts on after
+  the release" (`stage_pan_check.rs:172`). It passes on Windows and on Linux.
+  - Found by reading the code: the fling's velocity is set only without reduced motion
+    (`graph/pan_canvas.rs:398`), and the test's harness called `theme::motion::install`, which
+    reads the machine's Reduce Motion setting (`cv-base` `theme/motion.rs:20`,
+    `platform/macos.rs:112`). Every other input on that path is deterministic: kittest sets only
+    `predicted_dt` and no wall-clock time, so egui's pointer time, velocity and `stable_dt` are
+    the same on every host. The same press, moves and release already pan 1:1 in
+    `a_drag_on_empty_canvas_pans`, which passed on the Mac. Run 4 confirmed it: the runner prints
+    `reduceMotion` 1 (workflow step "Host motion setting").
+  - **Status:** fixed on `macos-tests`, confirmed by run 4. Every test harness outside
+    `review-app` pins motion with `motion::set_reduced` instead of reading the OS, and repo-lint
+    RL016 keeps `motion::install` to the app's start-up.
+- **The workflow**: the test step now runs with `--no-fail-fast`, so one run lists every failing
+  test, and the job stops after 45 minutes (our own budget, from the 20 minutes this run took up
+  to the failing crate), so a hang like run 2's ends the job instead of running for hours.
+
+## Run 4, GitHub run 45861132128 (pull request 1): every crate ran
+
+77 test binaries passed, two failed.
+
+- **`review-git`, a clone whose path crosses a symbolic link** (2 tests):
+  `a_new_worktree_gets_the_pull_request_from_the_mirror_with_its_upstream` and
+  `the_survey_tells_a_fork_from_a_branch_of_the_repository`. The temp folder is under `/var`,
+  a link to `/private/var`. `git worktree list` prints every path with links resolved, and the
+  checkout compared that with the path the app holds as text (`checkout/repo.rs`, `same_folder`).
+  That was a bug for users too: a clone opened through a link (`~/dev` linked to another disk,
+  anything under `/tmp` or `/var`) did not know itself, so checking out its own current branch
+  in it was refused as "checked out in" that same clone, by the popover and by the checkout.
+  **Status:** fixed on `macos-tests`: `LocalRepo::worktrees` reports the clone's own tree in the
+  clone's spelling, and a Unix test opens a clone through a link. NOT-VERIFIED on a Mac.
+- **`review-app`, five walkthroughs**: four read Reduce Motion through the app's start-up
+  (`ReviewApp::new` called `motion::install`), one pressed F11 for focus mode, which is ⌃⌘F on
+  macOS. **Status:** fixed on `macos-tests`: only the binary's `main` reads the setting
+  (`app::motion_check` proves a test-built app keeps the motion it was given) and the
+  walkthroughs press `FOCUS_MODE_KEY`. NOT-VERIFIED on a Mac.
+- **Run time**: the `review-app` binary took 278 s on the macOS runner (3 cores) and 117 s on
+  GitLab's (4 CPUs). Measured per test on Windows (nextest, 4 threads), three heap measurements
+  took 66 of its 486 test-seconds and a host delay another 20; the measurements are their own
+  group now (rule `testing`, Running).
+
 ## Other friction
 
 - **Nothing to install from.** There is no released `.app`, so testing means installing Rust

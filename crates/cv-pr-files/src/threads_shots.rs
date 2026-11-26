@@ -61,7 +61,7 @@ fn harness() -> Harness<'static, Fixture> {
         .with_size([1320.0, 1240.0])
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(
             |ui, state: &mut Fixture| {

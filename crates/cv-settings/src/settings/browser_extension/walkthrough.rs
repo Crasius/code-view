@@ -54,7 +54,7 @@ fn harness(paths: AppPaths, registry: Registry) -> Harness<'static, Shown> {
         .with_size([1280.0, 900.0])
         .with_context_setup(|ctx| {
             cv_base::theme::fonts::install(ctx);
-            cv_base::theme::motion::install(ctx);
+            cv_base::theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(
             |ui, state: &mut Shown| state.page.show(ui, &mut state.services, &mut state.navigator),

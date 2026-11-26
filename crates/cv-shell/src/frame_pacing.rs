@@ -224,13 +224,13 @@ mod tests {
             )),
             ..RawInput::default()
         };
-        let started = Instant::now();
         limiter.pace(&mut resized, FrameRateLimit::Fps(30));
+        assert_eq!(limiter.held, Duration::ZERO, "the resize was not held");
         let mut moved =
             RawInput { time: Some(1.002), screen_rect: resized.screen_rect, ..RawInput::default() };
         moved.events.push(egui::Event::PointerMoved(egui::pos2(10.0, 10.0)));
         limiter.pace(&mut moved, FrameRateLimit::Fps(30));
-        assert!(started.elapsed() < 20 * MS, "neither frame waited");
+        assert_eq!(limiter.held, Duration::ZERO, "the pointer move was not held");
         assert_eq!(
             (resized.time, moved.time),
             (Some(1.001), Some(1.002)),
@@ -250,7 +250,9 @@ mod tests {
         let started = Instant::now();
         limiter.pace(&mut next, FrameRateLimit::Fps(60));
         let waited = started.elapsed();
-        assert!(waited >= 10 * MS && waited < 100 * MS, "held for {waited:?}");
+        // Only the lower bound is a claim: how late a sleeping thread wakes is the system's
+        // choice, and a busy machine took 111 ms for this 16 ms hold (GitHub's macOS runner).
+        assert!(waited >= 10 * MS, "held for {waited:?}");
         let shift = next.time.unwrap() - 1.0;
         assert!(shift > 0.009 && shift <= waited.as_secs_f64() + 0.001, "time moved by {shift}");
         // The frame after learns how long its predecessor slept, to keep it out of the CPU time.
