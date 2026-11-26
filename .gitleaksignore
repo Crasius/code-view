@@ -1,11 +1,9 @@
-# Findings of the secret scan in .gitlab-ci.yml that are no secrets, read one by one on 2026-11-05.
+# Findings of the secret scan in .gitlab-ci.yml that are no secrets, read one by one on 2026-11-26.
 # A fingerprint names one commit, file, rule and line, so any new finding still fails the job.
 # The extension's public key, which pins its id (docs/browser-extension.md).
-136cc236d89c8d74898b24090450c2008102ad2b:browser-extension/manifest.json:generic-api-key:6
+e51afe82e0b179af1750ed1eca66884e26a28c45:browser-extension/manifest.json:generic-api-key:6
 # An Azure DevOps API path.
-c196137b8fc5352af35bd84049b320013c1ee2f9:crates/provider-azure/src/pull_requests/policies.rs:generic-api-key:107
-# A made-up upload path in a unit test.
-53b4206ef45606d9e54e8b3c189616aa7d5c5181:crates/provider-gitlab/src/images.rs:generic-api-key:84
+e51afe82e0b179af1750ed1eca66884e26a28c45:crates/provider-azure/src/pull_requests/policies.rs:generic-api-key:115
 # Scripted tokens of a walkthrough, which only ever reach its fake provider.
-daed7f4817b41f4d61c009ef9f0c265429cd6187:crates/review-app/src/app/setup_walkthrough.rs:gitlab-pat:29
-daed7f4817b41f4d61c009ef9f0c265429cd6187:crates/review-app/src/app/setup_walkthrough.rs:gitlab-pat:30
+e51afe82e0b179af1750ed1eca66884e26a28c45:crates/review-app/src/app/setup_walkthrough.rs:gitlab-pat:26
+e51afe82e0b179af1750ed1eca66884e26a28c45:crates/review-app/src/app/setup_walkthrough.rs:gitlab-pat:27
