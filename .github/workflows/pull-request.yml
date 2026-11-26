@@ -41,6 +41,8 @@ jobs:
     outputs:
       key: ${{ steps.key.outputs.key }}
       deps: ${{ steps.key.outputs.deps }}
+      lint-key: ${{ steps.key.outputs.lint-key }}
+      lint-deps: ${{ steps.key.outputs.lint-deps }}
       tests: ${{ steps.plan.outputs.tests }}
       mac-tests: ${{ steps.plan.outputs.mac-tests }}
       lint: ${{ github.event_name == 'pull_request' && steps.plan.outputs.rust || steps.lint.outputs.cache-hit != 'true' }}
@@ -54,43 +56,64 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
       # Cache keys: the lockfile and the toolchain, then the commit, so that a pull request restores
-      # the newest cache main made for its dependency set.
+      # the newest cache main made for its dependency set. The lint caches hash the root's *.toml,
+      # clippy.toml among them, whose settings a warm clippy run would not read again.
       - id: key
         run: |
           echo "deps=${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}" >> "$GITHUB_OUTPUT"
           echo "key=${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "lint-deps=${{ hashFiles('Cargo.lock', '*.toml') }}" >> "$GITHUB_OUTPUT"
+          echo "lint-key=${{ hashFiles('Cargo.lock', '*.toml') }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
       # cargo metadata --no-deps only; the runner's stable cargo reads the workspace as well.
       - id: plan
         env:
           RUSTUP_TOOLCHAIN: stable
         run: sh ci/github-plan.sh "${{ github.event_name }}"
-      # The warm-up skips a job whose cache for this commit exists.
+      # The warm-up skips a job whose cache for this commit exists. actions/cache makes the paths
+      # part of a cache's version, so each lookup, restore and save of one key lists the same paths
+      # in the same order; a lookup with other paths never hits. Change them together.
       - id: lint
         if: github.event_name != 'pull_request'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: target
-          key: lint-linux-${{ steps.key.outputs.key }}
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: lint-linux-${{ steps.key.outputs.lint-key }}
           lookup-only: true
       - id: lint-apple
         if: github.event_name != 'pull_request'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: target
-          key: lint-apple-${{ steps.key.outputs.key }}
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: lint-apple-${{ steps.key.outputs.lint-key }}
           lookup-only: true
       - id: test
         if: github.event_name != 'pull_request'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: target
+          path: |
+            .cargo-home/registry/index
+            .cargo-home/registry/cache
+            .cargo-home/git/db
+            target
           key: test-linux-${{ steps.key.outputs.key }}
           lookup-only: true
       - id: macos
         if: github.event_name != 'pull_request'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: target
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
           key: test-macos-${{ steps.key.outputs.key }}
           lookup-only: true
 
@@ -123,8 +146,8 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
-          key: lint-linux-${{ needs.plan.outputs.key }}
-          restore-keys: lint-linux-${{ needs.plan.outputs.deps }}-
+          key: lint-linux-${{ needs.plan.outputs.lint-key }}
+          restore-keys: lint-linux-${{ needs.plan.outputs.lint-deps }}-
       - run: sh ci/target-stamp.sh restore
       - name: Format
         run: cargo fmt --all --check
@@ -149,7 +172,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
-          key: lint-linux-${{ needs.plan.outputs.key }}
+          key: lint-linux-${{ needs.plan.outputs.lint-key }}
 
   # Both clippy passes for Apple silicon from Linux: type checks and lints of the macOS code. The
   # target's dependencies need no C compiler, and nothing links.
@@ -176,8 +199,8 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
-          key: lint-apple-${{ needs.plan.outputs.key }}
-          restore-keys: lint-apple-${{ needs.plan.outputs.deps }}-
+          key: lint-apple-${{ needs.plan.outputs.lint-key }}
+          restore-keys: lint-apple-${{ needs.plan.outputs.lint-deps }}-
       - run: sh ci/target-stamp.sh restore
       - name: Clippy (aarch64-apple-darwin)
         run: cargo clippy --locked --workspace --all-targets --target aarch64-apple-darwin -- -D warnings
@@ -192,7 +215,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
-          key: lint-apple-${{ needs.plan.outputs.key }}
+          key: lint-apple-${{ needs.plan.outputs.lint-key }}
 
   # The tests the change needs, in GitLab's test image (docs/linux.md, Tests in a container): its
   # git and its DejaVu fonts are all the tests need. GitLab's test job runs the same script
@@ -269,7 +292,14 @@ jobs:
       - run: sh ci/target-stamp.sh restore
       - name: Native traffic-light alignment
         run: cargo run --locked -p cv-base --example check_macos_traffic_lights
+      # The runner's Reduce Motion setting, which the app reads at start-up (cv-base
+      # platform::prefers_reduced_motion); tests pin their own, this records what they run beside.
+      - name: Host motion setting
+        run: defaults read com.apple.universalaccess reduceMotion || echo "reduceMotion not set"
+      # Also after the traffic-light check failed: one run lists every failure (ci/test.sh runs
+      # every group to the end, too).
       - name: Tests of the crates with macOS code
+        if: ${{ !cancelled() }}
         env:
           TEST_FILTER: ${{ needs.plan.outputs.mac-tests }}
         run: PATH="$BUILD_DEPS/usr/bin:$PATH" sh ci/test.sh

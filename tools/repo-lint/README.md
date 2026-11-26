@@ -10,7 +10,7 @@ cargo run -q -p repo-lint -- --lengths         # shipped line counts over 400, l
 cargo run -q -p repo-lint -- --shrink-allowlist  # lower allowlist entries to the current lengths
 ```
 
-Exit 0 = clean, 1 = findings (one line each: `path[:line]: RLxxx name: message and fix`), 2 = the tool could not run. It runs in `sh .agents/hooks/repo-check.sh` (through `check-repo-lint.sh`) and in CI (`.gitlab-ci.yml`, `.github/workflows/macos.yml`). The Rust rules it enforces live in `.agents/rules/rust.md`; this file documents the checks.
+Exit 0 = clean, 1 = findings (one line each: `path[:line]: RLxxx name: message and fix`), 2 = the tool could not run. It runs in `sh .agents/hooks/repo-check.sh` (through `check-repo-lint.sh`) and in CI (`ci/lint.sh`, `.github/workflows/pull-request.yml`). The Rust rules it enforces live in `.agents/rules/rust.md`; this file documents the checks.
 
 ## Terms
 

@@ -26,12 +26,15 @@ if second="$(git rev-parse -q --verify 'HEAD^2^{commit}')" &&
     fi
 fi
 
-# Either configuration runs only as main's child pipeline.
+# Either configuration runs only as main's child pipeline, the one pipeline that writes the build
+# caches (docs/release.md, Build cache); a child takes no variable of the workflow rules of its parent.
 cat > "$out" << EOF
 # ci/main-scope.sh for $head.
 workflow:
   rules:
     - if: \$CI_PIPELINE_SOURCE == "parent_pipeline"
+      variables:
+        CACHE_POLICY: pull-push
 stages: [test]
 EOF
 if [ -n "$checked_by" ]; then
@@ -56,6 +59,7 @@ include:
   - local: ci/checks.yml
 variables:
   # The commit before the push, which ci/repo-lint-base.sh compares with; a child pipeline has its own.
+  # The tests ignore it and run every test (ci/test.sh).
   PUSH_BEFORE_SHA: "${CI_COMMIT_BEFORE_SHA:-}"
 EOF
 fi

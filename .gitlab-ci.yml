@@ -25,7 +25,12 @@ workflow:
     # A branch with an open merge request runs as the merge request pipeline, not twice.
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
+    # main's pipelines alone write the build caches: a push (through its child pipeline,
+    # ci/main-scope.sh) and a run by hand. Every other pipeline only restores them (CACHE_POLICY in
+    # ci/checks.yml; docs/release.md, Build cache).
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      variables:
+        CACHE_POLICY: pull-push
     - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
 
 stages: [test, build, release]
@@ -83,21 +88,37 @@ main-checks:
 # changed (.release-inputs), and every platform on a manual start; a push to main builds nothing,
 # since the release tag's pipeline builds and publishes its own (docs/release.md, Cut a release).
 # What a release build checks beyond lint and test: the dependency set and its licenses
-# (cargo-about stops on a license outside ci/about.toml), the release profile, the build scripts
-# and the release scripts. A code change compiles in lint and test already; build-linux-x64 waits
-# for a manual start then (8 to 13 minutes, measured 2026-11-22 to 24).
+# (cargo-about stops on a license outside ci/about.toml), the release profile, the build scripts,
+# the files ci/build-release.sh reads and the code only a release build compiles. A code change
+# compiles in lint and test already; build-linux-x64 waits for a manual start then (8 to 13
+# minutes, measured 2026-11-22 to 24).
 .release-inputs:
+  # The manifests (versions, [package.metadata.bundle], the release profile), the lockfile, the
+  # toolchain and cargo's configuration.
   - Cargo.toml
   - Cargo.lock
   - crates/*/Cargo.toml
   - tools/*/Cargo.toml
-  - crates/*/build.rs
   - rust-toolchain.toml
   - .cargo/**/*
+  # Build scripts and what they read: review-app's icon (Windows resource; the macOS bundle's
+  # .icns, the window icons main.rs embeds).
+  - crates/*/build.rs
+  - crates/review-app/assets/icon/**/*
+  # Shipped code under cfg(not(debug_assertions)), which no debug build compiles:
+  # `git grep -l debug_assertions -- 'crates/*.rs'` minus the test-only files.
+  - crates/review-app/src/main.rs
+  - crates/review-app/src/app.rs
+  # The pipeline and the release scripts with what they read: the notices' licenses and the example
+  # that prints the grammars' notices.
   - .gitlab-ci.yml
+  - ci/checks.yml
   - ci/build-release.sh
   - ci/install-build-deps.sh
   - ci/about.*
+  - crates/cv-base/assets/Phosphor-LICENSE-MIT.txt
+  - crates/review-grammars/grammars/csharp-license.txt
+  - crates/review-grammars/examples/grammar_notices.rs
 
 .release-build:
   stage: build
