@@ -29,6 +29,7 @@ use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::self_review;
 use cv_settings::onboarding::CliTools;
@@ -106,7 +107,7 @@ fn self_review_from_a_list_row_marks_the_row_without_opening_it() {
             .query_by_role_and_label(Role::MenuItem, self_review::LABEL)
             .is_some_and(|node| !node.accesskit_node().is_disabled())
     });
-    harness.get_by_role_and_label(Role::MenuItem, self_review::LABEL).click();
+    harness.click_at(harness.get_by_role_and_label(Role::MenuItem, self_review::LABEL).rect());
     wait_for(&mut harness, "the request", |_| !calls.adds.lock().unwrap().is_empty());
     assert_eq!(*calls.adds.lock().unwrap(), [(4, GRACE.to_owned())]);
     wait_for(&mut harness, "the toast", |harness| has(harness, self_review::DONE));
@@ -152,7 +153,7 @@ fn self_review_is_off_with_its_reason_without_a_token() {
             .query_by_role_and_label(Role::MenuItem, self_review::LABEL)
             .is_some_and(|node| node.accesskit_node().is_disabled())
     });
-    harness.get_by_role_and_label(Role::MenuItem, "Add a token to review").click();
+    harness.click_at(harness.get_by_role_and_label(Role::MenuItem, "Add a token to review").rect());
     wait_for(&mut harness, "the connection's setup", |harness| {
         harness.state().route == Route::Settings
     });
@@ -194,7 +195,7 @@ fn self_review_refused_row_request_retries_from_its_toast() {
     wait_for(&mut harness, "the menu entry", |harness| {
         harness.query_by_role_and_label(Role::MenuItem, self_review::LABEL).is_some()
     });
-    harness.get_by_role_and_label(Role::MenuItem, self_review::LABEL).click();
+    harness.click_at(harness.get_by_role_and_label(Role::MenuItem, self_review::LABEL).rect());
     wait_for(&mut harness, "the failure toast", |harness| button(harness, "Retry"));
     assert!(button(&harness, "Open on GitHub"), "the toast leads to the pull request on GitHub");
     assert_eq!(calls.adds.lock().unwrap().len(), 1);
@@ -313,23 +314,14 @@ fn button(harness: &Harness<'_, ReviewApp>, label: &str) -> bool {
 fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
     harness.get_by_role_and_label(Role::Button, label).hover();
     harness.step();
-    harness.get_by_role_and_label(Role::Button, label).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, label).rect());
     harness.run_steps(4);
 }
 
 fn secondary_click(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    let position = harness.get_by_label(label).rect().center();
-    harness.hover_at(position);
+    harness.get_by_label(label).hover();
     harness.step();
-    for pressed in [true, false] {
-        harness.event(egui::Event::PointerButton {
-            pos: position,
-            button: egui::PointerButton::Secondary,
-            pressed,
-            modifiers: egui::Modifiers::NONE,
-        });
-        harness.step();
-    }
+    harness.secondary_click_at(harness.get_by_label(label).rect());
     harness.run_steps(2);
 }
 

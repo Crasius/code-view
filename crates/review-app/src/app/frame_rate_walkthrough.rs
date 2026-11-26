@@ -10,6 +10,7 @@ use review_core::{Connection, ProviderKind};
 use review_store::{AppPaths, AppSettings, ConnectionStore, FrameRateLimit};
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use super::provider_icons_walkthrough::scripted_provider;
 use cv_runtime::route::Route;
 use cv_settings::onboarding::CliTools;
@@ -42,7 +43,7 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
     harness.state_mut().settings.cli_tools = Some(CliTools::default());
     harness.state_mut().navigator.go(Route::Settings);
     settle(&mut harness);
-    harness.get_by_role_and_label(Role::Tab, "Appearance").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Appearance").rect());
     wait_for(&mut harness, "the frame rate row", |harness| harness.query_by_label(ROW).is_some());
     // The row sits below the fold of Appearance.
     harness.get_by_label(NEXT_ROW).scroll_to_me();
@@ -68,7 +69,7 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
         ("Match display", FrameRateLimit::MatchDisplay),
         ("30", FrameRateLimit::Fps(30)),
     ] {
-        harness.get_by_role_and_label(Role::RadioButton, label).click();
+        harness.click_at(harness.get_by_role_and_label(Role::RadioButton, label).rect());
         settle(&mut harness);
         assert_eq!(harness.state().services.settings.frame_rate, limit, "{label} applies live");
         assert_eq!(saved(&paths).frame_rate, limit, "{label} is saved");
@@ -86,7 +87,7 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
     );
 
     // Back to the default, as the next start would load it.
-    harness.get_by_role_and_label(Role::RadioButton, "45").click();
+    harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "45").rect());
     settle(&mut harness);
     assert_eq!(saved(&paths).frame_rate, FrameRateLimit::DEFAULT);
     drop(harness);

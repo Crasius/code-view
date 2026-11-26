@@ -29,6 +29,7 @@ use review_store::{AppPaths, AppSettings, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit as test_support;
@@ -97,13 +98,13 @@ fn merge_button_confirms_in_place_and_remembers_the_choice() {
     assert!(radio(&harness, "Rebase and fast-forward", true), "3 picks the third strategy");
     assert!(button(&harness, "Rebase and fast-forward"), "the main part follows");
     assert!(!has(&harness, "commit message"), "rebase writes no commit of its own");
-    harness.get_by_role_and_label(Role::MenuItemRadio, "Merge commit").click();
+    harness.click_at(harness.get_by_role_and_label(Role::MenuItemRadio, "Merge commit").rect());
     harness.run_steps(3);
     assert!(
         has(&harness, "Merge commit message") && radio(&harness, "Merge commit", true),
         "a click picks and keeps it open"
     );
-    harness.get_by_role_and_label(Role::Link, "Branch policies").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, "Branch policies").rect());
     harness.step();
     assert_eq!(opened_urls(&harness), [POLICIES], "Branch policies opens the platform's page");
     harness.key_press(egui::Key::Escape);
@@ -134,7 +135,7 @@ fn merge_button_confirms_in_place_and_remembers_the_choice() {
     harness.key_press(egui::Key::F5);
     wait_for(&mut harness, "the button after the merge", |harness| button(harness, "Merge commit"));
     press(&mut harness, OPTIONS);
-    harness.get_by_label("Delete feature/login after merging").click();
+    harness.click_at(harness.get_by_label("Delete feature/login after merging").rect());
     harness.run_steps(3);
     harness.key_press(egui::Key::Num1);
     harness.run_steps(3);
@@ -161,11 +162,13 @@ fn merge_button_is_disabled_with_conflicts_and_warns_when_forced_past_policies()
     pump(&mut harness, 1.5);
     assert!(has(&harness, "This pull request has merge conflicts"), "the tooltip says why");
     // The overview card has its own; the tooltip opens above the page, its action comes last.
-    harness
-        .query_all_by_label("Open in Azure DevOps")
-        .last()
-        .expect("the tooltip's action")
-        .click();
+    harness.click_at(
+        harness
+            .query_all_by_label("Open in Azure DevOps")
+            .last()
+            .expect("the tooltip's action")
+            .rect(),
+    );
     harness.step();
     assert_eq!(opened_urls(&harness), [web_url(2)], "the tooltip's action opens the pull request");
     harness.event(egui::Event::PointerGone);
@@ -176,7 +179,7 @@ fn merge_button_is_disabled_with_conflicts_and_warns_when_forced_past_policies()
         button(harness, "Set auto-complete") && has(harness, "Blocked change")
     });
     press(&mut harness, OPTIONS);
-    harness.get_by_label("Complete automatically when policies pass").click();
+    harness.click_at(harness.get_by_label("Complete automatically when policies pass").rect());
     harness.run_steps(3);
     harness.key_press(egui::Key::Escape);
     harness.run_steps(3);
@@ -277,7 +280,7 @@ fn radio(harness: &Harness<'_, ReviewApp>, label: &str, is_checked: bool) -> boo
 fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
     harness.get_by_label(label).hover();
     harness.step();
-    harness.get_by_label(label).click();
+    harness.click_at(harness.get_by_label(label).rect());
     harness.run_steps(4);
 }
 

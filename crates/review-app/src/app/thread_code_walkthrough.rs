@@ -11,6 +11,7 @@ use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, press, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{CURRENT_LINE, GitHubHost};
 use cv_testkit::ScratchDir;
 
@@ -64,7 +65,9 @@ fn thread_cards_show_their_code_from_the_mirror() {
     let diff = harness.get_all_by_label("Diff").next().expect("the outdated card's switch");
     diff.scroll_to_me();
     settle(&mut harness);
-    harness.get_all_by_label("Diff").next().expect("the outdated card's switch").click();
+    let target =
+        harness.get_all_by_label("Diff").next().expect("the outdated card's switch").rect();
+    harness.click_at(target);
     settle(&mut harness);
     assert_eq!(
         harness.query_all_by_label_contains("Removed line 1: pub fn greet() ->").count(),

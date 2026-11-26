@@ -11,6 +11,7 @@ use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, press, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY};
 use cv_testkit::ScratchDir;
 
@@ -37,7 +38,7 @@ fn own_vote_author_on_github_cannot_vote_and_sees_why() {
         harness.query_all_by_label_contains("Comments and replies still work").next().is_some(),
         "the tooltip says what still works"
     );
-    harness.get_by_role_and_label(Role::Button, APPROVE).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, APPROVE).rect());
 
     press(&mut harness, "More votes");
     wait_until(&mut harness, "the vote menu", |harness| menu_entries(harness).is_some());
@@ -49,7 +50,7 @@ fn own_vote_author_on_github_cannot_vote_and_sees_why() {
             press(&mut harness, "More votes");
             wait_until(&mut harness, "the vote menu", |harness| menu_entries(harness).is_some());
         }
-        harness.get_by_role_and_label(Role::MenuItem, label).click();
+        harness.click_at(harness.get_by_role_and_label(Role::MenuItem, label).rect());
         harness.run_steps(2);
     }
     harness.run_steps(20);

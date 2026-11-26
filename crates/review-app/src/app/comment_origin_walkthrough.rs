@@ -13,6 +13,7 @@ use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{CURRENT_TEXT, FILE, GitHubHost, THREAD_TEXT};
 use cv_testkit::ScratchDir;
 
@@ -53,7 +54,7 @@ fn comment_origin_shows_the_version_an_outdated_thread_was_written_on() {
     assert!(harness.query_by_label("Outdated").is_some(), "the card is marked outdated");
     harness.get_by_label(SHOW_ORIGIN).scroll_to_me();
     settle(&mut harness);
-    harness.get_by_label(SHOW_ORIGIN).click();
+    harness.click_at(harness.get_by_label(SHOW_ORIGIN).rect());
     wait_until(&mut harness, "the original version from the overview", |harness| {
         harness.query_by_label_contains(&banner).is_some()
     });
@@ -74,7 +75,7 @@ fn comment_origin_shows_the_version_an_outdated_thread_was_written_on() {
     );
 
     // The original version: the replaced head, fetched by id, with the comment at its line 1.
-    harness.get_by_label(SHOW_ORIGIN).click();
+    harness.click_at(harness.get_by_label(SHOW_ORIGIN).rect());
     wait_until(&mut harness, "the original version", |harness| {
         harness.query_by_label_contains(&banner).is_some()
             && harness.query_by_label(MARKER).is_some()
@@ -116,7 +117,7 @@ fn comment_origin_shows_the_version_an_outdated_thread_was_written_on() {
     assert_eq!(stable(&harness), before, "the banner, the marker and the card stay put");
 
     // Back to latest: the latest diff where it was left, scrolled as before.
-    harness.get_by_role_and_label(Role::Button, BACK_LABEL).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, BACK_LABEL).rect());
     wait_until(&mut harness, "the latest diff", |harness| {
         harness.query_by_label_contains(&banner).is_none()
             && harness.query_by_label(CURRENT_TEXT).is_some()
@@ -141,7 +142,7 @@ fn comment_origin_falls_back_to_the_comments_lines_when_the_commit_is_gone() {
     open_pull_request(&mut harness);
     open_latest_diff(&mut harness);
 
-    harness.get_by_label(SHOW_ORIGIN).click();
+    harness.click_at(harness.get_by_label(SHOW_ORIGIN).rect());
     wait_until(&mut harness, "the comment's own lines", |harness| {
         harness.query_by_label(&banner).is_some() && harness.query_by_label(MARKER).is_some()
     });
@@ -152,7 +153,7 @@ fn comment_origin_falls_back_to_the_comments_lines_when_the_commit_is_gone() {
     for label in ["Retry", "Open on GitHub", BACK_LABEL] {
         assert!(harness.query_by_label(label).is_some(), "{label} is offered");
     }
-    harness.get_by_role_and_label(Role::Button, BACK_LABEL).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, BACK_LABEL).rect());
     wait_until(&mut harness, "the latest diff", |harness| {
         harness.query_by_label(&banner).is_none() && harness.query_by_label(SHOW_ORIGIN).is_some()
     });
@@ -160,20 +161,23 @@ fn comment_origin_falls_back_to_the_comments_lines_when_the_commit_is_gone() {
 
 /// Opens [`FILE`] in the Files tab and the section with its outdated thread.
 fn open_latest_diff(harness: &mut Harness<'_, ReviewApp>) {
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     wait_until(harness, "the file tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, FILE).is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, FILE).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, FILE).rect());
     wait_until(harness, "the latest diff", |harness| {
         harness.query_by_label(&format!("Diff of {FILE}")).is_some()
             && harness.query_by_label_contains(DETACHED).is_some()
     });
-    harness.get_by_label_contains(DETACHED).click();
+    harness.click_at(harness.get_by_label_contains(DETACHED).rect());
     wait_until(harness, "the outdated card", |harness| {
         harness.query_by_label(SHOW_ORIGIN).is_some()
     });

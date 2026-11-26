@@ -15,6 +15,7 @@ use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 use super::ReviewApp;
 use super::action_e2e::{app, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, NUMBER, OWNER, REPOSITORY, TITLE, search_row};
 use super::request_budget::wait_idle;
 use cv_runtime::route::{PullRequestKey, Route};
@@ -110,7 +111,7 @@ fn the_header_paints_the_clicked_row_while_the_detail_loads() {
     wait_until(&mut harness, "the pull request row", |harness| {
         harness.query_by_label(&row).is_some()
     });
-    harness.get_by_label(&row).click();
+    harness.click_at(harness.get_by_label(&row).rect());
     // The frame the click lands in leaves the list, and the page it opens paints in that frame.
     let mut frames = 0;
     while harness.query_by_label(&row).is_some() {
@@ -205,7 +206,7 @@ fn a_resting_pointer_warms_the_page_so_the_click_fetches_nothing_again() {
     assert_eq!(pulls, 1, "the warm-up asked for the detail once");
     assert!(fetches > 0, "and fetched the commits, a small pull request counted");
 
-    harness.get_by_label(&format!("{NUMBER} {TITLE}")).click();
+    harness.click_at(harness.get_by_label(&format!("{NUMBER} {TITLE}")).rect());
     wait_until(&mut harness, "the listed files", |harness| {
         harness
             .query_by(|node| {
@@ -233,7 +234,7 @@ fn a_click_while_the_detail_is_read_ahead_joins_its_request() {
     let row = row_rect(&mut harness);
     harness.hover_at(on_title(row));
     wait_until(&mut harness, "the read ahead of the rested row", |_| host.was_detail_asked());
-    harness.get_by_label(&format!("{NUMBER} {TITLE}")).click();
+    harness.click_at(harness.get_by_label(&format!("{NUMBER} {TITLE}")).rect());
     for _ in 0..10 {
         harness.step();
     }

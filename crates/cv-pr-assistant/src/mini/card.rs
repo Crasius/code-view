@@ -352,7 +352,9 @@ fn drag_handle(ui: &Ui, rect: Rect, id: Id) -> Option<Event> {
     if response.drag_stopped() {
         return Some(Event::Released);
     }
-    let delta = response.drag_delta();
+    // The press frame's movement came before the press: a slow frame takes a move and the press
+    // on a button above the handle together, and the card would jump by the way the pointer went.
+    let delta = if response.drag_started() { Vec2::ZERO } else { response.drag_delta() };
     (response.dragged() && delta != Vec2::ZERO).then_some(Event::Drag(delta))
 }
 

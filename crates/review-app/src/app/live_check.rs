@@ -24,6 +24,7 @@ use review_core::{Connection, ProviderKind};
 use review_store::{AppPaths, ConnectionStore, DiffLayout, FilesStart};
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit as test_support;
 
@@ -68,7 +69,7 @@ fn live_walkthrough_of_a_public_pull_request() {
         wait_until(&mut harness, "the file list", |harness| files_tab(harness).is_some());
         println!("file list ready after {:.1} s", started.elapsed().as_secs_f32());
         settle(&mut harness, Duration::from_secs(2));
-        files_tab(&harness).expect("the Files tab").click();
+        harness.click_at(files_tab(&harness).expect("the Files tab").rect());
         wait_until(&mut harness, "the file tree", |harness| {
             harness.query_all_by_role(Role::TreeItem).next().is_some()
         });
@@ -77,12 +78,12 @@ fn live_walkthrough_of_a_public_pull_request() {
             diff_walkthrough(&mut harness);
         }
 
-        harness.get_by_label_contains("Commits (").click();
+        harness.click_at(harness.get_by_label_contains("Commits (").rect());
         settle(&mut harness, Duration::from_secs(1));
     }
 
     let before_tab = pipeline_requests();
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     let started = Instant::now();
     // Without a token gitlab.com allows an IP 60 requests an hour; past that the tab waits.
     let is_waiting = |harness: &Harness<'_, ReviewApp>| {
@@ -107,7 +108,7 @@ fn live_walkthrough_of_a_public_pull_request() {
     let Some(row) = run_row else {
         return;
     };
-    row.click();
+    harness.click_at(row.rect());
     settle(&mut harness, Duration::from_secs(8));
     report_stage_columns(&harness);
     older_run_on_demand(&mut harness);
@@ -116,10 +117,10 @@ fn live_walkthrough_of_a_public_pull_request() {
 /// Back in the checks table, the filter finds the older runs (of earlier commits, or superseded):
 /// opening one loads its jobs then, and only then.
 fn older_run_on_demand(harness: &mut Harness<'_, ReviewApp>) {
-    harness.get_by_role_and_label(Role::Link, "Pipelines").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, "Pipelines").rect());
     settle(harness, Duration::from_secs(1));
     let filter = harness.get_by_label("Filter checks");
-    filter.click();
+    harness.click_at(filter.rect());
     filter.type_text("older run");
     settle(harness, Duration::from_secs(1));
     let older = harness
@@ -131,7 +132,7 @@ fn older_run_on_demand(harness: &mut Harness<'_, ReviewApp>) {
         return;
     };
     let before = pipeline_requests();
-    harness.get_by_label(&older).click();
+    harness.click_at(harness.get_by_label(&older).rect());
     settle(harness, Duration::from_secs(8));
     report_requests(&format!("opening {older}"), &before, &pipeline_requests());
 }
@@ -212,14 +213,14 @@ fn diff_walkthrough(harness: &mut Harness<'_, ReviewApp>) {
     if let Ok(path) = requested {
         let filter = harness
             .get_by(|node| node.placeholder().is_some_and(|text| text.contains("Filter files")));
-        filter.click();
+        harness.click_at(filter.rect());
         filter.type_text(&path);
         wait_until(harness, "the filtered file", |harness| {
             harness.query_by_role_and_label(Role::TreeItem, &path).is_some()
         });
         // The tree lays out the filtered rows over a frame or two; clicking earlier hits a stale position.
         settle(harness, Duration::from_millis(300));
-        harness.get_by_role_and_label(Role::TreeItem, &path).click();
+        harness.click_at(harness.get_by_role_and_label(Role::TreeItem, &path).rect());
     }
     // Both panes of the side-by-side layout are labelled "Diff of …".
     wait_until(harness, "the diff", |harness| {
@@ -245,7 +246,7 @@ fn diff_walkthrough(harness: &mut Harness<'_, ReviewApp>) {
 
     // An added or deleted file shows whole, without layouts to switch between.
     if harness.query_by_label("Inline").is_some() {
-        harness.get_by_label("Inline").click();
+        harness.click_at(harness.get_by_label("Inline").rect());
         settle(harness, Duration::from_millis(500));
         new_only_walkthrough(harness);
         harness.state_mut().services.settings.diff_layout = DiffLayout::SideBySide;
@@ -384,7 +385,7 @@ fn newest_pull_request(harness: &mut Harness<'_, ReviewApp>, repository: &str) -
     wait_until(harness, "the pull request list", has_rows_or_empty_view);
     // Repositories without active pull requests still have completed ones to walk through.
     if first_row_number(harness).is_none() {
-        harness.get_by_label("Show all states").click();
+        harness.click_at(harness.get_by_label("Show all states").rect());
         wait_until(harness, "pull requests in all states", |harness| {
             first_row_number(harness).is_some()
         });
@@ -432,7 +433,7 @@ fn live_large_pull_request() {
     let files_label =
         files_tab(&harness).and_then(|tab| tab.accesskit_node().label()).unwrap_or_default();
     println!("{files_label} listed after {:.1} s", started.elapsed().as_secs_f32());
-    files_tab(&harness).expect("the Files tab").click();
+    harness.click_at(files_tab(&harness).expect("the Files tab").rect());
     wait_until(&mut harness, "the file tree", |harness| {
         harness.query_all_by_role(Role::TreeItem).next().is_some()
     });
@@ -470,7 +471,7 @@ fn live_large_pull_request() {
     println!("tree scrolled to {last_row}: {}", tree_frames.summary());
 
     let last_diff = Instant::now();
-    harness.get_by_role_and_label(Role::TreeItem, &last_row).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, &last_row).rect());
     let expected = format!("Diff of {last_row}");
     wait_until(&mut harness, "the last file's diff", |harness| {
         diff_label(harness).is_some_and(|label| label.starts_with(&expected))
@@ -503,14 +504,14 @@ fn live_large_pull_request() {
 fn large_diff(harness: &mut Harness<'_, ReviewApp>, path: &str) -> FrameTimes {
     let filter =
         harness.get_by(|node| node.placeholder().is_some_and(|text| text.contains("Filter files")));
-    filter.click();
+    harness.click_at(filter.rect());
     filter.type_text(path);
     wait_until(harness, "the filtered file", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, path).is_some()
     });
     settle(harness, Duration::from_millis(300));
     let started = Instant::now();
-    harness.get_by_role_and_label(Role::TreeItem, path).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
     let expected = format!("Diff of {path}");
     wait_until(harness, "the large diff", |harness| {
         diff_label(harness).is_some_and(|label| label.starts_with(&expected))

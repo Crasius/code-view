@@ -24,6 +24,7 @@ use review_store::{AppPaths, AppSettings, ConnectionStore, DiffLayout, PaneSizes
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::{self as test_support, ScratchDir, git};
 use cv_widgets::skeleton;
@@ -101,7 +102,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     );
     assert!(harness.query_by_label("Zoom 110 %").is_some(), "the overlay names the level");
     assert_eq!(saved(&paths).ui_scale, 1.1);
-    harness.get_by_label("Reset").click();
+    harness.click_at(harness.get_by_label("Reset").rect());
     settle(&mut harness);
     assert_eq!(harness.state().services.settings.ui_scale, 1.0);
     assert_eq!(
@@ -114,24 +115,24 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     wait_for(&mut harness, "the commit count", |harness| {
         harness.query_by_label_contains("Commits (").is_some()
     });
-    harness.get_by_label_contains("Commits (").click();
+    harness.click_at(harness.get_by_label_contains("Commits (").rect());
     wait_for(&mut harness, "the commit row", |harness| {
         harness.query_by_role_and_label(Role::Link, "feature").is_some()
     });
 
     // Files tab with the long diff.
-    harness.get_by_label_contains("Files (").click();
+    harness.click_at(harness.get_by_label_contains("Files (").rect());
     wait_for(&mut harness, "the file tree", |harness| {
         harness.query_by_label("Resize file tree").is_some()
     });
     let filter =
         harness.get_by(|node| node.placeholder().is_some_and(|text| text.contains("Filter files")));
-    filter.click();
+    harness.click_at(filter.rect());
     filter.type_text("widgets.rs");
     wait_for(&mut harness, "the filtered file", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, CODE_PATH).is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, CODE_PATH).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, CODE_PATH).rect());
     wait_for(&mut harness, "the diff", |harness| {
         harness.query_by_label(&format!("Diff of {CODE_PATH}")).is_some()
             && harness.query_by_label("Resize diff sides").is_some()
@@ -230,7 +231,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     wait_for(&mut harness, "the README", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, "README.md").is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, "README.md").click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, "README.md").rect());
     wait_for(&mut harness, "the preview", |harness| {
         harness.query_by_label("Resize Before and After").is_some()
     });
@@ -242,7 +243,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     // The rendered diff takes the header's diff controls like the text diff: arrows, layout, Alt+N.
     let next = harness.get_by_label("Next change (N or F7)");
     assert!(!next.accesskit_node().is_disabled(), "the change arrows work on the preview");
-    harness.get_by_label("New only").click();
+    harness.click_at(harness.get_by_label("New only").rect());
     settle(&mut harness);
     assert_eq!(harness.state().services.settings.diff_layout, DiffLayout::NewOnly);
     assert!(
@@ -278,7 +279,7 @@ fn folder_view_zooms_the_code_over_cards_and_the_app_elsewhere() {
     wait_for(&mut harness, "the file count", |harness| {
         harness.query_by_label_contains("Files (").is_some()
     });
-    harness.get_by_label_contains("Files (").click();
+    harness.click_at(harness.get_by_label_contains("Files (").rect());
     let card = format!("Diff of {GADGETS_PATH}");
     wait_for(&mut harness, "the folder view's cards", |harness| {
         harness.query_by_label(&card).is_some()
@@ -332,11 +333,11 @@ fn switching_files_keeps_the_header_still_without_placeholders() {
     wait_for(&mut harness, "the file count", |harness| {
         harness.query_by_label_contains("Files (").is_some()
     });
-    harness.get_by_label_contains("Files (").click();
+    harness.click_at(harness.get_by_label_contains("Files (").rect());
     wait_for(&mut harness, "the tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, CODE_PATH).is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, CODE_PATH).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, CODE_PATH).rect());
     wait_for(&mut harness, "the diff", |harness| {
         harness.query_by_label(&format!("Diff of {CODE_PATH}")).is_some()
     });
@@ -355,7 +356,7 @@ fn switching_files_keeps_the_header_still_without_placeholders() {
         wait_for(&mut harness, "the hovered file's diff", |harness| {
             harness.state().services.background.running() == 0
         });
-        harness.get_by_role_and_label(Role::TreeItem, path).click();
+        harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
         let clicked = harness.ctx.input(|input| input.time);
         for step in 0..40 {
             harness.step();

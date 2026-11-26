@@ -25,6 +25,7 @@ use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::ScratchDir;
 
@@ -45,7 +46,7 @@ fn crumb_trail_follows_the_way_the_user_came() {
 
     // (a) A row of My pull requests opens below the list; its crumb leads back there.
     wait_for(&mut harness, "the list", |harness| has(harness, "12 Twelfth change"));
-    harness.get_by_label("12 Twelfth change").click();
+    harness.click_at(harness.get_by_label("12 Twelfth change").rect());
     wait_for(&mut harness, "pull request 12", |harness| is_on(harness, 12));
     let from_list = [(review_core::APP_NAME, list()), (LIST, list()), (PR_12, pull_request(12))];
     assert_trail(&harness, &from_list);
@@ -108,7 +109,7 @@ fn entries_without_a_way(harness: &mut Harness<'_, ReviewApp>) {
     wait_for(harness, "the pasted pull request", |harness| is_on(harness, 13));
     assert_trail(harness, &structure(13));
 
-    harness.get_by_role_and_label(Role::Button, "Repositories").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Repositories").rect());
     settle(harness);
     assert_trail(
         harness,
@@ -119,11 +120,11 @@ fn entries_without_a_way(harness: &mut Harness<'_, ReviewApp>) {
 /// (b) The repositories page leads down the structure: connection, repository, pull request.
 fn repositories_down_to_a_pull_request(harness: &mut Harness<'_, ReviewApp>) {
     wait_for(harness, "the repository row", |harness| repository_row(harness).is_some());
-    repository_row(harness).expect("the repository row").click();
+    harness.click_at(repository_row(harness).expect("the repository row").rect());
     wait_for(harness, "the repository's list", |harness| has(harness, "12 Twelfth change"));
     let repository_list = &structure(12)[..3];
     assert_trail(harness, repository_list);
-    harness.get_by_label("12 Twelfth change").click();
+    harness.click_at(harness.get_by_label("12 Twelfth change").rect());
     wait_for(harness, "pull request 12", |harness| is_on(harness, 12));
     assert_trail(harness, &structure(12));
 
@@ -131,7 +132,7 @@ fn repositories_down_to_a_pull_request(harness: &mut Harness<'_, ReviewApp>) {
     click_crumb(harness, CONNECTION_NAME);
     assert_trail(harness, &structure(12)[..2]);
     wait_for(harness, "the repository row", |harness| repository_row(harness).is_some());
-    repository_row(harness).expect("the repository row").click();
+    harness.click_at(repository_row(harness).expect("the repository row").rect());
     wait_for(harness, "the repository's list", |harness| has(harness, "12 Twelfth change"));
     assert_trail(harness, repository_list);
 }
@@ -199,7 +200,8 @@ fn crumb_link<'a>(
 }
 
 fn click_crumb(harness: &mut Harness<'_, ReviewApp>, text: &str) {
-    crumb_link(harness, text).unwrap_or_else(|| panic!("the crumb {text}")).click();
+    harness
+        .click_at(crumb_link(harness, text).unwrap_or_else(|| panic!("the crumb {text}")).rect());
     settle(harness);
 }
 
@@ -213,7 +215,7 @@ fn repository_row<'a>(harness: &'a Harness<'_, ReviewApp>) -> Option<egui_kittes
 /// Clicks the Linked card's row of a pull request and waits for its page.
 fn open_linked(harness: &mut Harness<'_, ReviewApp>, row: &str, number: u64) {
     wait_for(harness, row, |harness| harness.query_by_label(row).is_some());
-    harness.get_by_label(row).click();
+    harness.click_at(harness.get_by_label(row).rect());
     wait_for(harness, "the linked pull request", |harness| is_on(harness, number));
 }
 

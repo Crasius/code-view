@@ -14,6 +14,7 @@ use serde_json::json;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, FILE, GitHubHost, NUMBER, REPOSITORY};
 use cv_runtime::route::PullRequestTab;
 use cv_testkit::ScratchDir;
@@ -40,16 +41,19 @@ fn ux_files_nav_steps_through_the_review_to_the_vote() {
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     assert!(harness.state().services.settings.open_next_unviewed, "on by default");
     open_pull_request(&mut harness);
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     open_in_tree(&mut harness, A);
     wait_for_diff(&mut harness, A);
 
     // Shift+J skips the viewed file.
-    harness.get_by_label(&format!("Viewed {B}")).click();
+    harness.click_at(harness.get_by_label(&format!("Viewed {B}")).rect());
     harness.run_steps(3);
     harness.key_press_modifiers(Modifiers::SHIFT, Key::J);
     wait_for_diff(&mut harness, C);
@@ -103,7 +107,7 @@ fn ux_files_nav_steps_through_the_review_to_the_vote() {
         harness.query_by_label("All 4 files viewed").is_some()
     });
     assert!(harness.query_by_role_and_label(Role::Link, "Overview").is_some());
-    harness.get_by_role_and_label(Role::Link, "Approve").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, "Approve").rect());
     let reviews = format!("/api/v3/repos/{REPOSITORY}/pulls/{NUMBER}/reviews");
     wait_until(&mut harness, "the approval", |_| host.find("POST", &reviews).is_some());
     let body: serde_json::Value =
@@ -111,7 +115,7 @@ fn ux_files_nav_steps_through_the_review_to_the_vote() {
     assert_eq!(body["event"], json!("APPROVE"));
 
     // Overview leads to the vote's other choices.
-    harness.get_by_role_and_label(Role::Link, "Overview").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, "Overview").rect());
     wait_until(&mut harness, "the Overview", |harness| {
         harness.state().current_tab() == Some(PullRequestTab::Overview)
     });
@@ -126,7 +130,7 @@ fn open_in_tree(harness: &mut Harness<'_, ReviewApp>, path: &str) {
     wait_until(harness, "the file's row in the tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, path).is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, path).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
     harness.step();
 }
 

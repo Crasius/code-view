@@ -11,6 +11,7 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use serde_json::json;
 
 use super::action_e2e::{app, open_pull_request, press, press_button, type_into, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, TITLE};
 use cv_testkit::ScratchDir;
 
@@ -70,14 +71,18 @@ fn bug_actions_failed_merge_keeps_its_way_out_and_retries_once() {
         .iter()
         .find(|label| harness.query_by_role_and_label(Role::Button, label).is_some())
         .expect("a merge strategy");
-    harness.get_by_role_and_label(Role::Button, label).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, label).rect());
     harness.step();
     wait_until(&mut harness, "the armed button", |harness| {
         harness
             .query_by(|node| node.label().is_some_and(|text| text.starts_with("Click again")))
             .is_some()
     });
-    harness.get_by(|node| node.label().is_some_and(|text| text.starts_with("Click again"))).click();
+    harness.click_at(
+        harness
+            .get_by(|node| node.label().is_some_and(|text| text.starts_with("Click again")))
+            .rect(),
+    );
 
     let merges = |host: &GitHubHost| {
         let merge = format!("/api/v3/repos/{REPOSITORY}/pulls/{NUMBER}/merge");
@@ -105,7 +110,7 @@ fn bug_actions_failed_merge_keeps_its_way_out_and_retries_once() {
     );
     assert_eq!(merges(&host), 1);
 
-    harness.get_by_role_and_label(Role::Button, "Retry").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Retry").rect());
     wait_until(&mut harness, "the retried merge", |_| merges(&host) == 2);
     wait_until(&mut harness, "the second failure", |harness| {
         harness.query_by_role_and_label(Role::Button, "Retry").is_some()
@@ -126,7 +131,7 @@ fn bug_actions_own_vote_shows_and_a_click_opens_the_menu() {
     wait_until(&mut harness, "the own vote", |harness| {
         harness.query_by_role_and_label(Role::Button, "Your vote: Approved").is_some()
     });
-    harness.get_by_role_and_label(Role::Button, "Your vote: Approved").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Your vote: Approved").rect());
     wait_until(&mut harness, "the vote menu", |harness| {
         harness.query_by_label("Request changes…").is_some()
     });
@@ -141,7 +146,7 @@ fn bug_actions_header_load_error_offers_retry_and_f5_loads() {
     host.fail_pull_request();
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
-    harness.get_by_role_and_label(Role::Tab, "Pipelines").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Pipelines").rect());
 
     wait_until(&mut harness, "the header's way out", |harness| {
         harness.query_all_by_role_and_label(Role::Button, "Retry").next().is_some()

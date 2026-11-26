@@ -29,6 +29,7 @@ use review_store::{AppSettings, HeaderMode, HeaderModes};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request};
+use super::clicks::Clicks;
 use super::github_mock::GitHubHost;
 use super::tree_side_walkthrough::{long_file, open_long_file};
 use cv_runtime::route::Route;
@@ -75,11 +76,14 @@ fn tab_bar(harness: &Harness<'_, ReviewApp>) -> Rect {
 
 /// Clicks the tab whose label starts with `name` and lets the header settle.
 fn switch_to(harness: &mut Harness<'_, ReviewApp>, name: &str) {
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with(name))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with(name))
+            })
+            .rect(),
+    );
     pump(harness, 4);
 }
 
@@ -189,10 +193,10 @@ fn hide_header_follows_the_scroll_and_comes_back() {
     assert_hidden(&harness, shown, "after scrolling down");
 
     // Another tab shows it at once.
-    harness.get_by_role_and_label(Role::Tab, "Pipelines").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Pipelines").rect());
     pump(&mut harness, 2);
     assert_shown(&harness, shown, "on another tab");
-    harness.get_by_role_and_label(Role::Tab, "Overview").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Overview").rect());
     pump(&mut harness, 2);
 
     // The keyboard focus on the merge button brings it back.
@@ -205,7 +209,7 @@ fn hide_header_follows_the_scroll_and_comes_back() {
     assert_shown(&harness, shown, "with the focus on the merge button");
 
     // An open menu of the header holds it where it is.
-    harness.get_by_label("More actions").click();
+    harness.click_at(harness.get_by_label("More actions").rect());
     pump(&mut harness, 2);
     scroll(&mut harness, -400.0);
     pump(&mut harness, 3);
@@ -361,7 +365,7 @@ fn header_settings(name: &str) -> (Harness<'static, ReviewApp>, GitHubHost, Scra
     harness.state_mut().settings.cli_tools = Some(CliTools::default());
     harness.state_mut().navigator.go(Route::Settings);
     pump(&mut harness, 4);
-    harness.get_by_role_and_label(Role::Tab, "Appearance").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Appearance").rect());
     pump(&mut harness, 4);
     (harness, host, scratch)
 }
@@ -404,7 +408,8 @@ fn hide_header_modes_are_set_per_tab_in_settings() {
     assert_eq!(idle_cards(&harness), 4, "every miniature holds still");
 
     // A choice applies to its tab only and is saved.
-    choice(&mut harness, "Files: Start minimized").click();
+    let rect = choice(&mut harness, "Files: Start minimized").rect();
+    harness.click_at(rect);
     pump(&mut harness, 2);
     leave(&mut harness);
     let files = HeaderModes { files: HeaderMode::StartMinimized, ..HeaderModes::default() };
@@ -417,7 +422,7 @@ fn hide_header_modes_are_set_per_tab_in_settings() {
     let set_all = "Set all tabs to Always shown";
     harness.get_by_role_and_label(Role::Button, set_all).scroll_to_me();
     pump(&mut harness, 2);
-    harness.get_by_role_and_label(Role::Button, set_all).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, set_all).rect());
     pump(&mut harness, 2);
     leave(&mut harness);
     let always = HeaderModes::all(HeaderMode::AlwaysShown);

@@ -11,6 +11,7 @@ use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_testkit::{self as test_support, ScratchDir};
 
@@ -91,7 +92,7 @@ fn whitespace_only_changes_are_shown_named_and_can_be_hidden() {
 
     // The banner's button hides the change; the notice says why the diff is empty and shows it again.
     open_file(&mut harness, EOL, BANNERS[0].1);
-    harness.get_by_label(HIDE_LABEL).click();
+    harness.click_at(harness.get_by_label(HIDE_LABEL).rect());
     wait_until(&mut harness, "the hidden notice", |harness| {
         has(harness, HIDDEN_TITLE) && !has(harness, BANNERS[0].1)
     });
@@ -101,7 +102,7 @@ fn whitespace_only_changes_are_shown_named_and_can_be_hidden() {
     )
     .expect("saved settings");
     assert!(saved.ignore_whitespace, "the switch is saved like the other diff filters");
-    harness.get_by_label(SHOW_LABEL).click();
+    harness.click_at(harness.get_by_label(SHOW_LABEL).rect());
     wait_until(&mut harness, "the banner again", |harness| has(harness, BANNERS[0].1));
     assert!(!harness.state().services.settings.ignore_whitespace);
 
@@ -110,24 +111,27 @@ fn whitespace_only_changes_are_shown_named_and_can_be_hidden() {
     wait_until(&mut harness, "the notice after Alt+W", |harness| has(harness, HIDDEN_TITLE));
     harness.key_press_modifiers(egui::Modifiers::ALT, egui::Key::W);
     wait_until(&mut harness, "the banner after Alt+W", |harness| has(harness, BANNERS[0].1));
-    harness.get_by_role_and_label(Role::Switch, "Ignore whitespace").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Switch, "Ignore whitespace").rect());
     wait_until(&mut harness, "the notice after the switch", |harness| has(harness, HIDDEN_TITLE));
 
     // A BOM is no whitespace to git: its diff stays, under a banner offering to show the hidden ones.
     open_file(&mut harness, BOM, BANNERS[4].1);
     assert!(has(&harness, SHOW_LABEL));
-    harness.get_by_role_and_label(Role::Switch, "Ignore whitespace").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Switch, "Ignore whitespace").rect());
     wait_until(&mut harness, "whitespace shown", |harness| {
         !harness.state().services.settings.ignore_whitespace && has(harness, HIDE_LABEL)
     });
 }
 
 fn open_files_tab(harness: &mut Harness<'_, ReviewApp>) {
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     wait_until(harness, "the file tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, EOL).is_some()
     });
@@ -135,7 +139,7 @@ fn open_files_tab(harness: &mut Harness<'_, ReviewApp>) {
 
 /// Selects `path` in the tree and waits for its diff under `banner`.
 fn open_file(harness: &mut Harness<'_, ReviewApp>, path: &str, banner: &str) {
-    harness.get_by_role_and_label(Role::TreeItem, path).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
     let diff = format!("Diff of {path}");
     wait_until(harness, banner, |harness| has(harness, &diff) && has(harness, banner));
     // Highlighting and the changed-word bands arrive a few frames later.

@@ -11,6 +11,7 @@ use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::action_e2e::{app, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost, NUMBER, TITLE};
 use cv_testkit::{self as test_support, ScratchDir};
 
@@ -26,7 +27,7 @@ fn has_mirror(scratch: &Path) -> bool {
 fn click_row(harness: &mut Harness<'_, ReviewApp>) {
     let row = format!("{NUMBER} {TITLE}");
     wait_until(harness, "the pull request row", |harness| harness.query_by_label(&row).is_some());
-    harness.get_by_label(&row).click();
+    harness.click_at(harness.get_by_label(&row).rect());
 }
 
 #[test]

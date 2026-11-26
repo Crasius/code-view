@@ -21,6 +21,7 @@ use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
 use super::action_e2e::LIMIT;
+use super::clicks::Clicks;
 use cv_lists::pull_request_list::LIST_INTERVAL;
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
@@ -72,7 +73,7 @@ fn request_budget_files_tab_opening_on_the_first_file() {
     settle(&harness);
     fixture.recorder.enter("Files, first file (30 s)");
     let started = harness_time(&harness);
-    harness.get_by_label(&files_label).click();
+    harness.click_at(harness.get_by_label(&files_label).rect());
     wait_in_real_time(&mut harness, "the first file's diff", |harness| {
         assert!(!has(harness, "300 changed files"), "the folder view showed before the first file");
         has(harness, "Diff of ")
@@ -140,7 +141,7 @@ fn request_budget_unfocused_window_is_silent_and_catches_up_once() {
     // The revisit refreshes the list in the background; a Refresh while it runs joins it.
     wait_idle(&mut harness);
     fixture.recorder.enter("user refresh");
-    harness.get_by_label("Refresh (F5)").click();
+    harness.click_at(harness.get_by_label("Refresh (F5)").rect());
     harness.step();
     set_focus(&mut harness, false);
     pump(&mut harness, 1.0);
@@ -194,7 +195,7 @@ fn request_budget_rate_limit_banner_retries_now() {
     assert!(has(&harness, "Open GitLab rate limit docs"));
     assert!(!has(&harness, "Change 27"), "the list waits for the host");
 
-    harness.get_by_label("Retry now").click();
+    harness.click_at(harness.get_by_label("Retry now").rect());
     wait_until(&mut harness, "the list after Retry now", |harness| has(harness, "Change 27"));
     pump(&mut harness, 1.0);
     assert!(!has(&harness, "is rate-limiting"), "the banner is gone once the host answers");
@@ -208,7 +209,7 @@ fn request_budget_rate_limit_banner_retries_now() {
     // The request counter in Settings shows what this connection sent, rate limits included.
     harness.state_mut().navigator.go(Route::Settings);
     pump(&mut harness, 1.0);
-    harness.get_by_role_and_label(egui::Role::Tab, "Network activity").click();
+    harness.click_at(harness.get_by_role_and_label(egui::Role::Tab, "Network activity").rect());
     pump(&mut harness, 1.0);
     // The listing twice (429, then the retry) and the GraphQL requests for its line counts and
     // its rows' checks.
@@ -233,7 +234,7 @@ fn request_budget_graphql_limit_does_not_hold_back_the_pipelines() {
     let mut harness = fixture.harness();
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
     wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_until(&mut harness, "the jobs despite the GraphQL limit", |harness| {
         has(harness, "test-3-1")
     });
@@ -245,11 +246,50 @@ fn request_budget_graphql_limit_does_not_hold_back_the_pipelines() {
     });
     assert!(has(&harness, "everything else loads as usual"));
     assert!(has(&harness, "Add a token"), "an anonymous connection is offered a token");
-    harness.get_by_label("Retry now").click();
+    harness.click_at(harness.get_by_label("Retry now").rect());
     wait_until(&mut harness, "the banner gone after Retry now", |harness| {
         !has(harness, "is rate-limiting")
     });
     assert!(has(&harness, "test-3-1"), "the jobs stay on screen");
+}
+
+/// A click held while the rate-limit banner opens above the page still counts at its release:
+/// the banner moves the page down but renames none of its widgets. Before, every widget under it
+/// took another id in the frame it opened, egui dropped the press of a widget that was gone, and
+/// the click on the Pipelines tab went to nobody (a busy macOS runner, GitHub run 45886166305).
+#[test]
+fn request_budget_a_click_held_while_the_banner_opens_still_counts() {
+    let fixture = Fixture::with_token("banner-click", 30, None);
+    fixture.limit_once_after("/api/graphql", 2391, Duration::from_secs(2));
+    let mut harness = fixture.harness();
+    harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
+    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    assert!(!has(&harness, "is rate-limiting"), "the limit is still on its way");
+    // egui's clock stands still while the button is down, so the press stays a click.
+    let time = harness_time(&harness);
+    let at = harness.get_by_label("Pipelines").rect().center();
+    let button = |pressed| egui::Event::PointerButton {
+        pos: at,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
+    harness.event(button(true));
+    let started = Instant::now();
+    while !has(&harness, "is rate-limiting") {
+        assert!(started.elapsed() < LIMIT, "the banner never opened");
+        harness.input_mut().time = Some(time);
+        harness.step();
+        test_support::let_threads_run(Duration::from_millis(10));
+    }
+    harness.event(button(false));
+    harness.input_mut().time = Some(time);
+    harness.step();
+    harness.input_mut().time = None;
+    wait_until(&mut harness, "the Pipelines tab opened by the click", |harness| {
+        let pipelines = harness.get_by_role_and_label(egui::Role::Tab, "Pipelines");
+        pipelines.accesskit_node().toggled() == Some(egui::accesskit::Toggled::True)
+    });
 }
 
 /// gitlab.com gives an IP without a token 60 requests an hour; past that its CI endpoints answer
@@ -263,13 +303,13 @@ fn request_budget_rate_limited_jobs_show_a_waiting_state_with_ways_out() {
     let mut harness = fixture.harness();
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
     wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_until(&mut harness, "the waiting state", |harness| has(harness, "Waiting for GitLab"));
     assert!(has(&harness, "The pipelines load on their own in 40 min; a token raises the limit."));
     assert!(has(&harness, "Add a token") && has(&harness, "Open on GitLab"), "the ways forward");
     assert!(!has(&harness, "test-3-1"));
     // The banner above offers Retry now as well; either ends the pause.
-    harness.query_all_by_label("Retry now").next().expect("Retry now").click();
+    harness.click_at(harness.query_all_by_label("Retry now").next().expect("Retry now").rect());
     wait_until(&mut harness, "the jobs after Retry now", |harness| has(harness, "test-3-1"));
     assert!(!has(&harness, "Waiting for GitLab"));
 }
@@ -286,7 +326,7 @@ fn request_budget_pipelines_tab_loads_jobs_of_the_head_run_only() {
     fixture.recorder.enter("open the tab");
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
     wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_until(&mut harness, "the head run's jobs", |harness| has(harness, "test-3-1"));
     // Less than the live refresh's first 15 s, so the running head run is asked for once.
     pump(&mut harness, 2.0);
@@ -328,7 +368,7 @@ fn request_budget_pipelines_tab_loads_jobs_of_the_head_run_only() {
     filter_checks(&mut harness, &format!("#{OLDER_PIPELINE_ID} ·"));
 
     fixture.recorder.enter("open an older run");
-    harness.get_by_label(older).click();
+    harness.click_at(harness.get_by_label(older).rect());
     wait_until(&mut harness, "the older run's stages", |harness| {
         harness.query_by_label("Stage check").is_some()
     });
@@ -342,18 +382,18 @@ fn request_budget_pipelines_tab_loads_jobs_of_the_head_run_only() {
     assert!(needs >= 1, "and its needs");
 
     fixture.recorder.enter("back and again");
-    harness.get_by_role_and_label(egui::Role::Link, "Pipelines").click();
+    harness.click_at(harness.get_by_role_and_label(egui::Role::Link, "Pipelines").rect());
     wait_until(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     filter_checks(&mut harness, "old-check");
     assert!(has(&harness, "old-check-1 in Merge request pipeline"), "its jobs are rows now");
     filter_checks(&mut harness, &format!("#{OLDER_PIPELINE_ID} ·"));
-    harness.get_by_label(older).click();
+    harness.click_at(harness.get_by_label(older).rect());
     wait_until(&mut harness, "the older run again", |harness| {
         harness.query_by_label("Stage check").is_some()
     });
-    harness.get_by_role_and_label(egui::Role::Link, "Pipelines").click();
+    harness.click_at(harness.get_by_role_and_label(egui::Role::Link, "Pipelines").rect());
     wait_until(&mut harness, "the checks table again", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
@@ -385,7 +425,7 @@ fn request_budget_favorites_load_only_while_open_and_focused() {
     assert_eq!(hits("collapsed"), 0, "a collapsed card asks nothing");
 
     fixture.recorder.enter("expanded");
-    harness.get_by_label("Favorites (1 repository), collapsed").click();
+    harness.click_at(harness.get_by_label("Favorites (1 repository), collapsed").rect());
     wait_until(&mut harness, "the favorite's rows", |harness| {
         has(harness, "Favorites (1 repository), 30 pull requests, expanded")
     });
@@ -450,7 +490,7 @@ fn request_budget_the_overview_asks_only_for_cards_on_screen() {
     settle(&harness);
 
     fixture.recorder.enter("refresh");
-    harness.get_by_label("Refresh (F5)").click();
+    harness.click_at(harness.get_by_label("Refresh (F5)").rect());
     pump(&mut harness, 2.0);
     settle(&harness);
 
@@ -485,7 +525,7 @@ fn request_budget_the_overview_asks_only_for_cards_on_screen() {
     settle(&harness);
 
     fixture.recorder.enter("refresh below");
-    harness.get_by_label("Refresh (F5)").click();
+    harness.click_at(harness.get_by_label("Refresh (F5)").rect());
     pump(&mut harness, 2.0);
     settle(&harness);
 
@@ -510,6 +550,41 @@ fn request_budget_the_overview_asks_only_for_cards_on_screen() {
     let (lane, below) = hits("refresh below");
     assert_eq!(lane, 0, "Refresh skips the Favorites card off screen: {report}");
     assert!((1..3).contains(&below), "Refresh asks the cards on screen, not all three: {report}");
+}
+
+/// A list's answer that arrives while another page shows ages from its arrival, not from the
+/// revisit that shows it: Refresh, Settings before the answer came, and a revisit after the
+/// freshness window asks again. Before, the list took the answer in only at the revisit, counted
+/// it as new there and asked nothing; on a busy runner Refresh's own answer came that late.
+#[test]
+fn request_budget_an_answer_that_lands_on_another_page_ages_from_its_arrival() {
+    let fixture = Fixture::new("hidden-answer", 30);
+    let mut harness = fixture.harness();
+    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_idle(&mut harness);
+    settle(&harness);
+
+    // Long enough for the three frames below on a busy machine.
+    fixture.delay_listing(Duration::from_secs(2));
+    fixture.recorder.enter("refresh");
+    harness.click_at(harness.get_by_label("Refresh (F5)").rect());
+    harness.step();
+    harness.state_mut().navigator.go(Route::Settings);
+    harness.step();
+    assert!(harness.state().services.background.running() > 0, "Refresh's answer is on its way");
+    // It arrives while Settings shows, between two frames.
+    settle(&harness);
+    let refresh = fixture.recorder.endpoints("refresh");
+    assert_eq!(refresh.get(GROUP_LISTING).copied(), Some(1), "Refresh asked: {refresh:?}");
+    fixture.delay_listing(Duration::ZERO);
+    pump(&mut harness, REVISIT_FRESH.as_secs_f64() + 5.0);
+
+    fixture.recorder.enter("revisit");
+    harness.state_mut().navigator.go(Route::MyPullRequests);
+    pump(&mut harness, 5.0);
+    settle(&harness);
+    let revisit = fixture.recorder.endpoints("revisit");
+    assert_eq!(revisit.get(GROUP_LISTING).copied(), Some(1), "the revisit asks again: {revisit:?}");
 }
 
 /// Coming back to the window after a minimize, on the overview: its card on screen asks again at
@@ -820,7 +895,7 @@ fn run_scenario(file_count: usize) {
     // The phase starts once the Files tab shows: a probe while the Overview still shows refreshes
     // its running checks too (the click lands over a few frames), and belongs to the Overview,
     // also when its requests are still on the way.
-    harness.get_by_label(&files_label).click();
+    harness.click_at(harness.get_by_label(&files_label).rect());
     wait_until(&mut harness, "the Files tab", |harness| {
         harness.query_by_label(&files_label).is_some_and(|tab| {
             tab.accesskit_node().toggled() == Some(egui::accesskit::Toggled::True)
@@ -842,7 +917,7 @@ fn run_scenario(file_count: usize) {
 
     fixture.recorder.enter("Pipelines, running (3 min)");
     let started = harness_time(&harness);
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_until(&mut harness, "the jobs", |harness| has(harness, "test-3-1"));
     // A loaded machine stretches the wait over simulated seconds; the phase stays 3 min.
     let waited = harness_time(&harness) - started;
@@ -939,7 +1014,7 @@ fn open_pipelines(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture) {
     wait_until(harness, "the pull request list", |harness| has(harness, "Change 27"));
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
     wait_until(harness, "the overview", |harness| has(harness, "Budget scenario"));
-    harness.get_by_label("Pipelines").click();
+    harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_until(harness, "the jobs", |harness| has(harness, "test-3-1"));
     pump(harness, 20.0);
 }
@@ -986,11 +1061,13 @@ fn held_languages(harness: &Harness<'_, ReviewApp>, fixture: &Fixture) -> Vec<St
 }
 
 pub(super) fn click_first(harness: &mut Harness<'_, ReviewApp>, text: &str) {
-    harness
-        .query_all_by_label_contains(text)
-        .next()
-        .unwrap_or_else(|| panic!("nothing labelled {text}"))
-        .click();
+    harness.click_at(
+        harness
+            .query_all_by_label_contains(text)
+            .next()
+            .unwrap_or_else(|| panic!("nothing labelled {text}"))
+            .rect(),
+    );
     harness.step();
 }
 
@@ -1209,10 +1286,16 @@ impl Fixture {
 
     /// The next request to `path` gets a 429 with `Retry-After` (not counted by the recorder).
     fn limit_once(&self, path: &str, retry_after_secs: u64) {
+        self.limit_once_after(path, retry_after_secs, Duration::ZERO);
+    }
+
+    /// [`Self::limit_once`] with the 429 arriving `delay` after the request.
+    fn limit_once_after(&self, path: &str, retry_after_secs: u64, delay: Duration) {
         let limited = ResponseTemplate::new(429)
             .insert_header("Retry-After", retry_after_secs.to_string().as_str())
             .insert_header("RateLimit-Remaining", "0")
-            .set_body_string("Retry later");
+            .set_body_string("Retry later")
+            .set_delay(delay);
         let mock = wiremock::Mock::given(wiremock::matchers::path(path))
             .respond_with(limited)
             .up_to_n_times(1)

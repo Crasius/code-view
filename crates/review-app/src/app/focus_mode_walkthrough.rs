@@ -16,6 +16,7 @@ use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
 use super::action_e2e::{self, open_pull_request, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, FILE, GitHubHost};
 use cv_base::platform::{self, hit_test, shortcut};
 use cv_shell::focus_mode::{self, ENTER_HINT, EXIT_HINT, Surface, strip};
@@ -182,15 +183,18 @@ fn saved(scratch: &ScratchDir) -> AppSettings {
 #[expect(clippy::too_many_lines, reason = "one walkthrough scenario, told step by step")]
 fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
     let (scratch, _host, mut harness) = app("focus-files");
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     wait_until(&mut harness, "the file tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, LONG_FILE).is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, LONG_FILE).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, LONG_FILE).rect());
     let diff = format!("Diff of {LONG_FILE}");
     wait_until(&mut harness, "the long diff", |harness| has(harness, &diff));
     // N steps through the changes: the diff scrolls well into the file.
@@ -259,11 +263,11 @@ fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
     assert_eq!(top_line(&harness, Surface::Files), in_focus, "and the top line stays");
 
     // The toolbar's focus button and the strip's exit button.
-    harness.get_by_label(ENTER_HINT).click();
+    harness.click_at(harness.get_by_label(ENTER_HINT).rect());
     pump(&mut harness, 3);
     assert_eq!(chrome_visible(&harness), [false; 4], "the toolbar button enters focus mode");
     assert_eq!(top_line(&harness, Surface::Files), in_focus);
-    harness.get_by_label(EXIT_HINT).click();
+    harness.click_at(harness.get_by_label(EXIT_HINT).rect());
     pump(&mut harness, 3);
     assert_eq!(chrome_visible(&harness), [true; 4], "the strip's button leaves it");
 
@@ -288,7 +292,7 @@ fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
 #[expect(clippy::too_many_lines, reason = "one walkthrough scenario, told step by step")]
 fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
     let (_scratch, _host, mut harness) = app("focus-log");
-    harness.get_by_role_and_label(Role::Tab, "Pipelines").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Pipelines").rect());
     wait_until(&mut harness, "the job's row", |harness| {
         harness
             .query_by(|node| {
@@ -296,29 +300,33 @@ fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
             })
             .is_some()
     });
-    harness
-        .get_by(|node| {
-            node.role() == Role::Row && node.label().is_some_and(|label| label.starts_with(JOB))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Row && node.label().is_some_and(|label| label.starts_with(JOB))
+            })
+            .rect(),
+    );
     wait_until(&mut harness, "the log", |harness| has(harness, "Copy log"));
     // A search scrolls well into the log.
     let search = harness
         .query_all_by_role(Role::TextInput)
         .max_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
         .expect("the log's search box");
-    search.click();
+    harness.click_at(search.rect());
     harness.event(egui::Event::Text("step 1800:".to_owned()));
     harness.key_press(Key::Enter);
     wait_until(&mut harness, "the match", |harness| has(harness, "1 / 1"));
     pump(&mut harness, 5);
     // A rerun the host refuses: its failure shows above the log with its ways out.
-    harness
-        .get_by(|node| {
-            node.role() == Role::Button
-                && node.label().is_some_and(|label| label.starts_with("Re-run"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Button
+                    && node.label().is_some_and(|label| label.starts_with("Re-run"))
+            })
+            .rect(),
+    );
     wait_until(&mut harness, "the refused rerun", |harness| {
         harness.query_by_label_contains(RERUN_REFUSED).is_some()
     });
@@ -363,11 +371,11 @@ fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
     );
     assert!(dismiss.right() <= 1440.0 && failure.left() > 720.0, "at the right end: {failure:?}");
     assert_stable(&mut harness, &[EXIT_HINT, NEXT_MATCH, COPY_LOG, "Close", SWITCH_ATTEMPT]);
-    harness.get_by_role_and_label(Role::Button, "Dismiss").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Dismiss").rect());
     pump(&mut harness, 3);
     assert!(harness.query_by_label_contains(RERUN_REFUSED).is_none(), "Dismiss closes it");
     assert_eq!(top_line(&harness, Surface::Log), before, "the log did not move under it");
-    harness.get_by_role(Role::TextInput).click();
+    harness.click_at(harness.get_by_role(Role::TextInput).rect());
     pump(&mut harness, 2);
 
     // The first Esc only takes the keys from the search box; the next one leaves focus mode.
@@ -381,11 +389,11 @@ fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
     assert_eq!(top_line(&harness, Surface::Log), before, "and the top line stays");
 
     // The log toolbar's focus button.
-    harness.get_by_label(ENTER_HINT).click();
+    harness.click_at(harness.get_by_label(ENTER_HINT).rect());
     pump(&mut harness, 3);
     assert_eq!(chrome_visible(&harness), [false; 4]);
     assert_eq!(top_line(&harness, Surface::Log), before);
-    harness.get_by_label(EXIT_HINT).click();
+    harness.click_at(harness.get_by_label(EXIT_HINT).rect());
     pump(&mut harness, 3);
     assert_eq!(chrome_visible(&harness), [true; 4]);
 }
@@ -406,15 +414,18 @@ fn focus_mode_folds_the_original_versions_banner_into_its_strip() {
     let mut harness = action_e2e::app(&scratch, &[host.connection("gh", "Acme")]);
     harness.state_mut().title_bar.integrate_for_test();
     open_pull_request(&mut harness);
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     wait_until(&mut harness, "the file tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, FILE).is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, FILE).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, FILE).rect());
     open_origin(&mut harness, &banner);
 
     // F11: the banner's words, Back to latest and Open on GitHub move into the strip.
@@ -449,7 +460,7 @@ fn focus_mode_folds_the_original_versions_banner_into_its_strip() {
     // Back to latest in the strip does the same.
     open_origin(&mut harness, &banner);
     assert_eq!(chrome_visible(&harness), [false; 4]);
-    harness.get_by_role_and_label(Role::Button, BACK_LABEL).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, BACK_LABEL).rect());
     pump(&mut harness, 3);
     assert!(
         harness.query_by_label_contains(&banner).is_none(),
@@ -471,12 +482,12 @@ fn open_origin(harness: &mut Harness<'_, ReviewApp>, banner: &str) {
             || harness.query_by_label_contains(DETACHED).is_some()
     });
     if harness.query_by_label(SHOW_ORIGIN).is_none() {
-        harness.get_by_label_contains(DETACHED).click();
+        harness.click_at(harness.get_by_label_contains(DETACHED).rect());
         wait_until(harness, "the outdated card", |harness| {
             harness.query_by_label(SHOW_ORIGIN).is_some()
         });
     }
-    harness.get_by_label(SHOW_ORIGIN).click();
+    harness.click_at(harness.get_by_label(SHOW_ORIGIN).rect());
     wait_until(harness, "the original version", |harness| {
         harness.query_by_label_contains(banner).is_some()
     });

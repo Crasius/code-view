@@ -11,6 +11,7 @@ use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
 use super::action_e2e::wait_until;
+use super::clicks::Clicks;
 use super::mini_chat_walkthrough::{FIRST, answered, primary_click};
 use cv_pr_assistant::mini::SHRINK;
 
@@ -31,12 +32,12 @@ fn the_model_chip_sits_in_the_title_line_of_card_panel_and_mini_chat() {
     });
     assert!(is_in_line(chip(&harness), button(&harness, NEW)), "still in the title line");
 
-    harness.get_by_label_contains("Expand (").click();
+    harness.click_at(harness.get_by_label_contains("Expand (").rect());
     wait_until(&mut harness, "the chip in the panel's title line", |harness| {
         harness.query_by_label("Collapse (Esc)").is_some()
             && is_in_line(chip(harness), button(harness, NEW))
     });
-    harness.get_by_label("Collapse (Esc)").click();
+    harness.click_at(harness.get_by_label("Collapse (Esc)").rect());
     wait_until(&mut harness, "the card again", |harness| {
         harness.query_by_label_contains("Expand (").is_some()
     });
@@ -87,6 +88,6 @@ fn pick(harness: &mut Harness<'_, ReviewApp>, item: &str) {
     let at = chip(harness).center();
     primary_click(harness, at);
     wait_until(harness, "the chip's menu", |harness| harness.query_by_label(item).is_some());
-    harness.get_by_label(item).click();
+    harness.click_at(harness.get_by_label(item).rect());
     harness.run_steps(4);
 }

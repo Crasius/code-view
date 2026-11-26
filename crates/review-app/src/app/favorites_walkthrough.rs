@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use super::github_mock::GitHubHost;
 use cv_runtime::route::Route;
 use cv_settings::onboarding::CliTools;
@@ -209,7 +210,8 @@ fn favorites_card_emptied_by_a_filter_offers_to_clear_it() {
         "the user's reviews of the project: {listed:?}"
     );
     assert!(has(&harness, "No pull requests in this view."));
-    harness.query_all_by_label("Clear filters").next().expect("a way back").click();
+    harness
+        .click_at(harness.query_all_by_label("Clear filters").next().expect("a way back").rect());
     harness.run_steps(4);
     wait_until(&mut harness, "the rows again", |harness| {
         has(harness, "Favorites (1 repository), 2 pull requests, expanded")
@@ -357,7 +359,7 @@ fn lane_tool(harness: &Harness<'_, ReviewApp>) -> Option<Toggled> {
 
 /// Clicks the star tool; the header shows its new state from the frame after the click took effect.
 fn press_lane_tool(harness: &mut Harness<'_, ReviewApp>) {
-    harness.get_by_role_and_label(Role::Button, LANE_TOOL).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, LANE_TOOL).rect());
     pump(harness, 1.0);
 }
 
@@ -567,24 +569,15 @@ fn start_app(paths: &AppPaths) -> Harness<'static, ReviewApp> {
 fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
     harness.get_by_label(label).hover();
     harness.step();
-    harness.get_by_label(label).click();
+    harness.click_at(harness.get_by_label(label).rect());
     harness.run_steps(4);
 }
 
 /// A right click on the labelled widget, the pointer resting there first.
 fn secondary_click(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    let position = harness.get_by_label(label).rect().center();
-    harness.hover_at(position);
+    harness.get_by_label(label).hover();
     harness.step();
-    for pressed in [true, false] {
-        harness.event(egui::Event::PointerButton {
-            pos: position,
-            button: egui::PointerButton::Secondary,
-            pressed,
-            modifiers: egui::Modifiers::NONE,
-        });
-        harness.step();
-    }
+    harness.secondary_click_at(harness.get_by_label(label).rect());
     harness.run_steps(2);
 }
 

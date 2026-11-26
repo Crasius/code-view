@@ -14,6 +14,7 @@ use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, press, type_into, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{
     FAILING_NUMBER, FORBIDDEN_NUMBER, GitHubHost, HIDDEN_NUMBER, NUMBER, READABLE_NUMBER,
     REPOSITORY, SLOW_NUMBER, TITLE,
@@ -69,7 +70,7 @@ fn clipboard_link_opens_once_with_back_and_not_again_after_a_restart() {
     );
 
     // Back returns where the user was, like after any navigation.
-    harness.get_by_role_and_label(Role::Button, "Back").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Back").rect());
     wait_until(&mut harness, "the start page", |harness| {
         harness.state().route == Route::MyPullRequests
     });
@@ -136,7 +137,7 @@ fn clipboard_link_the_token_cannot_read_stays_closed_with_ways_out() {
     assert_eq!(detail_reads(&host, HIDDEN_NUMBER), 1, "one check per copied link");
     assert_eq!(harness.query_all_by_label_contains(refusal).count(), 1, "one toast");
 
-    harness.get_by_role_and_label(Role::Button, "Open on GitHub").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Open on GitHub").rect());
     let opened = step_collecting_urls(&mut harness);
     assert_eq!(opened, [hidden], "the pull request's page on GitHub");
     assert_eq!(harness.state().route, Route::MyPullRequests);
@@ -155,7 +156,7 @@ fn clipboard_link_the_token_cannot_read_stays_closed_with_ways_out() {
     );
     let fixes = harness.query_all_by_role_and_label(Role::Button, "Fix token").count();
     assert_eq!(fixes, 1, "only the toast offers Fix token");
-    harness.get_by_role_and_label(Role::Button, "Fix token").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Fix token").rect());
     wait_until(&mut harness, "the token setup", |harness| harness.state().route == Route::Settings);
 }
 
@@ -220,7 +221,7 @@ fn clipboard_link_waits_while_a_reply_is_written() {
     });
     assert_eq!(harness.state().route, Route::PullRequest(key(NUMBER)), "the reply keeps its page");
 
-    harness.get_by_role_and_label(Role::Button, "Open").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Open").rect());
     wait_until(&mut harness, "pull request 8", |harness| {
         harness.state().route == Route::PullRequest(key(READABLE_NUMBER))
     });
@@ -251,7 +252,7 @@ fn clipboard_links_respect_the_setting_and_unknown_hosts() {
     wait_until(&mut harness, "the toast", |harness| {
         harness.query_by_role_and_label(Role::Button, "Turn off").is_some()
     });
-    harness.get_by_role_and_label(Role::Button, "Turn off").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Turn off").rect());
     wait_until(&mut harness, "the setting off", |harness| {
         !harness.state().services.settings.open_clipboard_links
     });
@@ -272,7 +273,7 @@ fn clipboard_links_respect_the_setting_and_unknown_hosts() {
     wait_until(&mut harness, "the offer", |harness| {
         harness.query_by_label_contains(offer).is_some()
     });
-    harness.get_by_role_and_label(Role::Button, "Add connection").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Add connection").rect());
     wait_until(&mut harness, "the setup", |harness| {
         harness.state().route == Route::Settings
             && harness.query_by_label_contains("Add a connection").is_some()

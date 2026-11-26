@@ -30,6 +30,7 @@ use review_store::{AppPaths, ConnectionStore};
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
+use super::clicks::Clicks;
 use super::{ReviewApp, clip_check};
 use cv_base::platform::FOCUS_MODE_KEY;
 use cv_pr_diff::find::bar::last_bar as last_find_bar;
@@ -157,12 +158,14 @@ impl Audit {
         self.check("01-list-mine");
         self.check_at("01-list-mine", &[NARROW]);
         let harness = &mut self.harness;
-        harness
-            .get_by(|node| {
-                node.role() == Role::ComboBox
-                    && node.label().is_some_and(|label| label.starts_with("Repository:"))
-            })
-            .click();
+        harness.click_at(
+            harness
+                .get_by(|node| {
+                    node.role() == Role::ComboBox
+                        && node.label().is_some_and(|label| label.starts_with("Repository:"))
+                })
+                .rect(),
+        );
         settle(harness);
         self.check("02-list-repository-picker");
         let harness = &mut self.harness;
@@ -202,7 +205,7 @@ impl Audit {
         settle(harness);
         self.check("05-overview-activity");
         let harness = &mut self.harness;
-        harness.get_by_label("Merge options").click();
+        harness.click_at(harness.get_by_label("Merge options").rect());
         settle(harness);
         self.check("06-merge-options");
         self.harness.key_press(egui::Key::Escape);
@@ -211,12 +214,7 @@ impl Audit {
 
     fn walk_files(&mut self) {
         let harness = &mut self.harness;
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .click();
+        harness.click_at(tab(harness, "Files"));
         wait_for(harness, "the file tree", |harness| {
             harness.query_by_label("File categories").is_some()
         });
@@ -231,13 +229,15 @@ impl Audit {
         wait_for(harness, "the handler's folder", |harness| {
             tree_node(harness, "Handlers").is_some()
         });
-        tree_node(harness, "Handlers").expect("the folder").click();
+        harness.click_at(tree_node(harness, "Handlers").expect("the folder").rect());
         pump(harness, 2.0);
         self.check("08-folder-summary-with-comments");
         let harness = &mut self.harness;
-        tree_node(harness, LONG_PATH.rsplit('/').next().unwrap_or(LONG_PATH))
-            .expect("the handler")
-            .click();
+        harness.click_at(
+            tree_node(harness, LONG_PATH.rsplit('/').next().unwrap_or(LONG_PATH))
+                .expect("the handler")
+                .rect(),
+        );
         wait_for(harness, "the long diff", |harness| {
             harness.query_by_label(&format!("Diff of {LONG_PATH}")).is_some()
         });
@@ -245,16 +245,16 @@ impl Audit {
         self.check("09-diff-side-by-side");
         self.find_in_diff();
         let harness = &mut self.harness;
-        harness.get_by_role_and_label(Role::RadioButton, "Inline").click();
+        harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "Inline").rect());
         settle(harness);
         self.check("10-diff-inline");
         // The same diff with the file tree at the right edge.
         let harness = &mut self.harness;
-        harness.get_by_label("Move the file tree to the right").click();
+        harness.click_at(harness.get_by_label("Move the file tree to the right").rect());
         settle(harness);
         self.check("10b-diff-inline-tree-right");
         let harness = &mut self.harness;
-        harness.get_by_label("Move the file tree to the left").click();
+        harness.click_at(harness.get_by_label("Move the file tree to the left").rect());
         settle(harness);
         let harness = &mut self.harness;
         open_origin(harness);
@@ -277,17 +277,12 @@ impl Audit {
             let harness = &mut self.harness;
             let file = name.rsplit('/').next().unwrap_or(name);
             wait_for(harness, file, |harness| tree_node(harness, file).is_some());
-            tree_node(harness, file).expect("the file").click();
+            harness.click_at(tree_node(harness, file).expect("the file").rect());
             pump(harness, 2.0);
             self.check(state);
         }
         let harness = &mut self.harness;
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Commits"))
-            })
-            .click();
+        harness.click_at(tab(harness, "Commits"));
         wait_for(harness, "the commits", |harness| has(harness, "Keep the composition keyed"));
         self.check("16-commits");
     }
@@ -312,14 +307,14 @@ impl Audit {
 
     fn walk_pipelines(&mut self) {
         let harness = &mut self.harness;
-        harness.get_by_role_and_label(Role::Tab, "Pipelines").click();
+        harness.click_at(harness.get_by_role_and_label(Role::Tab, "Pipelines").rect());
         wait_for(harness, "the checks table", |harness| {
             harness.query_by_label("Filter checks").is_some()
         });
         pump(harness, 1.0);
         self.check("17-checks");
         let harness = &mut self.harness;
-        harness.get_by_label(&format!("{RUN}, Failed")).click();
+        harness.click_at(harness.get_by_label(&format!("{RUN}, Failed")).rect());
         wait_for(harness, "the stage graph", |harness| has(harness, "Stage Build and unit test"));
         pump(harness, 1.0);
         self.check("18-stages-100");
@@ -337,9 +332,11 @@ impl Audit {
             self.check(state);
         }
         let harness = &mut self.harness;
-        harness.get_by_label_contains("Zoom 200 %").click();
+        harness.click_at(harness.get_by_label_contains("Zoom 200 %").rect());
         pump(harness, 1.0);
-        harness.get_by_label(&format!("{RETRIED_JOB}, 3 attempts. Switch attempt")).click();
+        harness.click_at(
+            harness.get_by_label(&format!("{RETRIED_JOB}, 3 attempts. Switch attempt")).rect(),
+        );
         wait_for(harness, "the attempts list", |harness| egui::Popup::is_any_open(&harness.ctx));
         settle(harness);
         self.check("21-attempts");
@@ -353,7 +350,7 @@ impl Audit {
         wait_for(harness, "the retried job", |harness| {
             harness.query_by_role_and_label(Role::Link, RETRIED_JOB).is_some()
         });
-        harness.get_by_role_and_label(Role::Link, RETRIED_JOB).click();
+        harness.click_at(harness.get_by_role_and_label(Role::Link, RETRIED_JOB).rect());
         wait_for(harness, "the log", |harness| harness.query_by_label("Copy log").is_some());
         pump(harness, 1.0);
         self.check("22-log");
@@ -364,7 +361,7 @@ impl Audit {
         let harness = &mut self.harness;
         harness.key_press(egui::Key::Escape);
         settle(harness);
-        harness.get_by_role_and_label(Role::TreeItem, WAITING_JOB).click();
+        harness.click_at(harness.get_by_role_and_label(Role::TreeItem, WAITING_JOB).rect());
         wait_for(harness, "the waiting job", |harness| has(harness, "Waiting for an agent"));
         self.check("24-job-state");
 
@@ -373,11 +370,11 @@ impl Audit {
         wait_for(harness, "the anonymous pull request", |harness| {
             harness.query_by_role_and_label(Role::Tab, "Pipelines").is_some()
         });
-        harness.get_by_role_and_label(Role::Tab, "Pipelines").click();
+        harness.click_at(harness.get_by_role_and_label(Role::Tab, "Pipelines").rect());
         wait_for(harness, "the checks table", |harness| {
             harness.query_by_label("Filter checks").is_some()
         });
-        harness.get_by_label(&format!("{RUN}, Failed")).click();
+        harness.click_at(harness.get_by_label(&format!("{RUN}, Failed")).rect());
         wait_for(harness, "the stage graph", |harness| has(harness, "Stage Build and unit test"));
         pump(harness, 1.0);
         self.check("25-stages-without-token");
@@ -394,12 +391,7 @@ impl Audit {
                 })
                 .is_some()
         });
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .click();
+        harness.click_at(tab(harness, "Files"));
         pump(harness, 2.0);
         self.check("26-files-preparing");
         let harness = &mut self.harness;
@@ -478,12 +470,12 @@ fn open_origin(harness: &mut Harness<'_, ReviewApp>) {
         harness.query_by_label(SHOW_ORIGIN).is_some() || has(harness, "not shown in this diff")
     });
     if harness.query_by_label(SHOW_ORIGIN).is_none() {
-        harness.get_by_label_contains("not shown in this diff").click();
+        harness.click_at(harness.get_by_label_contains("not shown in this diff").rect());
         wait_for(harness, "the outdated card", |harness| {
             harness.query_by_label(SHOW_ORIGIN).is_some()
         });
     }
-    harness.get_by_label(SHOW_ORIGIN).click();
+    harness.click_at(harness.get_by_label(SHOW_ORIGIN).rect());
     wait_for(harness, "the original version", |harness| has(harness, "Showing the version from"));
 }
 
@@ -1353,4 +1345,13 @@ impl Provider for ScriptedProvider {
     ) -> Result<()> {
         Ok(())
     }
+}
+
+/// The pull request tab whose label starts with `name` ("Files (12)").
+fn tab(harness: &Harness<'_, ReviewApp>, name: &str) -> egui::Rect {
+    harness
+        .get_by(|node| {
+            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with(name))
+        })
+        .rect()
 }

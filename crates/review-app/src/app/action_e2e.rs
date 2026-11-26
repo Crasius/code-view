@@ -13,6 +13,7 @@ use review_store::{AppPaths, ConnectionStore, DiffLayout, FilesStart};
 use serde_json::{Value, json};
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use super::github_mock::{
     self, FILE, GitHubHost, NUMBER, REPOSITORY, THREAD_ID, THREAD_TEXT, TITLE,
 };
@@ -47,7 +48,7 @@ fn action_line_comment_via_hover_button() {
         harness.step();
         y += 3.0;
     }
-    harness.get_by_label("Add comment").click();
+    harness.click_at(harness.get_by_label("Add comment").rect());
     wait_until(&mut harness, "the comment composer", |harness| {
         harness.query_by_label("Comment on line 1").is_some()
     });
@@ -85,11 +86,13 @@ fn action_line_comment_via_context_menu() {
     wait_until(&mut harness, "the context menu", |harness| {
         harness.query_all_by_label("Add comment").any(|node| is_in_menu(&node))
     });
-    harness
-        .query_all_by_label("Add comment")
-        .find(is_in_menu)
-        .expect("the menu's Add comment")
-        .click();
+    harness.click_at(
+        harness
+            .query_all_by_label("Add comment")
+            .find(is_in_menu)
+            .expect("the menu's Add comment")
+            .rect(),
+    );
     wait_until(&mut harness, "the comment composer", |harness| {
         harness.query_by_label("Comment on line 1").is_some()
     });
@@ -145,7 +148,9 @@ fn action_approve_from_the_header() {
     wait_until(&mut harness, "Approve", |harness| {
         harness.query_all_by_label("Approve").next().is_some()
     });
-    harness.query_all_by_label("Approve").next().expect("the header's Approve").click();
+    harness.click_at(
+        harness.query_all_by_label("Approve").next().expect("the header's Approve").rect(),
+    );
     harness.step();
 
     let request = wait_for_request(
@@ -169,7 +174,9 @@ fn action_an_approval_refreshes_the_list_ahead() {
     wait_until(&mut harness, "Approve", |harness| {
         harness.query_all_by_label("Approve").next().is_some()
     });
-    harness.query_all_by_label("Approve").next().expect("the header's Approve").click();
+    harness.click_at(
+        harness.query_all_by_label("Approve").next().expect("the header's Approve").rect(),
+    );
     harness.step();
 
     let reviews = format!("/api/v3/repos/{REPOSITORY}/pulls/{NUMBER}/reviews");
@@ -263,11 +270,14 @@ fn action_folder_summary_opens_the_file_view_and_the_trail_leads_back() {
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     let view = format!("View {FILE}");
     wait_until(&mut harness, "the summary card", |harness| {
         harness.query_by_label("1 changed file").is_some()
@@ -278,7 +288,7 @@ fn action_folder_summary_opens_the_file_view_and_the_trail_leads_back() {
         "no file opens by itself"
     );
 
-    harness.get_by_label(&view).click();
+    harness.click_at(harness.get_by_label(&view).rect());
     wait_until(&mut harness, "the file view", |harness| {
         harness.query_by_label(&format!("Diff of {FILE}")).is_some()
     });
@@ -288,7 +298,9 @@ fn action_folder_summary_opens_the_file_view_and_the_trail_leads_back() {
         "the trail names neither the folders nor the file"
     );
 
-    harness.get_by_role_and_label(Role::Link, &format!("Pull request #{NUMBER}")).click();
+    harness.click_at(
+        harness.get_by_role_and_label(Role::Link, &format!("Pull request #{NUMBER}")).rect(),
+    );
     wait_until(&mut harness, "the summary of all files", |harness| {
         harness.query_by_label("All files (current folder)").is_some()
     });
@@ -307,11 +319,14 @@ fn with_first_file(scratch: &ScratchDir) -> GitHubHost {
 }
 
 fn files_tab(harness: &mut Harness<'_, ReviewApp>) {
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
 }
 
 /// With "First file" chosen, the Files tab opens on the first file of the tree straight away: the
@@ -338,12 +353,14 @@ fn action_files_tab_opens_on_the_first_file_when_chosen() {
         "the trail ends at the pull request"
     );
 
-    harness.get_by_role_and_label(Role::Link, &format!("Pull request #{NUMBER}")).click();
+    harness.click_at(
+        harness.get_by_role_and_label(Role::Link, &format!("Pull request #{NUMBER}")).rect(),
+    );
     wait_until(&mut harness, "the folder view of all files", |harness| {
         harness.query_by_label("All files (current folder)").is_some()
             && harness.query_by_label("2 changed files").is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, "src").click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, "src").rect());
     wait_until(&mut harness, "the folder view of src", |harness| {
         harness.query_by_label("src (current folder)").is_some()
             && harness.query_by_label("1 changed file").is_some()
@@ -362,7 +379,7 @@ fn action_a_comment_link_wins_over_the_first_file() {
     wait_until(&mut harness, "the comment's link", |harness| {
         harness.query_all_by_label_contains(&link).next().is_some()
     });
-    harness.query_all_by_label_contains(&link).next().expect("the link").click();
+    harness.click_at(harness.query_all_by_label_contains(&link).next().expect("the link").rect());
     let diff = format!("Diff of {FILE}");
     wait_until(&mut harness, "the commented file", |harness| {
         assert!(
@@ -392,7 +409,7 @@ pub(super) fn app(scratch: &ScratchDir, connections: &[Connection]) -> Harness<'
 pub(super) fn open_pull_request(harness: &mut Harness<'_, ReviewApp>) {
     let row = format!("{NUMBER} {TITLE}");
     wait_until(harness, "the pull request row", |harness| harness.query_by_label(&row).is_some());
-    harness.get_by_label(&row).click();
+    harness.click_at(harness.get_by_label(&row).rect());
     wait_until(harness, "the pull request", |harness| {
         harness.query_by_role_and_label(Role::Tab, "Overview").is_some()
     });
@@ -401,15 +418,18 @@ pub(super) fn open_pull_request(harness: &mut Harness<'_, ReviewApp>) {
 /// Opens [`FILE`] in the Files tab once the mirror fetched it; returns the diff's area.
 pub(super) fn open_diff(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
     // "Files" gains its count once the file list is in.
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     wait_until(harness, "the file tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, FILE).is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, FILE).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, FILE).rect());
     let label = format!("Diff of {FILE}");
     // The existing thread's card sits under line 3 once the diff rows are built.
     wait_until(harness, "the diff", |harness| {
@@ -418,18 +438,12 @@ pub(super) fn open_diff(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
     harness.get_by_label(&label).rect()
 }
 
+/// A right click at `position`, the pointer resting there first: the menu is the hovered line's.
 fn secondary_click(harness: &mut Harness<'_, ReviewApp>, position: Pos2) {
     harness.hover_at(position);
     harness.step();
-    for pressed in [true, false] {
-        harness.event(egui::Event::PointerButton {
-            pos: position,
-            button: PointerButton::Secondary,
-            pressed,
-            modifiers: egui::Modifiers::NONE,
-        });
-        harness.step();
-    }
+    harness.click_point(position, PointerButton::Secondary);
+    harness.step();
 }
 
 /// Types into the text field whose hint starts with `placeholder` and returns once the field holds
@@ -453,46 +467,59 @@ pub(super) fn type_into(harness: &mut Harness<'_, ReviewApp>, placeholder: &str,
     });
 }
 
-/// Scrolls the labelled widget into view, then clicks it like a pointer would.
+/// Scrolls the labelled widget into view, then clicks it like a pointer would (see
+/// [`click_when_ready`]).
 pub(super) fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    wait_until(harness, label, |harness| harness.query_by_label(label).is_some());
-    harness.get_by_label(label).scroll_to_me();
-    settle(harness);
-    harness.get_by_label(label).click();
-    harness.step();
+    click_when_ready(harness, label, None);
 }
 
-/// Clicks the button labelled `label` once it can take the click (see [`click_when_ready`]); for
-/// a submit button that is enabled only with text, and where another widget carries the same
-/// label (a composer's text area is named after its submit button).
+/// [`press`] for the button labelled `label`: for a submit button that is enabled only with text,
+/// and where another widget carries the same label (a composer's text area is named after its
+/// submit button).
 pub(super) fn press_button(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    click_when_ready(harness, label);
+    click_when_ready(harness, label, Some(Role::Button));
 }
 
-/// Scrolls the button labelled `label` into view, waits until it is enabled, lies inside the
-/// window and stayed in place for a frame, then clicks its centre. A fixed number of frames after
-/// the scroll proves none of that: the click would land on a disabled button, or past the window's
-/// edge where nothing takes it, and the test would wait for a request that never comes.
-fn click_when_ready(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    let role = Role::Button;
-    wait_until(harness, label, |harness| harness.query_by_role_and_label(role, label).is_some());
-    harness.get_by_role_and_label(role, label).scroll_to_me();
+/// The widget labelled `label`, of `role` where one is given.
+fn labelled<'h>(
+    harness: &'h Harness<'_, ReviewApp>,
+    label: &'h str,
+    role: Option<Role>,
+) -> Option<egui_kittest::Node<'h>> {
+    match role {
+        Some(role) => harness.query_by_role_and_label(role, label),
+        None => harness.query_by_label(label),
+    }
+}
+
+/// Scrolls the widget labelled `label` into view, waits until it is enabled with its centre inside
+/// the window (scrolling again where late content pushed it out), then clicks it at its place in
+/// that frame ([`Clicks::click_at`]). A fixed number of frames after the scroll proves none of
+/// that: the click would land on a disabled button, or past the window's edge where nothing takes
+/// it, and the test would wait for a request that never comes.
+fn click_when_ready(harness: &mut Harness<'_, ReviewApp>, label: &str, role: Option<Role>) {
+    wait_until(harness, label, |harness| labelled(harness, label, role).is_some());
+    labelled(harness, label, role).expect("just found").scroll_to_me();
     settle(harness);
     let window = harness.ctx.content_rect();
-    let mut last = None;
-    wait_for(
+    let rect = wait_for(
         harness,
         &format!("{label} to take a click"),
         |harness| {
-            let node = harness.query_by_role_and_label(role, label)?;
+            let node = labelled(harness, label, role)?;
             let rect = node.rect();
-            let is_still = last.replace(rect) == Some(rect);
             let is_enabled = !node.accesskit_node().is_disabled();
-            (is_still && is_enabled && window.contains_rect(rect)).then_some(())
+            (is_enabled && window.contains(rect.center())).then_some(rect)
         },
-        |_| {},
+        |harness| {
+            if let Some(node) = labelled(harness, label, role)
+                && !window.contains(node.rect().center())
+            {
+                node.scroll_to_me();
+            }
+        },
     );
-    harness.get_by_role_and_label(role, label).click();
+    harness.click_at(rect);
     harness.step();
 }
 

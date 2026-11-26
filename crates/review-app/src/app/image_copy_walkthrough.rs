@@ -11,6 +11,7 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::action_e2e::{app, open_pull_request, press, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, TOKEN};
 use cv_media::image_clipboard::COPIED;
 use cv_testkit::ScratchDir;
@@ -53,7 +54,8 @@ fn image_copy_puts_the_pixels_on_the_clipboard_from_the_menu_and_the_lightbox() 
         harness.query_by_role_and_label(Role::Image, "Image Screenshot").is_some()
     });
 
-    harness.get_by_role_and_label(Role::Image, "Image Screenshot").click_secondary();
+    harness
+        .secondary_click_at(harness.get_by_role_and_label(Role::Image, "Image Screenshot").rect());
     press(&mut harness, "Copy image");
     wait_until(&mut harness, "the confirmation", |harness| {
         harness.query_by_label_contains(COPIED).is_some()
@@ -63,7 +65,8 @@ fn image_copy_puts_the_pixels_on_the_clipboard_from_the_menu_and_the_lightbox() 
     assert_eq!((copied[0].width, copied[0].height), (40, 20));
     assert_eq!(copied[0].rgba, pixels, "every pixel, in place");
 
-    harness.get_by_role_and_label(Role::Image, "Image Screenshot").click_secondary();
+    harness
+        .secondary_click_at(harness.get_by_role_and_label(Role::Image, "Image Screenshot").rect());
     press(&mut harness, "View image");
     wait_until(&mut harness, "the lightbox", |harness| {
         harness.query_by_label("Close (Esc)").is_some()

@@ -21,6 +21,7 @@ use review_store::DiffLayout;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_base::theme::{self, icons};
 use cv_code::find_paint::{HitSide, last_current as last_current_find};
@@ -75,11 +76,14 @@ fn the_find_widget_searches_the_focused_pane() {
     let host = GitHubHost::with_pull_request_files(scratch.path(), &[code_file(), doc_file()]);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     harness.state_mut().services.settings.diff_layout = DiffLayout::SideBySide;
     open_in_tree(&mut harness, CODE);
     let label = format!("Diff of {CODE}");
@@ -162,7 +166,7 @@ fn switch_options(harness: &mut Harness<'_, ReviewApp>, right: Pos2) {
     open_find(harness, right);
     harness.event(egui::Event::Text("NEEDLE".to_owned()));
     wait_for_count(harness, three);
-    harness.get_by_role_and_label(Role::Button, "Match case").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Match case").rect());
     wait_for_count(harness, |count| count == "No results");
     assert!(last_current_find(&harness.ctx).is_empty(), "no hit is painted");
     open_find(harness, right);
@@ -247,7 +251,7 @@ fn open_in_tree(harness: &mut Harness<'_, ReviewApp>, path: &str) {
     wait_until(harness, "the file's row in the tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, path).is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, path).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
     harness.step();
 }
 
@@ -258,16 +262,7 @@ fn at_share(rect: Rect, share: f32) -> Pos2 {
 
 /// A primary click at `at`.
 fn click(harness: &mut Harness<'_, ReviewApp>, at: Pos2) {
-    harness.hover_at(at);
-    harness.step();
-    harness.drag_at(at);
-    harness.step();
-    harness.event(egui::Event::PointerButton {
-        pos: at,
-        button: egui::PointerButton::Primary,
-        pressed: false,
-        modifiers: Modifiers::NONE,
-    });
+    harness.click_point(at, egui::PointerButton::Primary);
     harness.run_steps(2);
 }
 
@@ -363,11 +358,14 @@ fn a_newly_opened_file_starts_at_its_top() {
     let host = GitHubHost::with_pull_request_files(scratch.path(), &files);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     harness.state_mut().services.settings.diff_layout = DiffLayout::SideBySide;
 
     for (from, to) in [("src/a.rs", "src/b.rs"), ("src/b.rs", "src/c.rs")] {

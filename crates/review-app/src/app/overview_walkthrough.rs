@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use cv_lists::pull_request_list::{GROUP_BY_REPOSITORY, LIST_INTERVAL, SEARCH_TOOLTIP};
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
@@ -69,7 +70,7 @@ fn overview_revisit_shows_known_rows_at_once_then_updates() {
     assert_eq!(host.count(LISTING), 2, "an idle list sends nothing within its interval");
     pump(&mut harness, 10.0);
     wait_until(&mut harness, "the list's own refresh", |_| host.count(LISTING) >= 3);
-    harness.get_by_label("Refresh (F5)").click();
+    harness.click_at(harness.get_by_label("Refresh (F5)").rect());
     // The request leaves on a background thread; under a loaded test run it can trail the frames.
     wait_until(&mut harness, "the refresh request", |_| host.count(LISTING) >= 4);
     pump(&mut harness, 2.0);
@@ -122,7 +123,7 @@ fn overview_collapsed_group_is_remembered_and_loads_nothing_until_expanded() {
     let mut harness = start_app(&paths);
     wait_until(&mut harness, "the rows", |harness| has(harness, "Change 2"));
 
-    harness.get_by_label("Mock GitLab, 2 pull requests, expanded").click();
+    harness.click_at(harness.get_by_label("Mock GitLab, 2 pull requests, expanded").rect());
     pump(&mut harness, 1.0);
     assert!(
         has(&harness, "Mock GitLab, 2 pull requests, collapsed"),
@@ -142,7 +143,7 @@ fn overview_collapsed_group_is_remembered_and_loads_nothing_until_expanded() {
         "closed after the restart, counted from the saved answer"
     );
     assert_eq!(host.count(LISTING), listings, "a collapsed group loads nothing");
-    harness.get_by_label("Refresh (F5)").click();
+    harness.click_at(harness.get_by_label("Refresh (F5)").rect());
     pump(&mut harness, 2.0);
     assert_eq!(host.count(LISTING), listings, "Refresh skips collapsed groups too");
 
@@ -285,7 +286,8 @@ fn overview_files_button_opens_the_files_tab_and_not_the_row() {
     };
 
     // The button sits on top of the row: its click opens Files, the row's own click never fires.
-    harness.get_by_role_and_label(Role::Button, "Open Files (changes) of !1").click();
+    harness
+        .click_at(harness.get_by_role_and_label(Role::Button, "Open Files (changes) of !1").rect());
     harness.step();
     assert_eq!(harness.state().route, Route::PullRequest(key(1)));
     assert_eq!(
@@ -302,7 +304,7 @@ fn overview_files_button_opens_the_files_tab_and_not_the_row() {
     harness.state_mut().navigator.back();
     pump(&mut harness, 0.5);
     assert_eq!(harness.state().route, Route::MyPullRequests);
-    harness.get_by_role_and_label(Role::Link, "2 Change 2").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, "2 Change 2").rect());
     wait_until(&mut harness, "the second pull request", |harness| {
         harness.query_by_role_and_label(Role::Tab, "Overview").is_some()
     });
@@ -423,7 +425,7 @@ fn overview_header_is_one_row_at_wide_and_narrow_widths() {
     let card = || "Mock GitLab, 4 pull requests, expanded";
     let before = harness.get_by_label(card()).rect();
     host.publish(4, Duration::from_millis(1500));
-    harness.get_by_label("Refresh (F5)").click();
+    harness.click_at(harness.get_by_label("Refresh (F5)").rect());
     harness.run_steps(3);
     assert!(has(&harness, "Updating…"));
     assert_eq!(
@@ -504,7 +506,7 @@ fn open_side_column(harness: &mut Harness<'_, ReviewApp>, connection_id: &str) {
 fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
     harness.get_by_label(label).hover();
     harness.step();
-    harness.get_by_label(label).click();
+    harness.click_at(harness.get_by_label(label).rect());
     // The accessibility tree trails the click by a frame; settle before looking again.
     harness.run_steps(4);
 }

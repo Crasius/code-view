@@ -17,6 +17,7 @@ use super::action_e2e::{app, wait_until};
 use super::checkout_walkthrough::{
     Setup, click_last, open_form, shows, start, tap, wait_ready, worktree_of,
 };
+use super::clicks::Clicks;
 use cv_runtime::route::Route;
 
 const REMOVE_LINK: &str = "Remove worktree…";
@@ -123,7 +124,9 @@ fn checkout_finish_setting_is_a_select_with_its_help_and_saves() {
         start("finish-select");
     harness.state_mut().navigator.go(Route::Settings);
     wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
-    harness.query_all_by_label("Local checkouts").next().expect("the section").click();
+    harness.click_at(
+        harness.query_all_by_label("Local checkouts").next().expect("the section").rect(),
+    );
     let label = "When a pull request is merged or closed elsewhere";
     wait_until(&mut harness, "the row", |harness| shows(harness, label));
     assert!(shows(
@@ -137,7 +140,7 @@ fn checkout_finish_setting_is_a_select_with_its_help_and_saves() {
             .find(|node| node.value().is_some_and(|value| value == "Remove worktree automatically"))
     };
     let select = select().expect("the select shows the default");
-    select.click();
+    harness.click_at(select.rect());
     harness.run_steps(3);
     assert!(shows(&harness, "Ask me first"), "the select offers its three choices");
     click_last(&mut harness, "Keep worktree");

@@ -25,6 +25,7 @@ use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::clicks::Clicks;
 use cv_base::platform;
 use cv_runtime::route::{PullRequestKey, PullRequestTab, Route};
 use cv_testkit::{ScratchDir, git};
@@ -98,7 +99,7 @@ fn navigation_breadcrumbs_back_and_linked_items() {
     }
 
     // A plain click on a pull request row opens it in the app.
-    harness.get_by_label("#59 Speed up login (Merged)").click();
+    harness.click_at(harness.get_by_label("#59 Speed up login (Merged)").rect());
     wait_for(&mut harness, "pull request 59", |harness| {
         harness.query_by_label("Pull request #59 (current page)").is_some()
     });
@@ -120,7 +121,7 @@ fn navigation_breadcrumbs_back_and_linked_items() {
     );
 
     // Every crumb leads to its level.
-    harness.get_by_role_and_label(Role::Link, REPOSITORY).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, REPOSITORY).rect());
     settle(&mut harness);
     assert_eq!(
         harness.state().route,
@@ -129,13 +130,13 @@ fn navigation_breadcrumbs_back_and_linked_items() {
             repository_key: REPOSITORY.to_owned()
         }
     );
-    harness.get_by_role_and_label(Role::Link, CONNECTION_NAME).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, CONNECTION_NAME).rect());
     settle(&mut harness);
     assert_eq!(
         harness.state().route,
         Route::Connection { connection_id: CONNECTION_ID.to_owned() }
     );
-    harness.get_by_role_and_label(Role::Link, review_core::APP_NAME).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Link, review_core::APP_NAME).rect());
     settle(&mut harness);
     assert_eq!(harness.state().route, Route::MyPullRequests);
     assert!(
@@ -187,7 +188,7 @@ fn back_and_forward_through_tabs(harness: &mut Harness<'_, ReviewApp>) {
     assert!(forward.accesskit_node().is_disabled(), "forward was cleared");
 
     // The bar's back arrow leads where its tooltip says.
-    harness.get_by_label_contains("Back to Pull request #7, Files tab (").click();
+    harness.click_at(harness.get_by_label_contains("Back to Pull request #7, Files tab (").rect());
     settle(harness);
     assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Files)));
 
@@ -248,7 +249,7 @@ fn tab_node<'a>(harness: &'a Harness<'_, ReviewApp>, name: &str) -> Option<egui_
 }
 
 fn click_tab(harness: &mut Harness<'_, ReviewApp>, name: &str) {
-    tab_node(harness, name).unwrap_or_else(|| panic!("the {name} tab")).click();
+    harness.click_at(tab_node(harness, name).unwrap_or_else(|| panic!("the {name} tab")).rect());
     settle(harness);
 }
 

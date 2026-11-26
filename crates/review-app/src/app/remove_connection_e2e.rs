@@ -9,6 +9,7 @@ use egui_kittest::kittest::Queryable;
 use review_store::stable_hash;
 
 use super::action_e2e::{app, open_pull_request, press, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::GitHubHost;
 use cv_runtime::route::Route;
 use cv_testkit::ScratchDir;
@@ -34,7 +35,7 @@ fn removing_a_connection_closes_its_pages_before_its_data_goes() {
     wait_until(&mut harness, "the connection's row", |harness| {
         harness.query_by_role_and_label(Role::Button, "Acme").is_some()
     });
-    harness.get_by_role_and_label(Role::Button, "Acme").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Acme").rect());
     press(&mut harness, "Remove…");
     press(&mut harness, "Remove connection");
     assert!(

@@ -15,6 +15,7 @@ use review_store::{AppPaths, ConnectionStore, DiffLayout, TreeSide};
 
 use super::ReviewApp;
 use super::action_e2e::app;
+use super::clicks::Clicks;
 use super::github_mock::GitHubHost;
 use super::provider_icons_walkthrough::scripted_provider;
 use super::tree_side_walkthrough as tree_side;
@@ -79,7 +80,7 @@ fn settings_walkthrough_sections_search_previews_and_connections() {
     harness.event(egui::Event::Text("zzz".to_owned()));
     settle(&mut harness);
     assert!(has(&harness, "No setting matches “zzz”"));
-    harness.get_by_role_and_label(Role::Button, "Clear search").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Clear search").rect());
     settle(&mut harness);
     assert!(!has(&harness, "No setting matches “zzz”"));
     assert_only(&harness, "Keyboard and mouse");
@@ -87,7 +88,7 @@ fn settings_walkthrough_sections_search_previews_and_connections() {
     // The Appearance sample follows the diff layout.
     open(&mut harness, "Appearance");
     assert!(harness.query_by_role_and_label(Role::Label, "Side by side").is_some());
-    harness.get_by_role_and_label(Role::RadioButton, "Inline").click();
+    harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "Inline").rect());
     settle(&mut harness);
     assert!(
         harness.query_by_role_and_label(Role::Label, "Inline").is_some(),
@@ -98,7 +99,7 @@ fn settings_walkthrough_sections_search_previews_and_connections() {
     // A connection's row opens its facts with Check again, Edit and Remove.
     open(&mut harness, "Connections");
     assert!(!has(&harness, "Check again"));
-    harness.get_by_role_and_label(Role::Button, "Contoso GitHub").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Contoso GitHub").rect());
     settle(&mut harness);
     assert!(has(&harness, "Check again") && has(&harness, "Edit") && has(&harness, "Remove…"));
     assert!(has(&harness, "github.com"), "the host among the facts");
@@ -126,7 +127,7 @@ fn settings_walkthrough_sections_fit_a_narrow_window() {
         );
     }
     open(&mut harness, "Connections");
-    harness.get_by_role_and_label(Role::Button, "Contoso GitHub").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Contoso GitHub").rect());
     settle(&mut harness);
     findings.extend(super::clip_check::inspect(&mut harness));
     assert!(findings.is_empty(), "layout problems:\n{}", findings.join("\n"));
@@ -183,7 +184,7 @@ fn settings_walkthrough_file_tree_side_moves_the_tree() {
     open(&mut harness, "Appearance");
     harness.get_by_label("File tree side").scroll_to_me();
     settle(&mut harness);
-    harness.get_by_role_and_label(Role::RadioButton, "Right").click();
+    harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "Right").rect());
     settle(&mut harness);
     assert_eq!(tree_side::saved(&scratch).file_tree_side, TreeSide::Right, "Right is saved");
 
@@ -241,7 +242,7 @@ fn assert_only(harness: &Harness<'_, ReviewApp>, shown: &str) {
 }
 
 fn open(harness: &mut Harness<'_, ReviewApp>, title: &str) {
-    harness.get_by_role_and_label(Role::Tab, title).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, title).rect());
     settle(harness);
 }
 

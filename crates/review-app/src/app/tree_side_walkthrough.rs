@@ -11,6 +11,7 @@ use review_store::{AppPaths, AppSettings, TreeSide};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_base::platform::FOCUS_MODE_KEY;
 use cv_shell::focus_mode::{self, Surface};
@@ -90,15 +91,18 @@ fn assert_marks_line_up(harness: &Harness<'_, ReviewApp>) {
 /// Opens the pull request from the list and [`LONG_FILE`] in its Files tab.
 pub(super) fn open_long_file(harness: &mut Harness<'_, ReviewApp>) {
     open_pull_request(harness);
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     wait_until(harness, "the file tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, LONG_FILE).is_some()
     });
-    harness.get_by_role_and_label(Role::TreeItem, LONG_FILE).click();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, LONG_FILE).rect());
     wait_until(harness, "the long diff", |harness| {
         harness.query_by_label(&format!("Diff of {LONG_FILE}")).is_some()
     });
@@ -143,7 +147,7 @@ fn the_file_tree_moves_sides_and_keeps_the_open_file() {
     assert!(search.left() > diff_rect(&harness).right(), "the whole pane moved: {search:?}");
 
     // And back.
-    harness.get_by_label(TO_LEFT).click();
+    harness.click_at(harness.get_by_label(TO_LEFT).rect());
     harness.step();
     assert_tree_at(&harness, TreeSide::Left);
     assert_eq!(saved(&scratch).file_tree_side, TreeSide::Left);
@@ -159,9 +163,9 @@ fn the_file_tree_moves_sides_and_keeps_the_open_file() {
     assert_tree_at(&harness, TreeSide::Left);
     let switch = harness.get_by_label_contains("Hide the file tree").rect();
     assert!(switch.right() < 360.0, "the switch sits at the strip's left end: {switch:?}");
-    harness.get_by_label_contains("Hide the file tree").click_secondary();
+    harness.secondary_click_at(harness.get_by_label_contains("Hide the file tree").rect());
     pump(&mut harness, 2);
-    harness.get_by_role_and_label(Role::MenuItem, TO_RIGHT).click();
+    harness.click_at(harness.get_by_role_and_label(Role::MenuItem, TO_RIGHT).rect());
     pump(&mut harness, 3);
     assert_tree_at(&harness, TreeSide::Right);
     assert_eq!(saved(&scratch).file_tree_side, TreeSide::Right);
@@ -172,9 +176,9 @@ fn the_file_tree_moves_sides_and_keeps_the_open_file() {
     harness.key_press_modifiers(Modifiers::COMMAND, Key::B);
     pump(&mut harness, 3);
     assert!(harness.query_by_role_and_label(Role::TreeItem, LONG_FILE).is_none());
-    harness.get_by_label_contains("Show the file tree").click_secondary();
+    harness.secondary_click_at(harness.get_by_label_contains("Show the file tree").rect());
     pump(&mut harness, 2);
-    harness.get_by_role_and_label(Role::MenuItem, TO_LEFT).click();
+    harness.click_at(harness.get_by_role_and_label(Role::MenuItem, TO_LEFT).rect());
     pump(&mut harness, 3);
     assert_eq!(side(&harness), TreeSide::Left);
     assert_eq!(saved(&scratch).file_tree_side, TreeSide::Left);

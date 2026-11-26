@@ -18,6 +18,7 @@ use serde_json::Value;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, type_into, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{FILE, GitHubHost};
 use cv_services::agents::FakeCli;
 use cv_testkit::{self as test_support, ScratchDir};
@@ -84,7 +85,7 @@ fn activity_shows_the_running_steps_then_folds_into_the_summary() {
             && step(harness, &read).is_none()
     });
 
-    harness.get_by(|node| is_line(node, "Thought")).click();
+    harness.click_at(harness.get_by(|node| is_line(node, "Thought")).rect());
     let ran = format!("Ran {COMMAND}");
     wait_until(&mut harness, "the opened steps", |harness| {
         line(harness, "Thought").is_some_and(|(_, open)| open == Some(true))
@@ -134,7 +135,7 @@ fn activity_of_an_older_chat_shows_its_summary() {
     wait_until(&mut harness, "the kept summary", |harness| {
         label_of(harness, "Read").as_deref() == Some("Read 1 file")
     });
-    harness.get_by(|node| is_line(node, "Read 1 file")).click();
+    harness.click_at(harness.get_by(|node| is_line(node, "Read 1 file")).rect());
     let read = format!("Read {FILE}");
     wait_until(&mut harness, "the kept step", |harness| {
         step(harness, &read).as_deref() == Some("done")

@@ -24,6 +24,7 @@ use super::ReviewApp;
 use super::action_e2e::{
     app, open_diff, open_pull_request, press, type_into, wait_for, wait_until,
 };
+use super::clicks::Clicks;
 use super::github_mock::{FILE, GitHubHost, TITLE};
 use cv_pr_assistant::CARD_LABEL;
 use cv_pr_assistant::mini::{self, ANSWERING, FOLLOW_UP};
@@ -221,7 +222,9 @@ fn assistant_default_model_from_settings_starts_the_next_conversation() {
     wait_until(&mut harness, "the models of Claude Code", |harness| {
         harness.query_by_label_contains("Installed, 9.9.9").is_some()
     });
-    harness.query_all_by_role(Role::ComboBox).next().expect("the Claude Code model").click();
+    let target =
+        harness.query_all_by_role(Role::ComboBox).next().expect("the Claude Code model").rect();
+    harness.click_at(target);
     harness.step();
     press(&mut harness, "Sonnet");
     let expected = ModelChoice::Named("claude-sonnet".to_owned());
@@ -292,7 +295,7 @@ const TERMINAL: &str = "Continue in terminal";
 
 /// Clicks the terminal button (its tooltip shares the label).
 fn press_terminal(harness: &mut Harness<'_, ReviewApp>) {
-    harness.get_by_role_and_label(Role::Button, TERMINAL).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, TERMINAL).rect());
     harness.step();
 }
 
@@ -597,17 +600,8 @@ fn wait_for_prompts(
 }
 
 fn primary_click(harness: &mut Harness<'_, ReviewApp>, position: Pos2) {
-    harness.hover_at(position);
+    harness.click_point(position, PointerButton::Primary);
     harness.step();
-    for pressed in [true, false] {
-        harness.event(egui::Event::PointerButton {
-            pos: position,
-            button: PointerButton::Primary,
-            pressed,
-            modifiers: Modifiers::NONE,
-        });
-        harness.step();
-    }
 }
 
 /// Over the un-armed card the wheel scrolls the page and leaves the conversation where it is; a
@@ -706,7 +700,7 @@ fn switch_assistant(harness: &mut Harness<'_, ReviewApp>) {
     wait_until(harness, SWITCH, |harness| {
         harness.query_by_role_and_label(Role::CheckBox, SWITCH).is_some()
     });
-    harness.get_by_role_and_label(Role::CheckBox, SWITCH).click();
+    harness.click_at(harness.get_by_role_and_label(Role::CheckBox, SWITCH).rect());
     harness.run_steps(4);
 }
 
@@ -799,13 +793,13 @@ fn assistant_new_conversation_takes_one_click_and_can_be_undone() {
         harness.query_all_by_label(QUESTION).next().is_none()
             && harness.query_by_label(UNDO_NOTE).is_some()
     });
-    harness.get_by_role_and_label(Role::Button, "Undo").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Undo").rect());
     wait_until(&mut harness, "the conversation again", |harness| {
         harness.query_all_by_label(QUESTION).next().is_some()
             && harness.query_by_label(UNDO_NOTE).is_none()
     });
 
-    harness.get_by_label_contains("Claude · ").click();
+    harness.click_at(harness.get_by_label_contains("Claude · ").rect());
     wait_until(&mut harness, "the chip's menu", |harness| {
         harness.query_by_label("New conversation").is_none()
             && harness.query_by_label("Model, from the next question").is_some()
@@ -820,7 +814,7 @@ fn assistant_new_conversation_takes_one_click_and_can_be_undone() {
         harness.query_all_by_label(QUESTION).next().is_none()
             && harness.query_by_label(UNDO_NOTE).is_some()
     });
-    harness.get_by_role_and_label(Role::Button, "Undo").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Undo").rect());
     wait_until(&mut harness, "the conversation in the panel", |harness| {
         harness.query_all_by_label(QUESTION).next().is_some()
     });
@@ -1114,7 +1108,7 @@ fn press_new_conversation(harness: &mut Harness<'_, ReviewApp>) {
     };
     wait_until(harness, "New conversation", |harness| find(harness).is_some());
     let label = find(harness).expect("the button");
-    harness.get_by_role_and_label(Role::Button, &label).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, &label).rect());
     harness.step();
 }
 

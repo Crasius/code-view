@@ -239,13 +239,21 @@ impl PullRequestListPage {
         found
     }
 
-    /// The page is shown again: its rows stay, a background refresh brings newer ones for the cards
-    /// on screen. An answer that arrived while the page was hidden ([`Self::warm`]) lands first, so
-    /// it is not asked again.
-    pub fn revisit(&mut self, services: &mut Services) {
+    /// Each frame the page is hidden: the cards' answers land as they arrive (a Refresh just
+    /// before the user left, a [`Self::warm`]). A finished load wakes the UI with one frame, so
+    /// that frame's time is the answer's arrival, which the page cache counts its freshness from.
+    /// Taken in only at the revisit, an answer that came 25 s before would count as new, and the
+    /// revisit would not ask again.
+    pub fn land(&mut self, services: &mut Services) {
         writes::land(services);
         self.queries.poll(services);
         self.favorites.poll(services);
+    }
+
+    /// The page is shown again: its rows stay, a background refresh brings newer ones for the cards
+    /// on screen whose answer is older than the page cache's freshness window.
+    pub fn revisit(&mut self, services: &mut Services) {
+        self.land(services);
         self.queries.revalidate(services, false);
         self.favorites.revalidate(services, false);
         self.load_owed(services, false);

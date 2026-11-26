@@ -13,6 +13,7 @@ use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
+use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_testkit::ScratchDir;
 use cv_widgets::{focus, row};
@@ -55,11 +56,14 @@ fn change_breakdown_shows_on_the_tree_and_summary_totals() {
     let host = GitHubHost::with_pull_request_files(scratch.path(), &files());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
-        })
-        .click();
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
     wait_until(&mut harness, "the counted totals", |harness| {
         harness.query_by_label(TREE_TOTALS).is_some()
             && harness.query_by_label(SUMMARY_TOTALS).is_some()
