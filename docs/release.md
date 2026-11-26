@@ -76,7 +76,7 @@ The jobs run on the GitLab instance's shared runner, as pods of the Kubernetes e
 
 ## Build cache
 
-`lint` and `test` share no compiled unit (clippy writes check metadata, the tests need code), so each job kind has a cache of its own `target`, keyed by `Cargo.lock` and `rust-toolchain.toml`; the downloads are a third cache both share. Every pipeline that runs the job reads and writes it.
+`lint` and `test` share no compiled unit (clippy writes check metadata, the tests need code), so each job kind has a cache of its own `target`, keyed by `Cargo.lock` and `rust-toolchain.toml`; the downloads are a third cache both share. Every pipeline that runs the job reads it; it writes it back only when the build took longer than the upload would (`ci/lint.sh`, `ci/test.sh`): uploading `test`'s two archives takes about 2 minutes, and a job that rebuilt one crate in 8 s would only make the next job's rebuild 8 s shorter. So the cache drifts behind `main` until a build costs more than an upload, and then catches up.
 
 - A fresh clone dates every file to the clone's time, so cargo would take every workspace crate for changed. `ci/target-stamp.sh` fixes that by content: `save` records the tree the cache was built from (`git ls-files -s`), `restore` dates every tracked file and folder back to 2001 and touches only the paths whose blob differs. cargo then rebuilds the crates whose inputs changed and what depends on them, whichever branch or commit wrote the cache.
 - Registry crates are fresh by version, not by time; a lockfile or toolchain change starts a new key, and that job kind builds cold once.

@@ -22,9 +22,11 @@ fi
 # The build first: once it passed, `target` matches this tree, whatever the tests say, and the cache
 # (saved also when a test fails, ci/checks.yml) stays warm for the next run. Its messages name the
 # test executable of review-app's binary: the artifact whose profile has "test":true.
+# Uploading its two archives took 120 to 137 s [observed 2026-11-26, pipelines 4905, 4906].
 built="$(mktemp)"
+start="$(date +%s)"
 cargo test --locked --workspace --no-run --message-format=json-render-diagnostics > "$built"
-sh ci/target-stamp.sh save
+sh ci/target-stamp.sh save "$(($(date +%s) - start))" 130
 app_exe="$(grep '"name":"CodeView"' "$built" | grep '"overflow_checks":[a-z]*,"test":true}' |
     sed -n 's/.*"executable":"\([^"]*\)".*/\1/p' | head -n 1)"
 rm -f "$built"

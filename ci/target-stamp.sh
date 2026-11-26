@@ -11,7 +11,9 @@
 #            a cache saved from it makes the next job date nothing back.
 # Content, not commit dates, decides: a cache from another branch or an older commit is as safe as
 # one from the parent commit. Files outside git (registry sources, OUT_DIR) are cargo's to judge.
-# Usage: target-stamp.sh save|restore   (in the repository root)
+#   save <build seconds> <upload seconds>  as save, and marks the cache to stay as it is when the
+#            build was the cheaper of the two; drop-if-cheap then removes the marked folders.
+# Usage: target-stamp.sh save [<s> <s>]|restore|drop-if-cheap   (in the repository root)
 set -eu
 record=target/ci-tree.txt
 old=@978307200
@@ -31,6 +33,20 @@ case "${1:-}" in
         mkdir -p target
         git ls-files -s > "$record"
         echo "target-stamp: recorded the tree of $(git rev-parse --short HEAD)"
+        # A build shorter than the upload of its cache would take saves the next job less than the
+        # upload costs this one: mark the cache to stay as it is (drop-if-cheap).
+        if [ -n "${2:-}" ] && [ "$2" -lt "${3:?Name the seconds an upload costs.}" ]; then
+            : > target/ci-keep-cache
+            echo "target-stamp: the build took $2 s, less than the $3 s an upload costs; the cache stays"
+        fi
+        ;;
+    drop-if-cheap)
+        # In after_script: removes the cached folders of a marked job, so the runner finds nothing
+        # to archive and the cache on the server stays as it was.
+        if [ -f target/ci-keep-cache ]; then
+            rm -rf target/debug "$record" target/ci-keep-cache
+            echo "target-stamp: the cache stays as it was"
+        fi
         ;;
     restore)
         if [ ! -s "$record" ]; then
@@ -51,7 +67,7 @@ case "${1:-}" in
         echo "target-stamp: $(printf '%s' "$changed" | grep -c . || true) paths differ from the cached build"
         ;;
     *)
-        echo "usage: target-stamp.sh save|restore" >&2
+        echo "usage: target-stamp.sh save [<build s> <upload s>]|restore|drop-if-cheap" >&2
         exit 2
         ;;
 esac
