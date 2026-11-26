@@ -4,17 +4,16 @@
 # aarch64-apple-darwin and the tests the change needs on Linux; on a Mac only the tests of the
 # crates with macOS code and the native traffic-light check, when such a crate or the dependency set
 # changed. `required` is the one check to require.
-# Pull requests only read the build caches. The scheduled and the manual run on main write them,
-# with the same keys and the same cargo commands, and skip every job whose cache for the current
-# commit exists. A maintainer's manual run also packages Code View as a universal (Apple silicon +
-# Intel) app bundle, signed ad hoc (docs/macos.md).
+# Pull requests only read the build caches. A maintainer's manual run on main writes them, with the
+# same keys and the same cargo commands, skips every job whose cache for the current commit exists,
+# and packages Code View as a universal (Apple silicon + Intel) app bundle, signed ad hoc
+# (docs/macos.md). Nothing runs on a schedule: a pull request that finds no cache builds cold, which
+# takes longer and is fine here; the fast pipeline is GitLab's.
 name: Pull request
 
 on:
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: "17 4 * * *"
 
 # Pull requests come from anyone: the jobs only read the repository. Every action is pinned to a
 # full commit SHA, its version in the comment; update both together.
@@ -69,7 +68,7 @@ jobs:
         env:
           RUSTUP_TOOLCHAIN: stable
         run: sh ci/github-plan.sh "${{ github.event_name }}"
-      # The warm-up skips a job whose cache for this commit exists. actions/cache makes the paths
+      # A manual run skips a job whose cache for this commit exists. actions/cache makes the paths
       # part of a cache's version, so each lookup, restore and save of one key lists the same paths
       # in the same order; a lookup with other paths never hits. Change them together.
       - id: lint
