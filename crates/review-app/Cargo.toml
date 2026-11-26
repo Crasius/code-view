@@ -31,6 +31,9 @@ minimum_system_version = "12.0"
 # wgpu as a second renderer, picked at run time with CODEVIEW_RENDERER=wgpu (docs/linux.md). Off by
 # default: the app ships glow only.
 wgpu = ["eframe/wgpu"]
+# The measurement tests (heap curves over long sessions, src/app/memory_walkthrough.rs), which the
+# ordinary `cargo test` leaves out; rule `testing`, Running. Adds no code to the app.
+measurements = []
 
 [dependencies]
 # The crates main.rs, app.rs and title_bar/ name; cv-providers builds the hosts' providers.

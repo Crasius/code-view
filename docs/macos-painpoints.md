@@ -158,8 +158,14 @@ there, so `cv-pr-rendered` and every crate after it (`cv-pr-summary`, `cv-pr-thr
   **Status:** fixed on `macos-tests`: `LocalRepo::worktrees` reports the clone's own tree in the
   clone's spelling, and a Unix test opens a clone through a link. NOT-VERIFIED on a Mac.
 - **`review-app`, five walkthroughs**: four read Reduce Motion through the app's start-up
-  (`ReviewApp::new` calls `motion::install`), one presses F11 for focus mode, which is ⌃⌘F on
-  macOS. Open; they need a change in `review-app`.
+  (`ReviewApp::new` called `motion::install`), one pressed F11 for focus mode, which is ⌃⌘F on
+  macOS. **Status:** fixed on `macos-tests`: only the binary's `main` reads the setting
+  (`app::motion_check` proves a test-built app keeps the motion it was given) and the
+  walkthroughs press `FOCUS_MODE_KEY`. NOT-VERIFIED on a Mac.
+- **Run time**: the `review-app` binary took 278 s on the macOS runner (3 cores) and 117 s on
+  GitLab's (4 CPUs). Measured per test on Windows (nextest, 4 threads), three heap measurements
+  took 66 of its 486 test-seconds and a host delay another 20; the measurements are their own
+  group now (rule `testing`, Running).
 
 ## Other friction
 

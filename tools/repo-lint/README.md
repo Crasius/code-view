@@ -98,9 +98,9 @@ Ids are stable: a rule keeps its id, a retired id is never reused, and a retired
 - Enforced by: repo-lint on member manifests.
 
 ### RL016 motion-install
-- Rule: `motion::install` appears only in the shipped code of `crates/review-app/src/app.rs`, the app's start-up. Test code pins motion with `motion::set_reduced(ctx, false)` (or `true` for a reduced-motion case).
-- Why: `motion::install` reads the machine's reduced-motion setting. A test that calls it runs differently on a machine with Reduce Motion on: GitHub's macOS runners have it on, and a fling test failed only there.
-- Enforced by: repo-lint on code tokens (the path `motion::install`, strings and comments excluded). Whole-app tests that build the app through its start-up still read the setting; that start-up path is not visible to this check.
+- Rule: `motion::install` appears only in the shipped code of `crates/review-app/src/main.rs`, where the binary creates the app. `ReviewApp::new` does not call it, so the whole-app tests that build the app never read the setting. Test code pins motion with `motion::set_reduced(ctx, false)` (or `true` for a reduced-motion case), or leaves it unset, which animates.
+- Why: `motion::install` reads the machine's reduced-motion setting. A test that calls it runs differently on a machine with Reduce Motion on: GitHub's macOS runners have it on, and a fling test and four whole-app walkthroughs failed only there.
+- Enforced by: repo-lint on code tokens (the path `motion::install`, strings and comments excluded); the test `app::motion_check` proves that a harness-built app animates with the setting unset.
 
 ## Adding a rule
 

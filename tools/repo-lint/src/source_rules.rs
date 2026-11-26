@@ -42,8 +42,9 @@ pub fn check_source(path: &str, source: &Source, file_is_test: bool) -> Vec<Find
     apply_expectations(path, source, findings)
 }
 
-/// The one file whose shipped code reads the machine's motion setting: the app's start-up.
-const MOTION_START_UP: &str = "crates/review-app/src/app.rs";
+/// The one file whose shipped code reads the machine's motion setting: the binary's `main`, where
+/// it creates the app. `ReviewApp::new` does not, so the whole-app tests that build it never read it.
+const MOTION_START_UP: &str = "crates/review-app/src/main.rs";
 
 /// `motion::install` reads the OS's reduced-motion setting, so a test that calls it runs
 /// differently on a machine with Reduce Motion on (GitHub's macOS runners). Only the app's
