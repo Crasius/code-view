@@ -94,6 +94,8 @@ default:
     # repo-lint and the test selection compare with the merge request's base or the commit
     # before the push, which must be in the clone.
     GIT_DEPTH: "50"
+    # Restoring test's two archives took 72 to 76 s with one stream each [observed 2026-11-26].
+    FF_USE_PARALLEL_CACHE_TRANSFER: "true"
   before_script:
     - export PATH="$BUILD_DEPS/usr/bin:$PATH"
     - rustup show active-toolchain || rustup toolchain install

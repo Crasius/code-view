@@ -31,6 +31,17 @@ The instance has one shared runner, so a pipeline runs only what verifies someth
 - A new push to a merge request cancels its running pipeline (`auto_cancel`), all jobs but `creative-downloads` are interruptible.
 - `main` builds nothing: the tag's pipeline builds and publishes its own.
 
+Measured on 2026-11-26 in merge request !7 [observed]. Before, one job `check` ran everything in 802 s (pipeline 4896). Now `lint` and `test` run side by side, so a pipeline takes as long as `test`:
+
+| Run | `lint` | `test` | Pipeline |
+|---|---|---|---|
+| Cold, no build cache (4905) | 314 s (4900) | 761 s: build 474, tests 145, cache upload 121 | 761 s |
+| One crate changed, warm (4906) | 83 s | 382 s: restore 74, build 8, tests 150, upload 137 | 381 s |
+| No crate changed, warm (4907) | 41 s | 236 s: restore 76, build 2, tests 145, no upload | 236 s |
+| Docs only (4607) | skipped | skipped | 12 s, `secret-scan` alone |
+
+The floor of `test` is the cache restore and `review-app`'s tests (about 110 s in one process); a change to a crate below `review-app` adds the rebuild of `review-app` (about 65 s cold).
+
 ## Platforms
 
 The instance's only runner is Linux amd64, so everything but Linux x64 is a cross-build. `ci/build-release.sh` builds one platform into `dist/<platform>/`; `ci/publish-creative-downloads.sh` publishes those folders.
