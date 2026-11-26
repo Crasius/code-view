@@ -41,6 +41,9 @@ Measured on 2026-11-26 in merge request !7 [observed]. Before, one job `check` r
 | One crate changed, warm (4906) | 83 s | 382 s: restore 74, build 8, tests 150, upload 137 | 381 s |
 | No crate changed, warm (4907) | 41 s | 236 s: restore 76, build 2, tests 145, no upload | 236 s |
 | Docs only (4607) | skipped | skipped | 12 s, `secret-scan` alone |
+| Every test, a merge request restoring caches without build ids (4909, job 25100) | 282 s, cold: the key now hashes `clippy.toml` | 230 s: restore 55, build 62 (every test executable linked again, Build cache), tests 97, no upload | 230 s; `measurements` 202 s beside it |
+
+Merge request pipelines upload no cache since 4909 ("Not uploading cache … due to policy"); the one-crate row's upload of 137 s is gone from them.
 
 The floor of `test` is the cache restore and `review-app`'s tests (about 110 s in one process); a change to a crate below `review-app` adds the rebuild of `review-app` (about 65 s cold).
 

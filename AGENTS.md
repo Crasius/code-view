@@ -77,7 +77,7 @@ The app talks to the owner's real accounts on GitHub, GitLab and Azure DevOps.
 | `tools/` | `repo-lint`, the repository rules clippy cannot check (`tools/repo-lint/README.md`) |
 | Root | `README.md` for readers and users, `CONTRIBUTING.md` for contributors, `LICENSE` (Functional Source License 1.1, FSL-1.1-ALv2; source-available, never call it open source), `CLA.md`, `SECURITY.md` |
 | `docs/` | Platform notes: `windows.md`, `linux.md`, `macos.md`, `macos-painpoints.md`; the browser extension's design: `browser-extension.md`; `release.md` for CI and releases |
-| `.github/` | The macOS workflow, the pull request template with the CLA statement, the issue forms |
+| `.github/` | The pull request workflow, the pull request template with the CLA statement, the issue forms |
 | `scripts/` | `worktree.sh`, `land-pr.sh` (a GitHub pull request into its worktree), `package-macos.sh` |
 | `ci/` | The scripts of the CI jobs in `.gitlab-ci.yml` (`docs/release.md`) |
 | `marketing/` | Marketing material, not part of the build |
