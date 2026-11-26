@@ -30,7 +30,7 @@ Ids are stable: a rule keeps its id, a retired id is never reused, and a retired
 ### RL002 length-allowlist
 - Rule: `file-lengths.allow` only shrinks. An entry above its file's length is lowered (`--shrink-allowlist`), an entry of a file within 700 lines or of a deleted file is removed, and an entry that is new or higher than at `--base` is refused.
 - Why: the allowlist is debt that may only go down. A raised entry would silently undo RL001.
-- Enforced by: repo-lint, comparing with `git show <base>:tools/repo-lint/file-lengths.allow`. A file that git reports as renamed since the base (`git diff -M --name-status <base>` over the listed paths) keeps the entry of its old path: a move with `git mv` is not a new entry, a raise on the way still is. The default base `HEAD` catches only a raise that is not committed yet; a branch runs with `--base <the branch it forked from>` (rule `lanes`), CI with the pull request's base or the commit before the push.
+- Enforced by: repo-lint, comparing with `git show <base>:tools/repo-lint/file-lengths.allow`. A file that git reports as renamed since the base (`git diff -M --name-status <base>` over the listed paths) keeps the entry of its old path: a move with `git mv` is not a new entry, a raise on the way still is. The default base `HEAD` catches only a raise that is not committed yet; a branch runs with `--base <the branch it forked from>` (rule `lanes`), CI with the merge request's base, or on `main` with every version of the allowlist on its first-parent line (`ci/repo-lint-base.sh`).
 
 ### RL003 role-suffix
 - Rule: no `struct`, `enum`, `trait` or `type` whose name ends in `Manager`, `Service`, `Helper` or `Handler` (RS-DONT-08).
