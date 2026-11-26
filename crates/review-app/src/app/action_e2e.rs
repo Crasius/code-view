@@ -397,10 +397,10 @@ pub(super) fn app(scratch: &ScratchDir, connections: &[Connection]) -> Harness<'
     for connection in connections {
         store.upsert(connection.clone()).expect("store the connection");
     }
-    let mut harness = Harness::builder()
-        .with_size([1440.0, 900.0])
-        .with_max_steps(100_000)
-        .build_eframe(|creation| ReviewApp::new(creation, paths, cv_providers::create_provider));
+    let mut harness =
+        super::startup::start(Harness::builder().with_size([1440.0, 900.0]), |creation| {
+            ReviewApp::new(creation, paths, cv_providers::create_provider)
+        });
     harness.state_mut().services.settings.diff_layout = DiffLayout::SideBySide;
     harness
 }
@@ -528,6 +528,7 @@ fn click_when_ready(harness: &mut Harness<'_, ReviewApp>, label: &str, role: Opt
 /// the background checked them against the checkout, and their icons then move the text; a click
 /// before that lands on plain text. Returns the point to click.
 pub(super) fn wait_for_link(harness: &mut Harness<'_, ReviewApp>, label: &str) -> Pos2 {
+    let _step = test_support::step(format!("waiting for {label} to become a link"));
     let started = Instant::now();
     loop {
         let center = harness.query_by_label(label).map(|node| node.rect().center());
@@ -566,6 +567,7 @@ pub(super) fn has_cached_diff(harness: &Harness<'_, ReviewApp>, path: &str) -> b
 /// (a card above growing), so a test reads a place to click only after this. Each step moves
 /// egui's clock on by a quarter second, past the dwell of a hover.
 pub(super) fn settle_background(harness: &mut Harness<'_, ReviewApp>) {
+    let _step = test_support::step("waiting for the background work to end over 3 frames");
     let started = Instant::now();
     let mut idle_frames = 0;
     while idle_frames < 3 {
@@ -604,6 +606,7 @@ pub(super) fn wait_for<T>(
     mut find: impl FnMut(&Harness<'_, ReviewApp>) -> Option<T>,
     each: impl Fn(&mut Harness<'_, ReviewApp>),
 ) -> T {
+    let _step = test_support::step(format!("waiting for {what}"));
     let (started, mut idle) = (Instant::now(), Duration::ZERO);
     loop {
         let (is_busy, frame) = (harness.state().services.background.running() > 0, Instant::now());

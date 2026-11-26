@@ -240,11 +240,10 @@ fn start(scratch: &ScratchDir) -> Harness<'static, ReviewApp> {
             token: None,
         })
         .expect("store the connection");
-    Harness::builder()
-        .with_size([1280.0, 860.0])
-        .with_step_dt(1.0 / 30.0)
-        .with_max_steps(1_000_000)
-        .build_eframe(move |creation| ReviewApp::new(creation, paths, scripted_provider))
+    let builder = Harness::builder().with_size([1280.0, 860.0]).with_step_dt(1.0 / 30.0);
+    super::startup::start(builder, move |creation| {
+        ReviewApp::new(creation, paths, scripted_provider)
+    })
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

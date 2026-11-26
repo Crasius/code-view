@@ -489,12 +489,11 @@ fn open(harness: &mut Harness<'_, ReviewApp>, connection_id: &str, repository_ke
 }
 
 fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
-    let mut harness = Harness::builder()
-        .with_size(BASE_SIZE)
-        .with_step_dt(1.0 / 60.0)
-        .with_max_steps(10_000_000)
-        .allow_missing_glyphs()
-        .build_eframe(|creation| ReviewApp::new(creation, paths, scripted_provider));
+    let builder =
+        Harness::builder().with_size(BASE_SIZE).with_step_dt(1.0 / 60.0).allow_missing_glyphs();
+    let mut harness = super::startup::start(builder, |creation| {
+        ReviewApp::new(creation, paths, scripted_provider)
+    });
     clip_check::install(&harness.ctx);
     harness.state_mut().settings.cli_tools = Some(CliTools::default());
     harness.state_mut().title_bar.integrate_for_test();

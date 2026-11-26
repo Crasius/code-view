@@ -82,11 +82,10 @@ fn provider_icons_name_the_platform_everywhere() {
             })
             .expect("store the connection");
     }
-    let mut harness = Harness::builder()
-        .with_size([1280.0, 1080.0])
-        .with_step_dt(1.0 / 60.0)
-        .with_max_steps(100_000)
-        .build_eframe(move |creation| ReviewApp::new(creation, paths, scripted_provider));
+    let builder = Harness::builder().with_size([1280.0, 1080.0]).with_step_dt(1.0 / 60.0);
+    let mut harness = super::startup::start(builder, move |creation| {
+        ReviewApp::new(creation, paths, scripted_provider)
+    });
     harness.state_mut().settings.cli_tools = Some(CliTools::default());
 
     wait_for(&mut harness, "every card", |harness| {

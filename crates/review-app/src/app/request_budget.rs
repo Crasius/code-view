@@ -22,6 +22,7 @@ use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 use super::ReviewApp;
 use super::action_e2e::LIMIT;
 use super::clicks::Clicks;
+use super::startup;
 use cv_lists::pull_request_list::LIST_INTERVAL;
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
@@ -1023,6 +1024,7 @@ fn open_pipelines(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture) {
 /// starts the next (file lists, the chunked download of the changed blobs) only in the following
 /// frame.
 pub(super) fn wait_idle(harness: &mut Harness<'_, ReviewApp>) {
+    let _step = test_support::step("waiting for the background work to end over 20 frames");
     let started = Instant::now();
     let mut idle_frames = 0;
     while idle_frames < 20 {
@@ -1037,6 +1039,7 @@ pub(super) fn wait_idle(harness: &mut Harness<'_, ReviewApp>) {
 /// Waits in real time, without a frame, until the background work in flight has finished, so the
 /// requests it sends land in the current phase and no simulated time passes.
 pub(super) fn settle(harness: &Harness<'_, ReviewApp>) {
+    let _step = test_support::step("waiting without a frame for the background work to end");
     let started = Instant::now();
     while harness.state().services.background.running() > 0 {
         assert!(started.elapsed() < LIMIT, "background work did not finish");
@@ -1072,6 +1075,7 @@ pub(super) fn click_first(harness: &mut Harness<'_, ReviewApp>, text: &str) {
 }
 
 fn set_focus(harness: &mut Harness<'_, ReviewApp>, is_focused: bool) {
+    let _step = test_support::step(format!("a frame with the window focused: {is_focused}"));
     let viewport = harness.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default();
     viewport.focused = Some(is_focused);
     harness.input_mut().focused = is_focused;
@@ -1096,10 +1100,20 @@ fn pump_live(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
     }
 }
 
-/// Advances simulated time; each frame also gives background work a moment of real time.
+/// Advances simulated time; each frame also gives background work a moment of real time. Each
+/// frame moves egui's clock on by [`STEP_SECONDS`] unless the test pinned the next frames' time
+/// (`harness.input_mut().time`), which would hold the clock still.
 pub(super) fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
-    let end = harness_time(harness) + seconds;
+    let _step = test_support::step(format!("letting {seconds} s of simulated time pass"));
+    let (started, end) = (Instant::now(), harness_time(harness) + seconds);
     while harness_time(harness) < end {
+        assert!(
+            started.elapsed() < LIMIT,
+            "{seconds} s of simulated time did not pass: egui's clock stands at {} s, the next frame's \
+             time is pinned to {:?}",
+            harness_time(harness),
+            harness.input().time
+        );
         harness.step();
         test_support::let_threads_run(Duration::from_millis(3));
     }
@@ -1113,6 +1127,7 @@ fn wait_in_real_time(
     what: &str,
     is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
 ) {
+    let _step = test_support::step(format!("waiting in real time for {what}"));
     let (started, time) = (Instant::now(), harness_time(harness));
     loop {
         harness.input_mut().time = Some(time + started.elapsed().as_secs_f64());
@@ -1225,6 +1240,7 @@ impl Fixture {
             .build()
             .expect("mock runtime");
         let server = runtime.block_on(MockServer::start());
+        cv_testkit::fresh_origin(&server.uri());
         let recorder = Arc::new(Recorder::default());
         let listing_delay = Arc::new(Mutex::new(Duration::ZERO));
         let gitlab = MockGitLab {
@@ -1349,39 +1365,40 @@ impl Fixture {
     }
 }
 
-/// The app on `paths`, in a 1440 × 900 window.
+/// The app on `paths`, in a 1440 × 900 window, once its start settled.
 pub(super) fn harness_for(paths: AppPaths) -> Harness<'static, ReviewApp> {
     harness_from(harness_builder(), paths)
 }
 
 /// The app's harness with the window and step of [`harness_for`], before the renderer is picked.
 pub(super) fn harness_builder() -> HarnessBuilder<ReviewApp> {
-    Harness::builder()
-        .with_size([1440.0, 900.0])
-        .with_step_dt(STEP_SECONDS)
-        .with_max_steps(1_000_000)
-        .allow_missing_glyphs()
+    Harness::builder().with_size([1440.0, 900.0]).with_step_dt(STEP_SECONDS).allow_missing_glyphs()
 }
 
-/// Frames a harness from [`startup_harness_builder`] runs before the test looks: the first ones,
-/// as a person would see them.
-const STARTUP_FRAMES: u64 = 4;
-
-/// [`harness_builder`] for a test that checks a state while the app still loads. The harness
-/// otherwise runs frames at its start until nothing asks for a repaint, and the spinner of a
-/// running load asks every frame: a slow host's answer would land before the test sees the first
-/// frame. This one stops after [`STARTUP_FRAMES`].
-pub(super) fn startup_harness_builder() -> HarnessBuilder<ReviewApp> {
-    harness_builder().with_max_steps(STARTUP_FRAMES)
-}
-
+/// The app on `paths` from `builder`, once its start settled ([`startup::start`]).
 pub(super) fn harness_from(
     builder: HarnessBuilder<ReviewApp>,
     paths: AppPaths,
 ) -> Harness<'static, ReviewApp> {
-    let mut harness = builder.build_eframe(move |creation| {
-        ReviewApp::new(creation, paths, cv_providers::create_provider)
-    });
+    with_cli_tools(startup::start(builder, app(paths)))
+}
+
+/// [`harness_from`] for a test that checks a state while the app still loads. A settled start
+/// runs frames until nothing asks for a repaint, and the spinner of a running load asks every
+/// frame: a slow host's answer would land before the test sees the first frame. This one runs
+/// only the first frames, as a person would see them ([`startup::first_frames`]).
+pub(super) fn loading_harness_from(
+    builder: HarnessBuilder<ReviewApp>,
+    paths: AppPaths,
+) -> Harness<'static, ReviewApp> {
+    with_cli_tools(startup::first_frames(builder, app(paths)))
+}
+
+fn app(paths: AppPaths) -> impl FnOnce(&mut eframe::CreationContext<'static>) -> ReviewApp {
+    move |creation| ReviewApp::new(creation, paths, cv_providers::create_provider)
+}
+
+fn with_cli_tools(mut harness: Harness<'static, ReviewApp>) -> Harness<'static, ReviewApp> {
     harness.state_mut().settings.cli_tools = Some(CliTools::default());
     harness
 }
@@ -1428,6 +1445,7 @@ impl AzureFixture {
             .build()
             .expect("mock runtime");
         let server = runtime.block_on(MockServer::start());
+        cv_testkit::fresh_origin(&server.uri());
         let recorder = Arc::new(Recorder::default());
         let azure = MockAzure { recorder: recorder.clone(), git };
         runtime.block_on(

@@ -33,6 +33,7 @@ fn image_copy_puts_the_pixels_on_the_clipboard_from_the_menu_and_the_lightbox() 
     let connection = host.connection("gh", "Acme");
     let runtime = Runtime::new().expect("runtime");
     let storage = runtime.block_on(MockServer::start());
+    cv_testkit::fresh_origin(&storage.uri());
     let (body, pixels) = png();
     runtime.block_on(
         Mock::given(method("GET"))

@@ -74,14 +74,13 @@ fn walkthrough(released: &Released) {
     if released.has_pipeline() {
         pull_request.wait_for_failed_pipeline();
     }
-    let mut harness = Harness::builder()
+    let builder = Harness::builder()
         .with_size([1440.0, 900.0])
         .with_step_dt(1.0 / 60.0)
-        .with_max_steps(1_000_000)
-        .allow_missing_glyphs()
-        .build_eframe(move |creation| {
-            ReviewApp::new(creation, paths, cv_providers::create_provider)
-        });
+        .allow_missing_glyphs();
+    let mut harness = super::startup::start(builder, move |creation| {
+        ReviewApp::new(creation, paths, cv_providers::create_provider)
+    });
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: released.connection_id.clone(),
         repository_key: released.repository_key.clone(),

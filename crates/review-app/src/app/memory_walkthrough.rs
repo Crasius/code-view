@@ -40,7 +40,7 @@ use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 use super::ReviewApp;
 use super::clicks::Clicks;
 use super::request_budget::{
-    Text, diff_stats_summaries, harness_builder, harness_from, has, pump, startup_harness_builder,
+    Text, diff_stats_summaries, harness_builder, harness_from, has, loading_harness_from, pump,
     user, wait_idle, wait_until,
 };
 #[cfg(feature = "measurements")]
@@ -801,6 +801,7 @@ impl Fixture {
             .expect("mock runtime");
         // Not recording: the requests would grow the heap this test measures.
         let server = runtime.block_on(MockServer::builder().disable_request_recording().start());
+        cv_testkit::fresh_origin(&server.uri());
         let delay = Arc::new(AtomicU64::new(0));
         let gitlab = MockGitLab {
             base_url: server.uri(),
@@ -852,14 +853,20 @@ impl Fixture {
 
     /// The app in its first frames after a restart, the refresh of the list still running.
     fn restarted(&self) -> Harness<'static, ReviewApp> {
-        self.harness_from(startup_harness_builder().renderer(GpuTextures::default()))
+        let builder = harness_builder().renderer(GpuTextures::default());
+        Self::prepared(loading_harness_from(builder, self.paths.clone()))
     }
 
+    /// The app from `builder`, once its start settled.
     fn harness_from(
         &self,
         builder: egui_kittest::HarnessBuilder<ReviewApp>,
     ) -> Harness<'static, ReviewApp> {
-        let mut harness = harness_from(builder, self.paths.clone());
+        Self::prepared(harness_from(builder, self.paths.clone()))
+    }
+
+    /// `harness` with the first file opening and a signed-in coding agent.
+    fn prepared(mut harness: Harness<'static, ReviewApp>) -> Harness<'static, ReviewApp> {
         harness.state_mut().services.settings.files_start = review_store::FilesStart::FirstFile;
         let model = ModelInfo {
             id: "claude-haiku".to_owned(),
