@@ -15,7 +15,7 @@ use review_store::{AppSettings, CommentEditor};
 use serde_json::{Value, json};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, settle_background, wait_until};
+use super::action_e2e::{app, open_pull_request, press_button, settle_background, wait_until};
 use super::github_mock::{GitHubHost, OwnComment, REPOSITORY, THREAD_TEXT};
 use cv_testkit::ScratchDir;
 
@@ -60,9 +60,11 @@ fn own_comments_can_be_edited_and_deleted() {
     editor(&harness, KEPT).focus();
     harness.step();
     editor(&harness, KEPT).type_text(ADDED);
-    harness.step();
-    harness.get_by_role_and_label(Role::Button, "Save").click();
     let edited = format!("{KEPT}{ADDED}");
+    wait_until(&mut harness, "the composer holding the edit", |harness| {
+        has_editor(harness, &edited)
+    });
+    press_button(&mut harness, "Save");
     wait_until(&mut harness, "the refused save with Retry", |harness| {
         harness.query_by_label_contains("Not sent:").is_some()
             && harness.query_by_role_and_label(Role::Button, "Retry").is_some()

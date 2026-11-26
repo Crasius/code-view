@@ -10,7 +10,7 @@ use egui::Role;
 use egui_kittest::kittest::{NodeT, Queryable};
 use serde_json::json;
 
-use super::action_e2e::{app, open_pull_request, press, type_into, wait_until};
+use super::action_e2e::{app, open_pull_request, press, press_button, type_into, wait_until};
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, TITLE};
 use cv_testkit::ScratchDir;
 
@@ -38,7 +38,7 @@ fn bug_actions_request_changes_needs_a_comment_and_posts_it() {
     );
 
     type_into(&mut harness, "Say what should change", "Please keep the old name as an alias.");
-    harness.get_by_role_and_label(Role::Button, REQUEST_CHANGES).click();
+    press_button(&mut harness, REQUEST_CHANGES);
     let reviews = format!("/api/v3/repos/{REPOSITORY}/pulls/{NUMBER}/reviews");
     wait_until(&mut harness, "the review", |_| host.find("POST", &reviews).is_some());
     let body: serde_json::Value =
