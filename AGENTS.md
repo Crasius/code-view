@@ -31,7 +31,7 @@ A native, low-footprint pull request review desktop app for Azure DevOps, GitHub
 - Never rewrite history unless the owner asks: no amend, rebase, reset to another commit or force push. The history guard (`.agents/hooks/history-guard.sh`) denies these commands.
 - Write the subject in the imperative mood. Put the evidence in the body: the checks you ran and their results.
 - Remotes: GitLab (`origin`, the source of truth) and GitHub (`github`, the public mirror that takes pull requests), each carrying `main`. Push only when the owner asks (rule `git-flow`, step 7). A GitHub pull request lands through `scripts/land-pr.sh` and a merge commit, never on GitHub (rule `git-flow`, Pull requests from GitHub).
-- The local checks are the gate. A push to GitLab also runs `.gitlab-ci.yml`, and a protected tag `vX.Y.Z` publishes a release to Creative Downloads (`docs/release.md`). A push to GitHub runs `.github/workflows/macos.yml` (format, repo-lint, clippy, tests and an app bundle on macOS).
+- The local checks are the gate. A push to GitLab also runs `.gitlab-ci.yml`, and a protected tag `vX.Y.Z` publishes a release to Creative Downloads (`docs/release.md`). GitHub runs nothing on a push: `.github/workflows/macos.yml` checks pull requests there (format, repo-lint, clippy and tests on macOS), and a manual run also builds the app bundle. Add no other GitHub workflow without the owner's yes; the main work is on GitLab.
 
 ## Work
 - Write each sub-agent brief as a file in `tmp/briefs/`, made from `.agents/templates/lane-brief.md`. Pass the path, not the text.

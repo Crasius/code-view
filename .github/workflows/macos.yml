@@ -1,11 +1,11 @@
-# Checks format, repository rules, lints and tests on macOS, then packages Code View as a universal
-# (Apple silicon + Intel) app bundle, signed ad hoc. See docs/macos.md for signing with a
-# Developer ID and notarizing.
+# The quality check of a pull request on macOS: format, repository rules, lints and tests. GitHub
+# is the public mirror; the main work and its pipeline are on GitLab (docs/release.md), so no push
+# starts this workflow. A maintainer's manual run also packages Code View as a universal (Apple
+# silicon + Intel) app bundle, signed ad hoc. See docs/macos.md for signing with a Developer ID
+# and notarizing.
 name: macOS
 
 on:
-  push:
-    branches: [main, "feature/**"]
   pull_request:
   workflow_dispatch:
 
@@ -37,15 +37,13 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Format
         run: cargo fmt --all --check
-      # RL002 compares the length allowlist with the pull request's base, or with the commit
-      # before the push. A new branch (all-zero `before`), a manual run or a `before` that is no
-      # longer in the history falls back to the parent commit.
+      # RL002 compares the length allowlist with the pull request's base. A manual run has none
+      # and compares with the parent commit.
       - name: Repository rules (tools/repo-lint)
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          case "$BASE" in ''|0000000000000000000000000000000000000000) BASE=HEAD~1 ;; esac
-          git cat-file -e "$BASE^{commit}" 2>/dev/null || BASE=HEAD~1
+          git cat-file -e "${BASE:-none}^{commit}" 2>/dev/null || BASE=HEAD~1
           cargo run --locked -p repo-lint -- --base "$BASE"
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
@@ -59,8 +57,10 @@ jobs:
       - name: Tests
         run: cargo test --locked --workspace
 
+  # Only a maintainer's manual run packages; a pull request needs the check alone.
   bundle:
     needs: check
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

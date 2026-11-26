@@ -12,13 +12,14 @@ account is needed to clone or build. To contribute, see `CONTRIBUTING.md`.
 
 ## Trying it without building
 
-A release's `.app` comes from Creative Downloads, as a zip archive (`README.md`, Download). When
-GitHub Actions run for the repository, every push to `main` or a `feature/**` branch runs
-`.github/workflows/macos.yml`, whose packaging job (after clippy and the tests pass) uploads the
-universal app as the artifact `CodeView-macos-universal`. Downloading a run's artifact needs a
-GitHub sign-in:
+A release's `.app` comes from Creative Downloads, as a zip archive (`README.md`, Download). For a
+build of `main` between releases, a maintainer starts `.github/workflows/macos.yml` by hand; no
+push starts it, and a pull request runs only its check. The manual run's packaging job (after
+clippy and the tests pass) uploads the universal app as the artifact `CodeView-macos-universal`.
+Downloading a run's artifact needs a GitHub sign-in:
 
 ```sh
+gh workflow run macos.yml --ref main                                          # maintainers only
 gh run list --workflow macos.yml --branch main --status success --limit 1   # the run id
 gh run download <run id> --name CodeView-macos-universal
 ditto -x -k CodeView-macos-universal.zip .
