@@ -2,7 +2,7 @@
 # The tests of a CI run (ci/checks.yml test; .github/workflows/pull-request.yml test and macos):
 # builds every test of the workspace and runs those the change needs. TEST_FILTER names them as a
 # nextest filterset; without it a merge request's filter comes from scripts/affected-tests.sh,
-# compared with the request's base, and every other pipeline (main's child, a tag, a run by hand)
+# compared with the request's base, and every other pipeline (a push to main, a tag, a run by hand)
 # runs every test (docs/release.md, Tests). The build stays the whole workspace, so a warm cache
 # rebuilds only the changed crates and their dependants (ci/target-stamp.sh).
 # review-app's walkthroughs run in one process with cargo test, as they always ran: under nextest's

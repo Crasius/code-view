@@ -1,7 +1,5 @@
 # The checks of a commit and what every pipeline of this project runs with (docs/release.md,
-# Pipelines). Two pipelines include this file: .gitlab-ci.yml for merge requests, tags and runs by
-# hand, and main's child pipeline for a push to main whose tree no merge request pipeline passed
-# (ci/main-scope.sh). A push to main never runs them in its own pipeline (.checks-not-on-main-push).
+# Pipelines), included by .gitlab-ci.yml.
 
 variables:
   # Images by digest; the tag only documents the version. rustup in the image installs the toolchain
@@ -14,9 +12,9 @@ variables:
   CARGO_TERM_COLOR: always
   XWIN_CACHE_DIR: $CI_PROJECT_DIR/.xwin-cache
   BUILD_DEPS: $CI_PROJECT_DIR/.build-deps
-  # Every cache only restores; the pipelines of main set pull-push in their workflow rules
-  # (.gitlab-ci.yml, ci/main-scope.sh), so a merge request or a tag never writes what main and the
-  # tags restore (docs/release.md, Build cache).
+  # Every cache only restores; the pipelines of main set pull-push in the workflow rules
+  # (.gitlab-ci.yml), so a merge request or a tag never writes what main and the tags restore
+  # (docs/release.md, Build cache).
   CACHE_POLICY: pull
 
 default:
@@ -53,13 +51,6 @@ default:
   - .gitattributes
   - scripts/affected-tests.sh
 
-# A push to main runs its checks in the child pipeline ci/main-scope.sh decides, or not at all when
-# its tree is one a merge request pipeline passed (.gitlab-ci.yml, main-checks). In that child
-# CI_PIPELINE_SOURCE is `parent_pipeline`, so this rule lets the checks run there.
-.checks-not-on-main-push:
-  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
-    when: never
-
 .rust:
   image: $ZIGBUILD_IMAGE
   timeout: 1h
@@ -83,22 +74,22 @@ default:
 # lint and test run side by side, each in its own pod, each with its own build cache: clippy's
 # check artifacts and the test build share no compiled unit (docs/release.md, Build cache). The
 # image is the one of docs/linux.md (Tests in a container): its git and its DejaVu fonts are all
-# the tests need. In a merge request only when a cargo input changed.
+# the tests need. In a merge request only when a cargo input changed; on main, a tag and a run by
+# hand always: a rule's `changes` on a push compares with the commit before it and would skip what
+# an earlier red or cancelled push changed.
 .cargo-checks:
   stage: test
   extends: .rust
   image: $RUST_IMAGE
   needs: []
   rules:
-    - !reference [.checks-not-on-main-push]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths: !reference [.rust-inputs]
         compare_to: refs/heads/main
     - if: $CI_PIPELINE_SOURCE != "merge_request_event"
   variables:
-    # repo-lint compares with the merge request's base or the commit before the push, the test
-    # selection with the merge request's base; it must be in the clone.
+    # The test selection compares with the merge request's base, which must be in the clone.
     GIT_DEPTH: "50"
     # Restoring test's two archives took 72 to 76 s with one stream each [observed 2026-11-26].
     FF_USE_PARALLEL_CACHE_TRANSFER: "true"
@@ -147,6 +138,9 @@ default:
 # Format, repository rules, both clippy passes and the lints of the measurements (ci/lint.sh).
 lint:
   extends: .cargo-checks
+  variables:
+    # repo-lint compares the length allowlist with every version on main (ci/repo-lint-base.sh).
+    GIT_DEPTH: "0"
   cache:
     - <<: *cargo-downloads
       policy: $CACHE_POLICY
@@ -183,14 +177,13 @@ test:
     reports:
       junit: target/nextest/ci/junit.xml
 
-# review-app's heap measurements (ci/measurements.sh), beside test in main's child pipeline and by
-# hand in a merge request; never on GitHub. They read test's cache and write none, so on a warm
+# review-app's heap measurements (ci/measurements.sh), beside test in main's pipelines and by hand
+# in a merge request; never on a tag and never on GitHub. They read test's cache and write none, so on a warm
 # cache they build only what the feature changes and end before test.
 measurements:
   extends: .cargo-checks
   rules:
-    - !reference [.checks-not-on-main-push]
-    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: manual
       allow_failure: true
@@ -213,7 +206,6 @@ secret-scan:
     entrypoint: [""]
   needs: []
   rules:
-    - !reference [.checks-not-on-main-push]
     - when: on_success
   variables:
     GIT_DEPTH: "0"
