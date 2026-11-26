@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use egui::{CursorIcon, PointerButton, Pos2, Role, pos2};
 use egui_kittest::Harness;
-use egui_kittest::kittest::{NodeT, Queryable};
+use egui_kittest::kittest::{AccessKitNode, NodeT, Queryable};
 use review_core::Connection;
 use review_store::{AppPaths, ConnectionStore, DiffLayout, FilesStart};
 use serde_json::{Value, json};
@@ -52,7 +52,7 @@ fn action_line_comment_via_hover_button() {
         harness.query_by_label("Comment on line 1").is_some()
     });
     type_into(&mut harness, "Leave a comment", "Please keep the old name as an alias.");
-    harness.get_by_role_and_label(Role::Button, "Comment").click();
+    press_button(&mut harness, "Comment");
 
     let request = wait_for_request(
         &mut harness,
@@ -94,7 +94,7 @@ fn action_line_comment_via_context_menu() {
         harness.query_by_label("Comment on line 1").is_some()
     });
     type_into(&mut harness, "Leave a comment", "Why was greet renamed?");
-    harness.get_by_role_and_label(Role::Button, "Comment").click();
+    press_button(&mut harness, "Comment");
 
     let request = wait_for_request(
         &mut harness,
@@ -120,9 +120,7 @@ fn action_reply_to_a_thread_in_the_overview() {
     });
     press(&mut harness, "Reply");
     type_into(&mut harness, "Reply", "Yes, other crates use it.");
-    harness.get_by_role_and_label(Role::Button, "Reply").scroll_to_me();
-    settle(&mut harness);
-    harness.get_by_role_and_label(Role::Button, "Reply").click();
+    press_button(&mut harness, "Reply");
 
     let request = wait_until_found(&mut harness, "the reply mutation", |_| {
         host.find_graphql("addPullRequestReviewThreadReply")
@@ -434,22 +432,25 @@ fn secondary_click(harness: &mut Harness<'_, ReviewApp>, position: Pos2) {
     }
 }
 
-/// Types into the text field whose hint starts with `placeholder`.
+/// Types into the text field whose hint starts with `placeholder` and returns once the field holds
+/// the text: a field takes typed text only while it has the focus, so a step that follows (a
+/// submit button that is enabled only with text) never runs on a field that missed it.
 pub(super) fn type_into(harness: &mut Harness<'_, ReviewApp>, placeholder: &str, text: &str) {
-    let has_field = |harness: &Harness<'_, ReviewApp>| {
-        harness
-            .query_by(|node| node.placeholder().is_some_and(|hint| hint.starts_with(placeholder)))
-            .is_some()
+    let is_field = |node: &AccessKitNode<'_>| {
+        node.placeholder().is_some_and(|hint| hint.starts_with(placeholder))
     };
-    wait_until(harness, placeholder, has_field);
-    let field =
-        harness.get_by(|node| node.placeholder().is_some_and(|hint| hint.starts_with(placeholder)));
-    field.focus();
+    wait_until(harness, placeholder, |harness| harness.query_by(is_field).is_some());
+    harness.get_by(is_field).focus();
     harness.step();
-    harness
-        .get_by(|node| node.placeholder().is_some_and(|hint| hint.starts_with(placeholder)))
-        .type_text(text);
-    harness.step();
+    let field = harness.get_by(is_field);
+    field.type_text(text);
+    // Found by its id: a field with text may drop its hint.
+    let id = field.accesskit_node().id();
+    wait_until(harness, &format!("{placeholder} holding {text:?}"), |harness| {
+        harness
+            .query_by(|node| node.id() == id)
+            .is_some_and(|field| field.value().is_some_and(|value| value.contains(text)))
+    });
 }
 
 /// Scrolls the labelled widget into view, then clicks it like a pointer would.
@@ -458,6 +459,40 @@ pub(super) fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
     harness.get_by_label(label).scroll_to_me();
     settle(harness);
     harness.get_by_label(label).click();
+    harness.step();
+}
+
+/// Clicks the button labelled `label` once it can take the click (see [`click_when_ready`]); for
+/// a submit button that is enabled only with text, and where another widget carries the same
+/// label (a composer's text area is named after its submit button).
+pub(super) fn press_button(harness: &mut Harness<'_, ReviewApp>, label: &str) {
+    click_when_ready(harness, label);
+}
+
+/// Scrolls the button labelled `label` into view, waits until it is enabled, lies inside the
+/// window and stayed in place for a frame, then clicks its centre. A fixed number of frames after
+/// the scroll proves none of that: the click would land on a disabled button, or past the window's
+/// edge where nothing takes it, and the test would wait for a request that never comes.
+fn click_when_ready(harness: &mut Harness<'_, ReviewApp>, label: &str) {
+    let role = Role::Button;
+    wait_until(harness, label, |harness| harness.query_by_role_and_label(role, label).is_some());
+    harness.get_by_role_and_label(role, label).scroll_to_me();
+    settle(harness);
+    let window = harness.ctx.content_rect();
+    let mut last = None;
+    wait_for(
+        harness,
+        &format!("{label} to take a click"),
+        |harness| {
+            let node = harness.query_by_role_and_label(role, label)?;
+            let rect = node.rect();
+            let is_still = last.replace(rect) == Some(rect);
+            let is_enabled = !node.accesskit_node().is_disabled();
+            (is_still && is_enabled && window.contains_rect(rect)).then_some(())
+        },
+        |_| {},
+    );
+    harness.get_by_role_and_label(role, label).click();
     harness.step();
 }
 
@@ -554,7 +589,16 @@ pub(super) fn wait_for<T>(
             let labels: Vec<String> = harness
                 .query_all_by(|_| true)
                 .filter_map(|node| {
-                    node.accesskit_node().label().or_else(|| node.accesskit_node().value())
+                    let node = node.accesskit_node();
+                    let text = match (node.label(), node.value()) {
+                        (Some(label), Some(value)) => Some(format!("{label} = {value:?}")),
+                        (label, value) => label.or(value),
+                    };
+                    let state =
+                        [(node.is_disabled(), " (disabled)"), (node.is_focused(), " (focused)")];
+                    text.map(|text| {
+                        state.iter().filter(|(is, _)| *is).fold(text, |text, (_, tag)| text + tag)
+                    })
                 })
                 .collect();
             panic!("timed out waiting for {what}; screen: {labels:?}");
