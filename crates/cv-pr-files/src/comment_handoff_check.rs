@@ -44,7 +44,7 @@ fn me() -> UserIdentity {
 fn harness() -> Harness<'static, Scene> {
     let mut fixture = fixture(Layout::Inline);
     fixture.threads_ui.set_me(me());
-    // No `motion::install`: the eases run whatever the machine's motion setting is.
+    // No motion setting: without one `motion::is_reduced` is false, so the eases run.
     Harness::builder()
         .with_size([1180.0, 760.0])
         .with_step_dt(FRAME)

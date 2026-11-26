@@ -74,7 +74,7 @@ fn updated() -> Content {
 fn harness() -> Harness<'static, Scene> {
     let builder = Harness::builder().with_size([980.0, 360.0]).with_context_setup(|ctx| {
         theme::fonts::install(ctx);
-        theme::motion::install(ctx);
+        theme::motion::set_reduced(ctx, false);
     });
     let scene = Scene { card: None, action: None, thread_rect: None, threads: live_threads() };
     builder.build_ui_state(

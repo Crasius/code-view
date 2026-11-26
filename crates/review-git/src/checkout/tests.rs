@@ -61,6 +61,12 @@ fn read(dir: &Path, path: &str) -> String {
     std::fs::read_to_string(dir.join(path)).expect("the file is there").replace("\r\n", "\n")
 }
 
+/// Both paths reach the same folder, whatever symbolic links either crosses.
+fn is_same_place(first: &Path, second: &Path) -> bool {
+    let resolve = |path: &Path| std::fs::canonicalize(path).expect("the folder is there");
+    resolve(first) == resolve(second)
+}
+
 /// A commit on the pull request's branch in the origin; returns the new head.
 fn push(origin: &Path, path: &str, content: &str) -> String {
     git(origin, &["checkout", "-q", "feature"]);
@@ -197,11 +203,12 @@ async fn a_new_worktree_gets_the_pull_request_from_the_mirror_with_its_upstream(
         [Step::FindClone, Step::Fetch, Step::CreateWorktree, Step::CheckOut]
     );
 
-    // A second worktree of the same branch is refused: git allows one.
+    // A second worktree of the same branch is refused: git allows one. The error names the
+    // folder as git prints it, with symbolic links resolved (on macOS the temp folder is one).
     let second = fixture.request(Target::Worktree { path: fixture.root.join("other") }, "feature");
     let refused = check_out(&fixture.mirror, &second, &ignore, &Mutex::default()).await;
     assert!(
-        matches!(&refused, Err(CheckoutError::CheckedOut(path)) if super::same_folder(path, &fixture.worktree())),
+        matches!(&refused, Err(CheckoutError::CheckedOut(path)) if is_same_place(path, &fixture.worktree())),
         "{refused:?}"
     );
 
@@ -441,11 +448,10 @@ async fn the_survey_tells_a_fork_from_a_branch_of_the_repository() {
         own.upstream("refs/heads/feature"),
         Some(Upstream { remote: "origin".into(), branch: "feature".into() })
     );
+    // In the clone's own spelling, also where git resolves a symbolic link in it (macOS' temp
+    // folder), so the popover offers to check out right there.
     let on_main = survey(&found, "main", 7).await.expect("surveyed");
-    assert_eq!(
-        on_main.checked_out.as_deref().map(|path| super::same_folder(path, &fixture.clone)),
-        Some(true)
-    );
+    assert_eq!(on_main.checked_out.as_deref(), Some(fixture.clone.as_path()));
 
     write(
         &fixture.clone,
@@ -455,4 +461,26 @@ async fn the_survey_tells_a_fork_from_a_branch_of_the_repository() {
     );
     let dirty = survey(&found, "feature", 7).await.expect("surveyed");
     assert_eq!(dirty.state.tracked_changes(), [" M src/app.rs"]);
+}
+
+/// Regression: a clone opened through a symbolic link (git prints the resolved path) was taken
+/// for another folder, so checking out its own current branch in it was refused as "checked out
+/// in" itself.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_clone_reached_through_a_symbolic_link_is_still_itself() {
+    let fixture = fixture("symlink").await;
+    let linked = fixture.root.join("linked-app");
+    std::os::unix::fs::symlink(&fixture.clone, &linked).expect("the link");
+    let found = FoundClone { dir: linked.clone(), remote: "origin".into() };
+    let on_main = survey(&found, "main", 7).await.expect("surveyed");
+    assert_eq!(on_main.checked_out.as_deref(), Some(linked.as_path()));
+
+    let mut request = fixture.request(Target::Clone, "main");
+    request.clone.clone_from(&linked);
+    let done = check_out(&fixture.mirror, &request, &ignore, &Mutex::default())
+        .await
+        .expect("its own branch checks out right there");
+    assert_eq!(done.path, linked);
+    assert_eq!(git(&fixture.clone, &["rev-parse", "main"]), fixture.head, "main moved forward");
 }

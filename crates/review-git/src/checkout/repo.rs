@@ -74,10 +74,27 @@ impl LocalRepo {
         Ok(parse_status(&String::from_utf8_lossy(&output)))
     }
 
-    /// Every working tree of the clone, its own first.
+    /// Every working tree of the clone, its own first. git prints each path with its symbolic
+    /// links resolved (macOS' `/var` is `/private/var`, a user's `~/dev` may link to another
+    /// disk), so this folder's own tree comes back in the spelling this `LocalRepo` was given:
+    /// callers compare it with that path by [`same_folder`].
     pub async fn worktrees(&self) -> Result<Vec<Worktree>> {
         let output = self.git().run(["worktree", "list", "--porcelain"]).await?;
-        Ok(parse_worktrees(&String::from_utf8_lossy(&output)))
+        let mut trees = parse_worktrees(&String::from_utf8_lossy(&output));
+        let resolved = tokio::fs::canonicalize(&self.dir).await.ok();
+        for tree in &mut trees {
+            let is_this_folder = same_folder(&tree.path, &self.dir)
+                || match &resolved {
+                    Some(resolved) => tokio::fs::canonicalize(&tree.path)
+                        .await
+                        .is_ok_and(|path| same_folder(&path, resolved)),
+                    None => false,
+                };
+            if is_this_folder {
+                tree.path.clone_from(&self.dir);
+            }
+        }
+        Ok(trees)
     }
 
     /// The working tree `branch` is checked out in, if any.

@@ -1,7 +1,8 @@
 //! Line-anchored rules on one lexed file: role-suffix type names and vague module names
 //! (RS-DONT-08), unsafe outside platform modules (RS-DONT-03), `deny(warnings)` in source
-//! (RS-DONT-07), TODO comments (AGENTS.md, Done), and `block_on` in shipped app code (RS-DONT-06).
-//! A finding of these rules can be waived at its line with
+//! (RS-DONT-07), TODO comments (AGENTS.md, Done), `block_on` in shipped app code (RS-DONT-06),
+//! and `motion::install` anywhere but the app's start-up (tests pin motion). A finding of the first
+//! five can be waived at its line with
 //! `// repo-lint: expect(RL007) <reason>` on that line or the line above; an expectation that
 //! matches nothing is itself a finding, so waivers can only shrink.
 
@@ -37,7 +38,44 @@ pub fn check_source(path: &str, source: &Source, file_is_test: bool) -> Vec<Find
     if !file_is_test {
         block_on(path, source, &mut findings);
     }
+    motion_install(path, source, file_is_test, &mut findings);
     apply_expectations(path, source, findings)
+}
+
+/// The one file whose shipped code reads the machine's motion setting: the app's start-up.
+const MOTION_START_UP: &str = "crates/review-app/src/app.rs";
+
+/// `motion::install` reads the OS's reduced-motion setting, so a test that calls it runs
+/// differently on a machine with Reduce Motion on (GitHub's macOS runners). Only the app's
+/// start-up calls it; tests pin motion with `motion::set_reduced`.
+fn motion_install(path: &str, source: &Source, file_is_test: bool, findings: &mut Vec<Finding>) {
+    for line in motion_install_lines(source) {
+        let is_start_up = path == MOTION_START_UP && !file_is_test && !source.is_test_line(line);
+        if !is_start_up {
+            findings.push(Finding::at(
+                Rule::MotionInstall,
+                path,
+                line,
+                format!("motion::install reads the machine's reduced-motion setting; only the app's start-up ({MOTION_START_UP}) calls it, a test pins motion with motion::set_reduced(ctx, false)"),
+            ));
+        }
+    }
+}
+
+/// Lines with the path `motion::install` in code (a call or a `use`).
+fn motion_install_lines(source: &Source) -> Vec<usize> {
+    source
+        .tokens
+        .windows(4)
+        .filter_map(|window| {
+            let [motion, first, second, install] = window else { return None };
+            let is_path = motion.text == "motion"
+                && first.text == ":"
+                && second.text == ":"
+                && install.text == "install";
+            is_path.then_some(install.line)
+        })
+        .collect()
 }
 
 fn role_suffixes(path: &str, source: &Source, findings: &mut Vec<Finding>) {
@@ -255,6 +293,33 @@ mod tests {
         assert!(is_platform_path("crates/cv-shell/src/browser/platform/windows.rs"));
         assert!(is_platform_path("crates/review-store/src/platform.rs"));
         assert!(!is_platform_path("crates/cv-shell/src/platform_bar.rs"));
+    }
+
+    #[test]
+    fn only_the_apps_shipped_start_up_reads_the_motion_setting() {
+        let text = "fn start(ctx: &Context) {\n    motion::install(ctx);\n}\n\n#[cfg(test)]\n\
+            mod tests {\n    fn harness() { theme::motion::install(ctx); }\n}\n";
+        let source = Source::parse(text.to_owned());
+        assert_eq!(motion_install_lines(&source), [2, 7]);
+        let lines = |path: &str, file_is_test: bool| {
+            let mut findings = Vec::new();
+            motion_install(path, &source, file_is_test, &mut findings);
+            findings.iter().filter_map(|finding| finding.line).collect::<Vec<_>>()
+        };
+        assert_eq!(lines(MOTION_START_UP, false), [7], "a test in the start-up file is flagged");
+        assert_eq!(lines(MOTION_START_UP, true), [2, 7], "a test-only file is all test");
+        assert_eq!(lines("crates/cv-pr-diff/src/testing.rs", false), [2, 7]);
+
+        let pinned =
+            Source::parse("fn setup() { theme::motion::set_reduced(ctx, false); }\n".into());
+        assert_eq!(motion_install_lines(&pinned), [0_usize; 0]);
+        let defined =
+            Source::parse("/// See motion::install.\npub fn install(ctx: &Context) {}\n".into());
+        assert_eq!(
+            motion_install_lines(&defined),
+            [0_usize; 0],
+            "the definition and docs are no call"
+        );
     }
 
     #[test]

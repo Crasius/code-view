@@ -134,19 +134,32 @@ there, so `cv-pr-rendered` and every crate after it (`cv-pr-summary`, `cv-pr-thr
     `platform/macos.rs:112`). Every other input on that path is deterministic: kittest sets only
     `predicted_dt` and no wall-clock time, so egui's pointer time, velocity and `stable_dt` are
     the same on every host. The same press, moves and release already pan 1:1 in
-    `a_drag_on_empty_canvas_pans`, which passed on the Mac. The runner's Reduce Motion being on
-    is inferred, not seen: NOT-VERIFIED. The workflow now prints it (step "Host motion
-    setting"), and the assertion prints both positions and the motion setting.
-  - **Status:** fixed on `macos-tests`: the harnesses of `cv-pr-pipelines` set motion on
-    themselves (`motion::set_reduced(ctx, false)`) instead of reading the OS. NOT-VERIFIED on a
-    Mac.
-  - Other harnesses still call `motion::install` (in `cv-pr-diff`, `cv-pr-files`, `cv-pr-page`,
-    `cv-pr-rendered`, `cv-pr-summary`, `cv-pr-threads`, `cv-pr-tree`, `cv-settings` and the whole
-    app). None of them asserts motion, so they should pass either way; the first three passed on
-    the Mac.
+    `a_drag_on_empty_canvas_pans`, which passed on the Mac. Run 4 confirmed it: the runner prints
+    `reduceMotion` 1 (workflow step "Host motion setting").
+  - **Status:** fixed on `macos-tests`, confirmed by run 4. Every test harness outside
+    `review-app` pins motion with `motion::set_reduced` instead of reading the OS, and repo-lint
+    RL016 keeps `motion::install` to the app's start-up.
 - **The workflow**: the test step now runs with `--no-fail-fast`, so one run lists every failing
   test, and the job stops after 45 minutes (our own budget, from the 20 minutes this run took up
   to the failing crate), so a hang like run 2's ends the job instead of running for hours.
+
+## Run 4, GitHub run 45861132128 (pull request 1): every crate ran
+
+77 test binaries passed, two failed.
+
+- **`review-git`, a clone whose path crosses a symbolic link** (2 tests):
+  `a_new_worktree_gets_the_pull_request_from_the_mirror_with_its_upstream` and
+  `the_survey_tells_a_fork_from_a_branch_of_the_repository`. The temp folder is under `/var`,
+  a link to `/private/var`. `git worktree list` prints every path with links resolved, and the
+  checkout compared that with the path the app holds as text (`checkout/repo.rs`, `same_folder`).
+  That was a bug for users too: a clone opened through a link (`~/dev` linked to another disk,
+  anything under `/tmp` or `/var`) did not know itself, so checking out its own current branch
+  in it was refused as "checked out in" that same clone, by the popover and by the checkout.
+  **Status:** fixed on `macos-tests`: `LocalRepo::worktrees` reports the clone's own tree in the
+  clone's spelling, and a Unix test opens a clone through a link. NOT-VERIFIED on a Mac.
+- **`review-app`, five walkthroughs**: four read Reduce Motion through the app's start-up
+  (`ReviewApp::new` calls `motion::install`), one presses F11 for focus mode, which is ⌃⌘F on
+  macOS. Open; they need a change in `review-app`.
 
 ## Other friction
 

@@ -202,7 +202,7 @@ pub fn harness(fixture: Fixture) -> Harness<'static, Fixture> {
         .with_size([1180.0, 760.0])
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(
             |ui, state: &mut Fixture| {

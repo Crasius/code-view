@@ -475,7 +475,7 @@ fn page_harness(page: Page) -> Harness<'static, Page> {
         .with_size([1180.0, 760.0])
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(
             |ui, page: &mut Page| {
@@ -1151,7 +1151,7 @@ fn recording_harness(fixture: Fixture, height: f32) -> Harness<'static, Recorder
         .with_size([1180.0, height])
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(
             |ui, recorder: &mut Recorder| {

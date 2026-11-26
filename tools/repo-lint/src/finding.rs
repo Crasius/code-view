@@ -20,10 +20,11 @@ pub enum Rule {
     BlockOn,
     Expectation,
     TestSupportFeature,
+    MotionInstall,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 15] = [
+    pub const ALL: [Rule; 16] = [
         Rule::FileLength,
         Rule::LengthAllowlist,
         Rule::RoleSuffix,
@@ -39,6 +40,7 @@ impl Rule {
         Rule::BlockOn,
         Rule::Expectation,
         Rule::TestSupportFeature,
+        Rule::MotionInstall,
     ];
 
     pub fn id(self) -> &'static str {
@@ -58,6 +60,7 @@ impl Rule {
             Rule::BlockOn => "RL013",
             Rule::Expectation => "RL014",
             Rule::TestSupportFeature => "RL015",
+            Rule::MotionInstall => "RL016",
         }
     }
 
@@ -78,6 +81,7 @@ impl Rule {
             Rule::BlockOn => "block-on",
             Rule::Expectation => "expectation",
             Rule::TestSupportFeature => "test-support-feature",
+            Rule::MotionInstall => "motion-install",
         }
     }
 

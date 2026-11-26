@@ -583,7 +583,7 @@ mod tests {
     fn build(scene: Scene, size: [f32; 2]) -> Harness<'static, Scene> {
         let builder = Harness::builder().with_size(size).with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            theme::motion::install(ctx);
+            theme::motion::set_reduced(ctx, false);
         });
         builder.build_ui_state(
             |ui, scene: &mut Scene| {
