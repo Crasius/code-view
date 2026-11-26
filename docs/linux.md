@@ -187,3 +187,4 @@ keyring or a real host. None of this has run on a Linux desktop yet:
   second start handing its link over the socket. Clippy for Linux has not run on this part either.
 - Clean breadcrumbs on the machine that showed garbled text, on X11 and Wayland, at 100 % and at a
   fractional scale.
+
