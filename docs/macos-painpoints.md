@@ -126,7 +126,7 @@ in Settings.
   Gatekeeper until its quarantine flag is cleared (see macos.md).
   **Status:** documented: `xattr -dr com.apple.quarantine "Code View.app"` in the same section.
   Developer ID signing and notarization stay open.
-- **Git over SSH with two GitHub accounts.** The repo is private. With `gh` set to SSH and the
+- **Git over SSH with two GitHub accounts.** The repository was private then. With `gh` set to SSH and the
   SSH key bound to another GitHub account, `gh repo clone` fails. Cloning over HTTPS with the
   right account's token works.
   **Status:** documented: macos.md, "Getting the source" (`gh auth switch`, `gh auth setup-git`,

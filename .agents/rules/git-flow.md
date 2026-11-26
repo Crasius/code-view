@@ -13,7 +13,7 @@
 4. Before the merge, run `git merge main` in the worktree. Resolve conflicts there; rerun the checks only when the merge brought code changes.
 5. In the main checkout, run `git merge --no-ff <task>` with the subject `Merge <task>: <what it brings>`, then `sh scripts/worktree.sh done <task>`. `done` only removes a merged worktree; it never merges.
 6. Ship the merge (rule `rust`, Ship).
-7. Push only when the owner asks, as a fast-forward: `git push origin main`. GitLab's push mirror carries `main` on to `github`; while no mirror is set up, also `git push github main`. A rejected push means the remote moved: fetch, merge it into `main`, check, push again. Never force.
+7. Push only when the owner asks, as a fast-forward: `git push origin main`. GitLab's push mirror (protected branches only, with a deploy key on GitHub) carries `main` on to `github` within minutes; never push to `github` by hand, its ruleset lets only that key update `main`. A push that does not arrive shows its reason in the GitLab project under Settings, Repository, Mirroring repositories. A rejected push means the remote moved: fetch, merge it into `main`, check, push again. Never force.
 
 ## Pull requests from GitHub
 Contributors open pull requests on the `github` mirror (`CONTRIBUTING.md`). They land through GitLab like any task, with a merge commit:
