@@ -1,0 +1,2 @@
+The app's shared widget library: one file per widget, imported by flat cv_widgets::<widget> paths from the feature crates; grouping them into sub-modules by topic would rewrite those imports across every crate above.
+Widgets that grow parts of their own have a sub-module (progress_log/); the Markdown renderer and the editors are crates of their own (cv-markdown, cv-editor).

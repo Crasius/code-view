@@ -1,0 +1,60 @@
+[package]
+name = "cv-pr-threads"
+description = "Comment threads: the inline card, the gutter markers, the all-threads panel and what the app keeps about threads."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# Test helpers other crates' tests name (`samples`, `ThreadsUi::for_tests` and the other
+# `*_for_tests` drivers, `Delivery`); forwards to the cv crates below.
+test-support = [
+    "cv-base/test-support",
+    "cv-code/test-support",
+    "cv-editor/test-support",
+    "cv-markdown/test-support",
+    "cv-pr-session/test-support",
+    "cv-runtime/test-support",
+    "cv-services/test-support",
+    "cv-syntax/test-support",
+    "cv-widgets/test-support",
+]
+
+[dependencies]
+cv-base.workspace = true
+cv-code.workspace = true
+cv-editor.workspace = true
+cv-markdown.workspace = true
+cv-pr-session.workspace = true
+cv-runtime.workspace = true
+cv-services.workspace = true
+cv-syntax.workspace = true
+cv-widgets.workspace = true
+review-core.workspace = true
+review-git.workspace = true
+review-store.workspace = true
+egui.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+cv-base = { workspace = true, features = ["test-support"] }
+cv-code = { workspace = true, features = ["test-support"] }
+cv-editor = { workspace = true, features = ["test-support"] }
+cv-markdown = { workspace = true, features = ["test-support"] }
+cv-pr-session = { workspace = true, features = ["test-support"] }
+cv-runtime = { workspace = true, features = ["test-support"] }
+cv-services = { workspace = true, features = ["test-support"] }
+cv-syntax = { workspace = true, features = ["test-support"] }
+cv-widgets = { workspace = true, features = ["test-support"] }
+cv-testkit.workspace = true
+egui_kittest.workspace = true
+provider-github.workspace = true
+reqwest.workspace = true

@@ -1,0 +1,64 @@
+[package]
+name = "cv-settings"
+description = "Code View's Settings page and the connection setup: the onboarding wizard, the access banner and the CLI sign-ins."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# The sample diff's probe other crates' tests read (`settings::sample_slack`) and the browser
+# extension row's registration in memory instead of the user's registry; forwards to the cv
+# crates below. Enabled only from [dev-dependencies] and from the test-support features above.
+test-support = [
+    "cv-base/test-support",
+    "cv-code/test-support",
+    "cv-pr-session/test-support",
+    "cv-runtime/test-support",
+    "cv-services/test-support",
+    "cv-shell/test-support",
+    "cv-syntax/test-support",
+    "cv-widgets/test-support",
+]
+
+[dependencies]
+cv-base.workspace = true
+cv-code.workspace = true
+cv-pr-session.workspace = true
+cv-runtime.workspace = true
+cv-services.workspace = true
+cv-shell.workspace = true
+cv-syntax.workspace = true
+cv-widgets.workspace = true
+review-agent.workspace = true
+review-core.workspace = true
+review-git.workspace = true
+review-store.workspace = true
+# The token guides of each platform's setup (src/onboarding/guides.rs).
+provider-azure.workspace = true
+provider-github.workspace = true
+provider-gitlab.workspace = true
+egui.workspace = true
+tokio.workspace = true
+urlencoding.workspace = true
+
+[dev-dependencies]
+cv-base = { workspace = true, features = ["test-support"] }
+cv-code = { workspace = true, features = ["test-support"] }
+cv-pr-session = { workspace = true, features = ["test-support"] }
+cv-runtime = { workspace = true, features = ["test-support"] }
+cv-services = { workspace = true, features = ["test-support"] }
+cv-shell = { workspace = true, features = ["test-support"] }
+cv-syntax = { workspace = true, features = ["test-support"] }
+cv-widgets = { workspace = true, features = ["test-support"] }
+cv-providers.workspace = true
+cv-testkit.workspace = true
+egui_kittest.workspace = true
+serde_json.workspace = true

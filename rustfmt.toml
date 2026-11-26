@@ -1,0 +1,8 @@
+# rustfmt layout for the workspace. `cargo fmt --all --check` runs in CI, and
+# .agents/hooks/rust-stop-gate.sh checks the changed files (.agents/rules/rust.md, Format).
+edition = "2024"
+style_edition = "2024"
+# The hand-written code before rustfmt kept short calls, struct literals and chains on one line
+# up to the 100-column width its comments wrap at. "Max" keeps that shape and cuts the format
+# diff by a third (65,140 to 41,152 changed lines, measured with rustfmt 1.10.0).
+use_small_heuristics = "Max"

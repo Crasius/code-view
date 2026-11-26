@@ -1,0 +1,61 @@
+[package]
+name = "cv-services"
+description = "Code View's services: the Services hub, agents, checkouts, connections, writes, mirrors, self review and line counts."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# The fakes and probes other crates' tests need: the agent directory answers from FakeAgents, the
+# folder dialog and the default search folders from a script, providers reach only loopback
+# (cv-testkit's http_client), Services carries the watchdog and the hermetic check, plus
+# answer_folder_dialog, counted_for_test and logged_for_test; forwards to the cv crates below.
+# Enabled only from [dev-dependencies] and from the test-support features above.
+test-support = [
+    "dep:cv-testkit",
+    "review-agent/fake",
+    "cv-base/test-support",
+    "cv-media/test-support",
+    "cv-runtime/test-support",
+    "cv-widgets/test-support",
+]
+
+[dependencies]
+cv-base.workspace = true
+cv-media.workspace = true
+cv-runtime.workspace = true
+cv-widgets.workspace = true
+# Only with test-support: Services' watchdog and hermetic check, the loopback-only HTTP client.
+cv-testkit = { workspace = true, optional = true }
+review-core.workspace = true
+review-git.workspace = true
+review-store.workspace = true
+review-agent.workspace = true
+async-trait.workspace = true
+egui.workspace = true
+reqwest.workspace = true
+# Checkout logs and the memory journal stamp their lines (checkouts/finish.rs, upkeep.rs,
+# memory_journal.rs).
+time = { workspace = true, features = ["local-offset"] }
+tokio.workspace = true
+
+[dev-dependencies]
+cv-base = { workspace = true, features = ["test-support"] }
+cv-media = { workspace = true, features = ["test-support"] }
+cv-runtime = { workspace = true, features = ["test-support"] }
+cv-widgets = { workspace = true, features = ["test-support"] }
+cv-testkit.workspace = true
+cv-providers.workspace = true
+provider-github.workspace = true
+# The tests drive the agent directory with scripted sessions, no CLI process.
+review-agent = { workspace = true, features = ["fake"] }
+serde_json.workspace = true
+wiremock.workspace = true

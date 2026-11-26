@@ -1,0 +1,10 @@
+{
+  "id": 80,
+  "node_id": "PRR_kwDOAbc",
+  "user": { "id": 9, "login": "me", "avatar_url": null },
+  "body": "Approved after the rename.",
+  "state": "APPROVED",
+  "commit_id": "head111",
+  "submitted_at": "2024-06-01T10:00:00Z",
+  "html_url": "https://github.com/cli/cli/pull/7#pullrequestreview-80"
+}

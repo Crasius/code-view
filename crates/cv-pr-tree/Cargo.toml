@@ -1,0 +1,31 @@
+[package]
+name = "cv-pr-tree"
+description = "The Files tab's file tree pane: rows, filters, go to file and the review progress line."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# Test helpers and fakes for the tests of the crates above; enabled only from [dev-dependencies].
+test-support = ["cv-base/test-support", "cv-widgets/test-support"]
+
+[dependencies]
+cv-base.workspace = true
+cv-widgets.workspace = true
+egui.workspace = true
+review-core.workspace = true
+review-git.workspace = true
+review-store.workspace = true
+
+[dev-dependencies]
+cv-base = { workspace = true, features = ["test-support"] }
+cv-widgets = { workspace = true, features = ["test-support"] }
+egui_kittest.workspace = true

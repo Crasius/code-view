@@ -1,0 +1,21 @@
+{
+  "id": 1001,
+  "node_id": "PRRC_kwDOAbc",
+  "pull_request_review_id": 42,
+  "in_reply_to_id": null,
+  "path": "src/main.rs",
+  "line": 12,
+  "original_line": 12,
+  "side": "RIGHT",
+  "start_line": null,
+  "start_side": null,
+  "subject_type": "line",
+  "commit_id": "head111",
+  "original_commit_id": "head111",
+  "diff_hunk": "@@ -10,3 +10,4 @@",
+  "user": { "id": 9, "login": "me", "avatar_url": null },
+  "body": "Use a slice here.",
+  "created_at": "2024-06-01T10:00:00Z",
+  "updated_at": "2024-06-01T11:30:00Z",
+  "html_url": "https://github.com/cli/cli/pull/7#discussion_r1001"
+}

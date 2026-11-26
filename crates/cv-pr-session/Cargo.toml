@@ -1,0 +1,50 @@
+[package]
+name = "cv-pr-session"
+description = "One pull request's session and what its page's parts share: writes, merge choices, links, images and the assistant's mailboxes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# Test helpers other crates' tests name (`assistant_link::room`); forwards to the cv crates below.
+test-support = [
+    "cv-base/test-support",
+    "cv-markdown/test-support",
+    "cv-media/test-support",
+    "cv-runtime/test-support",
+    "cv-services/test-support",
+    "cv-widgets/test-support",
+]
+
+[dependencies]
+cv-base.workspace = true
+cv-markdown.workspace = true
+cv-media.workspace = true
+cv-runtime.workspace = true
+cv-services.workspace = true
+cv-widgets.workspace = true
+review-core.workspace = true
+review-git.workspace = true
+review-store.workspace = true
+egui.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+urlencoding.workspace = true
+
+[dev-dependencies]
+cv-base = { workspace = true, features = ["test-support"] }
+cv-markdown = { workspace = true, features = ["test-support"] }
+cv-media = { workspace = true, features = ["test-support"] }
+cv-runtime = { workspace = true, features = ["test-support"] }
+cv-services = { workspace = true, features = ["test-support"] }
+cv-widgets = { workspace = true, features = ["test-support"] }
+cv-testkit.workspace = true
+time.workspace = true

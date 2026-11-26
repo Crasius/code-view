@@ -1,0 +1,86 @@
+%YAML 1.2
+---
+# Code View's own grammar: bat's PowerShell grammar needs regex features only Oniguruma has, so
+# this one is written for the pure-Rust engine: comments, strings with interpolation, variables,
+# cmdlets, operators.
+name: PowerShell
+file_extensions: [ps1, psm1, psd1]
+scope: source.powershell
+contexts:
+  main:
+    - match: '<#'
+      scope: punctuation.definition.comment.begin.powershell
+      push: block_comment
+    - match: '#.*$'
+      scope: comment.line.number-sign.powershell
+    - match: '@"\s*$'
+      scope: punctuation.definition.string.begin.powershell
+      push: here_string_double
+    - match: "@'\\s*$"
+      scope: punctuation.definition.string.begin.powershell
+      push: here_string_single
+    - match: '"'
+      scope: punctuation.definition.string.begin.powershell
+      push: string_double
+    - match: "'"
+      scope: punctuation.definition.string.begin.powershell
+      push: string_single
+    - match: '(?i)\$(?:true|false|null)\b'
+      scope: constant.language.powershell
+    - include: variables
+    - match: '(?i)\b(?:begin|break|catch|continue|data|do|dynamicparam|else|elseif|end|exit|filter|finally|for|foreach|from|if|in|parallel|process|return|switch|throw|trap|try|until|using|while|workflow)\b'
+      scope: keyword.control.powershell
+    - match: '(?i)\b(?:class|enum|function|param|hidden|static|configuration)\b'
+      scope: storage.type.powershell
+    - match: '(?i)-(?:eq|ne|gt|ge|lt|le|like|notlike|match|notmatch|contains|notcontains|in|notin|replace|split|join|and|or|not|xor|band|bor|bxor|bnot|shl|shr|is|isnot|as|f|ceq|cne|clike|cmatch|ieq|ine|ilike|imatch)\b'
+      scope: keyword.operator.word.powershell
+    - match: '\[[A-Za-z_][\w.`]*(?:\[[\w.,\s]*\])?\]'
+      scope: entity.name.type.powershell
+    - match: '\b[A-Za-z]+-[A-Za-z][A-Za-z0-9]*\b'
+      scope: support.function.powershell
+    - match: '(?<![\w$-])-[A-Za-z][\w]*'
+      scope: variable.parameter.powershell
+    - match: '\b(?:0[xX][0-9A-Fa-f]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)(?:[kKmMgGtTpP][bB])?\b'
+      scope: constant.numeric.powershell
+    - match: '[-+*/%=!<>|&]+'
+      scope: keyword.operator.powershell
+  variables:
+    - match: '\$\{[^}]*\}'
+      scope: variable.other.readwrite.powershell
+    - match: '[$@](?:[A-Za-z_][\w]*:)?[A-Za-z_][\w]*'
+      scope: variable.other.readwrite.powershell
+    - match: '\$[$?^_]'
+      scope: variable.language.powershell
+  block_comment:
+    - meta_scope: comment.block.powershell
+    - match: '#>'
+      scope: punctuation.definition.comment.end.powershell
+      pop: true
+  string_double:
+    - meta_scope: string.quoted.double.powershell
+    - match: '`.|""'
+      scope: constant.character.escape.powershell
+    - include: variables
+    - match: '"'
+      scope: punctuation.definition.string.end.powershell
+      pop: true
+  string_single:
+    - meta_scope: string.quoted.single.powershell
+    - match: "''"
+      scope: constant.character.escape.powershell
+    - match: "'"
+      scope: punctuation.definition.string.end.powershell
+      pop: true
+  here_string_double:
+    - meta_scope: string.quoted.double.heredoc.powershell
+    - match: '^"@'
+      scope: punctuation.definition.string.end.powershell
+      pop: true
+    - match: '`.'
+      scope: constant.character.escape.powershell
+    - include: variables
+  here_string_single:
+    - meta_scope: string.quoted.single.heredoc.powershell
+    - match: "^'@"
+      scope: punctuation.definition.string.end.powershell
+      pop: true

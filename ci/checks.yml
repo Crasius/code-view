@@ -1,0 +1,117 @@
+# The checks of a commit and what every pipeline of this project runs with (docs/release.md,
+# Pipelines). Two pipelines include this file: .gitlab-ci.yml for merge requests, tags and runs by
+# hand, and main's child pipeline for a push to main whose tree no merge request pipeline passed
+# (ci/main-scope.sh). A push to main never runs them in its own pipeline (.checks-not-on-main-push).
+
+variables:
+  # Images by digest; the tag only documents the version. rustup in the image installs the toolchain
+  # rust-toolchain.toml pins.
+  RUST_IMAGE: rust:1.99.1-bookworm@sha256:7085845219c18e7c5b1f34ed9ce89b84f822f2e3d54a02774cedc996ac0f304f
+  ZIGBUILD_IMAGE: ghcr.io/rust-cross/cargo-zigbuild:0.24.0@sha256:eb5578cfc06e070a09deb7b5852474bd128a4e561f9f123261b5ed2405e478b1
+  XWIN_IMAGE: ghcr.io/rust-cross/cargo-xwin:0.23.1@sha256:9856b895265d4966f212228ba64802cf89337e2a2a537aa2533c1b8784cbc81b
+  # Moves only the downloaded crates into the cache; rustup and the cargo plugins stay in the image.
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo-home
+  CARGO_TERM_COLOR: always
+  XWIN_CACHE_DIR: $CI_PROJECT_DIR/.xwin-cache
+  BUILD_DEPS: $CI_PROJECT_DIR/.build-deps
+
+default:
+  tags: [build]
+  interruptible: true
+  retry:
+    max: 2
+    # The reasons that replaced stuck_or_timeout_failure (deprecated in GitLab 19.1).
+    when:
+      - runner_system_failure
+      - scheduler_failure
+      - stuck_pending_with_matching_runners
+      - stuck_pending_no_matching_runners
+      - no_updates_running
+      - no_updates_canceling
+
+# What a cargo job can depend on, a coarse filter: a merge request that changes none of them, a
+# docs-only one, runs no cargo job. The pipeline's own files are on the list, so a CI change runs
+# the jobs it defines.
+.rust-inputs:
+  - crates/**/*
+  - tools/**/*
+  - browser-extension/**/*
+  - .cargo/**/*
+  - Cargo.toml
+  - Cargo.lock
+  - rust-toolchain.toml
+  - clippy.toml
+  - rustfmt.toml
+  - .gitlab-ci.yml
+  - ci/**/*
+  - .agents/hooks/**/*
+
+# A push to main runs its checks in the child pipeline ci/main-scope.sh decides, or not at all when
+# its tree is one a merge request pipeline passed (.gitlab-ci.yml, main-checks). In that child
+# CI_PIPELINE_SOURCE is `parent_pipeline`, so this rule lets the checks run there.
+.checks-not-on-main-push:
+  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
+    when: never
+
+.rust:
+  image: $ZIGBUILD_IMAGE
+  timeout: 1h
+  variables:
+    # Keeps the build folder inside the runner's disk limit (docs/release.md, Runner).
+    CARGO_INCREMENTAL: "0"
+    CARGO_PROFILE_DEV_DEBUG: "0"
+    CARGO_PROFILE_TEST_DEBUG: "0"
+  before_script:
+    - export PATH="$BUILD_DEPS/usr/bin:$PATH"
+  cache:
+    key:
+      prefix: rust-$CI_JOB_NAME_SLUG
+      files: [Cargo.lock, rust-toolchain.toml]
+    # Downloads only: an archive must fit the runner's 2 GiB (docs/release.md, Runner).
+    paths: [.cargo-home/registry/index, .cargo-home/registry/cache, .cargo-home/git/db, .xwin-cache]
+  after_script:
+    - du -sh target .cargo-home .xwin-cache .build-deps 2>/dev/null || true
+
+# The image of docs/linux.md (Tests in a container): its git and its DejaVu fonts are all the tests
+# need. The two clippy passes differ: --all-targets lints the libraries with test-support on, the
+# second pass lints the shipped variant. In a merge request only when a cargo input changed.
+check:
+  stage: test
+  extends: .rust
+  image: $RUST_IMAGE
+  timeout: 2h
+  rules:
+    - !reference [.checks-not-on-main-push]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths: !reference [.rust-inputs]
+        compare_to: refs/heads/main
+    - if: $CI_PIPELINE_SOURCE != "merge_request_event"
+  variables:
+    # repo-lint compares the length allowlist with the commit before the push.
+    GIT_DEPTH: "50"
+  script:
+    - rustup show active-toolchain || rustup toolchain install
+    - cargo fmt --all --check
+    - sh .agents/hooks/repo-check.sh
+    - sh ci/repo-lint-base.sh
+    - cargo clippy --locked --workspace --all-targets -- -D warnings
+    - cargo clippy --locked --workspace -- -D warnings
+    - cargo test --locked --workspace
+
+# Secret scan of the full git history, in every pipeline that checks. Findings are redacted in the
+# job log.
+secret-scan:
+  stage: test
+  image:
+    name: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+    entrypoint: [""]
+  needs: []
+  rules:
+    - !reference [.checks-not-on-main-push]
+    - when: on_success
+  variables:
+    GIT_DEPTH: "0"
+  script:
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - gitleaks git --redact --no-banner --verbose "$CI_PROJECT_DIR"

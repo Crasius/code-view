@@ -1,0 +1,105 @@
+[package]
+name = "review-app"
+description = "Native pull request review desktop app."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "CodeView"
+path = "src/main.rs"
+
+# The macOS app bundle, built with scripts/package-macos.sh (see docs/macos.md).
+[package.metadata.bundle]
+name = "Code View"
+identifier = "de.crasius.codeview"
+icon = ["assets/icon/codeview.icns"]
+category = "public.app-category.developer-tools"
+short_description = "Native pull request reviews for Azure DevOps, GitHub and GitLab."
+copyright = "Copyright 2026 Northbyte. Functional Source License 1.1 (FSL-1.1-ALv2)."
+
+[package.metadata.bundle.osx]
+minimum_system_version = "12.0"
+
+[features]
+# wgpu as a second renderer, picked at run time with CODEVIEW_RENDERER=wgpu (docs/linux.md). Off by
+# default: the app ships glow only.
+wgpu = ["eframe/wgpu"]
+
+[dependencies]
+# The crates main.rs, app.rs and title_bar/ name; cv-providers builds the hosts' providers.
+cv-base.workspace = true
+cv-editor.workspace = true
+cv-lists.workspace = true
+cv-markdown.workspace = true
+cv-media.workspace = true
+cv-pr-page.workspace = true
+cv-pr-session.workspace = true
+cv-providers.workspace = true
+cv-runtime.workspace = true
+cv-services.workspace = true
+cv-settings.workspace = true
+cv-shell.workspace = true
+cv-widgets.workspace = true
+review-core.workspace = true
+review-store.workspace = true
+eframe.workspace = true
+egui.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# winit's X11 and Wayland backends; both load their system libraries at run time.
+eframe = { workspace = true, features = ["wayland", "x11"] }
+
+[dev-dependencies]
+# The walkthroughs run the whole app on the libraries' test fakes (agents, clipboard, dialogs) and
+# read their probes; every cv library's `test-support` switches them on.
+cv-base = { workspace = true, features = ["test-support"] }
+cv-code = { workspace = true, features = ["test-support"] }
+cv-editor = { workspace = true, features = ["test-support"] }
+cv-lists = { workspace = true, features = ["test-support"] }
+cv-markdown = { workspace = true, features = ["test-support"] }
+cv-media = { workspace = true, features = ["test-support"] }
+cv-pr-assistant = { workspace = true, features = ["test-support"] }
+cv-pr-diff = { workspace = true, features = ["test-support"] }
+cv-pr-files = { workspace = true, features = ["test-support"] }
+cv-pr-page = { workspace = true, features = ["test-support"] }
+cv-pr-pipelines = { workspace = true, features = ["test-support"] }
+cv-pr-rendered = { workspace = true, features = ["test-support"] }
+cv-pr-session = { workspace = true, features = ["test-support"] }
+cv-pr-summary = { workspace = true, features = ["test-support"] }
+cv-pr-threads = { workspace = true, features = ["test-support"] }
+cv-pr-tree = { workspace = true, features = ["test-support"] }
+cv-runtime = { workspace = true, features = ["test-support"] }
+cv-services = { workspace = true, features = ["test-support"] }
+cv-settings = { workspace = true, features = ["test-support"] }
+cv-shell = { workspace = true, features = ["test-support"] }
+cv-syntax = { workspace = true, features = ["test-support"] }
+cv-widgets = { workspace = true, features = ["test-support"] }
+cv-testkit.workspace = true
+egui_kittest = { workspace = true, features = ["eframe"] }
+# Walkthroughs drive the assistant with a scripted session, no CLI process.
+review-agent = { workspace = true, features = ["fake"] }
+review-git.workspace = true
+provider-gitlab.workspace = true
+async-trait.workspace = true
+# Also the icon renderer (examples/render_icon.rs).
+image.workspace = true
+reqwest.workspace = true
+# The icon renderer draws the SVG masters (examples/render_icon.rs).
+resvg.workspace = true
+serde_json.workspace = true
+time.workspace = true
+tokio.workspace = true
+urlencoding.workspace = true
+wiremock.workspace = true
+
+# Without a Windows-only cfg: a build dependency's cfg reads the host, and the release build
+# cross-compiles for Windows on Linux (build.rs).
+[build-dependencies]
+winresource.workspace = true

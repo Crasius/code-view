@@ -1,0 +1,32 @@
+/target
+**/*.rs.bk
+/dist
+
+# The CI jobs' caches and tools (.gitlab-ci.yml); repo-lint and repo-check read what git does not ignore
+/.cargo-home/
+/.xwin-cache/
+/.build-deps/
+
+# Machine-local cargo settings (sccache wrapper), written by scripts/worktree.sh
+/.cargo/config.toml
+
+# Scratch (screenshots, logs, briefs, commit messages); never committed
+/tmp/
+
+# Claude Code: harness worktrees and personal settings
+/.claude/worktrees/
+/.claude/settings.local.json
+
+# Secrets (never committed)
+.env
+.env.*
+!.env.example
+*.key
+*.pfx
+*.p12
+.secrets/
+*-key.txt
+credentials*.json
+token.json
+*-token.json
+*_token.json

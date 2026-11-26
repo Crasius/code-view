@@ -1,0 +1,2 @@
+One unit, the text diff: its parts (the view, its rows and cards, the find widget, the overview strip, the gaps, the composer, the notices, the patch colors and the caches they share) share crate-private types (DiffView, DiffInputs, Selection, LineAnchor, DiffKey), and the rendered Markdown diff, the folder summary and the Files tab build on them together.
+The parts that stand on their own live in sub-folders: diff_view/, diff_overview/ and find/.

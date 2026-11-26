@@ -1,0 +1,64 @@
+[package]
+name = "cv-pr-rendered"
+description = "The rendered views of a changed file: the Markdown diff, the image preview and the file header."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# Test helpers and probes for the tests of the crates above; enabled only from [dev-dependencies].
+test-support = [
+    "cv-base/test-support",
+    "cv-code/test-support",
+    "cv-markdown/test-support",
+    "cv-media/test-support",
+    "cv-pr-diff/test-support",
+    "cv-pr-session/test-support",
+    "cv-pr-threads/test-support",
+    "cv-runtime/test-support",
+    "cv-services/test-support",
+    "cv-widgets/test-support",
+]
+
+[dependencies]
+cv-base.workspace = true
+cv-code.workspace = true
+cv-markdown.workspace = true
+cv-media.workspace = true
+cv-pr-diff.workspace = true
+cv-pr-session.workspace = true
+cv-pr-threads.workspace = true
+cv-runtime.workspace = true
+cv-services.workspace = true
+cv-widgets.workspace = true
+egui.workspace = true
+# SVG previews render their text in the system's fonts, as rendered Markdown does.
+resvg = { workspace = true, features = ["text", "system-fonts"] }
+review-core.workspace = true
+review-git.workspace = true
+review-store.workspace = true
+similar.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+cv-base = { workspace = true, features = ["test-support"] }
+cv-code = { workspace = true, features = ["test-support"] }
+cv-markdown = { workspace = true, features = ["test-support"] }
+cv-media = { workspace = true, features = ["test-support"] }
+cv-pr-diff = { workspace = true, features = ["test-support"] }
+cv-pr-session = { workspace = true, features = ["test-support"] }
+cv-pr-threads = { workspace = true, features = ["test-support"] }
+cv-runtime = { workspace = true, features = ["test-support"] }
+cv-services = { workspace = true, features = ["test-support"] }
+cv-testkit.workspace = true
+cv-widgets = { workspace = true, features = ["test-support"] }
+egui_kittest.workspace = true
+image.workspace = true

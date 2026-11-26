@@ -1,0 +1,66 @@
+name: Bug report
+description: Something in Code View does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A security problem? Do not file it here: report it privately as SECURITY.md in the repository says.
+        Never paste an access token, a password or private repository content into an issue.
+  - type: input
+    id: version
+    attributes:
+      label: Code View version
+      description: The release you downloaded, or the commit you built.
+      placeholder: 0.1.2
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: System
+      options:
+        - Windows x64
+        - Windows Arm64
+        - macOS (Apple silicon)
+        - macOS (Intel)
+        - Linux x64
+        - Linux arm64
+    validations:
+      required: true
+  - type: dropdown
+    id: host
+    attributes:
+      label: Host
+      description: The host of the pull request, if the problem is about one.
+      options:
+        - Not about a host
+        - GitHub (github.com)
+        - GitHub Enterprise Server
+        - GitLab (gitlab.com)
+        - GitLab self-managed
+        - Azure DevOps Services
+        - Azure DevOps Server
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a pull request with ...
+        2. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected and what happened instead
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log lines
+      description: The relevant lines of the log file in Code View's cache folder, with any private names removed.
+      render: text

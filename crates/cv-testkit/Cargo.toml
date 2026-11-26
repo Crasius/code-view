@@ -1,0 +1,24 @@
+[package]
+name = "cv-testkit"
+description = "Code View's test support: hermetic services, process slots, fixtures and the frame-budget benchmarks."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+cv-base.workspace = true
+review-core.workspace = true
+review-store.workspace = true
+egui.workspace = true
+reqwest.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

@@ -1,0 +1,433 @@
+//! Commands and the edits they make: from keys (`keys`), the toolbar, the popups, clicks and the
+//! clipboard (`clipboard`). Ctrl+Enter and Esc (with no popup open) stay in the input: the caller
+//! submits or cancels.
+
+mod clipboard;
+mod keys;
+
+use egui::{Pos2, Ui};
+
+pub use self::clipboard::is_url;
+use self::clipboard::{copy, paste};
+pub use self::keys::take_commands;
+use super::caret;
+use super::edit::rules;
+use super::edit::structure::{self, ListStyle};
+use super::edit::{self as edit_ops};
+use super::history::EditKind;
+use super::model::{Atom, Document, Kind, Link, Mark, Pos, Selection};
+use super::{Popup, State};
+
+/// A caret move.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Motion {
+    Left,
+    Right,
+    Up,
+    Down,
+    WordLeft,
+    WordRight,
+    RowStart,
+    RowEnd,
+    DocStart,
+    DocEnd,
+    PageUp,
+    PageDown,
+}
+
+/// What the editor does: from a key, a toolbar button, a menu entry or a click.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Command {
+    Insert(String),
+    Enter,
+    LineBreak,
+    Backspace,
+    Delete,
+    DeleteWord {
+        forward: bool,
+    },
+    Move {
+        motion: Motion,
+        extend: bool,
+    },
+    SelectAll,
+    Mark(Mark),
+    /// Opens the link popover.
+    EditLink,
+    SetLink(Option<Link>),
+    Heading(u8),
+    List(ListStyle),
+    Quote,
+    CodeBlock,
+    Rule,
+    /// Types `@` and opens the mention list.
+    Mention,
+    Indent {
+        outdent: bool,
+    },
+    ToggleTask(usize),
+    Undo,
+    Redo,
+    Copy,
+    Cut,
+    Paste(String),
+}
+
+/// How the commands of one frame ran.
+#[derive(Default)]
+pub struct Ran {
+    pub is_changed: bool,
+    pub copied: Option<String>,
+}
+
+/// What a command needs of the frame: layout for caret moves, the clock for undo grouping.
+pub struct Frame<'a> {
+    pub ui: &'a Ui,
+    /// The content's top-left (screen coordinates).
+    pub origin: Pos2,
+    pub page_height: f32,
+    pub now: f64,
+}
+
+/// Runs `commands` on the editor.
+pub fn run(state: &mut State, frame: &Frame<'_>, commands: Vec<Command>) -> Ran {
+    let mut ran = Ran::default();
+    for command in commands {
+        let version = state.version;
+        run_one(state, frame, command, &mut ran);
+        ran.is_changed |= state.version != version;
+    }
+    ran
+}
+
+fn selected_blocks(state: &State) -> (usize, usize) {
+    let (from, to) = state.selection.ordered();
+    (from.block, to.block)
+}
+
+/// Records an undo step of `kind`, then runs `change` and moves the caret where it says.
+fn edit(
+    state: &mut State,
+    frame: &Frame<'_>,
+    kind: EditKind,
+    change: impl FnOnce(&mut Document, Selection) -> Pos,
+) {
+    state.history.record(&state.doc, state.selection, kind, state.selection.head.block, frame.now);
+    let caret = change(&mut state.doc, state.selection);
+    state.selection = Selection::caret(state.doc.clamp(caret));
+    state.stored = None;
+    state.changed();
+}
+
+/// Records an undo step, then runs a block-level `change` over the selected blocks.
+fn restructure(
+    state: &mut State,
+    frame: &Frame<'_>,
+    change: impl FnOnce(&mut Document, usize, usize),
+) {
+    let (first, last) = selected_blocks(state);
+    state.history.record(&state.doc, state.selection, EditKind::Other, first, frame.now);
+    change(&mut state.doc, first, last);
+    let (from, to) = state.selection.ordered();
+    state.selection = Selection { anchor: state.doc.clamp(from), head: state.doc.clamp(to) };
+    state.changed();
+}
+
+fn run_one(state: &mut State, frame: &Frame<'_>, command: Command, ran: &mut Ran) {
+    match command {
+        Command::Insert(text) => insert(state, frame, &text),
+        Command::Enter => enter(state, frame),
+        Command::LineBreak => edit(state, frame, EditKind::Other, edit_ops::line_break),
+        Command::Backspace => backspace(state, frame),
+        Command::Delete => edit(state, frame, EditKind::Deleting, edit_ops::delete_forward),
+        Command::DeleteWord { forward } => {
+            if state.selection.is_empty() {
+                let caret = state.selection.head;
+                let to = if forward {
+                    caret::word_right(&state.doc, caret)
+                } else {
+                    caret::word_left(&state.doc, caret)
+                };
+                state.selection.anchor = to;
+            }
+            edit(state, frame, EditKind::Other, edit_ops::backspace);
+        }
+        Command::Move { motion, extend } => move_caret(state, frame, motion, extend),
+        Command::SelectAll => {
+            state.selection = Selection { anchor: Pos::new(0, 0), head: state.doc.end() };
+            state.history.break_group();
+        }
+        Command::Mark(mark) => toggle_mark(state, frame, mark),
+        Command::EditLink => open_link(state),
+        Command::SetLink(link) => set_link(state, frame, link),
+        Command::Heading(level) => restructure(state, frame, |doc, first, last| {
+            structure::toggle_heading(doc, first, last, level);
+        }),
+        Command::List(style) => restructure(state, frame, |doc, first, last| {
+            structure::toggle_list(doc, first, last, style);
+        }),
+        Command::Quote => restructure(state, frame, structure::toggle_quote),
+        Command::CodeBlock => {
+            edit(state, frame, EditKind::Other, |doc, selection| {
+                let (from, to) = selection.ordered();
+                structure::toggle_code_block(doc, from.block, to.block)
+            });
+        }
+        Command::Rule => edit(state, frame, EditKind::Other, |doc, selection| {
+            structure::insert_rule(doc, selection.head)
+        }),
+        Command::Mention => {
+            insert(state, frame, "@");
+        }
+        Command::Indent { outdent } => indent(state, frame, outdent),
+        Command::ToggleTask(index) => {
+            state.history.record(&state.doc, state.selection, EditKind::Other, index, frame.now);
+            if structure::toggle_task(&mut state.doc, index) {
+                state.changed();
+            }
+        }
+        Command::Undo => {
+            if state.history.undo(&mut state.doc, &mut state.selection) {
+                state.changed();
+            }
+        }
+        Command::Redo => {
+            if state.history.redo(&mut state.doc, &mut state.selection) {
+                state.changed();
+            }
+        }
+        Command::Copy => ran.copied = copy(state),
+        Command::Cut => {
+            ran.copied = copy(state);
+            if ran.copied.is_some() {
+                edit(state, frame, EditKind::Other, edit_ops::backspace);
+            }
+        }
+        Command::Paste(text) => paste(state, frame, &text),
+    }
+}
+
+/// Typed text, then the input rule it completes and the mention list an `@` opens.
+fn insert(state: &mut State, frame: &Frame<'_>, text: &str) {
+    let is_space = text.chars().all(char::is_whitespace);
+    let (from, _) = state.selection.ordered();
+    let marks = state
+        .stored
+        .clone()
+        .unwrap_or_else(|| state.doc.block(from.block).content.marks_at(from.offset));
+    let stored = state.stored.take();
+    state.history.record(
+        &state.doc,
+        state.selection,
+        EditKind::Typing { is_space },
+        from.block,
+        frame.now,
+    );
+    let caret = edit_ops::insert_text(&mut state.doc, state.selection, text, &marks);
+    state.selection = Selection::caret(caret);
+    state.changed();
+    if text == "@" && opens_mention(&state.doc, caret) {
+        state.popup =
+            Popup::Mention { start: Pos::new(caret.block, caret.offset - 1), selected: 0 };
+    }
+    let before_rule = (state.doc.clone(), state.selection);
+    if let Some(fired) = rules::after_typing(&mut state.doc, caret) {
+        state.history.record_rule(&before_rule.0, before_rule.1);
+        state.selection = Selection::caret(fired.caret);
+        state.stored = fired.stored;
+        state.changed();
+    } else if stored.is_some() {
+        state.stored = None;
+    }
+}
+
+/// An `@` opens the mention list at a word start.
+fn opens_mention(doc: &Document, caret: Pos) -> bool {
+    let block = doc.block(caret.block);
+    if block.kind.is_source() || caret.offset == 0 {
+        return false;
+    }
+    let before = block.content.text().chars().nth(caret.offset.wrapping_sub(2));
+    before.is_none_or(|ch| ch.is_whitespace() || matches!(ch, '(' | '[' | '"' | '\''))
+}
+
+fn enter(state: &mut State, frame: &Frame<'_>) {
+    let caret = state.selection.head;
+    let block = state.doc.block(caret.block);
+    let fence = block.content.text();
+    if block.kind == Kind::Paragraph
+        && state.selection.is_empty()
+        && caret.offset == block.len()
+        && let Some(language) = fence.strip_prefix("```").filter(|rest| !rest.contains(['`', ' ']))
+    {
+        state.history.record_rule(&state.doc, state.selection);
+        let fired = rules::code_fence(&mut state.doc, caret.block, language);
+        state.selection = Selection::caret(fired.caret);
+        state.changed();
+        return;
+    }
+    edit(state, frame, EditKind::Other, edit_ops::enter);
+}
+
+fn backspace(state: &mut State, frame: &Frame<'_>) {
+    if state.history.takes_backspace() && state.selection.is_empty() {
+        if state.history.undo(&mut state.doc, &mut state.selection) {
+            state.changed();
+        }
+        return;
+    }
+    edit(state, frame, EditKind::Deleting, edit_ops::backspace);
+}
+
+fn indent(state: &mut State, frame: &Frame<'_>, outdent: bool) {
+    let caret = state.selection.head;
+    if matches!(state.doc.block(caret.block).kind, Kind::Code(_)) {
+        if !outdent {
+            insert(state, frame, "    ");
+        }
+        return;
+    }
+    let (first, last) = selected_blocks(state);
+    state.history.record(&state.doc, state.selection, EditKind::Other, first, frame.now);
+    let moved = if outdent {
+        structure::outdent(&mut state.doc, first, last)
+    } else {
+        structure::indent(&mut state.doc, first, last)
+    };
+    if moved {
+        state.changed();
+    }
+}
+
+fn toggle_mark(state: &mut State, frame: &Frame<'_>, mark: Mark) {
+    if state.selection.is_empty() {
+        let caret = state.selection.head;
+        let marks = state
+            .stored
+            .clone()
+            .unwrap_or_else(|| state.doc.block(caret.block).content.marks_at(caret.offset));
+        state.stored = Some(edit_ops::toggled(&marks, mark));
+        return;
+    }
+    state.history.record(
+        &state.doc,
+        state.selection,
+        EditKind::Other,
+        state.selection.head.block,
+        frame.now,
+    );
+    if edit_ops::toggle_mark(&mut state.doc, state.selection, mark) {
+        state.changed();
+    }
+}
+
+/// The link at the caret: its range in the caret's block and the link.
+pub fn link_at(doc: &Document, caret: Pos) -> Option<(std::ops::Range<usize>, Link)> {
+    let content = &doc.block(caret.block).content;
+    let found = content
+        .link_range(caret.offset)
+        .or_else(|| caret.offset.checked_sub(1).and_then(|before| content.link_range(before)));
+    found.map(|(range, link)| (range, (*link).clone()))
+}
+
+fn open_link(state: &mut State) {
+    let url = match link_at(&state.doc, state.selection.head) {
+        Some((_, link)) => link.url,
+        None => String::new(),
+    };
+    state.popup = Popup::Link { url, is_new: true };
+}
+
+fn set_link(state: &mut State, frame: &Frame<'_>, link: Option<Link>) {
+    let caret = state.selection.head;
+    let existing = link_at(&state.doc, caret);
+    let target = match (&existing, state.selection.is_empty()) {
+        (Some((range, _)), true) => Selection {
+            anchor: Pos::new(caret.block, range.start),
+            head: Pos::new(caret.block, range.end),
+        },
+        _ => state.selection,
+    };
+    state.history.record(&state.doc, state.selection, EditKind::Other, caret.block, frame.now);
+    match link {
+        Some(link) if target.is_empty() => {
+            let text = link.url.clone();
+            let end = edit_ops::insert_link(&mut state.doc, target, &text, link);
+            state.selection = Selection::caret(end);
+        }
+        link => edit_ops::set_link(&mut state.doc, target, link),
+    }
+    state.changed();
+}
+
+fn move_caret(state: &mut State, frame: &Frame<'_>, motion: Motion, extend: bool) {
+    let selection = state.selection;
+    let head = state.doc.clamp(selection.head);
+    let (from, to) = selection.ordered();
+    let ctx = frame.ui.ctx();
+    let doc = &state.doc;
+    let layout = &mut state.layout;
+    let keeps_column =
+        matches!(motion, Motion::Up | Motion::Down | Motion::PageUp | Motion::PageDown);
+    let target = match motion {
+        Motion::Left if !extend && !selection.is_empty() => from,
+        Motion::Right if !extend && !selection.is_empty() => to,
+        Motion::Left => caret::step(doc, head, false),
+        Motion::Right => caret::step(doc, head, true),
+        Motion::WordLeft => caret::word_left(doc, head),
+        Motion::WordRight => caret::word_right(doc, head),
+        Motion::Up | Motion::Down => {
+            let (pos, column) = caret::vertical(
+                layout,
+                ctx,
+                doc,
+                frame.origin,
+                head,
+                state.column,
+                motion == Motion::Down,
+            );
+            state.column = Some(column);
+            pos
+        }
+        Motion::RowStart => caret::row_edge(layout, ctx, doc, head, false),
+        Motion::RowEnd => caret::row_edge(layout, ctx, doc, head, true),
+        Motion::DocStart => Pos::new(0, 0),
+        Motion::DocEnd => doc.end(),
+        Motion::PageUp | Motion::PageDown => caret::page(
+            layout,
+            ctx,
+            doc,
+            frame.origin,
+            head,
+            frame.page_height,
+            motion == Motion::PageDown,
+        ),
+    };
+    if !keeps_column {
+        state.column = None;
+    }
+    state.selection = if extend {
+        Selection { anchor: selection.anchor, head: target }
+    } else {
+        Selection::caret(target)
+    };
+    state.stored = None;
+    state.history.break_group();
+    state.scroll_to_caret = true;
+}
+
+/// The person chosen in the mention list replaces `@query`.
+pub fn choose_mention(state: &mut State, frame: &Frame<'_>, start: Pos, key: String) {
+    let caret = state.selection.head;
+    if caret.block != start.block || caret.offset <= start.offset {
+        return;
+    }
+    let range = Selection { anchor: start, head: caret };
+    state.history.record(&state.doc, state.selection, EditKind::Other, caret.block, frame.now);
+    let marks = state.doc.block(caret.block).content.marks_at(start.offset);
+    let at = edit_ops::insert_atom(&mut state.doc, range, Atom::Mention { key }, &marks);
+    let after = edit_ops::insert_text(&mut state.doc, Selection::caret(at), " ", &marks);
+    state.selection = Selection::caret(after);
+    state.popup = Popup::None;
+    state.changed();
+}

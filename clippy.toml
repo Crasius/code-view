@@ -1,0 +1,38 @@
+# Thresholds and test exemptions for the lints in [workspace.lints] (.agents/rules/rust.md, Lints).
+# Clippy reads only the nearest clippy.toml: a crate-local file would replace this one, not add
+# to it (observed with clippy 1.99.1), so every crate shares this file.
+
+# RS-READ-03: function length and nesting depth. Clippy counts every block, including the impl,
+# the fn body and each closure, so 6 allows four levels of control flow inside a method
+# (at 4 it reported 362 findings, nearly all of them two-level egui closures in methods).
+too-many-lines-threshold = 80
+excessive-nesting-threshold = 6
+# RS-READ-07: parameter budget (the clippy default, written down).
+too-many-arguments-threshold = 7
+
+# doc_markdown: proper nouns that prose names without backticks. ".." keeps clippy's default list.
+doc-valid-idents = ["..", "AppKit", "AppleScript", "DejaVu", "MacPorts", "ProMotion", "SwiftShader"]
+
+# RS-LINT-03: tests may unwrap, panic, print and index.
+allow-dbg-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true
+allow-unwrap-in-tests = true
+
+# Nothing outside this workspace calls these crates (a desktop app, nothing is published),
+# so the API-shape lints (needless_pass_by_value, wrong_self_convention, ...) check pub items too.
+avoid-breaking-exported-api = false
+
+# RS-DONT-06: calls that block the calling thread. They are wrong on the egui update path;
+# where a worker thread, a test driver or a CLI probe owns the thread, the call site carries
+# #[expect(clippy::disallowed_methods, reason = "...")] naming that owner.
+# tokio::runtime::Runtime::block_on is not listed: every #[tokio::test] and #[tokio::main]
+# expands to it with the user's span (161 of 185 findings were such expansions). repo-lint
+# rule RL013 checks the real calls in review-app and the cv-* crates instead.
+disallowed-methods = [
+    { path = "std::thread::sleep", reason = "blocks the thread; wake on the event or use request_repaint_after (RS-DONT-06)" },
+    { path = "tokio::runtime::Handle::block_on", reason = "blocks the thread on async work; spawn on cv_runtime::background (RS-DONT-06)" },
+    { path = "std::process::Command::output", reason = "waits for the child; run it as tokio::process on the background runtime (RS-DONT-06)" },
+    { path = "std::process::Command::status", reason = "waits for the child; run it as tokio::process on the background runtime (RS-DONT-06)" },
+]

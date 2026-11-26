@@ -1,0 +1,14 @@
+{
+  "state": "pending",
+  "statuses": [
+    {
+      "id": 33,
+      "context": "ci/legacy",
+      "state": "pending",
+      "description": "Build started",
+      "target_url": "",
+      "created_at": "2024-05-01T10:00:00Z",
+      "updated_at": "2024-05-01T10:00:00Z"
+    }
+  ]
+}

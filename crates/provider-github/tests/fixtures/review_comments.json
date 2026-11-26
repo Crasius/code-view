@@ -1,0 +1,50 @@
+[
+  {
+    "id": 1,
+    "path": "src/main.rs",
+    "line": 20,
+    "original_line": 18,
+    "side": "RIGHT",
+    "subject_type": "line",
+    "user": { "id": 1, "login": "mona" },
+    "body": "Root comment",
+    "created_at": "2024-02-01T10:00:00Z",
+    "updated_at": "2024-02-01T10:00:00Z"
+  },
+  {
+    "id": 2,
+    "path": "src/old.rs",
+    "line": null,
+    "original_line": 8,
+    "side": "LEFT",
+    "subject_type": "line",
+    "user": { "id": 2, "login": "bob" },
+    "body": "Outdated root",
+    "created_at": "2024-02-02T10:00:00Z",
+    "updated_at": "2024-02-02T10:00:00Z"
+  },
+  {
+    "id": 3,
+    "in_reply_to_id": 1,
+    "path": "src/main.rs",
+    "line": 20,
+    "original_line": 18,
+    "side": "RIGHT",
+    "subject_type": "line",
+    "user": null,
+    "body": "Reply",
+    "created_at": "2024-02-03T10:00:00Z",
+    "updated_at": "2024-02-04T10:00:00Z"
+  },
+  {
+    "id": 4,
+    "path": "README.md",
+    "line": null,
+    "original_line": null,
+    "side": "RIGHT",
+    "subject_type": "file",
+    "user": { "id": 1, "login": "mona" },
+    "body": "File-level",
+    "created_at": "2024-02-05T10:00:00Z"
+  }
+]

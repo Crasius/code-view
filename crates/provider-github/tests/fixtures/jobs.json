@@ -1,0 +1,19 @@
+{
+  "total_count": 1,
+  "jobs": [
+    {
+      "id": 501,
+      "name": "test (ubuntu-latest)",
+      "status": "completed",
+      "conclusion": "failure",
+      "started_at": "2024-05-01T10:00:00Z",
+      "completed_at": "2024-05-01T10:04:00Z",
+      "html_url": "https://github.com/cli/cli/actions/runs/11/job/501",
+      "steps": [
+        { "name": "Checkout", "status": "completed", "conclusion": "success", "number": 1, "started_at": "2024-05-01T10:00:00Z", "completed_at": "2024-05-01T10:00:05Z" },
+        { "name": "Test", "status": "completed", "conclusion": "failure", "number": 2, "started_at": "2024-05-01T10:00:05Z", "completed_at": "2024-05-01T10:04:00Z" },
+        { "name": "Upload", "status": "completed", "conclusion": "skipped", "number": 3, "started_at": null, "completed_at": null }
+      ]
+    }
+  ]
+}

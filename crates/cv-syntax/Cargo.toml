@@ -1,0 +1,31 @@
+[package]
+name = "cv-syntax"
+description = "Code View's syntax coloring: grammars, whole-file highlighting into per-line spans, the coloring threads and the colors of fenced code blocks."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# Probes other crates' tests read (the kept grammar sets, how often a block was colored, the
+# repaints of the coloring threads); forwards to the cv crates below. Enabled only from
+# [dev-dependencies] and from the test-support features above.
+test-support = ["cv-base/test-support", "cv-runtime/test-support"]
+
+[dependencies]
+cv-base.workspace = true
+cv-runtime.workspace = true
+review-grammars.workspace = true
+egui.workspace = true
+syntect.workspace = true
+
+[dev-dependencies]
+cv-base = { workspace = true, features = ["test-support"] }
+cv-runtime = { workspace = true, features = ["test-support"] }

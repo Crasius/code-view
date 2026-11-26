@@ -1,0 +1,179 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "tools/repo-lint"]
+
+[workspace.package]
+version = "0.1.2"
+edition = "2024"
+rust-version = "1.95"
+# Source-available, not open source: the Functional Source License 1.1 with the Apache 2.0 future
+# license (LICENSE), SPDX identifier FSL-1.1-ALv2.
+license = "FSL-1.1-ALv2"
+repository = "https://github.com/Crasius/code-view"
+homepage = "https://codeview.northbyte.sh"
+# Nothing here goes to a registry. A crate takes it with `publish.workspace = true`, which also
+# keeps it out of the release's third-party notices (ci/about.toml).
+publish = false
+
+# The lint contract (.agents/rules/rust.md, Lints). Every crate sets `lints.workspace = true`.
+# Levels stay at warn; `-D warnings` on the command line (CI, Stop hook, ship) makes them errors.
+# Suppress only with #[expect(<lint>, reason = "...")] on the narrowest item (RS-LINT-04).
+[workspace.lints.rust]
+# RS-DONT-03: unsafe only in platform/ modules, each with #![expect(unsafe_code, reason)].
+# The crates without platform FFI forbid it in their crate root.
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+# RS-LINT-02: the default groups stay as they are; pedantic joins as a group.
+pedantic = { level = "warn", priority = -1 }
+# Pedantic lints the team rejects on principle. Findings when the contract landed (clippy 1.99.1,
+# workspace, all targets, deduplicated by file, line, column and lint): must_use_candidate 113,
+# missing_errors_doc and missing_panics_doc 39, similar_names 34.
+# Nothing outside this workspace calls these crates, so #[must_use] on every pub fn that returns
+# a value is noise; the results that matter (Result, futures) are must_use already.
+must_use_candidate = "allow"
+# Rustdoc `# Errors` and `# Panics` sections are for published libraries; nothing is published.
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+# Flags distinct, meaningful pairs (rules/ruled, rest/response, old/new) that a diff app needs.
+similar_names = "allow"
+
+# RS-LINT-03: single lints from restriction (never the whole group).
+# RS-LINT-04, RS-AGENT-03: suppressions are #[expect] with a reason.
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+# RS-AGENT-06: agent-loop leftovers.
+dbg_macro = "warn"
+print_stderr = "warn"
+print_stdout = "warn"
+todo = "warn"
+unimplemented = "warn"
+# RS-DONT-04: no panics on data from outside the process. expect stays allowed for named invariants.
+get_unwrap = "warn"
+panic = "warn"
+unwrap_in_result = "warn"
+unwrap_used = "warn"
+# RS-DONT-05: no silently dropped Result or #[must_use] value.
+let_underscore_must_use = "warn"
+# RS-DONT-03: documented, one-operation unsafe blocks.
+multiple_unsafe_ops_per_block = "warn"
+undocumented_unsafe_blocks = "warn"
+# RS-AGENT-02: no leaks to end a borrow.
+mem_forget = "warn"
+# RS-READ-06: one inherent impl block per type.
+multiple_inherent_impl = "warn"
+# RS-DONT-01: from nursery, the one clone lint the rules need.
+redundant_clone = "warn"
+
+[workspace.dependencies]
+review-core = { path = "crates/review-core" }
+review-agent = { path = "crates/review-agent" }
+review-git = { path = "crates/review-git" }
+review-store = { path = "crates/review-store" }
+review-grammars = { path = "crates/review-grammars" }
+provider-github = { path = "crates/provider-github" }
+provider-gitlab = { path = "crates/provider-gitlab" }
+provider-azure = { path = "crates/provider-azure" }
+# The app's UI crates, bottom-up in the layers of .agents/rules/rust.md (Workspace).
+cv-base = { path = "crates/cv-base" }
+cv-testkit = { path = "crates/cv-testkit" }
+cv-providers = { path = "crates/cv-providers" }
+cv-widgets = { path = "crates/cv-widgets" }
+cv-runtime = { path = "crates/cv-runtime" }
+cv-media = { path = "crates/cv-media" }
+cv-syntax = { path = "crates/cv-syntax" }
+cv-markdown = { path = "crates/cv-markdown" }
+cv-services = { path = "crates/cv-services" }
+cv-editor = { path = "crates/cv-editor" }
+cv-code = { path = "crates/cv-code" }
+cv-shell = { path = "crates/cv-shell" }
+cv-pr-session = { path = "crates/cv-pr-session" }
+cv-pr-tree = { path = "crates/cv-pr-tree" }
+cv-pr-threads = { path = "crates/cv-pr-threads" }
+cv-pr-assistant = { path = "crates/cv-pr-assistant" }
+cv-pr-pipelines = { path = "crates/cv-pr-pipelines" }
+cv-lists = { path = "crates/cv-lists" }
+cv-settings = { path = "crates/cv-settings" }
+cv-pr-diff = { path = "crates/cv-pr-diff" }
+cv-pr-rendered = { path = "crates/cv-pr-rendered" }
+cv-pr-summary = { path = "crates/cv-pr-summary" }
+cv-pr-files = { path = "crates/cv-pr-files" }
+cv-pr-page = { path = "crates/cv-pr-page" }
+
+arboard = { version = "3.7", default-features = false }
+async-trait = "0.1.92"
+base64 = "0.22"
+bytes = "1"
+eframe = { version = "0.37", default-features = false, features = ["glow", "accesskit", "clipboard", "links", "default_fonts"] }
+# The monochrome Noto Emoji and emoji-icon-font close the fallback chains on systems whose own
+# fonts have no symbols or emoji (Linux without DejaVu or Noto, the tests' bundled-only setup).
+egui = { version = "0.37", features = ["monochrome_emoji_fonts"] }
+egui_extras = { version = "0.37", default-features = false }
+egui_kittest = "0.37"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
+# Mermaid diagrams in rendered Markdown, to SVG in pure Rust (no browser, no network); resvg draws
+# the SVG. Without its CLI and its own resvg (an older one).
+mermaid-rs-renderer = { version = "0.3.1", default-features = false }
+# macOS: the screen's refresh rate and the Reduce motion setting.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSAccessibility", "NSScreen", "NSWorkspace"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std"] }
+pulldown-cmark = { version = "0.13", default-features = false }
+raw-window-handle = "0.6"
+# The TLS backend is chosen per system in review-core: the system's own (native-tls) on Windows
+# and macOS, rustls on Linux (no OpenSSL headers to build against).
+reqwest = { version = "0.13", default-features = false, features = ["http2", "charset", "json", "gzip", "query", "stream"] }
+resvg = { version = "0.48", default-features = false }
+# Linux: access tokens in the Secret Service (GNOME Keyring, KWallet) over D-Bus; zbus and
+# RustCrypto, so no libdbus or OpenSSL to build against.
+secret-service = { version = "5.2", default-features = false, features = ["rt-async-io-crypto-rust"] }
+# macOS: access tokens in the login Keychain.
+security-framework = "3.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# GitLab line codes hash the file path with SHA-1.
+sha1_smol = "1"
+similar = { version = "2", features = ["unicode"] }
+# Pure-Rust regex engine (no Oniguruma). review-grammars dumps bat's grammars (two-face) with ours
+# at build time and loads them with dump-load.
+syntect = { version = "5.3", default-features = false, features = ["parsing", "regex-fancy", "dump-load"] }
+thiserror = "2"
+time = { version = "0.3", features = ["serde", "parsing", "formatting", "macros"] }
+two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "fs", "sync", "time"] }
+url = "2"
+urlencoding = "2"
+wiremock = "0.6"
+# Windows: the icon and version resource of CodeView.exe (review-app build script).
+winresource = "0.1"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Memory"] }
+# GitHub workflow files, for the `needs` graph between jobs.
+yaml-rust2 = { version = "0.13", default-features = false }
+
+[profile.release]
+opt-level = 3
+# Thin LTO with parallel codegen relinks in about 45 s instead of 2m40 for fat LTO with one unit,
+# at the cost of roughly 2.5 MB more binary.
+lto = "thin"
+codegen-units = 16
+panic = "abort"
+strip = true
+
+[profile.dev.package."*"]
+opt-level = 2
+# The grammar dump deserializes through generic serde code compiled into the crate that calls
+# it: at opt-level 0 the first highlight waited 22 ms instead of 2 (review-grammars, lib.rs).
+[profile.dev.package.review-grammars]
+opt-level = 2
+
+# RS-PERF-04: the release build with line tables and symbols, for samply or Windows Performance
+# Analyzer: `cargo build --profile profiling -p review-app` (target/profiling/CodeView.exe).
+[profile.profiling]
+inherits = "release"
+debug = "line-tables-only"
+strip = false
+
+[patch.crates-io]
+# syntect 5.3.0 with fancy-regex 0.20 and capped lazy DFA caches; its README says why, what
+# differs from the release and when to drop the copy.
+syntect = { path = "crates/review-grammars/vendor/syntect" }

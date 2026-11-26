@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Code View",
+  "version": "1.0.0",
+  "description": "Opens pull and merge request links of your Code View connections in Code View.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxwV46+mVmLJ64Vx26GpM+tPoLkJ2TQci5hTIQk8+Vy8eAL+FLZgeQx5z/qZIyGLWY7ii+Dhh0cTWds/L8F0fnpr1P0mG1hR45XO7aiNGbSeXX0azlOGG5irCNtYuCBMc+1TU4RGhEfoAEWQbBRHyeYdVwYfF6XMAdc9wJ0tjWIifTwXMkinLXb/bfM854C31k9ryqt7/UbUgFSUFxRde8/8OBPdw/wzSy4BnP2gUkmKmcZ3oM8fWrEywRdyYZsbHKjilhQfSbGg6IeeMpD+YzECAzFfgKomevHM3JhiJ4UO2J9LSKrH+0xFu3pXjQGPIdaFO8Orc+Q1i0e+cUpnSmwIDAQAB",
+  "minimum_chrome_version": "116",
+  "permissions": ["nativeMessaging", "storage"],
+  "background": {
+    "service_worker": "service_worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "Code View",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

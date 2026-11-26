@@ -1,0 +1,21 @@
+[package]
+name = "cv-providers"
+description = "The provider factory: the GitHub, GitLab or Azure DevOps client for a connection."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+provider-azure.workspace = true
+provider-github.workspace = true
+provider-gitlab.workspace = true
+reqwest.workspace = true
+review-core.workspace = true

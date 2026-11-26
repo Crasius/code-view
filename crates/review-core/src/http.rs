@@ -1,0 +1,223 @@
+//! Shared HTTP plumbing. One pooled [`reqwest::Client`] serves every connection;
+//! auth headers go on each request, never on the client.
+//!
+//! Every request goes through the per-host [`budget`]: at most [`budget::MAX_IN_FLIGHT`] requests
+//! wait for an answer per host and API kind (REST, GraphQL), a 429 (or GitHub's rate-limit 403)
+//! pauses that host's REST or GraphQL requests until its `Retry-After` / reset time and the
+//! request is retried once, and the [`traffic`] counters record
+//! it per connection. GETs read through [`fetch`] additionally share identical in-flight requests
+//! and revalidate with `If-None-Match` when the host sent an `ETag` before; a write that finished
+//! since an in-flight GET started ends its sharing (see `cache`). A write is any request but a GET
+//! and a GraphQL query, which GraphQL sends as a POST too ([`is_write`]).
+
+// RS-DONT-04: headers and bodies come from the hosts; reading them (here and in every submodule)
+// never indexes.
+#![warn(clippy::string_slice, clippy::indexing_slicing)]
+
+pub mod budget;
+mod cache;
+pub mod image;
+pub mod traffic;
+
+use std::time::Duration;
+
+use bytes::Bytes;
+use reqwest::{Client, ClientBuilder, Method, Request, RequestBuilder, Response, Url};
+use serde::Deserialize;
+use serde::de::DeserializeOwned;
+
+use crate::error::{ProviderError, Result};
+
+pub use budget::{Api, RateLimitNotice, rate_limits, resume, without_waiting};
+pub use cache::cached_bytes;
+pub use traffic::{ConnectionTraffic, EndpointCount, for_connection};
+
+pub const USER_AGENT: &str = concat!("CodeView/", env!("CARGO_PKG_VERSION"));
+const MAX_ERROR_BODY_CHARS: usize = 600;
+
+/// Builds the process-wide API client: gzip, HTTP/2, pooled keep-alive, sane timeouts.
+pub fn build_client() -> Client {
+    client_builder().build().expect("TLS backend must initialize")
+}
+
+/// The settings of [`build_client`], for a caller that adds its own (tests: a resolver that
+/// keeps them off the real network).
+pub fn client_builder() -> ClientBuilder {
+    Client::builder()
+        .user_agent(USER_AGENT)
+        .gzip(true)
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(120))
+        .pool_idle_timeout(Duration::from_secs(90))
+        .pool_max_idle_per_host(8)
+}
+
+/// Sends and turns non-success statuses into [`ProviderError::Status`] with a trimmed body.
+/// The body stays a stream (job logs); use [`fetch`] for bodies read at once.
+pub async fn send(request: RequestBuilder) -> Result<Response> {
+    let (client, request) = request.build_split();
+    let request = request?;
+    let _write = write_guard(&request);
+    budget::execute(&client, request).await
+}
+
+/// The guard of `request` while it runs, when it is a write ([`is_write`], [`cache::Write`]).
+/// Made only for a write: a guard made and dropped at once would end the sharing of the GETs in
+/// flight as a finished write does.
+fn write_guard(request: &Request) -> Option<cache::Write> {
+    is_write(request).then(|| cache::Write)
+}
+
+/// Whether `request` may change what the host answers: anything but a GET and a GraphQL query.
+/// A GraphQL body that cannot be read counts as a write; at worst a GET then asks again.
+fn is_write(request: &Request) -> bool {
+    /// The part of a GraphQL request body that names its operations.
+    #[derive(Deserialize)]
+    struct Operation<'a> {
+        #[serde(borrow)]
+        query: std::borrow::Cow<'a, str>,
+    }
+    if request.method() == Method::GET {
+        return false;
+    }
+    let body = request.body().and_then(reqwest::Body::as_bytes);
+    let Some(operation) = body.and_then(|body| serde_json::from_slice::<Operation>(body).ok())
+    else {
+        return true;
+    };
+    operation
+        .query
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .any(|word| word == "mutation" || word == "subscription")
+}
+
+/// A fully read answer: body, the `rel="next"` page link and the final URL after redirects.
+#[derive(Debug, Clone)]
+pub struct Fetched {
+    pub bytes: Bytes,
+    pub next_link: Option<String>,
+    pub url: Url,
+}
+
+impl Fetched {
+    async fn read(response: Response) -> Result<Self> {
+        let next_link = next_link(&response);
+        let url = response.url().clone();
+        let bytes = response.bytes().await?;
+        Ok(Self { bytes, next_link, url })
+    }
+
+    pub fn json<T: DeserializeOwned>(&self) -> Result<T> {
+        Ok(serde_json::from_slice(&self.bytes)?)
+    }
+}
+
+/// Sends and reads the whole body. GETs share an identical request already in flight and
+/// revalidate a cached answer with `If-None-Match`, so unchanged data costs a 304.
+pub async fn fetch(request: RequestBuilder) -> Result<Fetched> {
+    let (client, request) = request.build_split();
+    let request = request?;
+    if request.method() != Method::GET {
+        let _write = write_guard(&request);
+        return Fetched::read(budget::execute(&client, request).await?).await;
+    }
+    cache::fetch(client, request).await
+}
+
+/// Sends, checks the status and decodes the JSON body.
+pub async fn json<T: DeserializeOwned>(request: RequestBuilder) -> Result<T> {
+    fetch(request).await?.json()
+}
+
+/// Sends and checks the status, discarding the body.
+pub async fn unit(request: RequestBuilder) -> Result<()> {
+    send(request).await?;
+    Ok(())
+}
+
+pub async fn status_error(response: Response) -> ProviderError {
+    let status = response.status().as_u16();
+    let path = response.url().path().to_owned();
+    let body = response.text().await.unwrap_or_default();
+    let trimmed_body: String = body.chars().take(MAX_ERROR_BODY_CHARS).collect();
+    ProviderError::Status { status, path, body: trimmed_body }
+}
+
+/// Parses the `rel="next"` target out of an RFC 8288 `Link` header (GitHub, GitLab).
+pub fn next_link(response: &Response) -> Option<String> {
+    let header = response.headers().get(reqwest::header::LINK)?.to_str().ok()?;
+    parse_next_link(header)
+}
+
+pub fn parse_next_link(header: &str) -> Option<String> {
+    header.split(',').find_map(|part| {
+        let (target, params) = part.split_once(';')?;
+        let is_next = params.split(';').any(|param| param.trim() == "rel=\"next\"");
+        if !is_next {
+            return None;
+        }
+        let url = target.trim().trim_start_matches('<').trim_end_matches('>');
+        Some(url.to_owned())
+    })
+}
+
+/// `scheme://host[:port]`, the unit the budget pauses and caps.
+pub fn origin(url: &Url) -> String {
+    url.origin().ascii_serialization()
+}
+
+#[cfg(test)]
+mod tests {
+    use reqwest::Method;
+    use serde_json::json;
+
+    use super::{cache, is_write, parse_next_link, write_guard};
+
+    #[test]
+    fn graphql_queries_are_reads_and_mutations_writes() {
+        let client = reqwest::Client::new();
+        let post = |body| {
+            client.request(Method::POST, "http://127.0.0.1/graphql").json(&body).build().unwrap()
+        };
+        let query = json!({ "query": "query Mine { search(type: ISSUE) { nodes { id } } }" });
+        assert!(!is_write(&post(query)), "a GraphQL query shares nothing it should not");
+        let shorthand = json!({ "query": "{ viewer { login } }", "variables": {} });
+        assert!(!is_write(&post(shorthand)));
+        let mutation = json!({ "query": "mutation { addLabelsToLabelable(input: {}) { id } }" });
+        assert!(is_write(&post(mutation)));
+        assert!(is_write(&post(json!({ "status": "completed" }))), "a REST write");
+        let get = client.get("http://127.0.0.1/pulls/7").build().unwrap();
+        assert!(!is_write(&get));
+        let delete = client.delete("http://127.0.0.1/labels/bug").build().unwrap();
+        assert!(is_write(&delete));
+    }
+
+    /// Regression: every request but a GET made a guard and dropped it at once, so each GraphQL
+    /// query (a list's search, a page's threads) ended the sharing of the GETs in flight, and the
+    /// page a click opened asked again for the detail the list was reading ahead.
+    #[test]
+    fn only_a_write_ends_a_write() {
+        let client = reqwest::Client::new();
+        let post = |body| {
+            client.request(Method::POST, "http://127.0.0.1/graphql").json(&body).build().unwrap()
+        };
+        let ended = || cache::WRITES_ENDED.with(std::cell::Cell::get);
+        let before = ended();
+        drop(write_guard(&post(json!({ "query": "query { viewer { login } }" }))));
+        assert_eq!(ended(), before, "a GraphQL query is no write");
+        drop(write_guard(&post(json!({ "query": "mutation { addStar(input: {}) { id } }" }))));
+        assert_eq!(ended(), before + 1, "a mutation is one");
+    }
+
+    #[test]
+    fn parses_next_from_link_header() {
+        let header = r#"<https://api.github.com/x?page=2>; rel="next", <https://api.github.com/x?page=5>; rel="last""#;
+        assert_eq!(parse_next_link(header).as_deref(), Some("https://api.github.com/x?page=2"));
+    }
+
+    #[test]
+    fn returns_none_without_next() {
+        let header = r#"<https://api.github.com/x?page=1>; rel="prev""#;
+        assert_eq!(parse_next_link(header), None);
+    }
+}

@@ -1,0 +1,32 @@
+[package]
+name = "review-core"
+description = "Platform-neutral pull request model, provider trait and HTTP plumbing."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait.workspace = true
+bytes.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
+
+# The system's TLS (SChannel, Secure Transport) where the system offers one; rustls with aws-lc-rs
+# and the platform certificate verifier on Linux, so building needs no OpenSSL headers.
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+reqwest = { workspace = true, features = ["native-tls"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+reqwest = { workspace = true, features = ["rustls"] }

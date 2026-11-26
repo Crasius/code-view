@@ -1,0 +1,47 @@
+[package]
+name = "cv-lists"
+description = "Code View's pull request lists (the overview across connections and a repository's list) and the repository browser."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# The list page's test constructors and polls other crates' tests name
+# (`PullRequestListPage::{loaded_for_test, loaded_with_favorites_for_test, poll_for_test,
+# leaving_for_test}`); forwards to the cv crates below. Enabled only from [dev-dependencies] and
+# from the test-support features above.
+test-support = [
+    "cv-base/test-support",
+    "cv-pr-session/test-support",
+    "cv-runtime/test-support",
+    "cv-services/test-support",
+    "cv-widgets/test-support",
+]
+
+[dependencies]
+cv-base.workspace = true
+cv-pr-session.workspace = true
+cv-runtime.workspace = true
+cv-services.workspace = true
+cv-widgets.workspace = true
+review-core.workspace = true
+review-git.workspace = true
+review-store.workspace = true
+egui.workspace = true
+
+[dev-dependencies]
+cv-base = { workspace = true, features = ["test-support"] }
+cv-pr-session = { workspace = true, features = ["test-support"] }
+cv-runtime = { workspace = true, features = ["test-support"] }
+cv-services = { workspace = true, features = ["test-support"] }
+cv-widgets = { workspace = true, features = ["test-support"] }
+egui_kittest.workspace = true
+time.workspace = true

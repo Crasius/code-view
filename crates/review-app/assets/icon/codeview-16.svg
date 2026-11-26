@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- Code View fitted to 16 and 20 px: 2 px bars on whole pixels and a check drawn pixel by pixel, which stays sharp where a stroked one blurs. -->
+  <rect x="1" y="2" width="8" height="2" rx="1.0" fill="#EF4444"/>
+  <rect x="1" y="5" width="11" height="2" rx="1.0" fill="#22C55E"/>
+  <rect x="1" y="8" width="5" height="2" rx="1.0" fill="#22C55E"/>
+  <circle cx="12" cy="12" r="4" fill="#3B82F6"/>
+  <path d="M 13 10 h 1 v 1 h -1 z M 14 10 h 1 v 1 h -1 z M 12 11 h 1 v 1 h -1 z M 13 11 h 1 v 1 h -1 z M 9 11 h 1 v 1 h -1 z M 9 12 h 1 v 1 h -1 z M 10 12 h 1 v 1 h -1 z M 11 12 h 1 v 1 h -1 z M 12 12 h 1 v 1 h -1 z M 10 13 h 1 v 1 h -1 z M 11 13 h 1 v 1 h -1 z" fill="#FFFFFF"/>
+</svg>

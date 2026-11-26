@@ -1,0 +1,29 @@
+{
+  "total_count": 2,
+  "workflow_runs": [
+    {
+      "id": 11,
+      "workflow_id": 101,
+      "name": "CI",
+      "display_title": "Fix the widget",
+      "status": "completed",
+      "conclusion": "success",
+      "event": "pull_request",
+      "html_url": "https://github.com/cli/cli/actions/runs/11",
+      "run_started_at": "2024-05-01T10:00:00Z",
+      "updated_at": "2024-05-01T10:05:00Z"
+    },
+    {
+      "id": 12,
+      "workflow_id": 102,
+      "name": "Lint",
+      "display_title": null,
+      "status": "in_progress",
+      "conclusion": null,
+      "event": "pull_request",
+      "html_url": "https://github.com/cli/cli/actions/runs/12",
+      "run_started_at": "2024-05-01T10:00:00Z",
+      "updated_at": "2024-05-01T10:01:00Z"
+    }
+  ]
+}

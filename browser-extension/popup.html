@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Code View</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="icons/icon-32.png" width="24" height="24" alt="">
+    <h1 translate="no">Code View</h1>
+  </header>
+
+  <section class="status" id="status" data-state="checking" aria-live="polite">
+    <svg class="status-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <circle class="ring" cx="8" cy="8" r="6.5"></circle>
+      <path class="mark-ok" d="M5 8.2l2 2 4-4.2"></path>
+      <path class="mark-off" d="M8 4.8v3.8M8 11v.2"></path>
+    </svg>
+    <div>
+      <p class="status-title" id="status-title">Asking Code View…</p>
+      <p class="status-detail" id="status-detail"></p>
+    </div>
+  </section>
+
+  <label class="switch-row">
+    <span class="switch-text">
+      <span class="switch-name">Open pull request links in Code View</span>
+      <span class="switch-hint">Links of your connections open in the app; everything else stays here.</span>
+    </span>
+    <input type="checkbox" role="switch" id="enabled">
+  </label>
+
+  <script src="popup.js"></script>
+</body>
+</html>

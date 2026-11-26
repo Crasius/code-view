@@ -1,0 +1,100 @@
+// Code View: the only part of the extension that talks to the native host. Content scripts and
+// the popup send it messages; it checks who sent them, forwards a fixed set of requests to
+// Code View and answers with what Code View said.
+'use strict';
+
+const HOST = 'de.crasius.codeview';
+// A link opened with a modifier key stays in the browser once, for this long.
+const PASS_MS = 10000;
+
+function askHost(request) {
+  return new Promise((resolve) => {
+    chrome.runtime.sendNativeMessage(HOST, request, (answer) => {
+      if (chrome.runtime.lastError || !answer) {
+        const message = chrome.runtime.lastError ? chrome.runtime.lastError.message : 'No answer';
+        resolve({ type: 'error', state: 'unreachable', message });
+        return;
+      }
+      resolve(answer);
+    });
+  });
+}
+
+async function isEnabled() {
+  const { enabled } = await chrome.storage.local.get({ enabled: true });
+  return enabled;
+}
+
+// Addresses the user opened with Ctrl, Shift, Meta, Alt or the middle button, with when.
+async function takePass(url) {
+  const { passes = {} } = await chrome.storage.session.get('passes');
+  const now = Date.now();
+  const kept = Object.fromEntries(Object.entries(passes).filter(([, at]) => now - at < PASS_MS));
+  const hasPass = url in kept;
+  delete kept[url];
+  await chrome.storage.session.set({ passes: kept });
+  return hasPass;
+}
+
+async function addPass(url) {
+  const { passes = {} } = await chrome.storage.session.get('passes');
+  passes[url] = Date.now();
+  await chrome.storage.session.set({ passes });
+}
+
+function isHttpsUrl(value) {
+  try {
+    return typeof value === 'string' && value.length <= 8192 && new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+// A navigation the content script reports: Code View opens it, or the page stays.
+async function navigation(url) {
+  if (!(await isEnabled()) || (await takePass(url))) {
+    return { open: false };
+  }
+  const check = await askHost({ type: 'check', url });
+  // Only `open` leaves the browser. `pass` is a page Code View itself just opened here, which
+  // must not bounce back; every other state (no access, not connected, errors) stays too.
+  if (check.state !== 'open') {
+    return { open: false };
+  }
+  const opened = await askHost({ type: 'open', url });
+  return { open: opened.state === 'forwarded' || opened.state === 'started' };
+}
+
+async function handle(message, sender) {
+  const isOwnPage = sender.id === chrome.runtime.id;
+  if (!isOwnPage) {
+    return { error: 'unknown sender' };
+  }
+  const fromTab = sender.tab && sender.frameId === 0;
+  switch (message && message.type) {
+    case 'navigation':
+      return fromTab && isHttpsUrl(message.url) && message.url === sender.url
+        ? navigation(message.url)
+        : { open: false };
+    case 'pass':
+      if (fromTab && isHttpsUrl(message.url)) {
+        await addPass(message.url);
+      }
+      return {};
+    case 'close':
+      if (fromTab) {
+        await chrome.tabs.remove(sender.tab.id);
+      }
+      return {};
+    case 'ping':
+      // The popup, an extension page: no tab.
+      return sender.tab ? {} : askHost({ type: 'ping' });
+    default:
+      return { error: 'unknown request' };
+  }
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  handle(message, sender).then(sendResponse, (error) => sendResponse({ error: String(error) }));
+  return true;
+});

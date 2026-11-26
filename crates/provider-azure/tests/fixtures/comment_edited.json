@@ -1,0 +1,12 @@
+{
+  "id": 2,
+  "parentCommentId": 1,
+  "author": { "id": "me-id", "displayName": "Me", "uniqueName": "me@example.com" },
+  "content": "Use a slice here.",
+  "publishedDate": "2026-01-01T10:00:00Z",
+  "lastUpdatedDate": "2026-01-01T11:30:00Z",
+  "lastContentUpdatedDate": "2026-01-01T11:30:00Z",
+  "commentType": "text",
+  "usersLiked": [],
+  "_links": {}
+}

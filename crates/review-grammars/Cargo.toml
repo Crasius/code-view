@@ -1,0 +1,26 @@
+[package]
+name = "review-grammars"
+description = "The app's syntax grammars: bat's set with our own C# and PowerShell, dumped at build time."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+syntect.workspace = true
+
+[build-dependencies]
+# build.rs merges bat's grammars (two-face) with ours into one dumped set. The workspace entry
+# keeps one syntect version for the dump and its load.
+syntect = { workspace = true, features = ["yaml-load", "dump-create"] }
+two-face.workspace = true
+# syntect keeps its context references opaque; build.rs rewrites them through their serde form.
+serde_json.workspace = true
+
+[dev-dependencies]
+# The grammars' licenses for a release's notices (examples/grammar_notices.rs).
+two-face.workspace = true

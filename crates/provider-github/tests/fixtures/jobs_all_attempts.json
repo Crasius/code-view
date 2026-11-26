@@ -1,0 +1,251 @@
+{
+ "total_count": 8,
+ "jobs": [
+  {
+   "id": 117827728682,
+   "run_id": 39179055298,
+   "run_attempt": 1,
+   "name": "Compile & Hygiene",
+   "status": "completed",
+   "conclusion": "success",
+   "started_at": "2026-10-19T00:03:49Z",
+   "completed_at": "2026-10-19T00:11:35Z",
+   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117827728682",
+   "steps": [
+    {
+     "name": "Set up job",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 1,
+     "started_at": "2026-10-19T00:03:50Z",
+     "completed_at": "2026-10-19T00:03:51Z"
+    },
+    {
+     "name": "Checkout microsoft/vscode",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 2,
+     "started_at": "2026-10-19T00:03:51Z",
+     "completed_at": "2026-10-19T00:03:56Z"
+    },
+    {
+     "name": "Setup Node.js",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 3,
+     "started_at": "2026-10-19T00:03:56Z",
+     "completed_at": "2026-10-19T00:04:08Z"
+    }
+   ]
+  },
+  {
+   "id": 117827729010,
+   "run_id": 39179055298,
+   "run_attempt": 1,
+   "name": "macOS (integration & smoke) / Browser",
+   "status": "completed",
+   "conclusion": "failure",
+   "started_at": "2026-10-19T00:03:45Z",
+   "completed_at": "2026-10-19T00:26:44Z",
+   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117827729010",
+   "steps": [
+    {
+     "name": "Set up job",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 1,
+     "started_at": "2026-10-19T00:03:46Z",
+     "completed_at": "2026-10-19T00:03:46Z"
+    },
+    {
+     "name": "Checkout microsoft/vscode",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 2,
+     "started_at": "2026-10-19T00:03:46Z",
+     "completed_at": "2026-10-19T00:04:00Z"
+    },
+    {
+     "name": "Detect Agent Host E2E changes",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 3,
+     "started_at": "2026-10-19T00:04:00Z",
+     "completed_at": "2026-10-19T00:04:00Z"
+    }
+   ]
+  },
+  {
+   "id": 117827768980,
+   "run_id": 39179055298,
+   "run_attempt": 1,
+   "name": "Copilot - Test (Windows)",
+   "status": "completed",
+   "conclusion": "skipped",
+   "started_at": "2026-10-19T00:03:50Z",
+   "completed_at": "2026-10-19T00:03:49Z",
+   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117827768980",
+   "steps": []
+  },
+  {
+   "id": 117832925796,
+   "run_id": 39179055298,
+   "run_attempt": 1,
+   "name": "macOS / Browser",
+   "status": "completed",
+   "conclusion": "failure",
+   "started_at": "2026-10-19T00:26:47Z",
+   "completed_at": "2026-10-19T00:26:49Z",
+   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117832925796",
+   "steps": [
+    {
+     "name": "Set up job",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 1,
+     "started_at": "2026-10-19T00:26:48Z",
+     "completed_at": "2026-10-19T00:26:48Z"
+    },
+    {
+     "name": "Check parts result (failure)",
+     "status": "completed",
+     "conclusion": "failure",
+     "number": 2,
+     "started_at": "2026-10-19T00:26:48Z",
+     "completed_at": "2026-10-19T00:26:48Z"
+    },
+    {
+     "name": "Complete job",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 3,
+     "started_at": "2026-10-19T00:26:48Z",
+     "completed_at": "2026-10-19T00:26:48Z"
+    }
+   ]
+  },
+  {
+   "id": 117835404262,
+   "run_id": 39179055298,
+   "run_attempt": 2,
+   "name": "macOS (integration & smoke) / Browser",
+   "status": "completed",
+   "conclusion": "success",
+   "started_at": "2026-10-19T00:37:48Z",
+   "completed_at": "2026-10-19T00:45:09Z",
+   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117835404262",
+   "steps": [
+    {
+     "name": "Set up job",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 1,
+     "started_at": "2026-10-19T00:37:48Z",
+     "completed_at": "2026-10-19T00:37:49Z"
+    },
+    {
+     "name": "Checkout microsoft/vscode",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 2,
+     "started_at": "2026-10-19T00:37:49Z",
+     "completed_at": "2026-10-19T00:38:03Z"
+    },
+    {
+     "name": "Detect Agent Host E2E changes",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 3,
+     "started_at": "2026-10-19T00:38:03Z",
+     "completed_at": "2026-10-19T00:38:03Z"
+    }
+   ]
+  },
+  {
+   "id": 117835404412,
+   "run_id": 39179055298,
+   "run_attempt": 2,
+   "name": "Compile & Hygiene",
+   "status": "completed",
+   "conclusion": "success",
+   "started_at": "2026-10-19T00:03:49Z",
+   "completed_at": "2026-10-19T00:11:35Z",
+   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117835404412",
+   "steps": [
+    {
+     "name": "Set up job",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 1,
+     "started_at": "2026-10-19T00:03:50Z",
+     "completed_at": "2026-10-19T00:03:51Z"
+    },
+    {
+     "name": "Checkout microsoft/vscode",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 2,
+     "started_at": "2026-10-19T00:03:51Z",
+     "completed_at": "2026-10-19T00:03:56Z"
+    },
+    {
+     "name": "Setup Node.js",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 3,
+     "started_at": "2026-10-19T00:03:56Z",
+     "completed_at": "2026-10-19T00:04:08Z"
+    }
+   ]
+  },
+  {
+   "id": 117835405458,
+   "run_id": 39179055298,
+   "run_attempt": 2,
+   "name": "Copilot - Test (Windows)",
+   "status": "completed",
+   "conclusion": "skipped",
+   "started_at": "2026-10-19T00:37:41Z",
+   "completed_at": "2026-10-19T00:03:49Z",
+   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117835405458",
+   "steps": []
+  },
+  {
+   "id": 117837077454,
+   "run_id": 39179055298,
+   "run_attempt": 2,
+   "name": "macOS / Browser",
+   "status": "completed",
+   "conclusion": "success",
+   "started_at": "2026-10-19T00:45:13Z",
+   "completed_at": "2026-10-19T00:45:16Z",
+   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117837077454",
+   "steps": [
+    {
+     "name": "Set up job",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 1,
+     "started_at": "2026-10-19T00:45:14Z",
+     "completed_at": "2026-10-19T00:45:14Z"
+    },
+    {
+     "name": "Check parts result (success)",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 2,
+     "started_at": "2026-10-19T00:45:14Z",
+     "completed_at": "2026-10-19T00:45:15Z"
+    },
+    {
+     "name": "Complete job",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 3,
+     "started_at": "2026-10-19T00:45:15Z",
+     "completed_at": "2026-10-19T00:45:15Z"
+    }
+   ]
+  }
+ ]
+}

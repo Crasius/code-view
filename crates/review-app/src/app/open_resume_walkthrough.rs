@@ -1,0 +1,153 @@
+//! Where a pull request opens, end to end: the real app against the mocked GitHub host with a real
+//! git mirror. Settings' "Pull requests open on: Files" opens a pull request on its first file's
+//! diff; after that it opens where the user left it (tab and file), also after a restart; a saved
+//! file that is no longer changed falls back to the first file without an error.
+
+use egui::Role;
+use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
+use review_store::{AppPaths, AppSettings, LastPlace, LastTab, PullRequestStart, ViewedFiles};
+
+use super::ReviewApp;
+use super::action_e2e::{app, open_pull_request, wait_until};
+use super::github_mock::{ExtraFile, GitHubHost};
+use cv_runtime::route::{PullRequestTab, Route};
+use cv_testkit::ScratchDir;
+
+/// First in the tree's order, before the mock's own `src/lib.rs`.
+const FIRST: &str = "a/first.rs";
+/// Last in the tree's order.
+const LAST: &str = "z/last.rs";
+
+fn files() -> Vec<ExtraFile> {
+    let file = |path| ExtraFile {
+        path,
+        base: b"pub fn one() -> u32 {\n    1\n}\n".to_vec(),
+        head: b"pub fn one() -> u32 {\n    2\n}\n".to_vec(),
+    };
+    vec![file(FIRST), file(LAST)]
+}
+
+fn paths(scratch: &ScratchDir) -> AppPaths {
+    AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"))
+}
+
+fn diff_shows(harness: &Harness<'_, ReviewApp>, path: &str) -> bool {
+    harness.query_by_label(&format!("Diff of {path}")).is_some()
+}
+
+fn tab(harness: &Harness<'_, ReviewApp>) -> Option<PullRequestTab> {
+    harness.state().current_tab()
+}
+
+/// Opens the pull request and waits for `path`'s diff, the folder view never showing on the way.
+fn open_on_file(harness: &mut Harness<'_, ReviewApp>, path: &str) {
+    open_pull_request(harness);
+    wait_until(harness, path, |harness| {
+        // The mock's own `src/lib.rs` makes three.
+        let folder_view = harness.query_by_label("All files (current folder)").is_some()
+            || harness.query_by_label("3 changed files").is_some();
+        assert!(!folder_view, "the folder view showed");
+        diff_shows(harness, path)
+    });
+    assert_eq!(tab(harness), Some(PullRequestTab::Files));
+}
+
+/// Picks "Files" in Settings → Appearance → "Pull requests open on", as a user does.
+fn choose_files_in_settings(harness: &mut Harness<'_, ReviewApp>) {
+    harness.state_mut().navigator.go(Route::Settings);
+    wait_until(harness, "Settings", |harness| harness.state().route == Route::Settings);
+    harness.get_by_role_and_label(Role::Tab, "Appearance").click();
+    wait_until(harness, "the row", |harness| {
+        harness.query_by_label("Pull requests open on").is_some()
+    });
+    // The row sits below the fold of Appearance.
+    harness.get_by_role_and_label(Role::RadioButton, "Files").scroll_to_me();
+    for _ in 0..5 {
+        harness.step();
+    }
+    harness.get_by_role_and_label(Role::RadioButton, "Files").click();
+    wait_until(harness, "the choice", |harness| {
+        harness.state().services.settings.pull_request_start == PullRequestStart::Files
+    });
+    harness.state_mut().navigator.go(Route::MyPullRequests);
+}
+
+#[test]
+fn open_resume_files_option_and_the_place_left_survive_a_restart() {
+    let scratch = ScratchDir::new("open-resume");
+    let host = GitHubHost::with_pull_request_files(scratch.path(), &files());
+    let connection = host.connection("gh", "Acme");
+    let mut harness = app(&scratch, std::slice::from_ref(&connection));
+    assert_eq!(
+        harness.state().services.settings.pull_request_start,
+        PullRequestStart::Overview,
+        "the Overview stays the default"
+    );
+    choose_files_in_settings(&mut harness);
+    let saved = AppSettings::load(&paths(&scratch).settings_file()).expect("settings file");
+    assert_eq!(saved.pull_request_start, PullRequestStart::Files, "the choice is saved");
+
+    open_on_file(&mut harness, FIRST);
+    harness.get_by_role_and_label(Role::TreeItem, LAST).click();
+    wait_until(&mut harness, "the last file", |harness| diff_shows(harness, LAST));
+    drop(harness);
+
+    // A restart opens the file left open, not the first one.
+    let mut harness = app(&scratch, std::slice::from_ref(&connection));
+    assert_eq!(harness.state().services.settings.pull_request_start, PullRequestStart::Files);
+    open_on_file(&mut harness, LAST);
+    harness.get_by_role_and_label(Role::Tab, "Overview").click();
+    wait_until(&mut harness, "the Overview", |harness| {
+        tab(harness) == Some(PullRequestTab::Overview)
+    });
+    drop(harness);
+
+    // Left on the Overview: it opens there, and the Files tab still has the file left open.
+    let mut harness = app(&scratch, std::slice::from_ref(&connection));
+    open_pull_request(&mut harness);
+    assert_eq!(tab(&harness), Some(PullRequestTab::Overview), "the tab left on");
+    harness
+        .get_by(|node| {
+            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with("Files"))
+        })
+        .click();
+    wait_until(&mut harness, "the file left open", |harness| diff_shows(harness, LAST));
+    assert!(!diff_shows(&harness, FIRST));
+}
+
+/// A saved file the pull request no longer changes opens the first file, without an error or the
+/// "no longer changed" hint: nothing the user did took it away.
+#[test]
+fn open_resume_a_vanished_file_falls_back_to_the_first_file() {
+    let scratch = ScratchDir::new("open-resume-vanished");
+    let host = GitHubHost::with_pull_request_files(scratch.path(), &files());
+    let connection = host.connection("gh", "Acme");
+    let mut harness = app(&scratch, std::slice::from_ref(&connection));
+    open_pull_request(&mut harness);
+    assert_eq!(tab(&harness), Some(PullRequestTab::Overview), "the default without a place");
+    let Route::PullRequest(key) = harness.state().route.clone() else {
+        panic!("the pull request is open");
+    };
+    harness.state_mut().services.settings.pull_request_start = PullRequestStart::Files;
+    harness.state_mut().services.save_settings();
+    drop(harness);
+
+    let paths = paths(&scratch);
+    let mut viewed =
+        ViewedFiles::load(&paths, &key.connection_id, &key.storage_key()).expect("the marks' file");
+    let gone = LastPlace { tab: LastTab::Files, file: Some("gone/removed.rs".to_owned()) };
+    viewed.set_last_place(gone).expect("saved");
+
+    let mut harness = app(&scratch, std::slice::from_ref(&connection));
+    open_on_file(&mut harness, FIRST);
+    assert!(harness.query_by_label_contains("Could not").is_none(), "no error");
+    assert!(harness.query_by_label_contains("is no longer changed").is_none(), "no hint");
+    let saved =
+        ViewedFiles::load(&paths, &key.connection_id, &key.storage_key()).expect("the marks' file");
+    assert_eq!(
+        saved.last_place(),
+        Some(&LastPlace { tab: LastTab::Files, file: Some(FIRST.to_owned()) }),
+        "the place shown now is saved"
+    );
+}

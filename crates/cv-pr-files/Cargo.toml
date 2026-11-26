@@ -1,0 +1,76 @@
+[package]
+name = "cv-pr-files"
+description = "The Files tab: the file tree beside the open file's diff, preview or folder summary."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# Test helpers and fakes for the tests of the crates above; enabled only from [dev-dependencies].
+test-support = [
+    "cv-base/test-support",
+    "cv-code/test-support",
+    "cv-editor/test-support",
+    "cv-pr-diff/test-support",
+    "cv-pr-rendered/test-support",
+    "cv-pr-session/test-support",
+    "cv-pr-summary/test-support",
+    "cv-pr-threads/test-support",
+    "cv-pr-tree/test-support",
+    "cv-runtime/test-support",
+    "cv-services/test-support",
+    "cv-shell/test-support",
+    "cv-syntax/test-support",
+    "cv-widgets/test-support",
+]
+
+[dependencies]
+cv-base.workspace = true
+cv-code.workspace = true
+cv-editor.workspace = true
+cv-pr-diff.workspace = true
+cv-pr-rendered.workspace = true
+cv-pr-session.workspace = true
+cv-pr-summary.workspace = true
+cv-pr-threads.workspace = true
+cv-pr-tree.workspace = true
+cv-runtime.workspace = true
+cv-services.workspace = true
+cv-shell.workspace = true
+cv-syntax.workspace = true
+cv-widgets.workspace = true
+egui.workspace = true
+review-core.workspace = true
+review-git.workspace = true
+review-store.workspace = true
+# Writes a downloaded binary file (src/tab/download.rs).
+tokio.workspace = true
+
+[dev-dependencies]
+cv-base = { workspace = true, features = ["test-support"] }
+cv-code = { workspace = true, features = ["test-support"] }
+cv-editor = { workspace = true, features = ["test-support"] }
+cv-pr-diff = { workspace = true, features = ["test-support"] }
+cv-pr-rendered = { workspace = true, features = ["test-support"] }
+cv-pr-session = { workspace = true, features = ["test-support"] }
+cv-pr-summary = { workspace = true, features = ["test-support"] }
+cv-pr-threads = { workspace = true, features = ["test-support"] }
+cv-pr-tree = { workspace = true, features = ["test-support"] }
+cv-providers.workspace = true
+cv-runtime = { workspace = true, features = ["test-support"] }
+cv-services = { workspace = true, features = ["test-support"] }
+cv-shell = { workspace = true, features = ["test-support"] }
+cv-syntax = { workspace = true, features = ["test-support"] }
+cv-testkit.workspace = true
+cv-widgets = { workspace = true, features = ["test-support"] }
+egui_kittest.workspace = true
+similar.workspace = true
+time = { workspace = true, features = ["local-offset"] }

@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest something Code View should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do in a review, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How Code View could solve it. Sketches and examples from other tools are welcome.
+    validations:
+      required: true
+  - type: dropdown
+    id: host
+    attributes:
+      label: Hosts it concerns
+      multiple: true
+      options:
+        - All hosts
+        - GitHub
+        - GitLab
+        - Azure DevOps
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do instead today

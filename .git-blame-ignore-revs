@@ -1,0 +1,6 @@
+# Commits that only change layout. `git blame` skips them with
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub and GitLab read this file on their own.
+
+# Format the workspace with rustfmt (layout only; token comparison in the commit body)
+fd6cc6bf0adb68ad2dc42bc68ad2ede5f64d7999

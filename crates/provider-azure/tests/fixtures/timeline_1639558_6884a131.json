@@ -1,0 +1,155 @@
+{
+ "id": "6884a131-87da-5381-61f3-d7acc3b91d76",
+ "changeId": 1,
+ "records": [
+  {
+   "id": "d734f8b9-702c-54fa-39a4-409a2dedff9d",
+   "parentId": "6884a131-87da-5381-61f3-d7acc3b91d76",
+   "type": "Checkpoint",
+   "name": "Checkpoint",
+   "identifier": "Checkpoint",
+   "state": "completed",
+   "result": "succeeded",
+   "order": null,
+   "attempt": 1,
+   "previousAttempts": [],
+   "startTime": "2026-10-18T14:02:07.6266667Z",
+   "finishTime": "2026-10-18T14:02:07.6266667Z",
+   "log": null
+  },
+  {
+   "id": "efda9e5f-cf98-536e-4181-9b6c13ac35b3",
+   "parentId": "ec8b7f0b-90dc-5a34-b23c-68cecfdfaac4",
+   "type": "Job",
+   "name": "Code check",
+   "identifier": "build.Code_check.__default",
+   "state": "completed",
+   "result": "succeeded",
+   "order": 1,
+   "attempt": 1,
+   "previousAttempts": [],
+   "startTime": "2026-10-18T14:02:27.9133333Z",
+   "finishTime": "2026-10-18T14:07:00.08Z",
+   "log": {
+    "id": 85
+   }
+  },
+  {
+   "id": "2f0d093c-1064-5c86-fc5b-b7b1eca8e66a",
+   "parentId": "8488bc31-db74-554d-c902-6093a183cdfd",
+   "type": "Job",
+   "name": "Source-Build (Managed)",
+   "identifier": "build.Source_Build_Managed.__default",
+   "state": "completed",
+   "result": "failed",
+   "order": 1,
+   "attempt": 1,
+   "previousAttempts": [],
+   "startTime": "2026-10-18T14:05:36.6766667Z",
+   "finishTime": "2026-10-18T14:08:15.57Z",
+   "log": {
+    "id": 95
+   }
+  },
+  {
+   "id": "ec8b7f0b-90dc-5a34-b23c-68cecfdfaac4",
+   "parentId": "6884a131-87da-5381-61f3-d7acc3b91d76",
+   "type": "Phase",
+   "name": "Code check",
+   "identifier": "build.Code_check",
+   "state": "completed",
+   "result": "succeeded",
+   "order": 1,
+   "attempt": 1,
+   "previousAttempts": [],
+   "startTime": "2026-10-18T14:02:27.9133333Z",
+   "finishTime": "2026-10-18T14:07:03.5333333Z",
+   "log": {
+    "id": 5
+   }
+  },
+  {
+   "id": "8488bc31-db74-554d-c902-6093a183cdfd",
+   "parentId": "6884a131-87da-5381-61f3-d7acc3b91d76",
+   "type": "Phase",
+   "name": "Source-Build (Managed)",
+   "identifier": "build.Source_Build_Managed",
+   "state": "completed",
+   "result": "failed",
+   "order": 6,
+   "attempt": 1,
+   "previousAttempts": [],
+   "startTime": "2026-10-18T14:05:36.6766667Z",
+   "finishTime": "2026-10-18T14:08:36.75Z",
+   "log": {
+    "id": 15
+   }
+  },
+  {
+   "id": "6884a131-87da-5381-61f3-d7acc3b91d76",
+   "parentId": null,
+   "type": "Stage",
+   "name": "Build",
+   "identifier": "build",
+   "state": "completed",
+   "result": "failed",
+   "order": 1,
+   "attempt": 1,
+   "previousAttempts": [],
+   "startTime": "2026-10-18T14:02:20.92Z",
+   "finishTime": "2026-10-18T14:38:07.3833333Z",
+   "log": null
+  },
+  {
+   "id": "2fd8af13-29fc-4805-816a-5a2f1a930d86",
+   "parentId": "2f0d093c-1064-5c86-fc5b-b7b1eca8e66a",
+   "type": "Task",
+   "name": "Initialize job",
+   "identifier": null,
+   "state": "completed",
+   "result": "succeeded",
+   "order": 1,
+   "attempt": 1,
+   "previousAttempts": [],
+   "startTime": "2026-10-18T14:05:37.3566667Z",
+   "finishTime": "2026-10-18T14:05:42.35Z",
+   "log": {
+    "id": 75
+   }
+  },
+  {
+   "id": "1fd66c6c-e1cc-552f-323d-6925c3a251d1",
+   "parentId": "2f0d093c-1064-5c86-fc5b-b7b1eca8e66a",
+   "type": "Task",
+   "name": "Checkout dotnet/aspnetcore@refs/pull/69916/merge to s",
+   "identifier": null,
+   "state": "completed",
+   "result": "failed",
+   "order": 3,
+   "attempt": 1,
+   "previousAttempts": [],
+   "startTime": "2026-10-18T14:07:59.1733333Z",
+   "finishTime": "2026-10-18T14:08:13.6733333Z",
+   "log": {
+    "id": 87
+   }
+  },
+  {
+   "id": "6f843db7-fe67-4fa8-bb28-b8abd9fca945",
+   "parentId": "2f0d093c-1064-5c86-fc5b-b7b1eca8e66a",
+   "type": "Task",
+   "name": "Finalize Job",
+   "identifier": null,
+   "state": "completed",
+   "result": "succeeded",
+   "order": 9,
+   "attempt": 1,
+   "previousAttempts": [],
+   "startTime": "2026-10-18T14:08:15.5333333Z",
+   "finishTime": "2026-10-18T14:08:15.5666667Z",
+   "log": {
+    "id": 94
+   }
+  }
+ ]
+}

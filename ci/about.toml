@@ -1,0 +1,30 @@
+# What ci/build-release.sh lists in THIRD-PARTY-NOTICES.txt with cargo-about (docs/release.md, Third-party
+# notices). A crate under a license missing here stops the build: read the license before adding it.
+accepted = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+# Only what the program links. Build tools and test crates do not ship.
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+# The app's own crates are not third party. cargo-about skips a workspace crate only when it is
+# not published (`publish = false`, from [workspace.package] in Cargo.toml); its license,
+# FSL-1.1-ALv2, is not in `accepted` and would stop the build. The vendored
+# syntect declares MIT itself and is publishable, so it is listed.
+[private]
+ignore = true

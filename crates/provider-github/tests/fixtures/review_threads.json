@@ -1,0 +1,55 @@
+{
+  "repository": {
+    "pullRequest": {
+      "reviewThreads": {
+        "pageInfo": { "hasNextPage": false, "endCursor": "t2" },
+        "nodes": [
+          {
+            "id": "PRRT_right",
+            "isResolved": true,
+            "isOutdated": false,
+            "path": "src/main.rs",
+            "line": 12,
+            "originalLine": 10,
+            "diffSide": "RIGHT",
+            "comments": {
+              "pageInfo": { "hasNextPage": false, "endCursor": "c1" },
+              "nodes": [
+                {
+                  "id": "PRRC_1",
+                  "databaseId": 1001,
+                  "author": { "login": "mona", "avatarUrl": "https://avatars.example/1", "databaseId": 1, "name": "Mona" },
+                  "body": "Why?",
+                  "createdAt": "2024-03-01T10:00:00Z",
+                  "lastEditedAt": null
+                }
+              ]
+            }
+          },
+          {
+            "id": "PRRT_left",
+            "isResolved": false,
+            "isOutdated": true,
+            "path": "src/lib.rs",
+            "line": null,
+            "originalLine": 4,
+            "diffSide": "LEFT",
+            "comments": {
+              "pageInfo": { "hasNextPage": true, "endCursor": "c2" },
+              "nodes": [
+                {
+                  "id": "PRRC_2",
+                  "databaseId": 1002,
+                  "author": null,
+                  "body": "Removed?",
+                  "createdAt": "2024-03-02T10:00:00Z",
+                  "lastEditedAt": "2024-03-02T11:00:00Z"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

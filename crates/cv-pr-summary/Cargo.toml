@@ -1,0 +1,61 @@
+[package]
+name = "cv-pr-summary"
+description = "The Files tab's folder summary: one virtualized card per changed file below a folder."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# Test helpers and fakes for the tests of the crates above; enabled only from [dev-dependencies].
+test-support = [
+    "cv-base/test-support",
+    "cv-code/test-support",
+    "cv-editor/test-support",
+    "cv-pr-diff/test-support",
+    "cv-pr-rendered/test-support",
+    "cv-pr-threads/test-support",
+    "cv-pr-tree/test-support",
+    "cv-runtime/test-support",
+    "cv-syntax/test-support",
+    "cv-widgets/test-support",
+]
+
+[dependencies]
+cv-base.workspace = true
+cv-code.workspace = true
+cv-editor.workspace = true
+cv-pr-diff.workspace = true
+cv-pr-rendered.workspace = true
+cv-pr-threads.workspace = true
+cv-pr-tree.workspace = true
+cv-runtime.workspace = true
+cv-syntax.workspace = true
+cv-widgets.workspace = true
+egui.workspace = true
+review-core.workspace = true
+review-git.workspace = true
+review-store.workspace = true
+
+[dev-dependencies]
+cv-base = { workspace = true, features = ["test-support"] }
+cv-code = { workspace = true, features = ["test-support"] }
+cv-editor = { workspace = true, features = ["test-support"] }
+cv-pr-diff = { workspace = true, features = ["test-support"] }
+cv-pr-rendered = { workspace = true, features = ["test-support"] }
+cv-pr-threads = { workspace = true, features = ["test-support"] }
+cv-pr-tree = { workspace = true, features = ["test-support"] }
+cv-runtime = { workspace = true, features = ["test-support"] }
+# The code zoom in the summary's shots (src/shots.rs).
+cv-shell = { workspace = true, features = ["test-support"] }
+cv-syntax = { workspace = true, features = ["test-support"] }
+cv-testkit.workspace = true
+cv-widgets = { workspace = true, features = ["test-support"] }
+egui_kittest.workspace = true

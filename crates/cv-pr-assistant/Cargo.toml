@@ -1,0 +1,53 @@
+[package]
+name = "cv-pr-assistant"
+description = "The pull request assistant: questions about a pull request, answered by the user's own agent CLI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# Test helpers other crates' tests name (`CARD_LABEL`, the mini chat's labels, `mini::drawn`,
+# `mini::asks_for_frames`); forwards to the cv crates below.
+test-support = [
+    "cv-base/test-support",
+    "cv-markdown/test-support",
+    "cv-pr-session/test-support",
+    "cv-runtime/test-support",
+    "cv-services/test-support",
+    "cv-widgets/test-support",
+]
+
+[dependencies]
+cv-base.workspace = true
+cv-markdown.workspace = true
+cv-pr-session.workspace = true
+cv-runtime.workspace = true
+cv-services.workspace = true
+cv-widgets.workspace = true
+review-agent.workspace = true
+review-core.workspace = true
+review-git.workspace = true
+review-store.workspace = true
+egui.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+cv-base = { workspace = true, features = ["test-support"] }
+cv-markdown = { workspace = true, features = ["test-support"] }
+cv-pr-session = { workspace = true, features = ["test-support"] }
+cv-runtime = { workspace = true, features = ["test-support"] }
+cv-services = { workspace = true, features = ["test-support"] }
+cv-widgets = { workspace = true, features = ["test-support"] }
+cv-providers.workspace = true
+cv-testkit.workspace = true
+# The runner's tests drive a scripted agent session, no CLI process.
+review-agent = { workspace = true, features = ["fake"] }
+time.workspace = true

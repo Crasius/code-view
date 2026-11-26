@@ -1,0 +1,21 @@
+Code View uses the third-party software listed here. Each section below holds one
+license and the packages it applies to, with the place to get their source code.
+
+The program also contains the Rust standard library (MIT OR Apache-2.0,
+https://github.com/rust-lang/rust). Both license texts are below. The Linux and
+macOS builds also contain the runtime of the Zig compiler (MIT, Copyright (c) Zig
+contributors, https://ziglang.org). The licenses of the icon fonts and of the
+syntax grammars follow the list of packages.
+
+{{#each licenses}}
+================================================================================
+{{{name}}} ({{{id}}})
+
+Used by:
+{{#each used_by}}
+  {{{crate.name}}} {{{crate.version}}}{{#if crate.repository}}, {{{crate.repository}}}{{/if}}
+{{/each}}
+
+{{{text}}}
+
+{{/each}}

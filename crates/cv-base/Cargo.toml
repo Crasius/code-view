@@ -1,0 +1,68 @@
+[package]
+name = "cv-base"
+description = "Code View's base: the platform layer, the theme, frame metrics and the counting global allocator."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# Test probes other crates' tests read (the Windows caption's hit-test regions, the long press,
+# every file hue). Enabled only from [dev-dependencies] and from the test-support features above.
+test-support = []
+
+[dependencies]
+review-store.workspace = true
+eframe.workspace = true
+egui.workspace = true
+# The app mark on the Windows title bar, drawn from its SVG (platform/windows/app_mark.rs).
+resvg = { workspace = true, features = ["text", "system-fonts"] }
+tokio.workspace = true
+
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+raw-window-handle.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# winit's X11 and Wayland backends; both load their system libraries at run time. Here, the lowest
+# crate that pulls eframe, so a `-p` build of any cv-* crate compiles winit with a backend.
+eframe = { workspace = true, features = ["wayland", "x11"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
+objc2-app-kit = { workspace = true, features = ["NSApplication", "NSButton", "NSControl", "NSEvent", "NSResponder", "NSView", "NSWindow"] }
+objc2-foundation = { workspace = true, features = ["NSGeometry", "NSString", "NSUserDefaults"] }
+
+[target.'cfg(windows)'.dependencies]
+# The full list the app used before the split; trimming it waits for a `-p cv-base` build.
+windows-sys = { workspace = true, features = [
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Controls_Dialogs",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+# The frame pacing probe (examples/frame_pacing.rs) compares glow with wgpu (DX12/Vulkan); the app
+# itself ships glow only.
+eframe = { workspace = true, features = ["wgpu"] }
+egui_kittest = { workspace = true, features = ["eframe"] }

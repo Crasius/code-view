@@ -1,0 +1,71 @@
+[package]
+name = "cv-pr-page"
+description = "One pull request: the header with its review actions and the Overview, Files, Commits and Pipelines tabs."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# Test helpers and fakes for the tests of the crates above; enabled only from [dev-dependencies].
+test-support = [
+    "cv-base/test-support",
+    "cv-editor/test-support",
+    "cv-markdown/test-support",
+    "cv-pr-assistant/test-support",
+    "cv-pr-files/test-support",
+    "cv-pr-pipelines/test-support",
+    "cv-pr-session/test-support",
+    "cv-pr-threads/test-support",
+    "cv-runtime/test-support",
+    "cv-services/test-support",
+    "cv-shell/test-support",
+    "cv-widgets/test-support",
+]
+
+[dependencies]
+cv-base.workspace = true
+cv-editor.workspace = true
+cv-markdown.workspace = true
+cv-pr-assistant.workspace = true
+cv-pr-files.workspace = true
+cv-pr-pipelines.workspace = true
+cv-pr-session.workspace = true
+cv-pr-threads.workspace = true
+cv-runtime.workspace = true
+cv-services.workspace = true
+cv-shell.workspace = true
+cv-widgets.workspace = true
+egui.workspace = true
+review-core.workspace = true
+review-git.workspace = true
+review-store.workspace = true
+# Loads a pushed revision's detail and threads together (src/live/stage.rs).
+tokio.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+cv-base = { workspace = true, features = ["test-support"] }
+cv-editor = { workspace = true, features = ["test-support"] }
+cv-markdown = { workspace = true, features = ["test-support"] }
+cv-pr-assistant = { workspace = true, features = ["test-support"] }
+cv-pr-files = { workspace = true, features = ["test-support"] }
+cv-pr-pipelines = { workspace = true, features = ["test-support"] }
+cv-pr-session = { workspace = true, features = ["test-support"] }
+cv-pr-threads = { workspace = true, features = ["test-support"] }
+cv-runtime = { workspace = true, features = ["test-support"] }
+cv-services = { workspace = true, features = ["test-support"] }
+cv-shell = { workspace = true, features = ["test-support"] }
+cv-testkit.workspace = true
+cv-widgets = { workspace = true, features = ["test-support"] }
+egui_kittest.workspace = true
+# The scripted providers of the walkthroughs take the HTTP client (src/update_place_walkthrough.rs).
+reqwest.workspace = true
+time = { workspace = true, features = ["local-offset"] }

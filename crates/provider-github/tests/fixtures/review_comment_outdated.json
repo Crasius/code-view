@@ -1,0 +1,28 @@
+[
+  {
+    "id": 4270374354,
+    "pull_request_review_id": 5517422329,
+    "diff_hunk": "@@ -116,7 +118,7 @@ safe-outputs:\n       steps:\n         - name: Create GitHub App token\n           id: app-token\n-          uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0\n+          uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0",
+    "path": ".github/workflows/issue-triage.md",
+    "commit_id": "efe3c7630da3296a9435293c1a7b0e5358a022e0",
+    "original_commit_id": "efe3c7630da3296a9435293c1a7b0e5358a022e0",
+    "user": {
+      "login": "Copilot",
+      "id": 175728472,
+      "type": "Bot"
+    },
+    "body": "Commentary: Preserve the action's release label. With two spaces before the comment, the recompiled lock records this as `# 64ab` and sets the manifest version",
+    "created_at": "2026-10-14T11:51:18Z",
+    "updated_at": "2026-10-14T11:51:19Z",
+    "html_url": "https://github.com/cli/cli/pull/14682#discussion_r4270374354",
+    "line": null,
+    "original_line": 121,
+    "start_line": null,
+    "original_start_line": null,
+    "side": "RIGHT",
+    "start_side": null,
+    "subject_type": "line",
+    "position": 1,
+    "original_position": 14
+  }
+]

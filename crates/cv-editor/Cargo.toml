@@ -1,0 +1,36 @@
+[package]
+name = "cv-editor"
+description = "Code View's comment editor: the Markdown editor with its toolbar and preview, and the rich text editor it switches to."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# Forwards to the cv crates below, whose fakes and probes the tests of the crates above need.
+# Enabled only from [dev-dependencies] and from the test-support features above.
+test-support = ["cv-base/test-support", "cv-markdown/test-support", "cv-widgets/test-support"]
+
+[dependencies]
+cv-base.workspace = true
+cv-markdown.workspace = true
+cv-widgets.workspace = true
+review-core.workspace = true
+review-git.workspace = true
+review-store.workspace = true
+egui.workspace = true
+pulldown-cmark.workspace = true
+
+[dev-dependencies]
+cv-base = { workspace = true, features = ["test-support"] }
+cv-markdown = { workspace = true, features = ["test-support"] }
+cv-widgets = { workspace = true, features = ["test-support"] }
+cv-testkit.workspace = true
+egui_kittest.workspace = true

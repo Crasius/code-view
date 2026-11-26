@@ -1,0 +1,49 @@
+[package]
+name = "cv-pr-pipelines"
+description = "The Pipelines tab: every pipeline, job and status check of the head commit, a run's stages and a job's log."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[features]
+# The log's top line for the focus mode walkthroughs (`focus_mode::note_top_line`); forwards to
+# the cv crates below.
+test-support = [
+    "cv-base/test-support",
+    "cv-pr-session/test-support",
+    "cv-runtime/test-support",
+    "cv-services/test-support",
+    "cv-shell/test-support",
+    "cv-widgets/test-support",
+]
+
+[dependencies]
+cv-base.workspace = true
+cv-pr-session.workspace = true
+cv-runtime.workspace = true
+cv-services.workspace = true
+cv-shell.workspace = true
+cv-widgets.workspace = true
+review-core.workspace = true
+review-store.workspace = true
+egui.workspace = true
+time.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+cv-base = { workspace = true, features = ["test-support"] }
+cv-pr-session = { workspace = true, features = ["test-support"] }
+cv-runtime = { workspace = true, features = ["test-support"] }
+cv-services = { workspace = true, features = ["test-support"] }
+cv-shell = { workspace = true, features = ["test-support"] }
+cv-widgets = { workspace = true, features = ["test-support"] }
+cv-testkit.workspace = true
+egui_kittest.workspace = true

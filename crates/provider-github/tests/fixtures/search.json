@@ -1,0 +1,33 @@
+{
+  "search": {
+    "pageInfo": { "hasNextPage": false, "endCursor": "Y3Vyc29yOjE=" },
+    "nodes": [
+      {
+        "number": 99,
+        "title": "Add feature",
+        "url": "https://github.com/cli/cli/pull/99",
+        "state": "MERGED",
+        "isDraft": false,
+        "createdAt": "2024-04-01T09:00:00Z",
+        "updatedAt": "2024-04-02T09:00:00Z",
+        "headRefName": "feature/y",
+        "baseRefName": "trunk",
+        "author": { "login": "mona", "avatarUrl": "https://avatars.example/1", "databaseId": 1, "name": null },
+        "repository": { "nameWithOwner": "cli/cli", "name": "cli" },
+        "labels": { "pageInfo": { "hasNextPage": false }, "nodes": [{ "name": "enhancement", "color": "a2eeef", "description": null }] },
+        "reviewRequests": {
+          "pageInfo": { "hasNextPage": false },
+          "nodes": [{ "requestedReviewer": { "__typename": "Team", "databaseId": 4, "name": "Core", "slug": "core" } }]
+        },
+        "latestOpinionatedReviews": {
+          "pageInfo": { "hasNextPage": false },
+          "nodes": [{ "state": "APPROVED", "author": { "login": "bob", "databaseId": 2 } }]
+        },
+        "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "FAILURE" } } }] },
+        "additions": 1240,
+        "deletions": 312,
+        "changedFiles": 18
+      }
+    ]
+  }
+}
