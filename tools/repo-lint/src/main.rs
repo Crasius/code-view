@@ -252,3 +252,4 @@ fn report(findings: &[Finding]) -> Result<bool, RepoError> {
     }
     Ok(findings.is_empty())
 }
+// CI probe, never merged.
