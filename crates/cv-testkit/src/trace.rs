@@ -64,7 +64,8 @@ impl Trace {
             (Some(started), _) => {
                 let _infallible = write!(
                     text,
-                    "\nFrame {} has been running for {}: the app's frame never returned.",
+                    "\nFrame {} has been running for {} (seconds here mean the app's frame never \
+                     returned; a fraction means frames follow one another).",
                     state.frames,
                     ago(started)
                 );
