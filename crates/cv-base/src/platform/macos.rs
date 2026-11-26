@@ -238,6 +238,10 @@ pub fn open_shell(dir: &Path, _terminal: TerminalChoice) -> std::io::Result<()> 
 
 /// The folder chooser through AppleScript; `None` when cancelled. Blocks, so it runs on a worker
 /// thread.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the dialog blocks until the user decides; callers run it on a worker thread"
+)]
 pub fn ask_folder(_owner: DialogOwner, title: &str) -> Option<PathBuf> {
     const SCRIPT: [&str; 4] = [
         "on run argv",

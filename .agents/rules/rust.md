@@ -184,7 +184,7 @@ The contract lives in two files; never loosen either without the owner (RS-AGENT
 ## Errors and platform code
 - Libraries return typed errors (`thiserror`, `review_core::ProviderError`) or `io::Error` with context. `expect` only for true invariants, naming the invariant ("tokio runtime must start").
 - Platform code lives in `platform/` modules behind `cfg(target_os = ...)`, one file per system. Shared code never branches on the OS inline.
-- After a change to platform code or dependencies, also check the other systems: `cargo clippy --workspace --all-targets --target x86_64-unknown-linux-gnu -- -D warnings` (needs the target installed and a C cross compiler, see `docs/linux.md`). Not runnable here: say NOT-VERIFIED for Linux and macOS.
+- After a change to platform code or dependencies, also check the other systems: `cargo clippy --workspace --all-targets --target x86_64-unknown-linux-gnu -- -D warnings` (needs the target installed and a C cross compiler, see `docs/linux.md`) and both clippy passes with `--target aarch64-apple-darwin` (needs only `rustup target add aarch64-apple-darwin`; clippy links nothing, so it runs on Windows and Linux too). Where a target is not installed, say NOT-VERIFIED for that system. Why: code behind `cfg(target_os = "macos")` is compiled by no other check on this host, so a finding there stayed unseen until the macOS workflow ran (`ask_folder`, 2026-11-26).
 - Comments say why, not what. Module docs (`//!`) explain the design and its trade-offs; keep them true when you change the behaviour.
 
 ## Readability
