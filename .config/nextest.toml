@@ -1,0 +1,10 @@
+# cargo-nextest, the test runner of both CIs (docs/release.md, Tests). Locally `cargo test` and
+# `cargo nextest run` both work; the default profile is nextest's own.
+
+[profile.ci]
+# Every failure of a run, not only the first.
+fail-fast = false
+# The output of a failed test right away and again in the summary at the end.
+failure-output = "immediate-final"
+# GitLab shows the results in the merge request (artifacts:reports:junit in ci/checks.yml).
+junit.path = "junit.xml"

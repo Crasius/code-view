@@ -45,6 +45,8 @@ default:
   - .gitlab-ci.yml
   - ci/**/*
   - .agents/hooks/**/*
+  - .config/**/*
+  - scripts/affected-tests.sh
 
 # A push to main runs its checks in the child pipeline ci/main-scope.sh decides, or not at all when
 # its tree is one a merge request pipeline passed (.gitlab-ci.yml, main-checks). In that child
@@ -72,14 +74,15 @@ default:
   after_script:
     - du -sh target .cargo-home .xwin-cache .build-deps 2>/dev/null || true
 
-# The image of docs/linux.md (Tests in a container): its git and its DejaVu fonts are all the tests
-# need. The two clippy passes differ: --all-targets lints the libraries with test-support on, the
-# second pass lints the shipped variant. In a merge request only when a cargo input changed.
-check:
+# lint and test run side by side, each in its own pod, each with its own build cache: clippy's
+# check artifacts and the test build share no compiled unit (docs/release.md, Build cache). The
+# image is the one of docs/linux.md (Tests in a container): its git and its DejaVu fonts are all
+# the tests need. In a merge request only when a cargo input changed.
+.cargo-checks:
   stage: test
   extends: .rust
   image: $RUST_IMAGE
-  timeout: 2h
+  needs: []
   rules:
     - !reference [.checks-not-on-main-push]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -88,16 +91,61 @@ check:
         compare_to: refs/heads/main
     - if: $CI_PIPELINE_SOURCE != "merge_request_event"
   variables:
-    # repo-lint compares the length allowlist with the commit before the push.
+    # repo-lint and the test selection compare with the merge request's base or the commit
+    # before the push, which must be in the clone.
     GIT_DEPTH: "50"
-  script:
+  before_script:
+    - export PATH="$BUILD_DEPS/usr/bin:$PATH"
     - rustup show active-toolchain || rustup toolchain install
+    - sh ci/target-stamp.sh restore
+  after_script:
+    - du -sh target target/debug/deps target/debug/build .cargo-home 2>/dev/null || true
+
+# The downloads both jobs share, and `target` of one job kind: keyed by the lockfile and the
+# toolchain, so a dependency or toolchain change starts that kind cold. A cache of an older
+# commit or another branch is safe (ci/target-stamp.sh). Each archive stays below the runner's
+# 2 GiB (docs/release.md, Runner).
+.cargo-downloads:
+  key:
+    prefix: cargo-downloads
+    files: [Cargo.lock]
+  paths: [.cargo-home/registry/index, .cargo-home/registry/cache, .cargo-home/git/db]
+
+# Format, repository rules and both clippy passes. They differ: --all-targets lints the libraries
+# with test-support on, the second pass lints the shipped variant.
+lint:
+  extends: .cargo-checks
+  cache:
+    - !reference [.cargo-downloads]
+    - key:
+        prefix: target-lint
+        files: [Cargo.lock, rust-toolchain.toml]
+      paths: [target/]
+  script:
     - cargo fmt --all --check
     - sh .agents/hooks/repo-check.sh
     - sh ci/repo-lint-base.sh
     - cargo clippy --locked --workspace --all-targets -- -D warnings
     - cargo clippy --locked --workspace -- -D warnings
-    - cargo test --locked --workspace
+    - sh ci/target-stamp.sh save
+
+# Every test the change needs, with cargo-nextest (ci/test.sh).
+test:
+  extends: .cargo-checks
+  cache:
+    - !reference [.cargo-downloads]
+    - key:
+        prefix: target-test
+        files: [Cargo.lock, rust-toolchain.toml]
+      paths: [target/]
+  script:
+    - sh ci/install-build-deps.sh cargo-nextest
+    - sh ci/test.sh
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: target/nextest/ci/junit.xml
 
 # Secret scan of the full git history, in every pipeline that checks. Findings are redacted in the
 # job log.
