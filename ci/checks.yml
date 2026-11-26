@@ -1,7 +1,5 @@
 # The checks of a commit and what every pipeline of this project runs with (docs/release.md,
-# Pipelines). Two pipelines include this file: .gitlab-ci.yml for merge requests, tags and runs by
-# hand, and main's child pipeline for a push to main whose tree no merge request pipeline passed
-# (ci/main-scope.sh). A push to main never runs them in its own pipeline (.checks-not-on-main-push).
+# Pipelines), included by .gitlab-ci.yml.
 
 variables:
   # Images by digest; the tag only documents the version. rustup in the image installs the toolchain
@@ -14,6 +12,10 @@ variables:
   CARGO_TERM_COLOR: always
   XWIN_CACHE_DIR: $CI_PROJECT_DIR/.xwin-cache
   BUILD_DEPS: $CI_PROJECT_DIR/.build-deps
+  # Every cache only restores; the pipelines of main set pull-push in the workflow rules
+  # (.gitlab-ci.yml), so a merge request or a tag never writes what main and the tags restore
+  # (docs/release.md, Build cache).
+  CACHE_POLICY: pull
 
 default:
   tags: [build]
@@ -45,13 +47,9 @@ default:
   - .gitlab-ci.yml
   - ci/**/*
   - .agents/hooks/**/*
-
-# A push to main runs its checks in the child pipeline ci/main-scope.sh decides, or not at all when
-# its tree is one a merge request pipeline passed (.gitlab-ci.yml, main-checks). In that child
-# CI_PIPELINE_SOURCE is `parent_pipeline`, so this rule lets the checks run there.
-.checks-not-on-main-push:
-  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
-    when: never
+  - .config/**/*
+  - .gitattributes
+  - scripts/affected-tests.sh
 
 .rust:
   image: $ZIGBUILD_IMAGE
@@ -67,37 +65,137 @@ default:
     key:
       prefix: rust-$CI_JOB_NAME_SLUG
       files: [Cargo.lock, rust-toolchain.toml]
+    policy: $CACHE_POLICY
     # Downloads only: an archive must fit the runner's 2 GiB (docs/release.md, Runner).
     paths: [.cargo-home/registry/index, .cargo-home/registry/cache, .cargo-home/git/db, .xwin-cache]
   after_script:
     - du -sh target .cargo-home .xwin-cache .build-deps 2>/dev/null || true
 
-# The image of docs/linux.md (Tests in a container): its git and its DejaVu fonts are all the tests
-# need. The two clippy passes differ: --all-targets lints the libraries with test-support on, the
-# second pass lints the shipped variant. In a merge request only when a cargo input changed.
-check:
+# lint and test run side by side, each in its own pod, each with its own build cache: clippy's
+# check artifacts and the test build share no compiled unit (docs/release.md, Build cache). The
+# image is the one of docs/linux.md (Tests in a container): its git and its DejaVu fonts are all
+# the tests need. In a merge request only when a cargo input changed; on main, a tag and a run by
+# hand always: a rule's `changes` on a push compares with the commit before it and would skip what
+# an earlier red or cancelled push changed.
+.cargo-checks:
   stage: test
   extends: .rust
   image: $RUST_IMAGE
-  timeout: 2h
+  needs: []
   rules:
-    - !reference [.checks-not-on-main-push]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths: !reference [.rust-inputs]
         compare_to: refs/heads/main
     - if: $CI_PIPELINE_SOURCE != "merge_request_event"
   variables:
-    # repo-lint compares the length allowlist with the commit before the push.
+    # The test selection compares with the merge request's base, which must be in the clone.
     GIT_DEPTH: "50"
-  script:
+    # Restoring test's two archives took 72 to 76 s with one stream each [observed 2026-11-26].
+    FF_USE_PARALLEL_CACHE_TRANSFER: "true"
+  before_script:
+    - export PATH="$BUILD_DEPS/usr/bin:$PATH"
     - rustup show active-toolchain || rustup toolchain install
-    - cargo fmt --all --check
-    - sh .agents/hooks/repo-check.sh
-    - sh ci/repo-lint-base.sh
-    - cargo clippy --locked --workspace --all-targets -- -D warnings
-    - cargo clippy --locked --workspace -- -D warnings
-    - cargo test --locked --workspace
+    - sh ci/target-stamp.sh restore
+  after_script:
+    - du -sh target .cargo-home 2>/dev/null || true
+    - sh ci/target-stamp.sh drop-if-cheap
+
+# The downloads both jobs share, and `target` of one job kind: keyed by the lockfile and the
+# toolchain, so a dependency or toolchain change starts that kind cold. Only main's pipelines write
+# them (CACHE_POLICY); a cache of an older commit of main is safe (ci/target-stamp.sh). Each archive
+# stays below the runner's upload limit of 1 GiB (docs/release.md, Runner).
+# The measurements read test's caches with the policy pull: YAML anchors, since a !reference cannot
+# replace one key of what it names.
+.cargo-downloads: &cargo-downloads
+  key:
+    prefix: cargo-downloads
+    files: [Cargo.lock]
+  paths: [.cargo-home/registry/index, .cargo-home/registry/cache, .cargo-home/git/db]
+
+.target-test: &target-test
+  key:
+    prefix: target-test
+    files: [Cargo.lock, rust-toolchain.toml]
+  when: always
+  paths:
+    - target/ci-tree.txt
+    - target/ci-build-id
+    - target/debug/.fingerprint
+    - target/debug/build
+    - target/debug/examples
+    - target/debug/deps/*.*
+
+.target-test-bins: &target-test-bins
+  key:
+    prefix: target-test-bins
+    files: [Cargo.lock, rust-toolchain.toml]
+  when: always
+  paths:
+    - target/ci-build-id-bins
+    - target/debug/deps/*-????????????????
+
+# Format, repository rules, both clippy passes and the lints of the measurements (ci/lint.sh).
+lint:
+  extends: .cargo-checks
+  variables:
+    # repo-lint compares the length allowlist with every version on main (ci/repo-lint-base.sh).
+    GIT_DEPTH: "0"
+  cache:
+    - <<: *cargo-downloads
+      policy: $CACHE_POLICY
+    # The root's *.toml: the toolchain, the workspace manifest and clippy.toml, whose lint settings
+    # a warm clippy run would not read again. A key takes at most two entries.
+    - key:
+        prefix: target-lint
+        files: [Cargo.lock, "*.toml"]
+      policy: $CACHE_POLICY
+      # Only what drop-if-cheap removes, so that a kept cache leaves nothing to archive.
+      paths: [target/ci-tree.txt, target/ci-build-id, target/ci-build-id-bins, target/debug]
+  script:
+    - sh ci/lint.sh
+
+# Every test the change needs, with cargo-nextest (ci/test.sh). Its `target` zips to about 1.2 GB,
+# above the runner's upload limit of 1 GiB [observed 2026-11-26, pipeline 4900], so it is two
+# archives: the test executables (deps/<name>-<16 hex>, no extension) and everything else. Each
+# carries the build id of ci/target-stamp.sh, which deletes the executables when the two differ.
+test:
+  extends: .cargo-checks
+  cache:
+    - <<: *cargo-downloads
+      policy: $CACHE_POLICY
+    - <<: *target-test
+      policy: $CACHE_POLICY
+    - <<: *target-test-bins
+      policy: $CACHE_POLICY
+  script:
+    - sh ci/install-build-deps.sh cargo-nextest
+    - sh ci/test.sh
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: target/nextest/ci/junit.xml
+
+# review-app's heap measurements (ci/measurements.sh), beside test in main's pipelines and by hand
+# in a merge request; never on a tag and never on GitHub. They read test's cache and write none, so on a warm
+# cache they build only what the feature changes and end before test.
+measurements:
+  extends: .cargo-checks
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
+  cache:
+    - <<: *cargo-downloads
+      policy: pull
+    - <<: *target-test
+      policy: pull
+    - <<: *target-test-bins
+      policy: pull
+  script:
+    - sh ci/measurements.sh
 
 # Secret scan of the full git history, in every pipeline that checks. Findings are redacted in the
 # job log.
@@ -108,7 +206,6 @@ secret-scan:
     entrypoint: [""]
   needs: []
   rules:
-    - !reference [.checks-not-on-main-push]
     - when: on_success
   variables:
     GIT_DEPTH: "0"

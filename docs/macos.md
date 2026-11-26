@@ -1,9 +1,9 @@
 # Code View on macOS
 
 Every release has a universal macOS app, cross-built on Linux (`docs/release.md`). The packaging
-command below builds one on a Mac and was verified on an Apple-silicon Mac on 2026-10-19. The macOS
-CI workflow defines lint, test and universal-packaging jobs. The **NOT-VERIFIED** list tracks
-remaining checks.
+command below builds one on a Mac and was verified on an Apple-silicon Mac on 2026-10-19. The pull
+request workflow tests the crates with macOS code on a Mac and packages the universal app on a
+manual run. The **NOT-VERIFIED** list tracks remaining checks.
 
 ## Getting the source
 
@@ -13,14 +13,14 @@ account is needed to clone or build. To contribute, see `CONTRIBUTING.md`.
 ## Trying it without building
 
 A release's `.app` comes from Creative Downloads, as a zip archive (`README.md`, Download). For a
-build of `main` between releases, a maintainer starts `.github/workflows/macos.yml` by hand; no
-push starts it, and a pull request runs only its check. The manual run's packaging job (after
-clippy and the tests pass) uploads the universal app as the artifact `CodeView-macos-universal`.
+build of `main` between releases, a maintainer starts `.github/workflows/pull-request.yml` by hand;
+no push starts it, and a pull request runs only its checks. The manual run's packaging job (after
+the checks pass) uploads the universal app as the artifact `CodeView-macos-universal`.
 Downloading a run's artifact needs a GitHub sign-in:
 
 ```sh
-gh workflow run macos.yml --ref main                                          # maintainers only
-gh run list --workflow macos.yml --branch main --status success --limit 1   # the run id
+gh workflow run pull-request.yml --ref main                                          # maintainers only
+gh run list --workflow pull-request.yml --branch main --status success --limit 1   # the run id
 gh run download <run id> --name CodeView-macos-universal
 ditto -x -k CodeView-macos-universal.zip .
 xattr -dr com.apple.quarantine "Code View.app"   # needed after a browser download, harmless otherwise
@@ -83,7 +83,8 @@ For a single app supporting both Apple silicon and Intel:
 
 This installs both Rust targets, builds both architectures, and merges them before signing.
 The outputs are `dist/CodeView-macos-universal.dmg` and `.zip`.
-The macOS CI workflow runs the same script and uploads both files after checks pass.
+A manual run of the pull request workflow runs the same script and uploads both files after
+the checks pass.
 
 These packages are locally signed, **not notarized**. To distribute a downloadable app
 without Gatekeeper warnings, use Developer ID signing and notarization as described below;

@@ -34,7 +34,7 @@ The tests never reach the network or your token store (AGENTS.md, Invariants), s
 The project's source of truth is a GitLab repository; this GitHub repository is its public mirror, and it takes pull requests.
 
 1. Open the pull request on GitHub against `main` and fill in the template, including the CLA statement.
-2. The macOS workflow (`.github/workflows/macos.yml`) checks it. A maintainer may have to approve the run of a first-time contributor.
+2. The pull request workflow (`.github/workflows/pull-request.yml`) checks it: format, repository rules and lints, the tests your change affects on Linux, and on a Mac those of the crates with macOS code when your change reaches one, directly or through a crate it depends on. Its check `required` sums them up. A maintainer may have to approve the run of a first-time contributor.
 3. A maintainer reads the whole change, then lands it through GitLab with a merge commit that keeps your commits as they are. Nobody merges on GitHub, and nobody squashes or rebases your commits.
 4. When GitLab's `main` reaches the mirror, GitHub shows your pull request as merged.
 

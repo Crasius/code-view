@@ -1,11 +1,12 @@
 # Code View CI/CD on the project's GitLab instance (docs/release.md, Pipelines).
 # The one runner is shared and busy, so a pipeline runs only what verifies something not yet
 # verified.
-# Merge requests: format, repository rules, lints and tests on Linux and the Linux x64 release build
-# when a cargo input changed (.rust-inputs, ci/checks.yml), and a secret scan always. The other
-# platforms' builds wait for a manual start.
-# main: the checks only when the pushed tree is not one a merge request pipeline passed
-# (ci/main-scope.sh, a child pipeline). No release build: the tag builds its own.
+# Merge requests: lint (format, repository rules, both clippy passes) and test (the tests the change
+# needs, scripts/affected-tests.sh) side by side on Linux and the Linux x64 release build when a
+# cargo input changed (.rust-inputs, ci/checks.yml), and a secret scan always. The other platforms'
+# builds wait for a manual start.
+# main: every push runs the checks with every test and writes the build caches. No release build:
+# the tag builds its own.
 # A protected tag vX.Y.Z runs the checks and the release build of every platform and publishes the
 # builds to Creative Downloads (cdl). The instance's only runner is Linux amd64, so the macOS,
 # Windows and Linux arm64 builds are cross-builds.
@@ -24,7 +25,12 @@ workflow:
     # A branch with an open merge request runs as the merge request pipeline, not twice.
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    # The pipelines of the protected branch main alone write the build caches: a push and a run by
+    # hand. Every other pipeline only restores them (CACHE_POLICY in ci/checks.yml; docs/release.md,
+    # Build cache).
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true"
+      variables:
+        CACHE_POLICY: pull-push
     - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
 
 stages: [test, build, release]
@@ -33,7 +39,7 @@ include:
   - project: northbyte/creative-downloads/cli
     ref: v0.3.0
     file: templates/cdl.gitlab-ci.yml
-  # The images, the defaults, .rust and the check jobs, shared with main's child pipeline.
+  # The images, the defaults, .rust and the check jobs.
   - local: ci/checks.yml
 
 .release-tag:
@@ -41,46 +47,46 @@ include:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/ && $CI_COMMIT_REF_PROTECTED == "true"
 
 # ---------------- test ----------------
-# The check jobs are in ci/checks.yml. A push to main does not run them here: main-scope compares
-# the merge commit's tree with its second parent's, the merge request head whose pipeline passed,
-# and writes the child pipeline main-checks starts: the checks when the trees differ, else one
-# short job that names the merge request (ci/main-scope.sh). A rule cannot compare trees.
-main-scope:
-  stage: test
-  image: $ZIGBUILD_IMAGE
-  needs: []
-  variables:
-    # The merge commit and both its parents.
-    GIT_DEPTH: "2"
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
-  script:
-    - sh ci/main-scope.sh main-checks.yml
-  artifacts:
-    expire_in: 7 days
-    paths: [main-checks.yml]
-
-# The child's result is this pipeline's: main is green when its checks passed or its tree is a
-# merge request's that passed.
-main-checks:
-  stage: test
-  needs: [main-scope]
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
-  trigger:
-    include:
-      - artifact: main-checks.yml
-        job: main-scope
-    strategy: depend
-    # The child takes its variables from the files it includes, as this pipeline does.
-    forward:
-      yaml_variables: false
+# The check jobs are in ci/checks.yml.
 
 # ---------------- build ----------------
 # After the test stage, so that a red commit spends no build time. Every platform on a tag and by
-# hand; a merge request builds Linux x64 when a cargo input changed and the others on a manual
-# start; a push to main builds nothing, since the release tag's pipeline builds and publishes its
-# own (docs/release.md, Cut a release).
+# hand; a merge request builds Linux x64 by itself only when what a release build adds to the checks
+# changed (.release-inputs), and every platform on a manual start; a push to main builds nothing,
+# since the release tag's pipeline builds and publishes its own (docs/release.md, Cut a release).
+# What a release build checks beyond lint and test: the dependency set and its licenses
+# (cargo-about stops on a license outside ci/about.toml), the release profile, the build scripts,
+# the files ci/build-release.sh reads and the code only a release build compiles. A code change
+# compiles in lint and test already; build-linux-x64 waits for a manual start then (8 to 13
+# minutes, measured 2026-11-22 to 24).
+.release-inputs:
+  # The manifests (versions, [package.metadata.bundle], the release profile), the lockfile, the
+  # toolchain and cargo's configuration.
+  - Cargo.toml
+  - Cargo.lock
+  - crates/*/Cargo.toml
+  - tools/*/Cargo.toml
+  - rust-toolchain.toml
+  - .cargo/**/*
+  # Build scripts and what they read: review-app's icon (Windows resource; the macOS bundle's
+  # .icns, the window icons main.rs embeds).
+  - crates/*/build.rs
+  - crates/review-app/assets/icon/**/*
+  # Shipped code under cfg(not(debug_assertions)), which no debug build compiles:
+  # `git grep -l debug_assertions -- 'crates/*.rs'` minus the test-only files.
+  - crates/review-app/src/main.rs
+  - crates/review-app/src/app.rs
+  # The pipeline and the release scripts with what they read: the notices' licenses and the example
+  # that prints the grammars' notices.
+  - .gitlab-ci.yml
+  - ci/checks.yml
+  - ci/build-release.sh
+  - ci/install-build-deps.sh
+  - ci/about.*
+  - crates/cv-base/assets/Phosphor-LICENSE-MIT.txt
+  - crates/review-grammars/grammars/csharp-license.txt
+  - crates/review-grammars/examples/grammar_notices.rs
+
 .release-build:
   stage: build
   extends: .rust
@@ -93,7 +99,7 @@ main-checks:
       when: manual
       allow_failure: true
   script:
-    - sh ci/install-build-deps.sh
+    - sh ci/install-build-deps.sh cargo-about
     - sh ci/build-release.sh "$PLATFORM" "${CI_COMMIT_TAG:-}"
   artifacts:
     expire_in: 14 days
@@ -105,8 +111,9 @@ build-linux-x64:
     - if: $CI_COMMIT_TAG || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        paths: !reference [.rust-inputs]
+        paths: !reference [.release-inputs]
         compare_to: refs/heads/main
+    - !reference [.release-build, rules]
   variables:
     PLATFORM: linux-x64
 
@@ -139,7 +146,7 @@ creative-downloads:
   stage: release
   extends: [.cdl, .release-tag]
   image: $ZIGBUILD_IMAGE
-  needs: [check, secret-scan, build-linux-x64, build-linux-arm64, build-macos, build-windows-x64, build-windows-arm64]
+  needs: [lint, test, secret-scan, build-linux-x64, build-linux-arm64, build-macos, build-windows-x64, build-windows-arm64]
   interruptible: false
   resource_group: creative-downloads
   variables:

@@ -1,0 +1,12 @@
+# cargo-nextest, the test runner of both CIs (docs/release.md, Tests). Locally `cargo test` and
+# `cargo nextest run` both work.
+# No priorities: starting the long review-app walkthroughs first made the run slower (147 s against
+# 135 s) and a load-sensitive request budget test fail [observed 2026-11-26, pipeline 4901].
+
+[profile.ci]
+# Every failure of a run, not only the first.
+fail-fast = false
+# The output of a failed test right away and again in the summary at the end.
+failure-output = "immediate-final"
+# GitLab shows the results in the merge request (artifacts:reports:junit in ci/checks.yml).
+junit.path = "junit.xml"
