@@ -73,7 +73,16 @@ The jobs run on the GitLab instance's shared runner, as pods of the Kubernetes e
 
 ## Secret scan
 
-Job `secret-scan` reads the full history with gitleaks. `.gitleaksignore` names the five findings that are no secrets, each by commit, file, rule and line, so a new finding still fails the job.
+Job `secret-scan` reads the full history with gitleaks. `.gitleaksignore` names the four findings that are no secrets, each by commit, file, rule and line, so a new finding still fails the job.
+
+## Public mirror
+
+The public repository is <https://github.com/Crasius/code-view>. It is written only by the GitLab project's push mirror; nobody pushes or merges there (rule `git-flow`).
+
+- **GitLab side:** Settings, Repository, Mirroring repositories: one push mirror to `ssh://git@github.com/Crasius/code-view.git`, SSH public key authentication, protected branches only. So `main` is mirrored and no other branch is; the page shows the last run and its error.
+- **GitHub side:** the mirror's public key is a deploy key with write access (Settings, Deploy keys). The ruleset "main comes only from the GitLab mirror" restricts updates, deletions and force pushes of `main` and lets only deploy keys bypass it. Merging is limited to merge commits, GitHub Actions need approval for every outside contributor's pull request, and private vulnerability reporting and secret scanning are on.
+- **A mirror run that fails:** read the error on the GitLab page first. A rejected key means the deploy key was removed or lost its write access: read the key again (`GET /projects/:id/remote_mirrors/:mirror_id/public_key`) and add it as a deploy key.
+- **The history before the public root** (2026-11-26) is in the private GitLab project `northbyte/code-view/app-archive`, with the release tags up to `v0.1.2`. Pipelines are off there. Nothing from it may reach this project or GitHub (rule `git-flow`, A branch from before the public root).
 
 ## Third-party notices
 
