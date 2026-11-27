@@ -96,6 +96,11 @@ impl CommentEdits {
         }
     }
 
+    /// The platform of the pull request, once a frame with its session ran.
+    pub fn provider(&self) -> Option<&dyn Provider> {
+        self.provider.as_deref()
+    }
+
     /// What the menu of `comment` offers: what the platform lets the user do in `thread`, for
     /// [`may_change`] comments only.
     pub fn actions(

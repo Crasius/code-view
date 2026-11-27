@@ -201,6 +201,10 @@ impl Provider for GitLabProvider {
         discussions::comment_actions(thread)
     }
 
+    fn thread_page_suffix(&self, thread: &ReviewThread) -> Option<String> {
+        discussions::page_suffix(thread)
+    }
+
     async fn edit_comment(
         &self,
         repo: &str,
@@ -292,5 +296,41 @@ impl Provider for GitLabProvider {
         known: &review_core::http::image::Validators,
     ) -> Result<review_core::http::image::Body> {
         images::fetch(&self.client, url, limit, known).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use review_core::{ReviewThread, ThreadComment, ThreadStatus, UserIdentity};
+
+    use crate::discussions::page_suffix;
+
+    fn discussion(note_ids: &[&str]) -> ReviewThread {
+        let note = |note_id: &&str| ThreadComment {
+            id: (*note_id).to_owned(),
+            author: UserIdentity::default(),
+            body: String::new(),
+            created_at: time::OffsetDateTime::UNIX_EPOCH,
+            updated_at: None,
+        };
+        ReviewThread {
+            id: "6a9c1750b37d513a43987b574953fceb50b03ce7".to_owned(),
+            status: ThreadStatus::Active,
+            anchor: None,
+            is_outdated: false,
+            origin: None,
+            is_system: false,
+            can_reply: true,
+            can_resolve: true,
+            comments: note_ids.iter().map(note).collect(),
+        }
+    }
+
+    #[test]
+    fn links_the_first_note() {
+        let cases = [(&["301", "302"][..], Some("#note_301")), (&[][..], None)];
+        for (note_ids, expected) in cases {
+            assert_eq!(page_suffix(&discussion(note_ids)).as_deref(), expected, "{note_ids:?}");
+        }
     }
 }

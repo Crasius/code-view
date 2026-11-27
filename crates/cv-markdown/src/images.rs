@@ -19,7 +19,7 @@ use std::sync::{Arc, Weak};
 
 use cv_base::theme::{self, Palette, icons, motion, style as tokens};
 use cv_media::image_clipboard;
-use cv_media::image_state::{ImageFailure, ImageState};
+use cv_media::image_state::{ImageFailure, ImageState, Remedy};
 use cv_media::picture::Picture;
 use cv_widgets::{buttons, glyph};
 use egui::{
@@ -100,7 +100,7 @@ pub trait ImageSource: Send + Sync {
     /// The loaded image, for the lightbox to keep while it shows it.
     fn picture(&self, image: &ImageRequest<'_>) -> Option<Picture>;
     /// Opens the setup of the connection the images load through, for a private image it does not
-    /// reach ([`ImageFailure::needs_access`]).
+    /// reach ([`Remedy::SignIn`]).
     fn fix_access(&self, ctx: &Context);
 }
 
@@ -191,13 +191,11 @@ fn current_state(
 ) -> ImageState {
     match source {
         Some(source) => source.state(ctx, request, false),
-        None => ImageState::Failed(Arc::new(ImageFailure {
-            reason: "Images load on pull request pages".to_owned(),
-            place: host_of(request.src),
-            can_retry: false,
-            needs_access: false,
-            needs_ffmpeg: false,
-        })),
+        None => ImageState::Failed(Arc::new(ImageFailure::new(
+            "Images load on pull request pages".to_owned(),
+            host_of(request.src),
+            false,
+        ))),
     }
 }
 
@@ -491,22 +489,26 @@ fn failure_card(
         {
             ui.ctx().open_url(egui::OpenUrl::new_tab(url));
         }
-        if failure.needs_ffmpeg {
-            let command = cv_media::video::install_command();
-            if buttons::subtle(ui, icons::COPY, "Copy install command")
-                .on_hover_text(format!("Copies `{command}`; run it, then Retry"))
-                .clicked()
-            {
-                ui.ctx().copy_text(command.to_owned());
+        match failure.remedy {
+            Remedy::InstallFfmpeg => {
+                let command = cv_media::video::install_command();
+                if buttons::subtle(ui, icons::COPY, "Copy install command")
+                    .on_hover_text(format!("Copies `{command}`; run it, then Retry"))
+                    .clicked()
+                {
+                    ui.ctx().copy_text(command.to_owned());
+                }
             }
-        }
-        if failure.needs_access
-            && let Some(source) = source
-            && buttons::subtle(ui, icons::KEY, "Fix token")
-                .on_hover_text("Open the connection setup to give the token access")
-                .clicked()
-        {
-            source.fix_access(ui.ctx());
+            Remedy::SignIn => {
+                if let Some(source) = source
+                    && buttons::subtle(ui, icons::KEY, "Fix token")
+                        .on_hover_text("Open the connection setup to give the token access")
+                        .clicked()
+                {
+                    source.fix_access(ui.ctx());
+                }
+            }
+            Remedy::None => {}
         }
         if failure.can_retry
             && let Some(source) = source

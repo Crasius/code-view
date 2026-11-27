@@ -9,7 +9,7 @@ use egui::{Context, TextureOptions, vec2};
 use review_core::http::image::Validators;
 
 use super::{Fetch, Fetched, Loaded, Natural, Target, disk, fetch_remote, git_body};
-use crate::image_state::ImageFailure;
+use crate::image_state::{ImageFailure, Remedy};
 use crate::picture::Picture;
 use crate::video::{self, Tools};
 
@@ -18,15 +18,12 @@ pub(super) async fn load(
     target: &Target,
     file: &Path,
 ) -> Result<Loaded, ImageFailure> {
-    let fail = |reason: String, can_retry: bool| ImageFailure {
-        reason,
-        place: target.place.clone(),
-        can_retry,
-        needs_access: false,
-        needs_ffmpeg: false,
-    };
+    let fail = |reason, can_retry| ImageFailure::new(reason, target.place.clone(), can_retry);
     let Some(tools) = Tools::locate() else {
-        return Err(ImageFailure { needs_ffmpeg: true, ..fail(video::MISSING.to_owned(), true) });
+        return Err(ImageFailure {
+            remedy: Remedy::InstallFfmpeg,
+            ..fail(video::MISSING.to_owned(), true)
+        });
     };
     if is_kept(file) {
         disk::touch(file);
@@ -36,7 +33,7 @@ pub(super) async fn load(
             Fetch::Remote { url, owner, .. } => {
                 match fetch_remote(url, owner.as_ref(), None, &Validators::NONE, video::MAX_BYTES)
                     .await
-                    .map_err(|failure| failure.card(&fail))?
+                    .map_err(|failure| failure.card(&target.place))?
                 {
                     Fetched::Changed { bytes, .. } => bytes,
                     Fetched::Unchanged => {

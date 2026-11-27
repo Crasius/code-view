@@ -12,6 +12,8 @@
 mod frame_budget;
 mod list_row;
 #[cfg(test)]
+mod listed_tests;
+#[cfg(test)]
 mod walkthrough;
 
 use std::collections::HashMap;
@@ -120,7 +122,8 @@ pub fn show(
 ) -> (Vec<PanelEvent>, Rect) {
     let palette = theme::palette(ui.ctx());
     let mut events = Vec::new();
-    let me_id = threads.me().map(|me| me.id.clone());
+    // The Mine chip and filter need the user.
+    threads.request_me();
     // New threads on their way are listed where they will land, marked "Posting…".
     let pending: Vec<ReviewThread> =
         threads.pending_threads().into_iter().map(|(_, thread)| thread).collect();
@@ -130,8 +133,8 @@ pub fn show(
         .frame(egui::Frame::new().fill(palette.surface).stroke(Stroke::new(1.0, palette.border)))
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            let visible = visible_entries(threads, &inputs, &pending, me_id.as_deref());
-            header(ui, threads, &mut inputs, me_id.as_deref(), &mut events);
+            let visible = visible_entries(threads, &inputs, &pending);
+            header(ui, threads, &mut inputs, &mut events);
             keyboard(ui, threads, &visible, &mut events);
             egui::Panel::bottom("threads_panel_footer")
                 .resizable(false)
@@ -156,9 +159,8 @@ pub fn show(
 /// thread has news. Returns true when clicked.
 pub fn toggle(ui: &mut Ui, all: &[ReviewThread], threads: &ThreadsUi, is_open: bool) -> bool {
     let palette = theme::palette(ui.ctx());
-    let listed = || all.iter().filter(|thread| !thread.is_system && !thread.comments.is_empty());
-    let active = listed().filter(|thread| thread.status == ThreadStatus::Active).count();
-    let has_news = listed().any(|thread| threads.is_unread(thread));
+    let counts = toggle_counts(all, threads);
+    let (active, has_news) = (counts.active, counts.unread > 0);
     let label = format!("Threads {active}");
     let font = egui::FontId::proportional(style::BODY_SIZE);
     let color = if is_open { palette.accent_text } else { palette.text };
@@ -217,26 +219,61 @@ fn is_mine(thread: &ReviewThread, me: Option<&str>) -> bool {
     me.is_some_and(|me| thread.comments.iter().any(|comment| comment.author.id == me))
 }
 
+/// Whether the panel lists `thread` under `filters`: never a system notice or a thread without
+/// comments; with no status filter on, both statuses.
+pub fn is_listed(thread: &ReviewThread, filters: ThreadFilters, threads: &ThreadsUi) -> bool {
+    let any_status = !filters.active && !filters.resolved;
+    let shows_status = match thread.status {
+        ThreadStatus::Active => filters.active || any_status,
+        ThreadStatus::Resolved => filters.resolved || any_status,
+    };
+    let me = threads.known_me().map(|me| me.id.as_str());
+    !thread.is_system
+        && !thread.comments.is_empty()
+        && shows_status
+        && (!filters.unread || threads.is_unread(thread))
+        && (!filters.mine || is_mine(thread, me))
+}
+
+/// The panel's threads per filter toggle; `mine` is `None` while the user is not known.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToggleCounts {
+    pub active: usize,
+    pub resolved: usize,
+    pub unread: usize,
+    pub mine: Option<usize>,
+}
+
+/// Per toggle, how many of the threads the panel lists it would add.
+pub fn toggle_counts(all: &[ReviewThread], threads: &ThreadsUi) -> ToggleCounts {
+    let me = threads.known_me().map(|me| me.id.as_str());
+    let mut counts = ToggleCounts { active: 0, resolved: 0, unread: 0, mine: me.map(|_| 0) };
+    for thread in all.iter().filter(|thread| is_listed(thread, ThreadFilters::ALL, threads)) {
+        match thread.status {
+            ThreadStatus::Active => counts.active += 1,
+            ThreadStatus::Resolved => counts.resolved += 1,
+        }
+        counts.unread += usize::from(threads.is_unread(thread));
+        if let Some(mine) = counts.mine.as_mut() {
+            *mine += usize::from(is_mine(thread, me));
+        }
+    }
+    counts
+}
+
 /// The threads the filters let through, grouped by file in tree order, General last; `pending`
 /// (new threads on their way, the user's own and active) after the loaded ones of their place.
 fn visible_entries<'a>(
     threads: &ThreadsUi,
     inputs: &PanelInputs<'a>,
     pending: &'a [ReviewThread],
-    me: Option<&str>,
 ) -> Vec<Entry<'a>> {
     let filters = *inputs.filters;
     let any_status = !filters.active && !filters.resolved;
     let loaded = inputs
         .threads
         .iter()
-        .filter(|thread| !thread.is_system && !thread.comments.is_empty())
-        .filter(|thread| match thread.status {
-            ThreadStatus::Active => filters.active || any_status,
-            ThreadStatus::Resolved => filters.resolved || any_status,
-        })
-        .filter(|thread| !filters.unread || threads.is_unread(thread))
-        .filter(|thread| !filters.mine || is_mine(thread, me))
+        .filter(|thread| is_listed(thread, filters, threads))
         .map(|thread| Entry { thread, group: group_of(thread), is_pending: false });
     let shows_pending = (filters.active || any_status) && !filters.unread;
     let pending = pending.iter().filter(|_| shows_pending).map(|thread| Entry {
@@ -266,7 +303,6 @@ fn header(
     ui: &mut Ui,
     threads: &ThreadsUi,
     inputs: &mut PanelInputs<'_>,
-    me: Option<&str>,
     events: &mut Vec<PanelEvent>,
 ) {
     let palette = theme::palette(ui.ctx());
@@ -299,21 +335,15 @@ fn header(
                     );
                 });
             });
-            let all = inputs.threads;
-            let listed =
-                || all.iter().filter(|thread| !thread.is_system && !thread.comments.is_empty());
-            let active = listed().filter(|thread| thread.status == ThreadStatus::Active).count();
-            let resolved = listed().count() - active;
-            let unread = listed().filter(|thread| threads.is_unread(thread)).count();
-            let mine = me.map(|me| listed().filter(|thread| is_mine(thread, Some(me))).count());
+            let counts = toggle_counts(inputs.threads, threads);
             let filters = &mut *inputs.filters;
             let mut changed = false;
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
-                changed |= chip(ui, "Active", Some(active), &mut filters.active);
-                changed |= chip(ui, "Unread", Some(unread), &mut filters.unread);
-                changed |= chip(ui, "Mine", mine, &mut filters.mine);
-                changed |= chip(ui, "Resolved", Some(resolved), &mut filters.resolved);
+                changed |= chip(ui, "Active", Some(counts.active), &mut filters.active);
+                changed |= chip(ui, "Unread", Some(counts.unread), &mut filters.unread);
+                changed |= chip(ui, "Mine", counts.mine, &mut filters.mine);
+                changed |= chip(ui, "Resolved", Some(counts.resolved), &mut filters.resolved);
             });
             if changed {
                 events.push(PanelEvent::FiltersChanged);
@@ -452,7 +482,7 @@ fn list(
     events: &mut Vec<PanelEvent>,
 ) {
     if visible.is_empty() {
-        empty_list(ui, inputs, events);
+        empty_list(ui, threads, inputs, events);
         return;
     }
     // Only the rows near the view are laid out; the selected one also when it scrolls into view.
@@ -490,13 +520,18 @@ const NO_COMMENTS: &str = "No comments yet. Select lines in the diff to start a 
 
 /// What the list says when it lists nothing: no thread passes the filters (with the way back to
 /// all of them), or the pull request has none yet.
-fn empty_list(ui: &mut Ui, inputs: &mut PanelInputs<'_>, events: &mut Vec<PanelEvent>) {
+fn empty_list(
+    ui: &mut Ui,
+    threads: &ThreadsUi,
+    inputs: &mut PanelInputs<'_>,
+    events: &mut Vec<PanelEvent>,
+) {
     let palette = theme::palette(ui.ctx());
     egui::Frame::new().inner_margin(Margin::same(MARGIN)).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.spacing_mut().item_spacing.y = 8.0;
         let has_any =
-            inputs.threads.iter().any(|thread| !thread.is_system && !thread.comments.is_empty());
+            inputs.threads.iter().any(|thread| is_listed(thread, ThreadFilters::ALL, threads));
         if has_any {
             ui.label(RichText::new(NO_MATCH).color(palette.text_secondary));
             if ui.link(SHOW_ALL).clicked() {

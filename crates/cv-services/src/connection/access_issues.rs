@@ -263,6 +263,10 @@ impl Provider for WatchedProvider {
         self.current().comment_actions(thread)
     }
 
+    fn thread_page_suffix(&self, thread: &ReviewThread) -> Option<String> {
+        self.current().thread_page_suffix(thread)
+    }
+
     async fn edit_comment(
         &self,
         repo: &str,
@@ -525,5 +529,35 @@ mod tests {
         );
         let revision = watched.revision("cli/cli", 7).await.expect("the probe reaches GitHub");
         assert_eq!(revision.head_sha, "head1");
+    }
+
+    /// Without the forward every thread answers the default `None`, and "Copy link" disappears.
+    #[tokio::test]
+    async fn forwards_thread_links_to_the_platform() {
+        let server = MockServer::start().await;
+        let watched = WatchedProvider::new(
+            github(&server, "test-token", &[]),
+            "watched".to_owned(),
+            AccessIssues::default(),
+        );
+        let comment = review_core::ThreadComment {
+            id: "5".to_owned(),
+            author: samples::author(),
+            body: "Looks good".to_owned(),
+            created_at: time::OffsetDateTime::UNIX_EPOCH,
+            updated_at: None,
+        };
+        let thread = ReviewThread {
+            id: "issue-comment:5".to_owned(),
+            status: review_core::ThreadStatus::Active,
+            anchor: None,
+            is_outdated: false,
+            origin: None,
+            is_system: false,
+            can_reply: true,
+            can_resolve: false,
+            comments: vec![comment],
+        };
+        assert_eq!(watched.thread_page_suffix(&thread).as_deref(), Some("#issuecomment-5"));
     }
 }

@@ -83,6 +83,11 @@ pub(crate) fn comment_actions(thread: &ReviewThread) -> CommentActions {
     if thread.is_system { CommentActions::NONE } else { CommentActions::EDIT_AND_DELETE }
 }
 
+/// The anchor of the discussion's first note on the merge request's page.
+pub(crate) fn page_suffix(thread: &ReviewThread) -> Option<String> {
+    thread.comments.first().map(|note| format!("#note_{}", note.id))
+}
+
 pub(crate) async fn edit_note(
     client: &ApiClient,
     repo: &str,
