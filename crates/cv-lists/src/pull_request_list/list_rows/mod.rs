@@ -87,11 +87,11 @@ const FILES_INSET: f32 = 12.0;
 /// so a click aimed at the row never lands on the button by accident.
 const FILES_GAP: f32 = 24.0;
 /// The chips (a card header's and a section header's row count, a row's labels) share one set of
-/// sizes; each caller places its chip itself. Their height, the room left and right of their text
-/// together, and their radius, half the height for round ends.
+/// sizes; each caller places its chip itself. Their height and the room left and right of their
+/// text together. Their radius is [`style::RADIUS_CHIP`], which egui clamps to half this height,
+/// so the ends are round.
 const CHIP_HEIGHT: f32 = 18.0;
 const CHIP_PADDING_X: f32 = 14.0;
-const CHIP_RADIUS: u8 = 9;
 
 /// The width of a chip around `galley`; never narrower than high, so one digit sits in a circle.
 fn chip_width(galley: &Galley) -> f32 {
@@ -107,9 +107,9 @@ fn paint_chip(
     (fill, text): (Color32, Color32),
     stroke: Option<Stroke>,
 ) {
-    painter.rect_filled(rect, CHIP_RADIUS, fill);
+    painter.rect_filled(rect, style::RADIUS_CHIP, fill);
     if let Some(stroke) = stroke {
-        painter.rect_stroke(rect, CHIP_RADIUS, stroke, StrokeKind::Inside);
+        painter.rect_stroke(rect, style::RADIUS_CHIP, stroke, StrokeKind::Inside);
     }
     painter.galley(rect.center() - galley.size() / 2.0, galley, text);
 }
@@ -265,7 +265,6 @@ impl Hosts<'_> {
 /// The pull request rows painted this frame: their lines may be counted and their checks asked for.
 #[derive(Default)]
 pub struct Painted {
-    pub stats: Vec<StatRow>,
     pub statuses: Vec<StatusRow>,
     /// The row a click opened this frame: its page paints the header from it until the detail is in.
     pub opened: Option<(PullRequestKey, PullRequestSummary)>,
@@ -580,8 +579,7 @@ fn paint_pull_request(
         None => {}
     }
     dwell::note_rest(ui, id, rect, drawn.painted, &stat_row);
-    drawn.painted.ahead.push(AheadRow { row: stat_row.clone(), interest });
-    drawn.painted.stats.push(stat_row);
+    drawn.painted.ahead.push(AheadRow { row: stat_row, interest });
     drawn.painted.statuses.push(status_row);
     action
 }
@@ -622,15 +620,15 @@ pub(super) mod tests {
 
     use cv_runtime::route::Navigator;
     use cv_runtime::route::Route;
-    use cv_services::diff_stats::DiffStats;
+    use cv_services::diff_stats::{DiffStats, StatRow};
     use cv_services::self_review::{Identities, RowRequests};
     use cv_services::writes::flights::Flights;
-    use cv_testkit::Clicks;
+    use cv_testkit::{Clicks, samples};
     use egui::accesskit::Role;
     use egui::{Rect, pos2, vec2};
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
-    use review_core::{DiffStat, ProviderKind, PullRequestState, PullRequestSummary, UserIdentity};
+    use review_core::{DiffStat, ProviderKind, PullRequestSummary, UserIdentity};
     use review_store::{Favorites, RepositorySections, SectionCard, SectionKey};
 
     use super::{
@@ -640,26 +638,14 @@ pub(super) mod tests {
     use crate::pull_request_list::queries::ConnectionQueries;
     use crate::pull_request_list::statuses::RowStatuses;
 
+    /// Row `number` of `group/app`, by "Ada" from `feature`: the meta line and branch tests read
+    /// both.
     pub(in crate::pull_request_list) fn row(number: u64) -> PullRequestSummary {
         PullRequestSummary {
-            repository_key: "group/app".into(),
-            repository_name: "app".into(),
-            number,
-            title: format!("Change {number}"),
             author: UserIdentity { display_name: "Ada".into(), ..UserIdentity::default() },
-            state: PullRequestState::Open,
-            is_draft: false,
             source_branch: "feature".into(),
-            target_branch: "main".into(),
-            created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
-            updated_at: None,
-            web_url: String::new(),
-            labels: Vec::new(),
-            reviewers: Vec::new(),
-            checks: None,
-            diff_stat: DiffStat::default(),
             head_sha: Some(format!("head{number}")),
-            target_sha: None,
+            ..samples::summary("group/app", number)
         }
     }
 
@@ -745,6 +731,11 @@ pub(super) mod tests {
             )
     }
 
+    /// The rows the last frame painted, which the page hands on to be counted.
+    fn painted_rows(harness: &Harness<'_, Scene>) -> Vec<StatRow> {
+        harness.state().painted.ahead.iter().map(|ahead| ahead.row.clone()).collect()
+    }
+
     fn rect_of(harness: &Harness<'_, Scene>, label: &str) -> Rect {
         harness.get_by_label(label).rect()
     }
@@ -766,13 +757,9 @@ pub(super) mod tests {
         let mut harness = harness(1300.0, scene(true));
         harness.run();
         let counting = layout(&harness, ["Counting the lines of !1", "Counting the lines of !2"]);
-        assert_eq!(
-            harness.state().painted.stats.len(),
-            2,
-            "both rows are on screen, so both get counted"
-        );
+        let rows = painted_rows(&harness);
+        assert_eq!(rows.len(), 2, "both rows are on screen, so both get counted");
 
-        let rows = harness.state().painted.stats.clone();
         harness.state_mut().stats.counted_for_test(&rows[0], DiffStat::new(1240, 312, 18));
         harness.state_mut().stats.counted_for_test(&rows[1], DiffStat::new(3, 1, 1));
         harness.run();
@@ -802,10 +789,8 @@ pub(super) mod tests {
         assert!(narrow.size.is_none() && narrow.repository.is_none() && narrow.status.is_some());
 
         let mut harness = harness(960.0, scene(true));
-        let rows = {
-            harness.run();
-            harness.state().painted.stats.clone()
-        };
+        harness.run();
+        let rows = painted_rows(&harness);
         harness.state_mut().stats.counted_for_test(&rows[0], DiffStat::new(1240, 312, 18));
         harness.run();
         assert!(
@@ -893,8 +878,7 @@ pub(super) mod tests {
         assert!(harness.query_by_label("1 Change 1").is_none(), "its rows are gone");
         assert!(harness.query_by_label("3 Change 3").is_none());
         assert!(harness.query_by_label("2 Change 2").is_some(), "the other section stays open");
-        let painted: Vec<u64> =
-            harness.state().painted.stats.iter().map(|row| row.number).collect();
+        let painted: Vec<u64> = painted_rows(&harness).iter().map(|row| row.number).collect();
         assert_eq!(painted, [2], "closed rows are neither counted nor asked for");
     }
 

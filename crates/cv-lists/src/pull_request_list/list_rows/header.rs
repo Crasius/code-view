@@ -2,7 +2,7 @@
 //! the last refresh failed, a retry. The Favorites card's context menu hides its lane.
 
 use cv_base::theme::{self, Palette, icons, style};
-use cv_widgets::{buttons, provider_icon, row, star};
+use cv_widgets::{buttons, elide, provider_icon, row, star};
 use egui::{Align2, Color32, CornerRadius, FontId, Painter, Rect, Sense, Ui, pos2, vec2};
 
 use super::{CHIP_HEIGHT, Group, Header, ListAction, ROW_PADDING, chip_width, paint_chip};
@@ -97,12 +97,8 @@ fn paint_title(
 ) {
     let palette = theme::palette(ui.ctx());
     let (left, right) = (*room.start(), *room.end());
-    let mut job = egui::text::LayoutJob::single_section(
-        name.to_owned(),
-        egui::TextFormat::simple(theme::fonts::semibold_font(style::BODY_SIZE), palette.text),
-    );
-    job.wrap = egui::text::TextWrapping::truncate_at_width((right - left).max(0.0));
-    let title = painter.layout_job(job);
+    let font = theme::fonts::semibold_font(style::BODY_SIZE);
+    let title = elide::line(painter, name, font, palette.text, right - left);
     let title_rect = Rect::from_min_size(pos2(left, center_y - title.size().y / 2.0), title.size());
     let is_cut = title.elided;
     painter.galley(title_rect.min, title, palette.text);

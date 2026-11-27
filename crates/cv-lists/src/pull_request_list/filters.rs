@@ -2,7 +2,8 @@
 //! list's state tabs. They live in the settings (`ListFilters`), the same on every visit.
 
 use cv_base::theme::style;
-use cv_widgets::{buttons, tabs};
+use cv_widgets::buttons;
+use cv_widgets::tabs::{self, Segment};
 use review_core::{PullRequestScope, StateFilter};
 use review_store::ListFilters;
 
@@ -21,10 +22,10 @@ const REPOSITORY_TABS: [(StateFilter, &str); 4] = [
 ];
 
 /// The overview's role filter: everything visible by default, or narrowed to the user's part.
-const ROLE_SCOPES: [(PullRequestScope, &str); 3] = [
-    (PullRequestScope::Visible, "All"),
-    (PullRequestScope::CreatedByMe, "Created by me"),
-    (PullRequestScope::ReviewRequested, "Assigned to me"),
+const ROLE_SCOPES: [Segment<'static, PullRequestScope>; 3] = [
+    Segment::new(PullRequestScope::Visible, "All"),
+    Segment::new(PullRequestScope::CreatedByMe, "Created by me"),
+    Segment::new(PullRequestScope::ReviewRequested, "Assigned to me"),
 ];
 
 const STATES: [(StateFilter, &str); 3] = [
@@ -50,7 +51,7 @@ pub fn narrows(filters: &ListFilters) -> bool {
 
 /// The saved role, or "All" where it is none of the overview's roles.
 pub fn overview_scope(saved: PullRequestScope) -> PullRequestScope {
-    if ROLE_SCOPES.iter().any(|(scope, _)| *scope == saved) {
+    if ROLE_SCOPES.iter().any(|segment| segment.value == saved) {
         saved
     } else {
         PullRequestScope::Visible
@@ -65,8 +66,7 @@ pub fn fixed_width(ui: &egui::Ui, source: &ListSource) -> f32 {
             STAR_GAP + buttons::icon_width() + tabs::pivot_width(ui, &repository_tab_labels())
         }
         ListSource::Mine => {
-            let roles: Vec<&str> = ROLE_SCOPES.iter().map(|(_, label)| *label).collect();
-            tabs::segmented_width(ui, &roles) + style::SPACE_M + STATE_WIDTH + style::SPACE_S
+            tabs::segments_width(ui, &ROLE_SCOPES) + style::SPACE_M + STATE_WIDTH + style::SPACE_S
         }
     }
 }
@@ -97,7 +97,7 @@ pub fn show(
         ListSource::Mine => {
             let mut scope = overview_scope(filters.scope);
             let mut changed =
-                tabs::segmented(ui, &mut scope, &ROLE_SCOPES) && scope != filters.scope;
+                tabs::segments(ui, &mut scope, &ROLE_SCOPES) && scope != filters.scope;
             filters.scope = scope;
             ui.add_space(style::SPACE_M);
             let state_label = STATES

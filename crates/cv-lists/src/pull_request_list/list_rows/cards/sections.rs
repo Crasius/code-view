@@ -12,8 +12,8 @@
 
 use cv_base::theme::{self, Palette, icons, motion, style};
 use cv_runtime::route::{Navigator, Route};
-use cv_widgets::{provider_icon, row, time_text};
-use egui::text::{LayoutJob, TextFormat, TextWrapping};
+use cv_widgets::{elide, provider_icon, row, time_text};
+use egui::text::{LayoutJob, TextFormat};
 use egui::{
     Align2, Color32, CornerRadius, FontId, Id, Painter, Rect, Sense, Stroke, Ui, pos2, vec2,
 };
@@ -258,14 +258,12 @@ fn paint_text(
         let text = format!("Updated {}", time_text::relative(moment));
         painter.layout_no_wrap(text, small, palette.text_secondary)
     });
-    let mut job = key_job(section.repository_key, palette);
+    let job = key_job(section.repository_key, palette);
     let key_width = painter.layout_job(job.clone()).size().x;
     let needed = key_width + style::SPACE_S + chip_width;
     let updated = updated.filter(|time| left + needed + style::SPACE_L + time.size().x <= right);
     let key_right = updated.as_ref().map_or(right, |time| right - time.size().x - style::SPACE_L);
-    job.wrap =
-        TextWrapping::truncate_at_width((key_right - left - style::SPACE_S - chip_width).max(1.0));
-    let key = painter.layout_job(job);
+    let key = elide::job(painter, job, key_right - left - style::SPACE_S - chip_width);
     let is_cut = key.elided;
     let key_end = left + key.size().x;
     painter.galley(pos2(left, center_y - key.size().y / 2.0), key, palette.text);

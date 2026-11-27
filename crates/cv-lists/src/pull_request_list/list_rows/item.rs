@@ -11,8 +11,8 @@ use cv_runtime::route::Landing;
 use cv_services::diff_stats::Shown;
 use cv_services::self_review::{self, RowAsk};
 use cv_widgets::numbers::{compact_count, number_prefix};
-use cv_widgets::{avatar, badges, buttons, provider_icon, row, star, time_text};
-use egui::text::{LayoutJob, TextFormat, TextWrapping};
+use cv_widgets::{avatar, badges, buttons, elide, provider_icon, row, star, states, time_text};
+use egui::text::{LayoutJob, TextFormat};
 use egui::{
     Align2, Color32, CornerRadius, FontId, Galley, Id, Painter, Rect, Sense, Stroke, StrokeKind,
     Ui, pos2, vec2,
@@ -268,7 +268,7 @@ fn paint_meta(
         let at = pos2(meta_left, meta_y);
         meta_left = pending::paint(ui, row.rect, row.id, at, marker) + META_MARK_GAP;
     }
-    let galley = elided_job(row.painter, job, columns.text.1 - meta_left);
+    let galley = elide::job(row.painter, job, columns.text.1 - meta_left);
     let is_cut = galley.elided;
     let at = pos2(meta_left, meta_y - galley.size().y / 2.0);
     row.painter.galley(at, galley, row.palette.text_secondary);
@@ -297,9 +297,9 @@ fn paint_place(
         let name_font = theme::fonts::semibold_font(style::SMALL_SIZE);
         (pull_request.repository_name.clone(), name_font, branches(pull_request), tooltip)
     };
-    let top = elided(painter, top, top_font, palette.text, width);
+    let top = elide::line(painter, &top, top_font, palette.text, width);
     painter.galley(pos2(left, title_y - top.size().y / 2.0), top, palette.text);
-    let bottom = elided(painter, bottom, small, palette.text_secondary, width);
+    let bottom = elide::line(painter, &bottom, small, palette.text_secondary, width);
     painter.galley(pos2(left, meta_y - bottom.size().y / 2.0), bottom, palette.text_secondary);
     let hit = Rect::from_x_y_ranges(left..=right, row.rect.y_range());
     ui.interact(hit, row.id.with("repository"), Sense::hover()).on_hover_text(tooltip);
@@ -442,10 +442,7 @@ fn paint_joining(ui: &Ui, row: &RowPaint<'_>, (left, right): (f32, f32), reviewe
     let x = indicators::slot_x(right, reviewers);
     let slot =
         Rect::from_center_size(pos2(x.max(left), row.center()), vec2(icons::SIZE, icons::SIZE));
-    egui::Spinner::new()
-        .size(icons::SIZE - 2.0)
-        .color(row.palette.text_secondary)
-        .paint_at(ui, slot);
+    states::spinner(ui, slot, row.palette.text_secondary);
 }
 
 /// The ghost button at the row's right end that opens the Files tab. Always there but quiet: an
@@ -526,9 +523,9 @@ fn paint_title(
         chips.iter().map(|(galley, _)| chip_width(galley) + style::SPACE_XS).sum();
     let title_room =
         if width - chips_width >= MIN_TITLE_WIDTH { width - chips_width } else { width };
-    let title = elided(
+    let title = elide::line(
         painter,
-        pull_request.title.clone(),
+        &pull_request.title,
         theme::fonts::semibold_font(style::BODY_SIZE),
         palette.text,
         title_room,
@@ -624,23 +621,6 @@ fn branches(pull_request: &PullRequestSummary) -> String {
 /// reads as nothing.
 fn branches_in_words(pull_request: &PullRequestSummary) -> String {
     format!("{} into {}", pull_request.source_branch, pull_request.target_branch)
-}
-
-/// One line, cut with an ellipsis at `max_width`.
-fn elided(
-    painter: &Painter,
-    text: String,
-    font: FontId,
-    color: Color32,
-    max_width: f32,
-) -> Arc<Galley> {
-    elided_job(painter, LayoutJob::simple_singleline(text, font, color), max_width)
-}
-
-/// [`elided`] for text in several colors.
-fn elided_job(painter: &Painter, mut job: LayoutJob, max_width: f32) -> Arc<Galley> {
-    job.wrap = TextWrapping::truncate_at_width(max_width.max(1.0));
-    painter.layout_job(job)
 }
 
 #[cfg(test)]

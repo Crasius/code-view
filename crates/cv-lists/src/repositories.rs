@@ -8,8 +8,7 @@ use cv_runtime::route::{Navigator, Route};
 use cv_services::Services;
 use cv_widgets::refresh_status::{self, RefreshStatus};
 use cv_widgets::states::{self, Action};
-use cv_widgets::{buttons, glyph, provider_icon, row, skeleton, star};
-use egui::text::{LayoutJob, TextWrapping};
+use cv_widgets::{buttons, elide, glyph, provider_icon, row, skeleton, star};
 use egui::{Align2, Id, Pos2, Rect, RichText, Sense, Stroke, TextEdit, pos2, vec2};
 use review_core::{Connection, RepositoryInfo};
 use review_store::Favorites;
@@ -113,7 +112,7 @@ impl RepositoriesPage {
             Stroke::new(1.0, palette.border),
         );
         self.sync_query(services, &connection_id, wants_search);
-        egui::Frame::new().inner_margin(egui::Margin::same(24)).show(ui, |ui| {
+        egui::Frame::new().inner_margin(egui::Margin::same(style::PAGE_MARGIN_X)).show(ui, |ui| {
             self.body(ui, services, navigator, &connection_id);
         });
     }
@@ -131,7 +130,7 @@ impl RepositoriesPage {
         let mut wants_search = false;
         egui::Frame::new()
             .fill(palette.surface)
-            .inner_margin(egui::Margin::symmetric(24, 16))
+            .inner_margin(egui::Margin::symmetric(style::PAGE_MARGIN_X, 16))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.label(RichText::new("Repositories").heading());
@@ -453,9 +452,7 @@ fn paint_line(
     at: Pos2,
     width: f32,
 ) -> bool {
-    let mut job = LayoutJob::simple_singleline(text.to_owned(), font, color);
-    job.wrap = TextWrapping::truncate_at_width(width);
-    let galley = painter.layout_job(job);
+    let galley = elide::line(painter, text, font, color, width);
     let is_cut = galley.elided;
     painter.galley(pos2(at.x, at.y - galley.size().y / 2.0), galley, color);
     is_cut

@@ -3,7 +3,7 @@
 
 use cv_base::theme::{icons, style};
 use cv_runtime::intents;
-use cv_widgets::buttons;
+use cv_widgets::{buttons, elide};
 
 use super::SEARCH_TOOLTIP;
 
@@ -58,9 +58,7 @@ pub fn choice<T: PartialEq>(
     label: &str,
 ) -> egui::Response {
     let font = egui::FontId::proportional(style::BODY_SIZE);
-    let full = ui.fonts_mut(|fonts| {
-        fonts.layout_no_wrap(label.to_owned(), font, egui::Color32::PLACEHOLDER).size().x
-    }) + 2.0 * ui.spacing().button_padding.x;
+    let full = elide::text_width(ui, label, &font) + 2.0 * ui.spacing().button_padding.x;
     let room = ui.available_width();
     let response = ui.selectable_value(current, value, label);
     if full > room { response.on_hover_text(label) } else { response }

@@ -52,7 +52,7 @@ use cv_services::self_review::{Identities, RowRequests};
 use cv_services::writes::{self, Added, Effect};
 use cv_widgets::refresh_status::RefreshStatus;
 use cv_widgets::states::{self, Action};
-use cv_widgets::{scroll, star};
+use cv_widgets::{elide, scroll, star};
 use egui::RichText;
 use review_core::{ProviderKind, PullRequestScope, PullRequestSummary, StateFilter};
 use review_store::{AppSettings, ListFilters};
@@ -404,8 +404,7 @@ impl PullRequestListPage {
                     ListSource::Repository { repository_key, .. } => repository_key.clone(),
                 };
                 let heading = egui::TextStyle::Heading.resolve(ui.style());
-                let title_width =
-                    ui.painter().layout_no_wrap(title.clone(), heading, palette.text).size().x;
+                let title_width = elide::text_width(ui, &title, &heading);
                 let layout = HeaderLayout::plan(
                     ui.available_width(),
                     title_width,
@@ -561,7 +560,8 @@ impl PullRequestListPage {
             queries::seen(&mut self.favorites.results, &key);
         }
         self.warming.rest(services, &visible.ahead, visible.rested);
-        diff_stats::want(services, &visible.stats, |row| self.project_rows(row));
+        let painted = visible.ahead.iter().map(|ahead| &ahead.row);
+        diff_stats::want(services, painted, |row| self.project_rows(row));
         statuses::want(&mut self.statuses, services, &visible.statuses);
         visible.cards
     }
