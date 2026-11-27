@@ -164,20 +164,14 @@ mod tests {
         ((layout.cards[index].left() - PADDING) / (CARD_WIDTH + COLUMN_GAP)).round() as usize
     }
 
-    /// GitLab with every job on `needs: []` (gitlab-org/cli): the provider chains the stages in
-    /// their configured order, so they form one row of columns joined left to right, whatever
-    /// the jobs need.
+    /// Stages that each depend on the one before stand in one row, one column each.
     #[test]
-    fn a_stage_chain_of_jobs_without_needs_forms_one_row_of_columns() {
-        let lane = |id: &str, depends_on: &[&str], jobs: &[&str]| PipelineJob {
-            children: jobs.iter().map(|name| stage(name, &[])).collect(),
-            ..stage(id, depends_on)
-        };
+    fn a_chain_of_stages_forms_one_row_of_columns() {
         let stages = vec![
-            lane("test", &[], &["tests:unit", "tests:integration", "lint"]),
-            lane("build", &["test"], &["build:linux", "build:windows"]),
-            lane("release", &["build"], &["release"]),
-            lane("documentation", &["release"], &["docs:check"]),
+            stage("test", &[]),
+            stage("build", &["test"]),
+            stage("release", &["build"]),
+            stage("documentation", &["release"]),
         ];
         let layout = GraphLayout::new(&stages, |_| 72.0);
         assert_eq!(

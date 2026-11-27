@@ -21,8 +21,6 @@ pub(crate) struct GraphInput<'a> {
     pub stages: &'a [PipelineJob],
     pub expanded: &'a HashSet<String>,
     pub highlighted: Option<&'a str>,
-    /// Glides this stage into view once.
-    pub scroll_to: Option<&'a str>,
     pub context: CardContext<'a>,
 }
 
@@ -41,11 +39,7 @@ pub(crate) fn show(ui: &mut Ui, input: GraphInput<'_>) -> Option<(usize, CardAct
         stage_card::height(&input.stages[index], &input.context, openings[index])
     });
     let mut clicked = None;
-    let reveal = input
-        .scroll_to
-        .and_then(|id| input.stages.iter().position(|stage| stage.id == id))
-        .map(|index| layout.cards[index]);
-    let mut pan = pan_canvas::begin(ui, ui.scope_id().with("stage_graph"), layout.size, reveal);
+    let mut pan = pan_canvas::begin(ui, ui.scope_id().with("stage_graph"), layout.size);
     // The canvas is drawn in its own coordinates; the pan and zoom map it to the screen.
     let visible = pan.viewport().expand(OVERSCAN / pan.zoom());
     paint_connectors(&pan.ui, &layout, input.stages, visible, &palette);

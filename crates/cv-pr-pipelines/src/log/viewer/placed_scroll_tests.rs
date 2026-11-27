@@ -5,7 +5,7 @@
 use cv_shell::focus_mode::{self, Surface};
 use egui_kittest::Harness;
 
-use super::test_harness::{State, harness_of, log_of};
+use super::test_harness::{State, harness_of};
 
 /// `lines` numbered lines.
 fn numbered(lines: usize) -> String {
@@ -20,12 +20,12 @@ fn top_line(harness: &Harness<'_, State>) -> usize {
 
 #[test]
 fn a_running_jobs_log_opens_at_its_end_after_a_shorter_one() {
-    let mut harness = harness_of(log_of(&numbered(120), None));
+    let mut harness = harness_of(&numbered(120), None);
     harness.run();
     assert_eq!(top_line(&harness), 0, "the finished log shows from its top");
 
     // A running job's longer log takes its place, as its download would.
-    harness.state_mut().log = log_of(&numbered(600), None);
+    harness.state_mut().swap_log(&numbered(600), None);
     let viewer = &mut harness.state_mut().viewer;
     viewer.window = None;
     viewer.fetch.is_live = true;

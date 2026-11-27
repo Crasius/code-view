@@ -5,7 +5,7 @@
 //!   click, so nothing fires. The content then follows the pointer 1:1 from where it was pressed.
 //! * The middle button, and the primary button while Space is held, pan at once.
 //! * Releasing a pan flings it for a short coast (none under reduced motion); a new press, the
-//!   wheel or a reveal stops the coast. Repaints are requested only while it moves.
+//!   wheel or keyboard focus moving onto a card stops the coast. Repaints are requested only while it moves.
 //! * The wheel scrolls as in a document (Shift for sideways), within the content's own bounds.
 //! * Ctrl+wheel and a trackpad pinch zoom around the pointer, which keeps the point under it in
 //!   place, between [`MIN_ZOOM`] and [`MAX_ZOOM`]. Ctrl+Plus/Minus step through [`ZOOM_STEPS`] and
@@ -35,7 +35,7 @@ use super::{sharp_text, zoom_controls};
 const KEEP_VISIBLE: f32 = 120.0;
 /// Time constant of the fling's exponential decay; it coasts `velocity × FLING_DECAY` points.
 const FLING_DECAY: f32 = 0.16;
-/// Time constant of the glide to a revealed card or to a zoom step.
+/// Time constant of the glide to a focused control or to a zoom step.
 const GLIDE: f32 = 0.07;
 /// Below this many points left to travel, movement ends in one step.
 const SETTLE: f32 = 0.5;
@@ -64,7 +64,7 @@ struct State {
     zoom: f32,
     /// Of `offset`, in points per second, while flinging.
     velocity: Vec2,
-    /// Where `offset` glides to, to reveal a card.
+    /// Where `offset` glides to, to bring a focused control into view.
     target: Option<Vec2>,
     /// A zoom step or fit in progress.
     glide: Option<ZoomGlide>,
@@ -262,9 +262,8 @@ struct Frame {
 }
 
 /// Takes the rest of `ui` as the canvas for `content` points of content (at 100 %) and handles
-/// this frame's pan, zoom, wheel and coast. `reveal` (canvas coordinates) glides into the middle
-/// of view.
-pub(crate) fn begin(ui: &mut Ui, id: Id, content: Vec2, reveal: Option<Rect>) -> Pan {
+/// this frame's pan, zoom, wheel and coast.
+pub(crate) fn begin(ui: &mut Ui, id: Id, content: Vec2) -> Pan {
     let rect = ui.available_rect_before_wrap();
     ui.advance_cursor_after_rect(rect);
     let ctx = ui.ctx().clone();
@@ -295,11 +294,6 @@ pub(crate) fn begin(ui: &mut Ui, id: Id, content: Vec2, reveal: Option<Rect>) ->
     let free = Bounds::free(scaled, size);
     let natural = Bounds::natural(scaled, size);
 
-    if let Some(card) = reveal {
-        state.target = Some(natural.clamp(card.center().to_vec2() * state.zoom - size / 2.0));
-        state.velocity = Vec2::ZERO;
-        state.glide = None;
-    }
     follow_focus(ui, &mut state, layer, rect, free);
     drag(ui, &mut state, &frame, response.as_ref(), free);
     if frame.is_hovered && state.grab.is_none() {
@@ -545,7 +539,7 @@ fn zoom_glide(state: &mut State, dt: f32, is_reduced: bool) {
     state.offset = glide.point * zoom - screen;
 }
 
-/// One frame of the glide to a revealed card, or of the fling after a pan.
+/// One frame of the glide to a focused control, or of the fling after a pan.
 fn coast(state: &mut State, free: Bounds, dt: f32, is_reduced: bool) {
     if let Some(target) = state.target {
         let next = if is_reduced {

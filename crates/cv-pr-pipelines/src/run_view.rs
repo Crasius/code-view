@@ -55,7 +55,6 @@ pub(crate) struct RunView {
     /// The run whose initial expansion was applied.
     expanded_for: Option<String>,
     highlighted: Option<String>,
-    scroll_to: Option<String>,
 }
 
 impl RunView {
@@ -105,13 +104,11 @@ impl RunView {
             stages,
             known: input.known,
         };
-        let scroll_to = self.scroll_to.take();
         ui.painter().rect_filled(ui.available_rect_before_wrap(), 0, palette.ground);
         let graph_input = GraphInput {
             stages,
             expanded: &self.expanded,
             highlighted: self.highlighted.as_deref(),
-            scroll_to: scroll_to.as_deref(),
             context,
         };
         let (index, card) = stage_graph::show(ui, graph_input)?;

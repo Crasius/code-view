@@ -75,6 +75,7 @@ pub(crate) fn save(source: &Path, destination: &Path) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use cv_testkit::ScratchDir;
     use cv_widgets::text_selection::{Caret, Selection};
     use review_store::LogFile;
 
@@ -95,8 +96,8 @@ mod tests {
 
     #[test]
     fn copies_a_selection_as_plain_text() {
-        let path =
-            std::env::temp_dir().join(format!("review-log-selection-{}.log", std::process::id()));
+        let scratch = ScratchDir::new("log-selection");
+        let path = scratch.path().join("selection.log");
         std::fs::write(&path, "2024-05-01T10:00:00.1234567Z \u{1b}[32mgreen\u{1b}[0m words here\r\nsecond line\r\nthird\n").expect("write");
         let file = LogFile::open(&path).expect("index");
         let mut selection = Selection::caret((), Caret::new(0, 6));
@@ -106,8 +107,6 @@ mod tests {
             selected_text(&file, &Selection::lines((), 0, 1)).expect("read"),
             "green words here\nsecond line\n"
         );
-        // Best effort: the index may still hold the file on Windows; a leftover temp file harms nothing.
-        let _cleanup = std::fs::remove_file(&path);
     }
 
     #[test]

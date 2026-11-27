@@ -43,12 +43,6 @@ pub(crate) struct LogFetch {
 }
 
 impl LogFetch {
-    /// Already holding `log`, as if its download finished.
-    #[cfg(test)]
-    pub fn loaded_for_test(log: Arc<LoadedLog>) -> Self {
-        Self { log: Load::Ready(Fetched::Log(log)), ..Self::default() }
-    }
-
     /// Forgets the last log and its schedule, for another one.
     pub(crate) fn reset(&mut self, services: &Services) {
         self.stop_polling(services);
