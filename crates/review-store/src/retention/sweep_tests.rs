@@ -8,9 +8,9 @@ use std::time::SystemTime;
 use super::mirrors::{MirrorGuard, NothingInUse};
 use super::sweep::{CacheLimits, Sweeper};
 use super::{DAY, Leases, Limits, MirrorUse, mirror_stamp};
-use crate::flat_layout::FlatLayout;
-use crate::test_support::{TestDir, wait_for};
-use crate::{AppPaths, Draft, ThreadStore, ViewedFiles, stable_hash, threads};
+use crate::flat_layout::{FlatLayout, pull_request_file};
+use crate::test_support::{TestDir, wait_for, write_connections, write_file};
+use crate::{AppPaths, Draft, ThreadStore, ViewedFiles, stable_hash};
 
 pub(super) fn now() -> SystemTime {
     SystemTime::UNIX_EPOCH + DAY * 20_000
@@ -18,8 +18,7 @@ pub(super) fn now() -> SystemTime {
 
 /// Writes `bytes` zeros to `path`, last changed `days_ago` before [`now`].
 fn aged_file(path: PathBuf, bytes: usize, days_ago: u32) -> PathBuf {
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, vec![0u8; bytes]).unwrap();
+    write_file(&path, &vec![0u8; bytes]);
     let file = std::fs::File::options().write(true).open(&path).unwrap();
     file.set_modified(now() - DAY * days_ago).unwrap();
     path
@@ -33,7 +32,7 @@ pub(super) struct Cache {
 impl Cache {
     pub(super) fn new(name: &str) -> Self {
         let dir = TestDir::new(name);
-        let paths = AppPaths::new(dir.path().join("config"), dir.path().join("cache"));
+        let paths = dir.paths();
         Self { _dir: dir, paths }
     }
 
@@ -50,7 +49,7 @@ impl Cache {
         let mut store = ThreadStore::load(&self.paths, connection, key).unwrap();
         store.set_draft("reply:t1", Draft { text: "Draft".into(), anchor: None });
         store.save().unwrap();
-        threads::file_for(&self.paths.threads_dir(), connection, key)
+        pull_request_file(&self.paths.threads_dir(), connection, key)
     }
 
     pub(super) fn mirror(
@@ -75,20 +74,7 @@ impl Cache {
     }
 
     pub(super) fn connections(&self, ids: &[&str]) {
-        let list: Vec<String> = ids
-            .iter()
-            .map(|id| {
-                format!(
-                    r#"{{"id":"{id}","name":"n","kind":"GitHub","base_url":"https://github.com"}}"#
-                )
-            })
-            .collect();
-        std::fs::create_dir_all(self.paths.config_dir()).unwrap();
-        std::fs::write(
-            self.paths.connections_file(),
-            format!(r#"{{"connections":[{}]}}"#, list.join(",")),
-        )
-        .unwrap();
+        write_connections(&self.paths, ids);
     }
 
     pub(super) fn sweeper(&self, guard: Arc<dyn MirrorGuard>, limits: CacheLimits) -> Sweeper {

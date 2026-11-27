@@ -220,14 +220,11 @@ fn error(message: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
-    use std::io::{self, Cursor, Read, Write};
-    use std::net::TcpListener;
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::time::{Duration, SystemTime};
+    use std::io::{self, Cursor};
+    use std::time::SystemTime;
 
     use cv_runtime::route::PullRequestKey;
-    use cv_testkit::{self as test_support, ScratchDir};
+    use cv_testkit::{ScratchDir, samples};
     use review_core::{Connection, ProviderError, ProviderKind};
     use review_store::{AppPaths, ConnectionStore, TokenVault};
     use serde_json::{Value, json};
@@ -252,17 +249,14 @@ mod tests {
 
     impl ScratchApp {
         fn new(scratch: &ScratchDir) -> Self {
-            let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
+            let paths = scratch.app_paths();
             assert_eq!(paths.token_vault(), TokenVault::File);
             let mut store = ConnectionStore::open(&paths).expect("empty store");
             store
                 .upsert(Connection {
-                    id: "gh".to_owned(),
                     name: "Acme".to_owned(),
-                    kind: ProviderKind::GitHub,
-                    base_url: "https://github.com".to_owned(),
-                    organizations: Vec::new(),
                     token: Some(SECRET.to_owned()),
+                    ..samples::connection("gh", ProviderKind::GitHub, "https://github.com")
                 })
                 .expect("saved");
             Self { paths, handed: RefCell::default(), reads: RefCell::default(), is_running: true }
@@ -439,59 +433,30 @@ mod tests {
 
     /// The real read runs its provider and timeout inside its own runtime: a 404 from a loopback
     /// host comes back as the host's answer (it once panicked with "no reactor running").
-    #[test]
-    fn the_installed_app_reads_through_its_own_runtime() {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("loopback port");
-        let base_url = format!("http://{}", listener.local_addr().expect("address"));
-        // The detail is the pull request and its reviews, asked at once on two connections: each
-        // gets the 404 until the read is over. A host that answered only the first and went away
-        // reset the second, whose error could come back first.
-        listener.set_nonblocking(true).expect("a polled listener");
-        let is_read = Arc::new(AtomicBool::new(false));
-        let is_over = is_read.clone();
-        let server = std::thread::spawn(move || {
-            while !is_over.load(Ordering::Acquire) {
-                let Ok((mut stream, _)) = listener.accept() else {
-                    test_support::let_threads_run(Duration::from_millis(5));
-                    continue;
-                };
-                stream.set_nonblocking(false).expect("a blocking connection");
-                let mut request = [0_u8; 4096];
-                // The read may be over and its connection gone already: nobody waits for the
-                // answer then.
-                if stream.read(&mut request).is_ok_and(|read| read > 0) {
-                    let answer = "HTTP/1.1 404 Not Found
-Content-Length: 0
-Connection: close
-
-";
-                    let _gone = stream.write_all(answer.as_bytes());
-                }
-            }
-        });
+    ///
+    /// The read runs on a plain thread, which has no runtime of its own: a timeout built outside
+    /// the read's runtime then fails this test.
+    #[tokio::test]
+    async fn the_installed_app_reads_through_its_own_runtime() {
+        let server = wiremock::MockServer::start().await;
+        cv_testkit::fresh_origin(&server.uri());
         let scratch = ScratchDir::new("host-installed-read");
-        let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
         let app = InstalledApp {
-            paths,
-            http: test_support::http_client(),
+            paths: scratch.app_paths(),
+            http: cv_testkit::http_client(),
             factory: cv_providers::create_provider,
         };
         let connection = Connection {
-            id: "ghe".to_owned(),
-            name: "Acme".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url,
-            organizations: Vec::new(),
             token: Some(SECRET.to_owned()),
+            ..samples::connection("ghe", ProviderKind::GitHub, &server.uri())
         };
         let key = PullRequestKey {
             connection_id: "ghe".to_owned(),
             repository_key: "acme/secret".to_owned(),
             number: 9,
         };
-        let answer = app.read(&connection, &key);
-        is_read.store(true, Ordering::Release);
-        server.join().expect("the server answered");
+        let answer =
+            std::thread::spawn(move || app.read(&connection, &key)).join().expect("the read ran");
         let status = answer.and_then(Result::err).as_ref().and_then(ProviderError::status);
         assert_eq!(status, Some(404));
     }

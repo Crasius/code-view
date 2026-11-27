@@ -3,10 +3,12 @@
 //! for folders.
 
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use egui::{Rangef, Rect, Ui, ViewportBuilder};
 use review_store::checkouts::TerminalChoice;
 
+use super::portable::spawn_reaped;
 pub use super::portable::{
     DialogOwner, FrameHold, PlacedWindow, dialog_owner, downloads_dir, hide_console,
     hide_std_console, register_chrome_fonts,
@@ -30,18 +32,12 @@ pub fn viewport(builder: ViewportBuilder) -> ViewportBuilder {
 
 /// Opens `path` in the desktop's file manager; fails when `xdg-open` does not start.
 pub fn open_folder(path: &Path) -> std::io::Result<()> {
-    std::process::Command::new("xdg-open").arg(path).spawn().map(drop)
+    spawn_reaped(Command::new("xdg-open").arg(path))
 }
 
 /// Opens `xterm` in `dir` running `program` with `args`.
 pub fn open_terminal(dir: &Path, program: &str, args: &[String]) -> std::io::Result<()> {
-    std::process::Command::new("xterm")
-        .arg("-e")
-        .arg(program)
-        .args(args)
-        .current_dir(dir)
-        .spawn()
-        .map(drop)
+    spawn_reaped(Command::new("xterm").arg("-e").arg(program).args(args).current_dir(dir))
 }
 
 /// None: egui's bundled fonts serve the text.
@@ -87,7 +83,7 @@ pub fn ask_save_path(_owner: DialogOwner, _request: &SaveRequest<'_>) -> Option<
 
 /// Opens `xterm` in `dir`.
 pub fn open_shell(dir: &Path, _terminal: TerminalChoice) -> std::io::Result<()> {
-    std::process::Command::new("xterm").current_dir(dir).spawn().map(drop)
+    spawn_reaped(Command::new("xterm").current_dir(dir))
 }
 
 /// No folder dialog here.

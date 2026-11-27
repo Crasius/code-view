@@ -5,16 +5,12 @@
 //! line it sits in. Text wider than the chip's room ends in an ellipsis; the tooltip then names it
 //! in full.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use cv_base::theme::{self, fonts, icons, style};
-use egui::text::{LayoutJob, TextFormat, TextWrapping};
-use egui::{
-    Align2, Context, CursorIcon, FontId, Galley, Id, Response, Sense, Ui, WidgetInfo, pos2, vec2,
-};
+use egui::{Align2, Context, CursorIcon, FontId, Id, Response, Sense, Ui, WidgetInfo, pos2, vec2};
 
-use super::{focus, row};
+use super::{elide, focus, row};
 
 /// Height of a chip: room above and below the text, inside a 28 px line.
 pub const HEIGHT: f32 = 24.0;
@@ -26,13 +22,7 @@ const COPIED_SECONDS: f64 = 1.5;
 
 /// The width a chip with `text` needs to show it whole.
 pub fn width(ui: &Ui, text: &str) -> f32 {
-    let text_width = ui
-        .fonts_mut(|fonts| {
-            fonts.layout_no_wrap(text.to_owned(), font(), egui::Color32::PLACEHOLDER)
-        })
-        .size()
-        .x;
-    chrome_width() + text_width
+    chrome_width() + elide::text_width(ui, text, &font())
 }
 
 /// The narrowest a chip gets: its icon and an ellipsis.
@@ -44,13 +34,15 @@ pub fn min_width(ui: &Ui) -> f32 {
 /// it has focus) copies `text`; `tooltip` names that action ("Copy branch name").
 pub fn show(ui: &mut Ui, icon: &str, text: &str, tooltip: &str, max_width: f32) -> Response {
     let palette = theme::palette(ui.ctx());
-    let galley = text_galley(ui, text, (max_width - chrome_width()).max(0.0), palette.text);
+    let galley = elide::line(ui.painter(), text, font(), palette.text, max_width - chrome_width());
     let is_elided = galley.elided;
     let size = vec2(chrome_width() + galley.size().x, HEIGHT);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     let is_copied = copy_on_click(ui, &response, text);
-    let label = if is_copied { format!("Copied {text}") } else { format!("{tooltip}: {text}") };
-    response.widget_info(|| WidgetInfo::labeled(egui::Role::Button, true, &label));
+    response.widget_info(|| {
+        let label = if is_copied { format!("Copied {text}") } else { format!("{tooltip}: {text}") };
+        WidgetInfo::labeled(egui::Role::Button, true, label)
+    });
 
     if ui.is_rect_visible(rect) {
         let fill = row::state_fill(ui, &response, palette.surface_subtle);
@@ -75,8 +67,13 @@ pub fn show(ui: &mut Ui, icon: &str, text: &str, tooltip: &str, max_width: f32) 
         painter.galley(pos2(text_left, text_top), galley, palette.text);
     }
     focus::ring(ui, &response, rect);
-    let hover = if is_elided { format!("{text}\n{tooltip}") } else { tooltip.to_owned() };
-    response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(hover)
+    response.on_hover_cursor(CursorIcon::PointingHand).on_hover_ui(|ui| {
+        if is_elided {
+            ui.label(format!("{text}\n{tooltip}"));
+        } else {
+            ui.label(tooltip);
+        }
+    })
 }
 
 /// Copies `text` when `response` was clicked (or activated with Enter or Space) and tells whether
@@ -120,13 +117,6 @@ fn font() -> FontId {
     fonts::code_font(TEXT_SIZE)
 }
 
-/// `text` on one line, cut with an ellipsis where it is wider than `max_width`.
-fn text_galley(ui: &Ui, text: &str, max_width: f32, color: egui::Color32) -> Arc<Galley> {
-    let mut job = LayoutJob::single_section(text.to_owned(), TextFormat::simple(font(), color));
-    job.wrap = TextWrapping::truncate_at_width(max_width);
-    ui.fonts_mut(|fonts| fonts.layout_job(job))
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -138,14 +128,15 @@ mod tests {
         let id = Id::unique("copy");
         let mut is_copied = false;
         let input = RawInput { time: Some(time), ..RawInput::default() };
-        let mut output = ctx.run_ui(input, |ui| {
+        let output = ctx.run_ui(input, |ui| {
             if copy {
                 super::mark_copied(ui.ctx(), id, "a1b2c3d".to_owned());
             }
             is_copied = super::is_showing_copied(ui, id);
         });
-        output.textures_delta.clear();
-        (is_copied, output.viewport_output[&ViewportId::ROOT].repaint_delay)
+        let wake = output.viewport_output[&ViewportId::ROOT].repaint_delay;
+        output.drop_without_applying_deltas();
+        (is_copied, wake)
     }
 
     #[test]

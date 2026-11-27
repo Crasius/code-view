@@ -5,7 +5,6 @@
 #![expect(unsafe_code, reason = "the thread's quality of service is set through libSystem FFI")]
 
 use std::io;
-use std::path::PathBuf;
 use std::process::Command;
 
 use security_framework::passwords::{
@@ -83,7 +82,7 @@ pub(crate) fn hide_console(_command: &mut Command) {}
 
 /// `~/Library/Application Support` for the config, `~/Library/Caches` for the cache.
 pub(crate) fn data_roots() -> DataRoots {
-    let home = std::env::var_os("HOME").map_or_else(std::env::temp_dir, PathBuf::from);
+    let home = std::env::home_dir().unwrap_or_else(std::env::temp_dir);
     let library = home.join("Library");
     DataRoots { config: library.join("Application Support"), cache: library.join("Caches") }
 }

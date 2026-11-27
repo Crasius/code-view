@@ -75,31 +75,34 @@ pub enum Registry {
 }
 
 impl Registry {
-    /// The current user's registration on this system.
+    /// The current user's registration on this system. Tests use it only in the live check run by
+    /// hand; the others keep the registry in memory ([`MemoryKeys`]) and their files in scratch
+    /// folders.
     #[cfg_attr(
         windows,
         expect(
             clippy::unnecessary_wraps,
-            reason = "only the HOME lookup of macOS and Linux fails"
+            reason = "only the home folder lookup of macOS and Linux fails"
         )
     )]
     #[cfg_attr(
         not(windows),
-        expect(unused_variables, reason = "the browsers' folders lie below HOME, not the app's")
+        expect(
+            unused_variables,
+            reason = "the browsers' folders lie below the home folder, not the app's"
+        )
     )]
-    /// Tests use it only in the live check run by hand; the others keep the registry in memory
-    /// ([`MemoryKeys`]) and their files in scratch folders.
     pub fn system(paths: &review_store::AppPaths) -> io::Result<Self> {
         #[cfg(windows)]
         {
-            let manifest = paths.browser_dir().join(format!("{HOST_NAME}.json"));
+            let manifest = super::host_manifest(paths);
             Ok(Self::Keys { manifest, keys: Arc::new(super::platform::UserKeys) })
         }
         #[cfg(not(windows))]
         {
-            let home =
-                std::env::var_os("HOME").ok_or_else(|| io::Error::other("HOME is not set"))?;
-            Ok(Self::Folders { home: PathBuf::from(home) })
+            let home = std::env::home_dir()
+                .ok_or_else(|| io::Error::other("the home folder is unknown"))?;
+            Ok(Self::Folders { home })
         }
     }
 
@@ -172,7 +175,7 @@ fn folder_manifest(home: &Path, browser: Browser) -> PathBuf {
 }
 
 /// The host manifest for `exe` (the fields of Chrome's native messaging docs).
-pub fn manifest(exe: &Path) -> String {
+fn manifest(exe: &Path) -> String {
     let manifest = json!({
         "name": HOST_NAME,
         "description": "Code View opens pull request links from the browser.",
@@ -180,7 +183,7 @@ pub fn manifest(exe: &Path) -> String {
         "type": "stdio",
         "allowed_origins": [extension_origin()],
     });
-    serde_json::to_string_pretty(&manifest).unwrap_or_default()
+    format!("{manifest:#}")
 }
 
 /// The manifest names this host, starts `exe` and lets the extension in.
@@ -204,9 +207,7 @@ fn write_file(path: &Path, text: &str) -> io::Result<()> {
     let folder =
         path.parent().ok_or_else(|| io::Error::other("the manifest path has no folder"))?;
     std::fs::create_dir_all(folder)?;
-    let temp = path.with_extension("json.tmp");
-    std::fs::write(&temp, text)?;
-    std::fs::rename(&temp, path)
+    review_store::write_bytes(path, text.as_bytes())
 }
 
 fn remove_file(path: &Path) -> io::Result<()> {

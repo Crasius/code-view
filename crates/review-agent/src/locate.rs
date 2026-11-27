@@ -49,7 +49,7 @@ async fn version(program: &Path) -> Result<String, AgentError> {
     command.stdin(std::process::Stdio::null());
     let output = tokio::time::timeout(VERSION_TIMEOUT, command.output())
         .await
-        .map_err(|_| AgentError::Spawn(format!("{} --version did not answer", program.display())))?
+        .map_err(|_| AgentError::Timeout("--version"))?
         .map_err(|error| AgentError::Spawn(error.to_string()))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let line = stdout.lines().map(str::trim).find(|line| !line.is_empty());

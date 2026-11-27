@@ -21,4 +21,7 @@ pub enum AgentError {
     /// The process ended: its exit code and the last lines it wrote to stderr.
     #[error("the agent stopped (exit code {code:?}): {stderr_tail}")]
     Exited { code: Option<i32>, stderr_tail: String },
+    /// The CLI did not give the named answer within our time limit.
+    #[error("{0} did not answer in time")]
+    Timeout(&'static str),
 }

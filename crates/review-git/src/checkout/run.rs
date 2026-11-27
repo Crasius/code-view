@@ -55,10 +55,28 @@ pub struct Request {
 pub struct Made {
     /// A folder that did not exist before.
     pub folder: Option<PathBuf>,
-    /// A worktree registered in this clone, at this path.
-    pub worktree: Option<(PathBuf, PathBuf)>,
-    /// A branch created in this repository, at this commit.
-    pub branch: Option<(PathBuf, String, String)>,
+    pub worktree: Option<MadeWorktree>,
+    pub branch: Option<MadeBranch>,
+}
+
+/// A worktree a checkout registered.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MadeWorktree {
+    /// The clone it is registered in.
+    pub clone: PathBuf,
+    /// The worktree's folder.
+    pub path: PathBuf,
+}
+
+/// A branch a checkout created.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MadeBranch {
+    /// The repository it is in.
+    pub repo: PathBuf,
+    /// The branch's short name.
+    pub name: String,
+    /// The commit it was created at.
+    pub tip: String,
 }
 
 /// A finished checkout.
@@ -147,8 +165,11 @@ async fn branch_at_head(
         let zero = "0".repeat(request.head.len());
         repo.git().run(["update-ref", branch_ref.as_str(), request.head.as_str(), &zero]).await?;
         note(made, |made| {
-            made.branch =
-                Some((request.clone.clone(), request.branch.clone(), request.head.clone()));
+            made.branch = Some(MadeBranch {
+                repo: request.clone.clone(),
+                name: request.branch.clone(),
+                tip: request.head.clone(),
+            });
         });
         return Ok((request.head.clone(), true));
     };
@@ -201,7 +222,10 @@ async fn add_worktree(
         branch.into(),
     ];
     // Registered before git returns: a failure after this point leaves a registration to remove.
-    note(made, |made| made.worktree = Some((repo.dir().to_path_buf(), path.to_path_buf())));
+    note(made, |made| {
+        made.worktree =
+            Some(MadeWorktree { clone: repo.dir().to_path_buf(), path: path.to_path_buf() });
+    });
     repo.git().run(args).await?;
     Ok(())
 }
@@ -284,7 +308,7 @@ fn note(made: &Mutex<Made>, change: impl FnOnce(&mut Made)) {
 /// the checkout put it). Returns a line per thing removed, and per thing that could not be.
 pub async fn undo(made: Made) -> Vec<String> {
     let mut lines = Vec::new();
-    if let Some((clone, path)) = &made.worktree {
+    if let Some(MadeWorktree { clone, path }) = &made.worktree {
         let args: [OsString; 4] =
             ["worktree".into(), "remove".into(), "--force".into(), path.as_os_str().to_owned()];
         match GitCommand::in_tree(clone).run(args).await {
@@ -303,15 +327,15 @@ pub async fn undo(made: Made) -> Vec<String> {
             Err(error) => lines.push(format!("Could not remove {}: {error}", folder.display())),
         }
     }
-    if let Some((repo, branch, sha)) = &made.branch
+    if let Some(MadeBranch { repo, name, tip }) = &made.branch
         && made.folder.as_ref().is_none_or(|folder| !same_folder(folder, repo))
     {
-        let branch_ref = format!("refs/heads/{branch}");
+        let branch_ref = format!("refs/heads/{name}");
         let deleted =
-            GitCommand::in_tree(repo).run(["update-ref", "-d", branch_ref.as_str(), sha]).await;
+            GitCommand::in_tree(repo).run(["update-ref", "-d", branch_ref.as_str(), tip]).await;
         match deleted {
-            Ok(_) => lines.push(format!("Removed the branch {branch}")),
-            Err(error) => lines.push(format!("Could not remove the branch {branch}: {error}")),
+            Ok(_) => lines.push(format!("Removed the branch {name}")),
+            Err(error) => lines.push(format!("Could not remove the branch {name}: {error}")),
         }
     }
     lines

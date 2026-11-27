@@ -8,7 +8,7 @@
 //! are cut further. Pure arithmetic on measured widths, so it is tested without fonts.
 
 /// Narrowest a first or last crumb is cut to: a few letters and the ellipsis stay visible.
-pub const MIN_CUT_WIDTH: f32 = 48.0;
+const MIN_CUT_WIDTH: f32 = 48.0;
 
 /// One crumb's measured width, padding included: whole (up to the usual cap) and cut short.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -87,7 +87,7 @@ fn uncut(
 }
 
 /// Total width of the trail as `fit` returned it, with separators and the "…" crumb.
-pub fn width(shown: &[Option<f32>], spacing: Spacing) -> f32 {
+fn width(shown: &[Option<f32>], spacing: Spacing) -> f32 {
     let visible = shown.iter().flatten().count();
     let is_folded = visible < shown.len();
     let items = visible + usize::from(is_folded);

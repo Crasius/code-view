@@ -68,7 +68,7 @@ pub fn items(tokens: &[Token], source_lines: &[&str]) -> Items {
         let text = token.text.as_str();
         if let Some((attr, end)) = attribute(tokens, i, source_lines) {
             if !attr.inner {
-                pending.add(&attr, token.line, source_lines);
+                pending.add(&attr, token.line);
             } else if attr.is_test && depth == 0 {
                 items.file_is_test = true;
             }
@@ -110,11 +110,11 @@ impl Pending {
         self.first_line.is_none()
     }
 
-    fn add(&mut self, attr: &Attribute, line: usize, source_lines: &[&str]) {
+    fn add(&mut self, attr: &Attribute, line: usize) {
         self.first_line.get_or_insert(line);
         self.is_test |= attr.is_test;
-        if attr.is_path {
-            self.path = source_lines.get(line - 1).and_then(|text| quoted(text));
+        if let Some(path) = &attr.path {
+            self.path = Some(path.clone());
         }
     }
 }
@@ -124,8 +124,8 @@ pub struct Attribute {
     pub inner: bool,
     /// `cfg(...)` that holds only in test builds.
     pub is_test: bool,
-    /// `path = "..."`.
-    pub is_path: bool,
+    /// The value of `path = "..."`.
+    pub path: Option<String>,
     /// Token index range of the text between the brackets.
     pub body: std::ops::Range<usize>,
 }
@@ -170,8 +170,13 @@ pub fn attribute(
     let body = body_texts(tokens, open + 1..end, source_lines);
     let body: Vec<&str> = body.iter().map(String::as_str).collect();
     let is_test = body.first() == Some(&"cfg") && cfg_is_test(body.get(1..).unwrap_or_default());
-    let is_path = body.first() == Some(&"path") && body.get(1) == Some(&"=");
-    Some((Attribute { inner, is_test, is_path, body: open + 1..end }, end + 1))
+    let path = match body.as_slice() {
+        ["path", "=", value] => {
+            value.strip_prefix('"').and_then(|v| v.strip_suffix('"')).map(str::to_owned)
+        }
+        _ => None,
+    };
+    Some((Attribute { inner, is_test, path, body: open + 1..end }, end + 1))
 }
 
 /// The token texts of an attribute body. The lexer leaves a string literal as two `"` tokens with
@@ -396,13 +401,6 @@ fn module_name(tokens: &[Token], start: usize) -> Option<(String, bool)> {
     Some((name, is_decl))
 }
 
-/// The first double-quoted value on a line.
-fn quoted(line: &str) -> Option<String> {
-    let start = line.find('"')? + 1;
-    let len = line.get(start..)?.find('"')?;
-    line.get(start..start + len).map(str::to_owned)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -417,7 +415,8 @@ mod tests {
     fn reads_declarations_with_cfg_and_path() {
         let items = read(
             "mod plain;\npub(crate) mod shared;\n#[cfg(test)]\nmod tests;\n\
-             #[cfg(all(test, windows))]\n#[path = \"other_tests.rs\"]\nmod other;\n",
+             #[cfg(all(test, windows))]\n#[path = \"other_tests.rs\"]\nmod other;\n\
+             #[doc = \"x\"] #[path = \"b_tests.rs\"]\nmod b;\n",
         );
         let summary: Vec<(&str, Option<&str>, bool)> =
             items.decls.iter().map(|d| (d.name.as_str(), d.path.as_deref(), d.is_test)).collect();
@@ -428,6 +427,7 @@ mod tests {
                 ("shared", None, false),
                 ("tests", None, true),
                 ("other", Some("other_tests.rs"), true),
+                ("b", Some("b_tests.rs"), false),
             ]
         );
     }

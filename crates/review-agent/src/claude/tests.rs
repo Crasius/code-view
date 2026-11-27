@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use super::stream::ClaudeStream;
-use super::{args, models_from_initialize};
+use super::{ALLOWED_COMMANDS, args, models_from_initialize};
 use crate::{
     AgentCli, AgentError, AgentEvent, AgentKind, ModelChoice, ModelPick, SessionConfig, StepKind,
     StepOutcome, ToolStep, Usage, resolve_model,
@@ -215,9 +215,28 @@ fn the_session_runs_restricted_with_read_tools_and_the_brief_in_a_file() {
         .iter()
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect();
-    let line = args.join(" ");
-    assert!(line.starts_with("-p --input-format stream-json --output-format stream-json --verbose --include-partial-messages"));
-    assert!(line.contains(&format!("--model haiku --effort low --resume {SESSION}")));
-    assert!(line.contains("--restricted --strict-mcp-config --tools Read,Grep,Glob,Bash --allowedTools Bash(git log:*)"));
-    assert!(line.ends_with("--permission-mode dontAsk --append-system-prompt-file brief.md"));
+    let pairs: Vec<(&str, &str)> =
+        args.windows(2).map(|pair| (pair[0].as_str(), pair[1].as_str())).collect();
+    for pair in [
+        ("--model", "haiku"),
+        ("--effort", "low"),
+        ("--resume", SESSION),
+        ("--tools", "Read,Grep,Glob,Bash"),
+        ("--permission-mode", "dontAsk"),
+        ("--append-system-prompt-file", "brief.md"),
+        ("--input-format", "stream-json"),
+        ("--output-format", "stream-json"),
+    ] {
+        assert!(pairs.contains(&pair), "{pair:?} in {args:?}");
+    }
+    for flag in
+        ["-p", "--verbose", "--include-partial-messages", "--restricted", "--strict-mcp-config"]
+    {
+        assert!(args.iter().any(|arg| arg == flag), "{flag} in {args:?}");
+    }
+    let allowed = args.iter().position(|arg| arg == "--allowedTools").expect("--allowedTools");
+    assert_eq!(
+        args.get(allowed + 1..allowed + 1 + ALLOWED_COMMANDS.len()),
+        Some(&ALLOWED_COMMANDS.map(str::to_owned)[..])
+    );
 }

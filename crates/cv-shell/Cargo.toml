@@ -63,6 +63,4 @@ cv-widgets = { workspace = true, features = ["test-support"] }
 cv-testkit.workspace = true
 cv-providers.workspace = true
 egui_kittest.workspace = true
-# The fixture of links/access_writes_check.rs dates its summary with time::macros::datetime!.
-time.workspace = true
 wiremock.workspace = true

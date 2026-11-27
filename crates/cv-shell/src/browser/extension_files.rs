@@ -18,7 +18,7 @@ const FILES: &[(&str, &[u8])] = &[
     ("icons/icon-128.png", include_bytes!("../../../../browser-extension/icons/icon-128.png")),
 ];
 
-/// Writes the extension into `folder`, replacing what an older build left there.
+/// Writes every file of this build's extension into `folder`, over what an older build left there.
 pub fn unpack(folder: &Path) -> io::Result<()> {
     for (name, bytes) in FILES {
         let path = folder.join(name);
@@ -35,7 +35,7 @@ mod tests {
     use serde_json::Value;
 
     use super::unpack;
-    use crate::browser::EXTENSION_ID;
+    use crate::browser::HOST_NAME;
     use cv_testkit::ScratchDir;
 
     /// The unpacked folder loads: every file the manifest names is there, with the pinned key and
@@ -67,7 +67,6 @@ mod tests {
         assert!(manifest.get("host_permissions").is_none());
         let worker =
             std::fs::read_to_string(scratch.path().join("service_worker.js")).expect("worker");
-        assert!(worker.contains("'de.crasius.codeview'"), "the worker asks our host");
-        assert_eq!(EXTENSION_ID.len(), 32);
+        assert!(worker.contains(&format!("'{HOST_NAME}'")), "the worker asks our host");
     }
 }

@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use time::OffsetDateTime;
+use time::macros::format_description;
 
 /// "just now", "5 min ago", "3 h ago", "2 d ago", or a date for anything older than a month.
 pub fn relative(moment: OffsetDateTime) -> String {
@@ -20,9 +21,12 @@ pub fn relative_to(moment: OffsetDateTime, now: OffsetDateTime) -> String {
 
 /// "19 Oct 2026, 00:41 UTC": the exact moment behind a relative time, for its tooltip.
 pub fn exact(moment: OffsetDateTime) -> String {
-    let utc = moment.to_offset(time::UtcOffset::UTC);
-    let month = &format!("{:?}", utc.month())[..3];
-    format!("{} {month} {}, {:02}:{:02} UTC", utc.day(), utc.year(), utc.hour(), utc.minute())
+    moment
+        .to_offset(time::UtcOffset::UTC)
+        .format(format_description!(
+            "[day padding:none] [month repr:short] [year], [hour]:[minute] UTC"
+        ))
+        .expect("formatting a UTC OffsetDateTime with a static description cannot fail")
 }
 
 /// "1h 4m", "14m 25s", "12s": short enough for table columns, the same everywhere.

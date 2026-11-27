@@ -15,14 +15,14 @@ use egui::{
 
 use super::{EXIT_HINT, request_toggle};
 use cv_base::platform;
-use cv_base::theme::{self, icons, motion, style};
+use cv_base::theme::{self, icons, style};
 use cv_widgets::{focus, row};
 
 /// Height of the strip, its hairline included.
 pub const HEIGHT: f32 = 28.0;
-/// A compact control: as wide as a 16 px glyph with 5 points either side, 24 points tall.
 /// The height of the strip's controls; a view's own field in the strip takes it too.
 pub const CONTROL_HEIGHT: f32 = 24.0;
+/// A compact control: as wide as a 16 px glyph with 5 points either side, 24 points tall.
 const CONTROL: egui::Vec2 = vec2(26.0, CONTROL_HEIGHT);
 /// Between the strip's edges and its outermost controls, and between groups.
 const PADDING: f32 = 6.0;
@@ -203,8 +203,9 @@ fn labeled(
     });
     let is_on = is_on.unwrap_or(false);
     let icon_rect = Rect::from_min_size(rect.min, CONTROL);
-    paint_fill(ui, &response, rect, is_on);
-    let color = text_color(&palette, ui, &response, is_on);
+    let on = row::toggle_on(ui, &response, is_on);
+    row::paint_toggle_fill(ui, &response, rect, on);
+    let color = row::toggle_color(&palette, &response, on);
     ui.painter().text(
         icon_rect.center(),
         Align2::CENTER_CENTER,
@@ -254,8 +255,9 @@ pub fn note(ui: &mut Ui, text: &str, min_width: f32) {
 
 fn paint(ui: &Ui, response: &Response, rect: Rect, icon: &str, is_on: bool) {
     let palette = theme::palette(ui.ctx());
-    paint_fill(ui, response, rect, is_on);
-    let color = text_color(&palette, ui, response, is_on);
+    let on = row::toggle_on(ui, response, is_on);
+    row::paint_toggle_fill(ui, response, rect, on);
+    let color = row::toggle_color(&palette, response, on);
     ui.painter().text(
         rect.center(),
         Align2::CENTER_CENTER,
@@ -264,23 +266,4 @@ fn paint(ui: &Ui, response: &Response, rect: Rect, icon: &str, is_on: bool) {
         color,
     );
     focus::ring(ui, response, rect);
-}
-
-fn paint_fill(ui: &Ui, response: &Response, rect: Rect, is_on: bool) {
-    let palette = theme::palette(ui.ctx());
-    let on = motion::toggle(ui.ctx(), response.id.with("strip_on"), is_on, motion::FAST);
-    let fill =
-        motion::mix(row::state_fill(ui, response, Color32::TRANSPARENT), palette.selection, on);
-    if fill != Color32::TRANSPARENT {
-        ui.painter().rect_filled(rect, style::RADIUS_CONTROL, fill);
-    }
-}
-
-/// Text and icon color: the accent while on, faded with the `Ui` while disabled.
-fn text_color(palette: &theme::Palette, ui: &Ui, response: &Response, is_on: bool) -> Color32 {
-    if !response.enabled() {
-        return palette.text_disabled;
-    }
-    let on = motion::toggle(ui.ctx(), response.id.with("strip_on"), is_on, motion::FAST);
-    motion::mix(palette.text, palette.accent_text, on)
 }

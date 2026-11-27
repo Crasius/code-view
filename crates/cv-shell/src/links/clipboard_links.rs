@@ -20,6 +20,7 @@ use std::sync::Arc;
 use egui::Id;
 use review_core::{Connection, ProviderKind};
 
+use cv_base::mailbox;
 use cv_base::theme::icons;
 use cv_runtime::background::{Task, TaskPoll};
 use cv_runtime::intents::AddRequest;
@@ -81,18 +82,12 @@ pub enum Request {
 
 /// Leaves `request` for the app, which takes it before the next page runs.
 pub fn request(ctx: &egui::Context, request: Request) {
-    ctx.data_mut(|data| data.insert_temp(Id::unique(REQUEST_ID), request));
-    ctx.request_repaint();
+    mailbox::post(ctx, Id::unique(REQUEST_ID), request);
 }
 
 /// The pending [`request`], at most once.
 pub fn take_request(ctx: &egui::Context) -> Option<Request> {
-    ctx.data_mut(|data| {
-        let id = Id::unique(REQUEST_ID);
-        let request = data.get_temp::<Request>(id);
-        data.remove::<Request>(id);
-        request
-    })
+    mailbox::take::<Request>(ctx, Id::unique(REQUEST_ID))
 }
 
 /// "Opened … from the clipboard", with Back and Turn off; the app opens `key` with it.
@@ -300,19 +295,9 @@ mod tests {
 
     use super::{MAX_TEXT, classify, host_label};
     use cv_runtime::intents::AddRequest;
+    use cv_testkit::samples::connection;
 
     use crate::links::link_access::Target;
-
-    fn connection(id: &str, kind: ProviderKind, base_url: &str) -> Connection {
-        Connection {
-            id: id.to_owned(),
-            name: id.to_owned(),
-            kind,
-            base_url: base_url.to_owned(),
-            organizations: Vec::new(),
-            token: None,
-        }
-    }
 
     fn connections() -> Vec<Connection> {
         vec![

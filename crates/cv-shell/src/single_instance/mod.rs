@@ -153,7 +153,7 @@ pub fn queue_link(ctx: &egui::Context, link: &str) {
 
 /// The links queued since the last call, oldest first.
 fn take_links(ctx: &egui::Context) -> Vec<String> {
-    ctx.data_mut(|data| data.remove_temp::<Inbox>(Id::unique(INBOX_ID)))
+    cv_base::mailbox::take::<Inbox>(ctx, Id::unique(INBOX_ID))
         .map(|inbox| inbox.0)
         .unwrap_or_default()
 }
@@ -180,32 +180,13 @@ fn read_line(stream: &mut impl Read) -> io::Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
-
-    use review_store::AppPaths;
-
     use super::{Claim, claim, take_links};
-    use cv_testkit::ScratchDir;
-
-    fn paths(scratch: &ScratchDir) -> AppPaths {
-        AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"))
-    }
-
-    fn wait_for_links(ctx: &egui::Context) -> Vec<String> {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            let links = take_links(ctx);
-            if !links.is_empty() || Instant::now() > deadline {
-                return links;
-            }
-            cv_testkit::let_threads_run(Duration::from_millis(10));
-        }
-    }
+    use cv_testkit::{ScratchDir, poll_for};
 
     #[test]
     fn a_second_start_hands_its_link_to_the_first() {
         let scratch = ScratchDir::new("single-instance");
-        let paths = paths(&scratch);
+        let paths = scratch.app_paths();
         let Claim::First(listener) = claim(&paths, None) else {
             panic!("the first start serves the endpoint");
         };
@@ -217,7 +198,10 @@ mod tests {
             matches!(claim(&paths, Some(url)), Claim::HandedOver),
             "the second start hands over"
         );
-        assert_eq!(wait_for_links(&ctx), vec![url.to_owned()]);
+        let links = poll_for("the forwarded link", || {
+            Some(take_links(&ctx)).filter(|links| !links.is_empty())
+        });
+        assert_eq!(links, vec![url.to_owned()]);
 
         // A start without a link only brings the window up; nothing is queued.
         assert!(matches!(claim(&paths, None), Claim::HandedOver));
@@ -228,12 +212,12 @@ mod tests {
     fn data_folders_of_their_own_get_instances_of_their_own() {
         let first = ScratchDir::new("single-instance-a");
         let second = ScratchDir::new("single-instance-b");
-        let Claim::First(listener) = claim(&paths(&first), None) else {
+        let Claim::First(listener) = claim(&first.app_paths(), None) else {
             panic!("the first folder's start serves");
         };
         listener.serve(egui::Context::default());
         assert!(
-            matches!(claim(&paths(&second), None), Claim::First(_)),
+            matches!(claim(&second.app_paths(), None), Claim::First(_)),
             "another data folder is another instance"
         );
     }
@@ -241,7 +225,7 @@ mod tests {
     #[test]
     fn a_multi_line_link_is_refused() {
         let scratch = ScratchDir::new("single-instance-lines");
-        let endpoint = super::Endpoint::of(&paths(&scratch));
+        let endpoint = super::Endpoint::of(&scratch.app_paths());
         let error = super::send(&endpoint, "https://a\nhttps://b").expect_err("refused");
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     }

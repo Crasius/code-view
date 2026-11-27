@@ -1,10 +1,10 @@
 //! Line-anchored rules on one lexed file: role-suffix type names and vague module names
 //! (RS-DONT-08), unsafe outside platform modules (RS-DONT-03), `deny(warnings)` in source
 //! (RS-DONT-07), TODO comments (AGENTS.md, Done), `block_on` in shipped app code (RS-DONT-06),
-//! and `motion::install` anywhere but the app's start-up (tests pin motion). A finding of the first
-//! five can be waived at its line with
-//! `// repo-lint: expect(RL007) <reason>` on that line or the line above; an expectation that
-//! matches nothing is itself a finding, so waivers can only shrink.
+//! and `motion::install` anywhere but the app's start-up (tests pin motion). A finding of any of
+//! these except `motion::install` (RL016) can be waived at its line with
+//! `// repo-lint: expect(RL007) <reason>` on that line or the line above it with code; an
+//! expectation that matches nothing is itself a finding, so waivers can only shrink.
 
 use crate::finding::{Finding, Rule};
 use crate::items::attribute;
@@ -13,6 +13,8 @@ use crate::tree::Source;
 const ROLE_SUFFIXES: &[&str] = &["Manager", "Service", "Helper", "Handler"];
 const VAGUE_MODULES: &[&str] = &["utils", "util", "helpers", "helper", "common", "misc"];
 const EXPECT_MARKER: &str = "repo-lint: expect(";
+/// The shortest reason an expectation may give, in characters.
+const MIN_REASON_LEN: usize = 10;
 
 /// The app's shipped code, where `block_on` would run on the UI thread or a thread it waits on:
 /// the `review-app` bin and every `cv-*` UI crate except `cv-testkit`, which only tests link.
@@ -213,12 +215,14 @@ fn apply_expectations(path: &str, source: &Source, mut findings: Vec<Finding>) -
     for (line, text) in &source.scanned.comments {
         let Some(expectation) = parse_expectation(*line, text) else { continue };
         let target = target_line(source, expectation.line);
-        if expectation.reason.len() < 10 {
+        if expectation.reason.chars().count() < MIN_REASON_LEN {
             extra.push(Finding::at(
                 Rule::Expectation,
                 path,
                 *line,
-                "an expectation needs a reason that names the cause".to_owned(),
+                format!(
+                    "an expectation needs a reason of at least {MIN_REASON_LEN} characters that names the cause"
+                ),
             ));
         }
         for id in &expectation.rules {
@@ -277,6 +281,57 @@ mod tests {
         );
         assert_eq!(parse_expectation(1, " plain comment"), None);
         assert_eq!(parse_expectation(1, "/ Waive with `repo-lint: expect(RL007) reason`."), None);
+    }
+
+    #[test]
+    fn check_source_waives_and_reports() {
+        /// A case name, the file text, and the findings it leaves as (rule, line).
+        type Case = (&'static str, &'static str, &'static [(Rule, usize)]);
+        let cases: &[Case] = &[
+            (
+                "a waiver on the line above",
+                "// repo-lint: expect(RL007) FFI probe of the driver\nunsafe {}\n",
+                &[],
+            ),
+            (
+                "a trailing waiver",
+                "unsafe {} // repo-lint: expect(RL007) FFI probe of the driver\n",
+                &[],
+            ),
+            (
+                "a waiver above a blank line",
+                "// repo-lint: expect(RL007) FFI probe of the driver\n\nunsafe {}\n",
+                &[],
+            ),
+            (
+                "a waiver with nothing to waive",
+                "// repo-lint: expect(RL007) FFI probe of the driver\nfn a() {}\n",
+                &[(Rule::Expectation, 1)],
+            ),
+            (
+                "a rule no comment can waive",
+                "// repo-lint: expect(RL001) the file is generated\nfn a() {}\n",
+                &[(Rule::Expectation, 1)],
+            ),
+            (
+                "a reason that is too short still waives",
+                "// repo-lint: expect(RL007) short\nunsafe {}\n",
+                &[(Rule::Expectation, 1)],
+            ),
+            ("a declared role suffix", "struct DiffManager;\n", &[(Rule::RoleSuffix, 1)]),
+            ("a used role suffix", "let x: DiffManager = make();\n", &[]),
+            ("a vague module", "mod utils;\n", &[(Rule::VagueModule, 1)]),
+            ("forbid(warnings)", "#![forbid(warnings)]\n", &[(Rule::DenyWarnings, 1)]),
+        ];
+        for (name, text, expected) in cases {
+            let source = Source::parse((*text).to_owned());
+            let mut found: Vec<(Rule, usize)> = check_source("crates/x/src/a.rs", &source, false)
+                .into_iter()
+                .filter_map(|finding| Some((finding.rule, finding.line?)))
+                .collect();
+            found.sort();
+            assert_eq!(found, *expected, "{name}");
+        }
     }
 
     #[test]

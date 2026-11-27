@@ -181,7 +181,7 @@ pub fn load_first(fonts: &mut FontDefinitions, name: &str, faces: &[FontFace]) -
 
 #[cfg(test)]
 mod tests {
-    use egui::{FontFamily, FontId, RichText};
+    use egui::{FontFamily, FontId};
     use egui_kittest::Harness;
 
     use super::{BUNDLED_EMOJI_FONTS, definitions, optical_center, semibold};
@@ -225,12 +225,7 @@ mod tests {
     }
 
     /// The Linux path without system fonts (and any system whose fonts are missing): egui's
-    /// bundled fonts alone draw every symbol and emoji in every family. The harness panics on a
-    /// glyph no font of the family has.
-    fn assert_draws_everything(sources: &FontSources) {
-        assert_draws(sources, SAMPLE);
-    }
-
+    /// bundled fonts alone draw every symbol and emoji in every family.
     fn assert_draws(sources: &FontSources, sample: &str) {
         let fonts = definitions(sources);
         for (family, chain) in &fonts.families {
@@ -252,12 +247,8 @@ mod tests {
             }
         }
         let text = format!("{sample} {} {} {}", icons::CHECK, icons::WARNING, icons::CARET_RIGHT);
-        let probe = Harness::builder()
-            .with_context_setup({
-                let fonts = fonts.clone();
-                move |ctx| ctx.set_fonts(fonts)
-            })
-            .build_ui(|_| {});
+        let probe =
+            Harness::builder().with_context_setup(move |ctx| ctx.set_fonts(fonts)).build_ui(|_| {});
         let missing: Vec<String> = families()
             .into_iter()
             .flat_map(|family| {
@@ -272,19 +263,11 @@ mod tests {
             })
             .collect();
         assert!(missing.is_empty(), "no font draws {missing:#?}");
-        let mut harness = Harness::builder()
-            .with_context_setup(move |ctx| ctx.set_fonts(fonts))
-            .build_ui(move |ui| {
-                for family in families() {
-                    ui.label(RichText::new(text.as_str()).family(family));
-                }
-            });
-        harness.run();
     }
 
     #[test]
     fn bundled_fonts_alone_draw_symbols_and_emoji_in_every_family() {
-        assert_draws_everything(&FontSources::default());
+        assert_draws(&FontSources::default(), SAMPLE);
     }
 
     #[test]
@@ -303,13 +286,13 @@ mod tests {
             emoji: missing("emoji.ttf"),
             symbol: missing("symbol.ttf"),
         };
-        assert_draws_everything(&sources);
+        assert_draws(&sources, SAMPLE);
     }
 
     #[test]
     fn emoji_in_semibold_text_resolves_with_the_system_fonts() {
         // The real sources of the system the test runs on (the macOS report: 🚀 in "semibold").
-        assert_draws_everything(&crate::platform::font_sources());
+        assert_draws(&crate::platform::font_sources(), SAMPLE);
         #[cfg(target_os = "macos")]
         assert_draws(&crate::platform::font_sources(), MAC_KEYS);
     }

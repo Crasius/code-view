@@ -30,7 +30,9 @@ pub use self::remotes::{
 };
 pub use self::remove::{Finished, FinishedTree, Keep, Removal, remove_finished, remove_worktree};
 pub use self::repo::{Divergence, LocalRepo, TreeState, Worktree, same_folder};
-pub use self::run::{Done, Made, Request, Target, Upstream, check_out, undo};
+pub use self::run::{
+    Done, Made, MadeBranch, MadeWorktree, Request, Target, Upstream, check_out, undo,
+};
 pub use self::survey::{Survey, source_name, survey};
 pub use self::update::{Blocked, UpdateOutcome, UpdateRequest, Updated, update};
 use crate::progress::GitEvent;

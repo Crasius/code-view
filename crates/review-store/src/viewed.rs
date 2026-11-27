@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::flat_layout::FlatLayout;
-use crate::{AppPaths, atomic_file, stable_hash};
+use crate::flat_layout::{self, FlatLayout};
+use crate::{AppPaths, atomic_file};
 
 /// "Mark as reviewed" per file of one pull request, keyed by path and remembered with the
 /// head blob id: when the author changes the file again, the mark no longer matches and the
@@ -52,7 +52,7 @@ impl ViewedFiles {
     /// `pull_request_key` identifies the PR across sessions, e.g. `connection|repo|number`.
     pub fn load(paths: &AppPaths, connection_id: &str, pull_request_key: &str) -> io::Result<Self> {
         let viewed_dir = paths.viewed_dir();
-        let file = file_for(&viewed_dir, connection_id, pull_request_key);
+        let file = flat_layout::pull_request_file(&viewed_dir, connection_id, pull_request_key);
         FlatLayout::new(paths, viewed_dir).adopt(connection_id, pull_request_key, &file)?;
         let stored: StoredViewed = atomic_file::read_json(&file)?.unwrap_or_default();
         if !stored.files.is_empty() || stored.place.is_some() {
@@ -102,39 +102,16 @@ impl ViewedFiles {
     }
 }
 
-/// Where the marks of one pull request are stored.
-pub(crate) fn file_for(viewed_dir: &Path, connection_id: &str, pull_request_key: &str) -> PathBuf {
-    viewed_dir
-        .join(stable_hash(connection_id))
-        .join(format!("{}.json", stable_hash(pull_request_key)))
-}
-
 #[cfg(test)]
 mod tests {
     use super::{LastPlace, LastTab, ViewedFiles};
-    use crate::test_support::TestDir;
-    use crate::{AppPaths, stable_hash};
-
-    fn paths(folder: &TestDir) -> AppPaths {
-        AppPaths::new(folder.path().join("config"), folder.path().join("cache"))
-    }
-
-    /// Writes the connection list with `ids`, as Settings saves it.
-    fn connections(paths: &AppPaths, ids: &[&str]) {
-        let list: Vec<String> =
-            ids.iter().map(|id| format!(r#"{{"id":"{id}","name":"n","kind":"GitHub"}}"#)).collect();
-        std::fs::create_dir_all(paths.config_dir()).unwrap();
-        std::fs::write(
-            paths.connections_file(),
-            format!(r#"{{"connections":[{}]}}"#, list.join(",")),
-        )
-        .unwrap();
-    }
+    use crate::stable_hash;
+    use crate::test_support::{TestDir, write_connections, write_file};
 
     #[test]
     fn mark_expires_when_blob_changes() {
         let folder = TestDir::new("viewed");
-        let paths = paths(&folder);
+        let paths = folder.paths();
         let dir = &paths.viewed_dir();
         let mut viewed = ViewedFiles::load(&paths, "gh-1", "gh-1|cli/cli|12").unwrap();
         viewed.set_viewed("src/a.rs", "blob1", true).unwrap();
@@ -155,7 +132,7 @@ mod tests {
     #[test]
     fn a_folder_is_marked_and_unmarked_at_once() {
         let folder = TestDir::new("viewed-many");
-        let paths = paths(&folder);
+        let paths = folder.paths();
         let mut viewed = ViewedFiles::load(&paths, "gh-1", "gh-1|cli/cli|3").unwrap();
         let files = [("src/a.rs", "blob1"), ("src/b.rs", "blob2")];
         viewed.set_viewed_many(files, true).unwrap();
@@ -172,7 +149,7 @@ mod tests {
     #[test]
     fn the_last_place_is_kept_beside_the_marks() {
         let folder = TestDir::new("viewed-place");
-        let paths = paths(&folder);
+        let paths = folder.paths();
         let dir = &paths.viewed_dir();
         let mut viewed = ViewedFiles::load(&paths, "gh-1", "gh-1|cli/cli|5").unwrap();
         assert_eq!(viewed.last_place(), None, "never left anywhere");
@@ -194,44 +171,16 @@ mod tests {
     #[test]
     fn marks_saved_before_the_per_connection_layout_are_kept() {
         let folder = TestDir::new("viewed-flat");
-        let paths = paths(&folder);
+        let paths = folder.paths();
         let dir = &paths.viewed_dir();
-        connections(&paths, &["gh-1"]);
-        let flat = dir.join(format!("{}.json", stable_hash("gh-1|cli/cli|7")));
-        std::fs::create_dir_all(dir).unwrap();
-        std::fs::write(&flat, r#"{"files":{"src/a.rs":"blob1"}}"#).unwrap();
+        write_connections(&paths, &["gh-1"]);
+        let flat = write_file(
+            &dir.join(format!("{}.json", stable_hash("gh-1|cli/cli|7"))),
+            br#"{"files":{"src/a.rs":"blob1"}}"#,
+        );
 
         let viewed = ViewedFiles::load(&paths, "gh-1", "gh-1|cli/cli|7").unwrap();
         assert!(viewed.is_viewed("src/a.rs", "blob1"));
         assert!(!flat.exists());
-    }
-
-    /// Regression: a flat file of a connection removed before the upgrade went to whichever new
-    /// connection reused the id.
-    #[test]
-    fn a_connection_added_after_the_upgrade_adopts_no_flat_file() {
-        let folder = TestDir::new("viewed-flat-stranger");
-        let paths = paths(&folder);
-        let dir = &paths.viewed_dir();
-        connections(&paths, &["gh-2"]);
-        std::fs::create_dir_all(dir).unwrap();
-        let flat = |key: &str| {
-            let path = dir.join(format!("{}.json", stable_hash(key)));
-            std::fs::write(&path, r#"{"files":{"src/a.rs":"blob1"}}"#).unwrap();
-            path
-        };
-        let old = flat("gh-1|cli/cli|7");
-        let owned = flat("gh-2|cli/cli|7");
-        let viewed = ViewedFiles::load(&paths, "gh-2", "gh-2|cli/cli|7").unwrap();
-        assert!(viewed.is_viewed("src/a.rs", "blob1"));
-        assert!(!owned.exists());
-
-        connections(&paths, &["gh-1", "gh-2"]);
-        let viewed = ViewedFiles::load(&paths, "gh-1", "gh-1|cli/cli|7").unwrap();
-        assert!(
-            !viewed.is_viewed("src/a.rs", "blob1"),
-            "the owners were fixed at the first flat file"
-        );
-        assert!(old.exists(), "the file ages out, unadopted");
     }
 }

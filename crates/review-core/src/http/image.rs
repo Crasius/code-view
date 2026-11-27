@@ -188,7 +188,7 @@ fn redact(error: ProviderError, url: &Url) -> ProviderError {
 }
 
 /// `url` when it is an absolute http or https URL; other schemes (`file:`, `data:`) are refused.
-pub fn web_url(url: &str) -> Result<Url> {
+fn web_url(url: &str) -> Result<Url> {
     let parsed = Url::parse(url).map_err(|error| {
         ProviderError::Local(format!("'{url}' is not a valid address: {error}"))
     })?;
@@ -205,17 +205,14 @@ pub fn is_same_origin(url: &Url, origin: &Url) -> bool {
     url.origin() == origin.origin()
 }
 
-/// One client for every image: no automatic redirects (see the module docs), no cookies.
+/// One client for every image: the API client's settings with no automatic redirects (see the
+/// module docs) and a shorter timeout.
 fn client() -> &'static Client {
     static CLIENT: OnceLock<Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
-        Client::builder()
-            .user_agent(super::USER_AGENT)
-            .gzip(true)
+        super::client_builder()
             .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(Duration::from_secs(15))
             .timeout(Duration::from_secs(60))
-            .pool_idle_timeout(Duration::from_secs(90))
             .build()
             .expect("TLS backend must initialize")
     })
@@ -292,6 +289,10 @@ mod tests {
         }
     }
 
+    async fn get(url: String, limit: u64, auth: &dyn Authorize) -> Result<Body> {
+        fetch(&url, IMAGE_ACCEPT, limit, &Validators::NONE, auth).await
+    }
+
     #[test]
     fn credentials_travel_over_https_or_loopback_only() {
         let may = |url: &str| may_carry_credentials(&Url::parse(url).unwrap());
@@ -348,35 +349,11 @@ mod tests {
             .mount(&other)
             .await;
         let auth = Token(Url::parse(&own.uri()).unwrap());
-        let signed_out = fetch(
-            &format!("{}/uploads/a.png", own.uri()),
-            IMAGE_ACCEPT,
-            100,
-            &Validators::NONE,
-            &auth,
-        )
-        .await
-        .unwrap();
+        let signed_out = get(format!("{}/uploads/a.png", own.uri()), 100, &auth).await.unwrap();
         assert!(matches!(signed_out, Body::Private), "{signed_out:?}");
-        let refused = fetch(
-            &format!("{}/denied.png", own.uri()),
-            IMAGE_ACCEPT,
-            100,
-            &Validators::NONE,
-            &auth,
-        )
-        .await
-        .unwrap();
+        let refused = get(format!("{}/denied.png", own.uri()), 100, &auth).await.unwrap();
         assert!(matches!(refused, Body::Private), "{refused:?}");
-        let elsewhere = fetch(
-            &format!("{}/denied.png", other.uri()),
-            IMAGE_ACCEPT,
-            100,
-            &Validators::NONE,
-            &auth,
-        )
-        .await
-        .unwrap_err();
+        let elsewhere = get(format!("{}/denied.png", other.uri()), 100, &auth).await.unwrap_err();
         assert_eq!(elsewhere.status(), Some(403));
     }
 
@@ -389,8 +366,14 @@ mod tests {
 
     #[test]
     fn refuses_other_schemes() {
-        assert!(web_url("file:///C:/Windows/win.ini").is_err());
-        assert!(web_url("data:image/png;base64,AAAA").is_err());
+        assert!(matches!(
+            web_url("file:///C:/Windows/win.ini"),
+            Err(ProviderError::Unsupported(_))
+        ));
+        assert!(matches!(
+            web_url("data:image/png;base64,AAAA"),
+            Err(ProviderError::Unsupported(_))
+        ));
         assert!(web_url("https://img.shields.io/badge/a-b-c").is_ok());
     }
 
@@ -418,17 +401,8 @@ mod tests {
             .mount(&storage)
             .await;
         let auth = Token(Url::parse(&own.uri()).unwrap());
-        let Body::Image(image) = fetch(
-            &format!("{}/uploads/a.png", own.uri()),
-            IMAGE_ACCEPT,
-            100,
-            &Validators::NONE,
-            &auth,
-        )
-        .await
-        .unwrap() else {
-            panic!("too large")
-        };
+        let body = get(format!("{}/uploads/a.png", own.uri()), 100, &auth).await.unwrap();
+        let Body::Image(image) = body else { panic!("expected an image, got {body:?}") };
         assert_eq!(&image.bytes[..], &[1, 2, 3]);
         assert_eq!(image.content_type.as_deref(), Some("image/png"));
         let storage_requests: Vec<Request> = storage.received_requests().await.unwrap();
@@ -459,11 +433,8 @@ mod tests {
             .mount(&server)
             .await;
         let url = format!("{}/a.png", server.uri());
-        let Body::Image(first) =
-            fetch(&url, IMAGE_ACCEPT, 100, &Validators::NONE, &Anonymous).await.unwrap()
-        else {
-            panic!("too large")
-        };
+        let body = get(url.clone(), 100, &Anonymous).await.unwrap();
+        let Body::Image(first) = body else { panic!("expected an image, got {body:?}") };
         assert_eq!(first.validators.etag.as_deref(), Some("\"v1\""));
         assert_eq!(
             first.validators.last_modified.as_deref(),
@@ -483,26 +454,10 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![0; 64]))
             .mount(&server)
             .await;
-        let body = fetch(
-            &format!("{}/big.png", server.uri()),
-            IMAGE_ACCEPT,
-            10,
-            &Validators::NONE,
-            &Anonymous,
-        )
-        .await
-        .unwrap();
+        let body = get(format!("{}/big.png", server.uri()), 10, &Anonymous).await.unwrap();
         assert!(matches!(body, Body::TooLarge(Some(64))), "{body:?}");
         let missing = MockServer::start().await;
-        let error = fetch(
-            &format!("{}/gone.png", missing.uri()),
-            IMAGE_ACCEPT,
-            10,
-            &Validators::NONE,
-            &Anonymous,
-        )
-        .await
-        .unwrap_err();
+        let error = get(format!("{}/gone.png", missing.uri()), 10, &Anonymous).await.unwrap_err();
         assert_eq!(error.status(), Some(404));
     }
 }

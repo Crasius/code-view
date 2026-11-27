@@ -9,8 +9,8 @@ use windows_sys::Win32::Foundation::{ERROR_MORE_DATA, ERROR_SUCCESS};
 use windows_sys::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW,
 };
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// The extensions `CreateProcess` starts directly (`.cmd` and `.bat` through `cmd.exe`). An npm
 /// install puts `codex.cmd` next to `codex.ps1` and a POSIX `codex` script; only the first runs
 /// without PowerShell or a POSIX shell.

@@ -63,10 +63,10 @@ pub fn check(
         Target::NotConnected(_) => return LinkState::NotConnected,
         Target::NotAPullRequest => return LinkState::NotAPullRequest,
     };
-    let Some(connection) = connections.iter().find(|connection| connection.id == key.connection_id)
-    else {
-        return LinkState::NotAPullRequest;
-    };
+    let connection = connections
+        .iter()
+        .find(|connection| connection.id == key.connection_id)
+        .expect("resolve keys a pull request to one of `connections`");
     if is_passed(&key) {
         return LinkState::Pass;
     }
@@ -86,20 +86,14 @@ pub fn check(
 mod tests {
     use std::cell::Cell;
 
+    use cv_testkit::samples;
     use review_core::{Connection, ProviderError, ProviderKind};
 
     use super::{LinkState, check};
     use crate::links::link_access::Denial;
 
     fn connections() -> [Connection; 1] {
-        [Connection {
-            id: "work".to_owned(),
-            name: "Work".to_owned(),
-            kind: ProviderKind::GitLab,
-            base_url: "https://gitlab.example.com".to_owned(),
-            organizations: Vec::new(),
-            token: None,
-        }]
+        [samples::connection("work", ProviderKind::GitLab, "https://gitlab.example.com")]
     }
 
     fn status(status: u16) -> ProviderError {

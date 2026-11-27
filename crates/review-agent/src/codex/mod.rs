@@ -11,10 +11,10 @@ mod protocol;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::driver::{Launch, Protocol, Reaction};
-use crate::process::{self, AgentProcess, EXIT_GRACE};
+use crate::process::{self, AgentProcess};
 use crate::{AgentCli, AgentError, AgentEvent, AgentKind, ModelInfo, SessionConfig};
 use protocol::{ThreadSetup, TurnReader};
 
@@ -28,9 +28,13 @@ pub(crate) fn launch(config: &SessionConfig) -> Launch {
     Launch { command, protocol: Box::new(CodexProtocol::new(config)), temporary_file: None }
 }
 
-fn initialize_request(id: u64) -> Value {
+fn initialize_params() -> Value {
     let version = env!("CARGO_PKG_VERSION");
-    json!({"id": id, "method": "initialize", "params": {"clientInfo": {"name": "codeview", "title": "CodeView", "version": version}}})
+    json!({"clientInfo": {"name": "codeview", "title": "CodeView", "version": version}})
+}
+
+fn interrupt_params(thread_id: &str, turn_id: &str) -> Value {
+    json!({"threadId": thread_id, "turnId": turn_id})
 }
 
 /// What an answer with this id belongs to.
@@ -61,8 +65,8 @@ struct CodexProtocol {
     effort: Option<String>,
     next_id: u64,
     waiting: HashMap<u64, Request>,
-    /// The thread's id and reader, once `thread/start` answered.
-    thread: Option<(String, TurnReader)>,
+    /// The thread's reader, once `thread/start` answered.
+    thread: Option<TurnReader>,
     turn: Turn,
 }
 
@@ -87,20 +91,14 @@ impl CodexProtocol {
     fn request(&mut self, kind: Request, method: &str, params: Value) -> Value {
         self.next_id += 1;
         self.waiting.insert(self.next_id, kind);
-        let mut message = json!({"id": self.next_id, "method": method});
-        if let Some(object) = message.as_object_mut() {
-            object.insert("params".to_owned(), params);
-        }
-        message
-    }
-
-    fn interrupt_request(&mut self, turn_id: &str) -> Value {
-        let thread_id = self.thread.as_ref().map(|(id, _)| id.clone()).unwrap_or_default();
-        self.request(
-            Request::Interrupt,
-            "turn/interrupt",
-            json!({"threadId": thread_id, "turnId": turn_id}),
-        )
+        let message: Map<String, Value> = [
+            ("id".to_owned(), json!(self.next_id)),
+            ("method".to_owned(), json!(method)),
+            ("params".to_owned(), params),
+        ]
+        .into_iter()
+        .collect();
+        Value::Object(message)
     }
 
     /// The next step after the answer to `kind`.
@@ -123,8 +121,11 @@ impl CodexProtocol {
             (Request::Turn, None) => {
                 let id =
                     result.pointer("/turn/id").and_then(Value::as_str).unwrap_or("").to_owned();
-                if self.turn == (Turn::Starting { interrupt_due: true }) {
-                    reaction.send.push(self.interrupt_request(&id));
+                if self.turn == (Turn::Starting { interrupt_due: true })
+                    && let Some(reader) = &self.thread
+                {
+                    let params = interrupt_params(reader.thread_id(), &id);
+                    reaction.send.push(self.request(Request::Interrupt, "turn/interrupt", params));
                 }
                 self.turn = Turn::Running { id };
             }
@@ -159,7 +160,7 @@ impl CodexProtocol {
                     session_id: thread_id.to_owned(),
                     model: model.to_owned(),
                 });
-                self.thread = Some((thread_id.to_owned(), TurnReader::new(thread_id)));
+                self.thread = Some(TurnReader::new(thread_id));
             }
         }
         reaction
@@ -168,9 +169,7 @@ impl CodexProtocol {
 
 impl Protocol for CodexProtocol {
     fn opening(&mut self) -> Vec<Value> {
-        self.next_id += 1;
-        self.waiting.insert(self.next_id, Request::Initialize);
-        vec![initialize_request(self.next_id)]
+        vec![self.request(Request::Initialize, "initialize", initialize_params())]
     }
 
     fn is_ready(&self) -> bool {
@@ -178,8 +177,8 @@ impl Protocol for CodexProtocol {
     }
 
     fn prompt(&mut self, text: &str) -> Vec<Value> {
-        let Some((thread_id, _)) = &self.thread else { return Vec::new() };
-        let params = protocol::turn_params(thread_id, text, self.effort.as_deref());
+        let Some(reader) = &self.thread else { return Vec::new() };
+        let params = protocol::turn_params(reader.thread_id(), text, self.effort.as_deref());
         self.turn = Turn::Starting { interrupt_due: false };
         vec![self.request(Request::Turn, "turn/start", params)]
     }
@@ -192,8 +191,9 @@ impl Protocol for CodexProtocol {
                 Vec::new()
             }
             Turn::Running { id } => {
-                let id = id.clone();
-                vec![self.interrupt_request(&id)]
+                let Some(reader) = &self.thread else { return Vec::new() };
+                let params = interrupt_params(reader.thread_id(), id);
+                vec![self.request(Request::Interrupt, "turn/interrupt", params)]
             }
         }
     }
@@ -215,7 +215,7 @@ impl Protocol for CodexProtocol {
             (Some(method), None) => {
                 let params = message.get("params").unwrap_or(&Value::Null);
                 let events = match &mut self.thread {
-                    Some((_, reader)) => reader.notification(method, params),
+                    Some(reader) => reader.notification(method, params),
                     None => Vec::new(),
                 };
                 if events.iter().any(|event| matches!(event, AgentEvent::TurnDone(_))) {
@@ -235,14 +235,14 @@ impl Protocol for CodexProtocol {
 /// The visible models from `model/list`, all pages, in the server's order (newest first).
 pub(crate) async fn list_models(cli: &AgentCli) -> Result<Vec<ModelInfo>, AgentError> {
     let command = process::command(&cli.program, ["app-server"], &std::env::temp_dir());
-    let mut agent = AgentProcess::spawn(command)?;
-    let listed = tokio::time::timeout(MODELS_TIMEOUT, all_models(&mut agent)).await;
-    let (code, stderr_tail) = agent.finish(EXIT_GRACE).await;
-    listed.unwrap_or(Err(AgentError::Exited { code, stderr_tail }))
+    let agent = AgentProcess::spawn(command)?;
+    agent.exchange(MODELS_TIMEOUT, "the model list", all_models).await
 }
 
-async fn all_models(agent: &mut AgentProcess) -> Result<Vec<ModelInfo>, AgentError> {
-    agent.send(&initialize_request(0)).await?;
+/// Every model page, as an [`AgentProcess::exchange`].
+async fn all_models(agent: &mut AgentProcess) -> Result<Vec<ModelInfo>, Option<AgentError>> {
+    let initialize = json!({"id": 0, "method": "initialize", "params": initialize_params()});
+    agent.send(&initialize).await.map_err(|_| None)?;
     let mut models = Vec::new();
     let mut page = 0;
     while let Some(line) = agent.next_line().await {
@@ -252,11 +252,11 @@ async fn all_models(agent: &mut AgentProcess) -> Result<Vec<ModelInfo>, AgentErr
         }
         if let Some(error) = message.get("error") {
             let words = error.get("message").and_then(Value::as_str).unwrap_or("model/list failed");
-            return Err(AgentError::Protocol(words.to_owned()));
+            return Err(Some(AgentError::Protocol(words.to_owned())));
         }
         let result = message.get("result").unwrap_or(&Value::Null);
         let cursor = if message.get("id").and_then(Value::as_u64) == Some(0) {
-            agent.send(&json!({"method": "initialized"})).await?;
+            agent.send(&json!({"method": "initialized"})).await.map_err(|_| None)?;
             None
         } else {
             let (listed, cursor) = protocol::model_page(result);
@@ -269,9 +269,10 @@ async fn all_models(agent: &mut AgentProcess) -> Result<Vec<ModelInfo>, AgentErr
         page += 1;
         agent
             .send(&json!({"id": page, "method": "model/list", "params": {"cursor": cursor}}))
-            .await?;
+            .await
+            .map_err(|_| None)?;
     }
-    Err(AgentError::Protocol("the CLI ended before it listed its models".to_owned()))
+    Err(Some(AgentError::Protocol("the CLI ended before it listed its models".to_owned())))
 }
 
 #[cfg(test)]

@@ -19,6 +19,7 @@ use std::time::Duration;
 
 use egui::{FontDefinitions, ViewportBuilder};
 use review_store::checkouts::TerminalChoice;
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
 #[cfg(any(test, feature = "test-support"))]
 pub use self::caption::published as published_caption;
@@ -37,8 +38,6 @@ pub const TERMINALS: &[(TerminalChoice, &str)] = &[
     (TerminalChoice::PowerShell, "PowerShell"),
     (TerminalChoice::GitBash, "Git Bash"),
 ];
-/// Keeps console programs from flashing a console window in the GUI build.
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// Segoe UI Variable (Windows 11): optical size tuned for text.
 const TEXT_OPTICAL_SIZE: f32 = 10.5;
 
@@ -48,7 +47,7 @@ pub fn prepare_environment() {}
 /// The window keeps its native frame; [`integrate_title_bar`] takes the caption off once it exists.
 /// It opens without taking the foreground when the launcher asked for that ([`startup`]).
 pub fn viewport(builder: ViewportBuilder) -> ViewportBuilder {
-    builder.with_active(startup::activates_first_window(startup::requested_show_command()))
+    builder.with_active(startup::launch_activates(startup::launch_show_command()))
 }
 
 /// Starts `command` without a console window.
@@ -64,7 +63,7 @@ pub fn hide_std_console(command: &mut std::process::Command) {
 
 /// The user's Downloads folder.
 pub fn downloads_dir() -> Option<PathBuf> {
-    std::env::var_os("USERPROFILE").map(|profile| PathBuf::from(profile).join("Downloads"))
+    std::env::home_dir().map(|home| home.join("Downloads"))
 }
 
 /// Shows `path` in Explorer; fails when Explorer does not start.
@@ -147,9 +146,8 @@ pub fn prefers_reduced_motion() -> bool {
 /// Sleeps until a deadline, or until input arrives in this thread's queue.
 #[derive(Default)]
 pub struct FrameHold {
-    /// High-resolution waitable timer, created on first use; `None` if it could not be.
-    timer: Option<std::os::windows::io::OwnedHandle>,
-    is_created: bool,
+    /// High-resolution waitable timer, created on first use; holds `None` if it could not be.
+    timer: std::cell::OnceCell<Option<std::os::windows::io::OwnedHandle>>,
 }
 
 impl FrameHold {
@@ -169,12 +167,9 @@ impl FrameHold {
             MWMO_INPUTAVAILABLE, MsgWaitForMultipleObjectsEx,
         };
 
-        if !self.is_created {
-            self.timer = create_high_resolution_timer();
-            self.is_created = true;
-        }
         let timer = self
             .timer
+            .get_or_init(create_high_resolution_timer)
             .as_ref()
             .map(AsRawHandle::as_raw_handle)
             .filter(|timer| set_timer(*timer, duration));

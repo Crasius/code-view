@@ -10,15 +10,10 @@
 //!
 //! The window must stay visible (not minimized, not covered) for vsync to pace it.
 
-#[path = "../src/platform/gl.rs"]
-#[expect(
-    dead_code,
-    reason = "the probe prints version and renderer; the vendor is for the frame stats overlay"
-)]
-mod gl;
-
 use std::time::{Duration, Instant};
 
+use cv_base::frame::Percentiles;
+use cv_base::platform::gl;
 use egui::{Align2, Color32, FontId, pos2};
 
 const WARMUP: Duration = Duration::from_millis(1000);
@@ -30,6 +25,8 @@ fn main() -> eframe::Result<()> {
     let renderer = match backend.as_str() {
         #[cfg(feature = "wgpu")]
         "wgpu" => eframe::Renderer::Wgpu,
+        #[cfg(not(feature = "wgpu"))]
+        "wgpu" => without_wgpu(),
         _ => eframe::Renderer::Glow,
     };
     let options = eframe::NativeOptions {
@@ -48,6 +45,16 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |creation| Ok(Box::new(Probe::new(creation, backend, seconds)))),
     )
+}
+
+/// Asked for wgpu in a build without the `wgpu` feature: says how to build it and exits.
+#[cfg(not(feature = "wgpu"))]
+#[expect(clippy::print_stderr, reason = "the probe reports on the command line")]
+fn without_wgpu() -> ! {
+    eprintln!(
+        "This build has no wgpu renderer. Run: cargo run --release -p cv-base --features wgpu --example frame_pacing -- wgpu 6"
+    );
+    std::process::exit(2);
 }
 
 struct Probe {
@@ -97,8 +104,7 @@ impl Probe {
     fn report(&self) {
         let mut intervals = self.intervals_ms.clone();
         intervals.sort_unstable_by(f32::total_cmp);
-        let mut cpu = self.cpu_ms.clone();
-        cpu.sort_unstable_by(f32::total_cmp);
+        let cpu = Percentiles::of(self.cpu_ms.iter().copied());
         let at = |sorted: &[f32], quantile: f32| {
             sorted
                 .get(((sorted.len().max(1) - 1) as f32 * quantile).round() as usize)
@@ -129,12 +135,7 @@ impl Probe {
             deviation,
             missed
         );
-        println!(
-            "cpu       p50 {:.2}  p95 {:.2}  p99 {:.2} ms",
-            at(&cpu, 0.5),
-            at(&cpu, 0.95),
-            at(&cpu, 0.99)
-        );
+        println!("cpu       p50 {:.2}  p95 {:.2}  p99 {:.2} ms", cpu.p50, cpu.p95, cpu.p99);
     }
 }
 

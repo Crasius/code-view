@@ -86,7 +86,7 @@ struct Press {
 enum Phase {
     /// Held still, waiting for [`LONG_PRESS`].
     Pending,
-    /// Moved past the click distance first: neither a click nor a window move, as before.
+    /// Moved past the click distance first: neither a click nor a window move.
     Moved,
     /// Held long enough: the window moves, and the press is no click.
     Moving,

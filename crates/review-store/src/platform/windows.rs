@@ -15,11 +15,10 @@ use windows_sys::Win32::Foundation::LocalFree;
 use windows_sys::Win32::Security::Cryptography::{
     CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptProtectData, CryptUnprotectData,
 };
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
 use super::DataRoots;
 use crate::token_vault::VaultProblem;
-
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub(crate) const VAULT_SUMMARY: &str = "Tokens are stored encrypted for your Windows user (DPAPI). Code View never shows or logs them.";
 
@@ -78,9 +77,7 @@ pub(crate) fn hide_console(command: &mut Command) {
 
 /// `%APPDATA%` roams with the user profile, `%LOCALAPPDATA%` stays on this machine.
 pub(crate) fn data_roots() -> DataRoots {
-    let home = std::env::var_os("USERPROFILE")
-        .or_else(|| std::env::var_os("HOME"))
-        .map_or_else(std::env::temp_dir, PathBuf::from);
+    let home = std::env::home_dir().unwrap_or_else(std::env::temp_dir);
     DataRoots {
         config: std::env::var_os("APPDATA").map_or_else(|| home.join(".config"), PathBuf::from),
         cache: std::env::var_os("LOCALAPPDATA").map_or_else(|| home.join(".cache"), PathBuf::from),

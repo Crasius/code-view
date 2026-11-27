@@ -8,9 +8,9 @@ use std::io::{self, Read, Write};
 
 /// The longest request the host reads: one carries a URL. Our own limit, far below the
 /// browser's 64 MiB.
-pub const MAX_REQUEST: u32 = 64 * 1024;
+const MAX_REQUEST: u32 = 64 * 1024;
 /// The longest message the browser accepts from a host (1 MiB, Chrome's native messaging docs).
-pub const MAX_ANSWER: usize = 1024 * 1024;
+const MAX_ANSWER: usize = 1024 * 1024;
 
 /// The next message's bytes, or `None` once the browser closed stdin between messages.
 pub fn read_message(input: &mut impl Read) -> io::Result<Option<Vec<u8>>> {
@@ -78,7 +78,7 @@ mod tests {
 
     #[test]
     fn a_message_round_trips_with_a_native_endian_length() {
-        let json = r#"{"type":"check","url":"https://github.com/a/b/pull/1"}"#;
+        let json = r#"{"type":"check","url":"https://example.com/größe"}"#;
         let bytes = framed(json);
         let length = u32::try_from(json.len()).expect("short");
         assert_eq!(bytes.get(..4), Some(length.to_ne_bytes().as_slice()));
@@ -89,14 +89,6 @@ mod tests {
             None,
             "stdin closed between messages"
         );
-    }
-
-    #[test]
-    fn counts_bytes_not_characters() {
-        let json = r#"{"url":"https://example.com/größe"}"#;
-        let bytes = framed(json);
-        assert_eq!(bytes.len(), 4 + json.len());
-        assert_ne!(json.len(), json.chars().count());
     }
 
     #[test]

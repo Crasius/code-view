@@ -9,11 +9,10 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use super::DAY;
-use super::finished::FinishedPullRequest;
 use super::leases::{Lease, Leases};
 use super::mirrors::MirrorGuard;
 use super::policy::Outcome;
-use super::sweep::{CacheLimits, Sweeper};
+use super::sweep::{CacheLimits, FinishedPullRequest, Sweeper};
 use super::usage::{self, StorageUsage};
 use crate::{AppPaths, platform};
 
@@ -244,16 +243,14 @@ impl Worker {
 mod tests {
     use super::*;
     use crate::retention::mirrors::NothingInUse;
-    use crate::test_support::{TestDir, wait_for};
+    use crate::test_support::{TestDir, wait_for, write_file};
 
     #[test]
     fn sweeps_on_schedule_and_resumes_the_trash() {
         let dir = TestDir::new("worker-schedule");
-        let paths = AppPaths::new(dir.path().join("config"), dir.path().join("cache"));
+        let paths = dir.paths();
         std::fs::create_dir_all(paths.trash_dir().join("1-0-left.git")).unwrap();
-        let old_log = paths.logs_dir().join("c").join("old.log");
-        std::fs::create_dir_all(old_log.parent().unwrap()).unwrap();
-        std::fs::write(&old_log, b"log").unwrap();
+        let old_log = write_file(&paths.logs_dir().join("c").join("old.log"), b"log");
         let month_ago = SystemTime::now() - DAY * 30;
         std::fs::File::options()
             .write(true)
@@ -278,10 +275,8 @@ mod tests {
     #[test]
     fn clear_cache_reports_and_measures() {
         let dir = TestDir::new("worker-clear");
-        let paths = AppPaths::new(dir.path().join("config"), dir.path().join("cache"));
-        let log = paths.logs_dir().join("c").join("a.log");
-        std::fs::create_dir_all(log.parent().unwrap()).unwrap();
-        std::fs::write(&log, vec![0u8; 64]).unwrap();
+        let paths = dir.paths();
+        write_file(&paths.logs_dir().join("c").join("a.log"), &[0u8; 64]);
         let schedule = Schedule {
             first: Duration::from_secs(3600),
             every: Duration::from_secs(3600),

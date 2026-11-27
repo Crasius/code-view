@@ -14,11 +14,9 @@ use std::ffi::OsString;
 use review_core::Result;
 
 use super::repo::LocalRepo;
+use crate::line_counts;
 use crate::mirror::GitMirror;
-use crate::progress::GitEvent;
-
-/// Where git's progress goes; borrowed for the call, unlike a [`crate::ProgressSink`].
-type Sink<'a> = dyn Fn(GitEvent) + Send + Sync + 'a;
+use crate::progress::{GitEvent, ProgressSink};
 
 /// Object ids per download from the host: well below the command line's limit on Windows.
 const IDS_PER_FETCH: usize = 400;
@@ -30,7 +28,7 @@ pub async fn supply(
     repo: &LocalRepo,
     head: &str,
     into: &str,
-    sink: &Sink<'_>,
+    sink: &ProgressSink<'_>,
 ) -> Result<()> {
     let haves = haves(repo).await?;
     let mut wanted = format!("{head}\n");
@@ -66,22 +64,15 @@ pub async fn supply_partial(
     repo: &LocalRepo,
     head: &str,
     into: &str,
-    sink: &Sink<'_>,
+    sink: &ProgressSink<'_>,
 ) -> Result<()> {
     {
         let _guard = mirror.fetch_lock().lock().await;
-        let tree = mirror.git().run_offline(["ls-tree", "-r", head]).await?;
-        let blobs: Vec<&str> = std::str::from_utf8(&tree)
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|line| {
-                let (meta, _path) = line.split_once('\t')?;
-                let mut fields = meta.split_whitespace();
-                let (_mode, kind, oid) = (fields.next()?, fields.next()?, fields.next()?);
-                (kind == "blob").then_some(oid)
-            })
+        let tree = mirror.git().run_offline(["ls-tree", "-r", "-z", head]).await?;
+        let missing: Vec<String> = line_counts::missing_blobs(&mirror.git(), tree_blobs(&tree))
+            .await?
+            .into_iter()
             .collect();
-        let missing = missing_blobs(mirror, &blobs).await?;
         download(mirror, &missing, sink).await?;
     }
     fetch_into(repo, "origin".into(), head, into, &["--filter=blob:none"], sink).await
@@ -99,35 +90,23 @@ async fn haves(repo: &LocalRepo) -> Result<Vec<String>> {
         .collect())
 }
 
-/// Which of `blobs` the mirror lacks, asked without fetching (see `line_counts::missing_blobs`
-/// for why not `cat-file`): `rev-list --no-walk --ignore-missing` lists only those it has.
-async fn missing_blobs(mirror: &GitMirror, blobs: &[&str]) -> Result<Vec<String>> {
-    if blobs.is_empty() {
-        return Ok(Vec::new());
-    }
-    let input: String = blobs.iter().flat_map(|oid| [*oid, "\n"]).collect();
-    let listed = ["rev-list", "--objects", "--no-walk", "--ignore-missing", "--missing=print"];
-    let output = mirror
-        .git()
-        .run_offline_with_input(listed.into_iter().chain(["--stdin"]), input.as_bytes())
-        .await?;
-    let output = String::from_utf8_lossy(&output);
-    let local: HashSet<&str> = output
-        .lines()
-        .filter(|line| !line.starts_with('?'))
-        .filter_map(|line| line.split(' ').next())
-        .collect();
-    let mut seen = HashSet::new();
-    Ok(blobs
-        .iter()
-        .filter(|oid| !local.contains(*oid) && seen.insert(**oid))
-        .map(|oid| (*oid).to_owned())
-        .collect())
+/// The blob ids of `git ls-tree -r -z`: records of `<mode> <type> <oid>\t<path>\0`. Only the part
+/// before the tab is decoded, so a path that is not UTF-8 costs nothing.
+fn tree_blobs(ls_tree_z: &[u8]) -> Vec<&str> {
+    ls_tree_z
+        .split(|byte| *byte == 0)
+        .filter_map(|record| {
+            let meta = record.split(|byte| *byte == b'\t').next()?;
+            let mut fields = std::str::from_utf8(meta).ok()?.split_whitespace();
+            let (_mode, kind, oid) = (fields.next()?, fields.next()?, fields.next()?);
+            (kind == "blob").then_some(oid)
+        })
+        .collect()
 }
 
 /// Downloads `ids` into the mirror from its host, in batches, by id: what git's own lazy fetch
 /// would ask for, in as few requests as the command line allows.
-async fn download(mirror: &GitMirror, ids: &[String], sink: &Sink<'_>) -> Result<()> {
+async fn download(mirror: &GitMirror, ids: &[String], sink: &ProgressSink<'_>) -> Result<()> {
     if ids.is_empty() {
         return Ok(());
     }
@@ -157,7 +136,7 @@ async fn fetch_into(
     head: &str,
     into: &str,
     extra: &[&str],
-    sink: &Sink<'_>,
+    sink: &ProgressSink<'_>,
 ) -> Result<()> {
     let refspec = format!("+{head}:{into}");
     let mut args: Vec<OsString> =
@@ -167,4 +146,30 @@ async fn fetch_into(
     args.push(refspec.into());
     repo.git().run_with_progress(args, sink).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tree_blobs;
+
+    /// Regression: the listing was decoded as one UTF-8 text, so a single Latin-1 file name made
+    /// it empty and a new clone downloaded no blob at all.
+    #[test]
+    fn tree_blobs_keep_every_blob_whatever_its_path() {
+        let listing: &[u8] = b"100644 blob 1111111111111111111111111111111111111111\tREADME.md\0\
+            100644 blob 2222222222222222222222222222222222222222\tcaf\xe9.txt\0\
+            040000 tree 3333333333333333333333333333333333333333\tsrc\0\
+            160000 commit 4444444444444444444444444444444444444444\tvendor/lib\0\
+            100755 blob 5555555555555555555555555555555555555555\tsrc/run.sh\0";
+        assert_eq!(
+            tree_blobs(listing),
+            [
+                "1111111111111111111111111111111111111111",
+                "2222222222222222222222222222222222222222",
+                "5555555555555555555555555555555555555555"
+            ],
+            "trees and submodules are no blobs"
+        );
+        assert_eq!(tree_blobs(b""), Vec::<&str>::new());
+    }
 }

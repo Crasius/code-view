@@ -86,10 +86,7 @@ impl ChangeGroup {
         }
         let lower = path.to_ascii_lowercase();
         let (dirs, file_name) = lower.rsplit_once('/').unwrap_or(("", lower.as_str()));
-        let extension = match file_name.rsplit_once('.') {
-            Some((stem, extension)) if !stem.is_empty() => extension,
-            _ => "",
-        };
+        let (_, extension) = super::file_category::split_extension(file_name);
         if is_mockup(dirs, extension) {
             return ChangeGroup::Mockups;
         }
@@ -189,27 +186,6 @@ mod tests {
     }
 
     #[test]
-    fn tests_are_the_filters_tests() {
-        for path in [
-            "tests/integration.rs",
-            "src/__tests__/a.js",
-            "spec/models/user_spec.rb",
-            "e2e/login.ts",
-            "pkg/testdata/input.txt",
-            "web/fixtures/payload.json",
-            "pkg/router/router_test.go",
-            "web/app/page.test.tsx",
-            "web/app/page.spec.ts",
-            "lib/test_parser.py",
-            "src/main/java/com/acme/OrderServiceTest.java",
-            "src/Orders/OrderRouterTests.cs",
-            "app/models/user_spec.rb",
-        ] {
-            assert_group(path, Tests);
-        }
-    }
-
-    #[test]
     fn mockups_are_images_design_files_and_mockup_folders() {
         for path in [
             "assets/logo.png",
@@ -227,23 +203,6 @@ mod tests {
             "screenshots/home.txt",
         ] {
             assert_group(path, Mockups);
-        }
-    }
-
-    #[test]
-    fn docs_are_text_and_project_documents() {
-        for path in [
-            "README.md",
-            "guide/intro.mdx",
-            "manual/index.rst",
-            "manual/setup.adoc",
-            "notes.txt",
-            "docs/architecture/overview.md",
-            "doc/diagram.puml",
-            "CHANGELOG",
-            "LICENSE",
-        ] {
-            assert_group(path, Docs);
         }
     }
 

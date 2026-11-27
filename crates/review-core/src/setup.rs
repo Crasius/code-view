@@ -216,19 +216,25 @@ pub const TOKEN_DESCRIPTION: &str = "Pull request review desktop app";
 
 /// The platform-neutral reading of 401 and 403 answers; providers refine it with their permission names.
 pub fn generic_denial(error: &ProviderError) -> Option<AccessProblem> {
-    match error.status()? {
+    let ProviderError::Status { status, body, .. } = error else {
+        return None;
+    };
+    match status {
         401 => Some(AccessProblem {
             status: 401,
             title: "The token was rejected. It may have expired or been revoked.".to_owned(),
             fix: "Create a new token and paste it into this connection.".to_owned(),
             actions: Vec::new(),
         }),
-        403 => Some(AccessProblem {
-            status: 403,
-            title: format!("Access denied: {}", error.server_message().unwrap_or_else(|| "no details from the server".to_owned())),
-            fix: "Give the token the missing permission, or create a new token with the recommended settings.".to_owned(),
-            actions: Vec::new(),
-        }),
+        403 => {
+            let title = format!("Access denied: {}", crate::error::readable_body(body));
+            Some(AccessProblem {
+                status: 403,
+                title,
+                fix: "Give the token the missing permission, or create a new token with the recommended settings.".to_owned(),
+                actions: Vec::new(),
+            })
+        }
         _ => None,
     }
 }

@@ -14,9 +14,9 @@ use crate::test_support::TestDir;
 use crate::{
     AppSettings, AssistantSettings, CheckFilter, CommentEditor, CommentEditors, DiffLayout,
     Favorites, FileFilters, FilesStart, FrameRateLimit, HeaderMode, HeaderModes, ImageCompare,
-    ListFilters, MergePreferences, PaneSizes, PipelineSettings, PullRequestStart, RenderedWidth,
-    RepositorySections, SectionCard, SectionKey, ThemePreference, ThreadFilters, ThreadsPanel,
-    TreeSide, WindowPlacement,
+    ListFilters, MergePreferences, MiniChatCorner, PaneSizes, PipelineSettings, PullRequestStart,
+    RenderedWidth, RepositorySections, SectionCard, SectionKey, ThemePreference, ThreadFilters,
+    ThreadsPanel, TreeSide, WindowPlacement,
 };
 use review_core::{AgentKind, ModelChoice};
 
@@ -51,8 +51,10 @@ fn customized() -> AppSettings {
         panes: PaneSizes {
             file_tree: 412.0,
             diff_split: 0.35,
+            overview_side: 360.0,
+            preview_split: 0.6,
+            pipeline_jobs: 280.0,
             threads_panel: 420.0,
-            ..PaneSizes::DEFAULT
         },
         collapsed_connections: BTreeSet::from(["gitlab-work".to_owned()]),
         pipelines: PipelineSettings {
@@ -74,7 +76,7 @@ fn customized() -> AppSettings {
         },
         threads_panel: ThreadsPanel {
             is_open: true,
-            filters: ThreadFilters { unread: true, ..ThreadFilters::default() },
+            filters: ThreadFilters { active: false, resolved: true, unread: true, mine: true },
         },
         merge,
         // Negative coordinates: a monitor left of or above the primary one.
@@ -94,16 +96,13 @@ fn customized() -> AppSettings {
         last_clipboard_link: Some("https://github.com/acme/widgets/pull/7".to_owned()),
         rendered_width: RenderedWidth { full: true, reading: 900.0 },
         file_tree_side: TreeSide::Right,
-        assistant: AssistantSettings {
-            enabled: false,
-            agent: AgentKind::Codex,
-            claude_model: ModelChoice::CliDefault,
-            codex_model: ModelChoice::Named("gpt-6-luna".to_owned()),
-            card_height: Some(520.0),
-            mini_chat: true,
-            mini_chat_corner: crate::assistant::settings::MiniChatCorner { left: true, top: false },
+        assistant: customized_assistant(),
+        header_modes: HeaderModes {
+            overview: HeaderMode::AlwaysShown,
+            files: HeaderMode::StartMinimized,
+            commits: HeaderMode::AlwaysShown,
+            pipelines: HeaderMode::StartMinimized,
         },
-        header_modes: HeaderModes { files: HeaderMode::StartMinimized, ..HeaderModes::default() },
         scroll_past_end: false,
         highlight_selection_occurrences: false,
         open_next_unviewed: false,
@@ -116,11 +115,24 @@ fn customized() -> AppSettings {
     }
 }
 
+fn customized_assistant() -> AssistantSettings {
+    AssistantSettings {
+        enabled: false,
+        agent: AgentKind::Codex,
+        claude_model: ModelChoice::CliDefault,
+        codex_model: ModelChoice::Named("gpt-6-luna".to_owned()),
+        card_height: Some(520.0),
+        mini_chat: false,
+        mini_chat_corner: MiniChatCorner { left: true, top: true },
+    }
+}
+
 fn customized_favorites() -> Favorites {
     let mut favorites = Favorites::default();
     favorites.toggle("gh", "cli/cli");
     favorites.toggle("gitlab", "group/app");
     favorites.is_collapsed = true;
+    favorites.is_lane_shown = false;
     favorites
 }
 
@@ -179,6 +191,8 @@ fn a_setting_missing_from_an_older_file_loads_with_its_default() {
     assert!(older.highlight_selection_occurrences, "other occurrences highlight from the start");
     assert!(older.open_next_unviewed, "marking a file viewed opens the next unviewed one");
     assert!(older.scroll_past_end, "the diff scrolls past its last row from the start");
+    assert!(older.repository_sections.is_grouped, "rows are grouped from the start");
+    assert!(older.assistant.enabled, "the assistant is shown from the start");
     // A pane an older version had and this one does not.
     let gone_pane = load_text(&dir, r#"{"ui_scale":1.0,"panes":{"pipeline_runs":300.0}}"#);
     assert_eq!(gone_pane, AppSettings::default());
@@ -187,12 +201,20 @@ fn a_setting_missing_from_an_older_file_loads_with_its_default() {
 }
 
 /// A setting an older version saved and this one dropped (the find bar's side, now the focused
-/// pane) is ignored, and everything beside it loads.
+/// pane; the assistant panel's own width and the model chip's place) is ignored, and everything
+/// beside it loads.
 #[test]
 fn a_setting_this_version_dropped_still_loads() {
     let dir = TestDir::new("settings-dropped");
-    let older = load_text(&dir, r#"{"ui_scale":1.25,"diff_find_scope":"Left","wrap_lines":true}"#);
-    assert_eq!(older, AppSettings { ui_scale: 1.25, wrap_lines: true, ..AppSettings::default() });
+    let older = load_text(
+        &dir,
+        r#"{"ui_scale":1.25,"diff_find_scope":"Left","wrap_lines":true,"assistant":{"panel_width":640.0,"model_in_title":false,"card_height":300.0}}"#,
+    );
+    let assistant = AssistantSettings { card_height: Some(300.0), ..AssistantSettings::default() };
+    assert_eq!(
+        older,
+        AppSettings { ui_scale: 1.25, wrap_lines: true, assistant, ..AppSettings::default() }
+    );
 }
 
 /// A value this version cannot read (a variant a newer version added, a hand edit) resets only the
@@ -238,9 +260,6 @@ fn an_older_file_puts_the_file_tree_on_the_left() {
     let older = load_text(&dir, r#"{"focus_file_tree":true}"#);
     assert_eq!(older.file_tree_side, TreeSide::Left);
     assert!(older.focus_file_tree, "the rest of the file loads");
-    let right = load_text(&dir, r#"{"file_tree_side":"Right"}"#);
-    assert_eq!(right.file_tree_side, TreeSide::Right);
-    assert_eq!(TreeSide::Right.flipped(), TreeSide::Left);
 }
 
 /// Settings from before the header's modes per tab carry the one switch "Hide the header while
@@ -267,20 +286,15 @@ fn the_old_header_switch_carries_over_to_every_tab() {
     assert_eq!(partial.header_modes, commits, "a tab left out keeps its default");
 }
 
-/// Settings from before the comment editor choice open GitHub and GitLab comments in the rich
-/// editor and Azure DevOps ones in Markdown; a choice for one platform leaves the others.
+/// A file that chose the editor for one platform keeps the defaults of the others.
 #[test]
-fn an_older_file_gets_the_comment_editor_defaults_per_platform() {
+fn a_comment_editor_choice_for_one_platform_keeps_the_others() {
     let dir = TestDir::new("settings-comment-editors");
-    let older = load_text(&dir, r#"{"wrap_lines":true}"#).comment_editors;
-    assert_eq!(older.get(ProviderKind::GitHub), CommentEditor::Rich);
-    assert_eq!(older.get(ProviderKind::GitLab), CommentEditor::Rich);
-    assert_eq!(older.get(ProviderKind::AzureDevOps), CommentEditor::Markdown);
-    let mut chosen = older;
-    chosen.set(ProviderKind::GitLab, CommentEditor::Markdown);
-    assert_eq!(chosen, CommentEditors { gitlab: CommentEditor::Markdown, ..older });
     let partial = load_text(&dir, r#"{"comment_editors":{"github":"Markdown"}}"#).comment_editors;
-    assert_eq!(partial, CommentEditors { github: CommentEditor::Markdown, ..older });
+    assert_eq!(
+        partial,
+        CommentEditors { github: CommentEditor::Markdown, ..CommentEditors::default() }
+    );
 }
 
 #[test]

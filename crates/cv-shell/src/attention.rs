@@ -138,10 +138,10 @@ mod tests {
             let mut input = egui::RawInput { time: Some(self.time), events, ..Default::default() };
             input.viewports.entry(egui::ViewportId::ROOT).or_default().focused = Some(focused);
             let mut cue = None;
-            let mut output = self.ctx.run_ui(input, |ui| {
+            let output = self.ctx.run_ui(input, |ui| {
                 cue = self.attention.update(ui.ctx(), last_write);
             });
-            output.textures_delta.clear();
+            output.drop_without_applying_deltas();
             cue
         }
     }

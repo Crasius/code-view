@@ -18,12 +18,10 @@ pub fn shipped_per_folder(files: &BTreeMap<String, bool>) -> BTreeMap<String, us
         let Some((dir, file)) = path.rsplit_once('/') else { continue };
         let in_source_tree = dir.split('/').any(|part| part == "src");
         let is_module_root = matches!(file, "mod.rs" | "lib.rs" | "main.rs");
-        let count = folders.entry(dir.to_owned()).or_default();
         if in_source_tree && !is_test && !is_module_root {
-            *count += 1;
+            *folders.entry(dir.to_owned()).or_default() += 1;
         }
     }
-    folders.retain(|_, count| *count > 0);
     folders
 }
 
@@ -79,10 +77,13 @@ mod tests {
 
     #[test]
     fn over_budget_needs_a_reason_and_a_budget_within_limit_is_stale() {
-        assert_eq!(check("d", 12, None), None);
-        assert!(check("d", 13, None).is_some());
-        assert_eq!(check("d", 13, Some("One file per provider API area.")), None);
-        assert!(check("d", 13, Some("  ")).is_some());
-        assert!(check("d", 12, Some("reason")).is_some());
+        fn path_of(dir: &str, shipped: usize, reason: Option<&str>) -> Option<String> {
+            check(dir, shipped, reason).map(|finding| finding.path)
+        }
+        assert_eq!(path_of("d", 12, None), None);
+        assert_eq!(path_of("d", 13, Some("One file per provider API area.")), None);
+        assert_eq!(path_of("d", 13, None).as_deref(), Some("d"));
+        assert_eq!(path_of("d", 13, Some("  ")).as_deref(), Some("d/.folder-budget"));
+        assert_eq!(path_of("d", 12, Some("reason")).as_deref(), Some("d/.folder-budget"));
     }
 }

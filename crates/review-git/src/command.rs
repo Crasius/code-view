@@ -12,36 +12,31 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
 use crate::platform;
-use crate::progress::{self, GitEvent};
+use crate::progress::{self, GitEvent, ProgressSink};
 
 const MAX_STDERR_CHARS: usize = 800;
 
-/// Settings that keep every invocation non-interactive and fast on large repositories.
-const FIXED_CONFIG: &[(&str, &str)] = &[
+/// What every command changes from the user's configuration, in a user's working tree as well:
+/// nothing that shapes the files git writes there, only what would prompt, hold the command up or
+/// start work in the background.
+const NON_INTERACTIVE_CONFIG: &[(&str, &str)] = &[
     ("credential.helper", ""),
     ("core.askPass", ""),
     ("core.quotePath", "false"),
+    ("gc.auto", "0"),
+    ("maintenance.auto", "false"),
+    ("fetch.recurseSubmodules", "false"),
+];
+
+/// What a command on one of the app's own repositories adds, for diffs that compare blobs as
+/// they are.
+const MIRROR_CONFIG: &[(&str, &str)] = &[
     // Blobs are compared byte for byte: no line-ending conversion, whatever the user's config says.
     ("core.autocrlf", "false"),
     ("core.eol", "lf"),
     // An empty context line keeps its leading space, so the diff parser counts it.
     ("diff.suppressBlankEmpty", "false"),
     ("diff.renameLimit", "5000"),
-    ("gc.auto", "0"),
-    ("maintenance.auto", "false"),
-    ("fetch.recurseSubmodules", "false"),
-];
-
-/// What a command in a user's working tree changes from the user's configuration: nothing that
-/// shapes the files git writes there, only what would prompt, hold the command up or start work
-/// in the background.
-const TREE_CONFIG: &[(&str, &str)] = &[
-    ("credential.helper", ""),
-    ("core.askPass", ""),
-    ("core.quotePath", "false"),
-    ("gc.auto", "0"),
-    ("maintenance.auto", "false"),
-    ("fetch.recurseSubmodules", "false"),
 ];
 
 /// Where a command runs.
@@ -84,6 +79,25 @@ impl<'a> GitCommand<'a> {
         S: AsRef<OsStr>,
     {
         stdout_of(self.command(args, Objects::FetchMissing)).await
+    }
+
+    /// [`Self::run`] for a question git answers "none" to with exit code 1 and an empty stderr, as
+    /// `rev-parse --verify --quiet` does for a name that resolves to nothing: `None` then. Every
+    /// other failure (128 with `fatal:` for a folder that is no repository) is an error.
+    pub(crate) async fn run_or_none<I, S>(&self, args: I) -> Result<Option<Vec<u8>>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let output = self
+            .command(args, Objects::FetchMissing)
+            .output()
+            .await
+            .map_err(|error| spawn_error(&error))?;
+        if output.status.code() == Some(1) && output.stderr.is_empty() {
+            return Ok(None);
+        }
+        checked(output).map(Some)
     }
 
     /// [`Self::run`] on local objects only: a missing blob fails the command instead of being
@@ -142,7 +156,7 @@ impl<'a> GitCommand<'a> {
     pub(crate) async fn run_with_progress<I, S>(
         &self,
         args: I,
-        sink: &(dyn Fn(GitEvent) + Send + Sync + '_),
+        sink: &ProgressSink<'_>,
     ) -> Result<Vec<u8>>
     where
         I: IntoIterator<Item = S>,
@@ -161,7 +175,7 @@ impl<'a> GitCommand<'a> {
             stdout.read_to_end(&mut output).await.map(|_| output)
         };
         let read_stderr = async {
-            let mut tail = String::new();
+            let mut messages = String::new();
             let mut pending = Vec::new();
             let mut chunk = [0u8; 4096];
             loop {
@@ -179,12 +193,12 @@ impl<'a> GitCommand<'a> {
                         sink(GitEvent::Progress(progress));
                     } else if !line.trim().is_empty() {
                         sink(GitEvent::Message(line.trim_end().to_owned()));
-                        tail.push_str(line.trim());
-                        tail.push('\n');
+                        messages.push_str(line.trim());
+                        messages.push('\n');
                     }
                 }
             }
-            Ok::<String, std::io::Error>(tail)
+            Ok::<String, std::io::Error>(messages)
         };
         let (stdout_result, stderr_result) = tokio::join!(read_stdout, read_stderr);
         let status = child.wait().await.map_err(|error| spawn_error(&error))?;
@@ -193,8 +207,7 @@ impl<'a> GitCommand<'a> {
         if status.success() {
             return Ok(output);
         }
-        let trimmed: String = stderr_text.trim().chars().take(MAX_STDERR_CHARS).collect();
-        Err(ProviderError::Local(format!("git failed: {trimmed}")))
+        Err(failure(&stderr_text))
     }
 
     fn build<I, S>(&self, args: I) -> Command
@@ -203,14 +216,14 @@ impl<'a> GitCommand<'a> {
         S: AsRef<OsStr>,
     {
         let mut command = Command::new("git");
-        let fixed = match self.location {
+        let location_config: &[(&str, &str)] = match self.location {
             Location::GitDir(git_dir) => {
                 command.arg("--git-dir").arg(git_dir);
-                FIXED_CONFIG
+                MIRROR_CONFIG
             }
             Location::WorkTree(dir) => {
                 command.arg("-C").arg(dir);
-                TREE_CONFIG
+                &[]
             }
         };
         command
@@ -223,7 +236,8 @@ impl<'a> GitCommand<'a> {
             .env("GIT_OPTIONAL_LOCKS", "0")
             .kill_on_drop(true);
 
-        let mut config: Vec<(&str, &str)> = fixed.to_vec();
+        let mut config: Vec<(&str, &str)> =
+            NON_INTERACTIVE_CONFIG.iter().chain(location_config).copied().collect();
         if let Some(header) = self.authorization_header {
             config.push(("http.extraHeader", header));
         }
@@ -252,9 +266,19 @@ fn checked(output: std::process::Output) -> Result<Vec<u8>> {
         stdout.shrink_to_fit();
         return Ok(stdout);
     }
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let trimmed: String = stderr.trim().chars().take(MAX_STDERR_CHARS).collect();
-    Err(ProviderError::Local(format!("git failed: {trimmed}")))
+    Err(failure(&String::from_utf8_lossy(&output.stderr)))
+}
+
+/// The error of a failed git command: the last [`MAX_STDERR_CHARS`] characters of its `stderr`,
+/// where git prints the `fatal:` line after any progress and ref lines.
+fn failure(stderr: &str) -> ProviderError {
+    let stderr = stderr.trim();
+    let cut = stderr.chars().count().saturating_sub(MAX_STDERR_CHARS);
+    if cut == 0 {
+        return ProviderError::Local(format!("git failed: {stderr}"));
+    }
+    let kept: String = stderr.chars().skip(cut).collect();
+    ProviderError::Local(format!("git failed: …{kept}"))
 }
 
 /// `git fetch --progress origin +refs/…` as the user would type it (without `--git-dir`).
@@ -269,4 +293,31 @@ fn display(args: &[OsString]) -> String {
 
 fn spawn_error(error: &std::io::Error) -> ProviderError {
     ProviderError::Local(format!("cannot start git (is it installed and on PATH?): {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use review_core::ProviderError;
+
+    use super::{MAX_STDERR_CHARS, failure};
+
+    /// Regression: the error kept the first 800 characters, so a fetch's ref lines pushed the
+    /// `fatal:` line that names the cause out of it.
+    #[test]
+    fn a_long_error_keeps_its_last_line() {
+        let refs = " * [new ref] refs/pull/1/head -> refs/review/pull/1/head\n".repeat(40);
+        let stderr = format!("From file:///origin\n{refs}fatal: couldn't find remote ref x\n");
+        let ProviderError::Local(message) = failure(&stderr) else {
+            panic!("a local error");
+        };
+        assert!(message.starts_with("git failed: …"), "{message}");
+        assert!(message.ends_with("fatal: couldn't find remote ref x"), "{message}");
+        let kept = message.trim_start_matches("git failed: …");
+        assert_eq!(kept.chars().count(), MAX_STDERR_CHARS);
+
+        let ProviderError::Local(short) = failure("  fatal: not a git repository\n") else {
+            panic!("a local error");
+        };
+        assert_eq!(short, "git failed: fatal: not a git repository");
+    }
 }

@@ -18,7 +18,8 @@ pub const NO_GROWTH: usize = 700;
 /// Allowlist entries: path to its line cap.
 pub type Allowlist = BTreeMap<String, usize>;
 
-/// Parses `<lines> <path>` lines; `#` starts a comment. Returns the bad lines as errors.
+/// Parses `<lines> <path>` lines; a line that starts with `#` is a comment, and an entry carries
+/// none, so `shrink` can rewrite entries without losing text. Returns the bad lines as errors.
 pub fn parse_allowlist(text: &str) -> Result<Allowlist, String> {
     let mut entries = Allowlist::new();
     for (index, raw) in text.lines().enumerate() {
@@ -40,12 +41,15 @@ pub fn parse_allowlist(text: &str) -> Result<Allowlist, String> {
 }
 
 fn without_comment(raw: &str) -> &str {
-    raw.split('#').next().unwrap_or_default().trim()
+    let line = raw.trim();
+    if line.starts_with('#') { "" } else { line }
 }
 
 fn parse_entry(line: &str) -> Option<(usize, &str)> {
     let (count, path) = line.split_once(' ')?;
-    Some((count.parse().ok()?, path.trim()))
+    let path = path.trim();
+    let plain = !path.is_empty() && !path.contains(|c: char| c == '#' || c.is_whitespace());
+    plain.then_some((count.parse().ok()?, path))
 }
 
 /// The finding for one file of `lines` shipped lines with its allowlist entry, if any.
@@ -157,12 +161,14 @@ mod tests {
 
     #[test]
     fn parses_entries_and_rejects_bad_lines() {
-        let entries =
-            parse_allowlist("# header\n1200 crates/a/src/big.rs\n\n800 crates/b/src/x.rs # note\n");
+        let entries = parse_allowlist(
+            "# header\n1200 crates/a/src/big.rs\n\n  # indented\n800 crates/b/src/x.rs\n",
+        );
         assert_eq!(
             entries.expect("valid").into_iter().collect::<Vec<_>>(),
             [("crates/a/src/big.rs".to_owned(), 1200), ("crates/b/src/x.rs".to_owned(), 800)]
         );
+        assert!(parse_allowlist("800 a.rs # note\n").is_err());
         assert!(parse_allowlist("big.rs 1200\n").is_err());
         assert!(parse_allowlist("800 a.rs\n900 a.rs\n").is_err());
     }
@@ -184,7 +190,8 @@ mod tests {
         assert!(messages[1].starts_with("c.rs: new entry (720)"), "{messages:?}");
     }
 
-    /// Owner decision D2 of the crate split: six capped files changed path with `git mv`.
+    /// A move keeps its cap; raising it on the way, or a new path with no listed origin, is still
+    /// growth.
     #[test]
     fn a_renamed_file_keeps_the_entry_of_its_old_path() {
         let base: Allowlist =

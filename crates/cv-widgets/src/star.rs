@@ -10,13 +10,13 @@ use super::{buttons, focus, row};
 const ADD: &str = "Add to favorites";
 const REMOVE: &str = "Remove from favorites";
 
-/// The tooltip and menu label for the star's next click.
-pub fn action_label(is_on: bool) -> &'static str {
+/// The tooltip for the star's next click.
+fn action_label(is_on: bool) -> &'static str {
     if is_on { REMOVE } else { ADD }
 }
 
 /// The accessible name of a repository's star toggle.
-pub fn name(repository_key: &str) -> String {
+fn name(repository_key: &str) -> String {
     format!("Favorite {repository_key}")
 }
 
@@ -49,9 +49,9 @@ pub fn paint(
 pub fn button_at(ui: &mut Ui, rect: Rect, id: Id, is_on: bool, repository_key: &str) -> Response {
     let palette = theme::palette(ui.ctx());
     let response = ui.interact(rect, id, Sense::click());
-    let accessible = name(repository_key);
-    response
-        .widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, is_on, &accessible));
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::Role::Button, true, is_on, name(repository_key))
+    });
     let hover = row::hover_amount(ui, &response);
     let fill = if response.is_pointer_button_down_on() {
         palette.pressed

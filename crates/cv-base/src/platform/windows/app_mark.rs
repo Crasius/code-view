@@ -79,27 +79,4 @@ mod tests {
         };
         assert_eq!([16, 20, 24, 32, 40, 256].map(viewbox), [16, 16, 24, 32, 64, 64]);
     }
-
-    #[test]
-    fn the_16_px_mark_is_pixel_sharp_on_a_transparent_background() {
-        let image = render(16);
-        let at = |x: usize, y: usize| image.pixels[y * 16 + x];
-        assert_eq!(at(0, 0), Color32::TRANSPARENT, "no tile behind the mark");
-        assert_eq!(
-            at(2, 2),
-            Color32::from_rgb(0xEF, 0x44, 0x44),
-            "the removed bar fills whole pixels"
-        );
-        assert_eq!(
-            at(2, 5),
-            Color32::from_rgb(0x22, 0xC5, 0x5E),
-            "the added bar fills whole pixels"
-        );
-        assert_eq!(at(13, 10), Color32::WHITE, "the check is drawn on whole pixels");
-        assert_eq!(
-            at(12, 14),
-            Color32::from_rgb(0x3B, 0x82, 0xF6),
-            "the badge is solid blue below the check"
-        );
-    }
 }

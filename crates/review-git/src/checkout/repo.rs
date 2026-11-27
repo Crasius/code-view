@@ -7,7 +7,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
-use review_core::Result;
+use review_core::{ProviderError, Result};
 
 use crate::command::GitCommand;
 
@@ -106,11 +106,13 @@ impl LocalRepo {
             .map(|t| t.path))
     }
 
-    /// The commit `name` (a ref or a commit id) points to, or `None` when there is none.
+    /// The commit `name` (a ref or a commit id) points to, or `None` when there is none. A git
+    /// failure, such as a folder that is no repository, is an error.
     pub async fn resolve(&self, name: &str) -> Result<Option<String>> {
         let spec = format!("{name}^{{commit}}");
-        let found = self.git().run(["rev-parse", "--verify", "--quiet", spec.as_str()]).await;
-        Ok(found.ok().map(|output| String::from_utf8_lossy(&output).trim().to_owned()))
+        let found =
+            self.git().run_or_none(["rev-parse", "--verify", "--quiet", spec.as_str()]).await?;
+        Ok(found.map(|output| String::from_utf8_lossy(&output).trim().to_owned()))
     }
 
     /// The tip of the local branch `branch`.
@@ -128,7 +130,7 @@ impl LocalRepo {
     async fn count(&self, from: &str, to: &str) -> Result<usize> {
         let range = format!("{to}..{from}");
         let output = self.git().run(["rev-list", "--count", range.as_str()]).await?;
-        Ok(String::from_utf8_lossy(&output).trim().parse().unwrap_or(0))
+        parse_count(&String::from_utf8_lossy(&output))
     }
 
     /// True when `ancestor` is `descendant` or one of its ancestors.
@@ -152,6 +154,15 @@ impl LocalRepo {
         let output = self.git().run(args).await?;
         Ok(String::from_utf8_lossy(&output).lines().map(str::to_owned).collect())
     }
+}
+
+/// `git rev-list --count`'s one number. Anything else is an error: read as 0, it would make every
+/// commit an ancestor and move a branch.
+fn parse_count(output: &str) -> Result<usize> {
+    let text = output.trim();
+    text.parse().map_err(|_| {
+        ProviderError::Local(format!("unexpected `git rev-list --count` output: {text}"))
+    })
 }
 
 /// `git status --porcelain=v1 --branch`: the `## branch...upstream` line, then one per change.
@@ -217,7 +228,39 @@ pub fn same_folder(first: &Path, second: &Path) -> bool {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use super::{parse_status, parse_worktrees, same_folder};
+    use super::{LocalRepo, parse_count, parse_status, parse_worktrees, same_folder};
+    use crate::test_repo::{Scratch, git, write};
+
+    /// Regression: an unreadable count read as 0, so every commit was an ancestor and a branch
+    /// moved to the pull request's head.
+    #[test]
+    fn a_count_that_is_no_number_is_an_error() {
+        assert_eq!(parse_count("3\n").ok(), Some(3));
+        assert!(parse_count("").is_err());
+        assert!(parse_count("warning: refname is ambiguous").is_err());
+    }
+
+    /// Regression: every git failure read as "no such branch", so a broken repository took the
+    /// path of a new branch.
+    #[tokio::test]
+    async fn resolving_in_a_folder_that_is_no_repository_fails() {
+        let scratch = Scratch::new("resolve");
+        let repository = scratch.0.join("repository");
+        std::fs::create_dir_all(&repository).expect("create the repository folder");
+        git(&repository, &["init", "-q"]);
+        write(&repository, "a.txt", "a\n");
+        git(&repository, &["add", "-A"]);
+        git(&repository, &["commit", "-q", "-m", "only"]);
+        let repo = LocalRepo::new(&repository);
+        let head = git(&repository, &["rev-parse", "HEAD"]);
+        assert_eq!(repo.branch_tip("main").await.expect("asked"), Some(head));
+        assert_eq!(repo.branch_tip("missing").await.expect("asked"), None);
+
+        let broken = scratch.0.join("broken");
+        write(&broken, ".git", "gitdir: nowhere\n");
+        let resolved = LocalRepo::new(&broken).branch_tip("main").await;
+        assert!(resolved.is_err(), "{resolved:?}");
+    }
 
     #[test]
     fn status_names_the_branch_and_every_change() {

@@ -165,8 +165,9 @@ async fn claude_answers_queued_questions_with_tools_and_cleans_up() {
         .iter()
         .map(|arg| arg.as_str().expect("text"))
         .collect();
-    let line = args.join(" ");
-    assert!(line.contains("--model haiku --effort low --restricted"), "{line}");
+    for pair in [["--model", "haiku"], ["--effort", "low"]] {
+        assert!(args.windows(2).any(|window| window == pair), "{pair:?} in {args:?}");
+    }
     assert_eq!(record[1]["brief"], "The pull request brief.");
     let brief_file = args.last().expect("the brief file is last");
     assert!(!Path::new(brief_file).exists(), "the brief file goes with the session");
@@ -209,10 +210,8 @@ async fn codex_session_declines_approvals_and_streams_the_turn() {
     let (session, mut events) = start(AgentKind::Codex, &scratch.0, pick("gpt-6-luna", "low"));
     session.ask("What changed?");
     let events = turn(&mut events).await;
-    let started = AgentEvent::Started {
-        session_id: "01a15939-1521-74d0-aba4-406184d368e9".to_owned(),
-        model: "gpt-6-luna".to_owned(),
-    };
+    let started =
+        AgentEvent::Started { session_id: fake::THREAD.to_owned(), model: "gpt-6-luna".to_owned() };
     assert_eq!(events.first(), Some(&started));
     let details: Vec<String> = tools(&events).into_iter().map(|step| step.detail).collect();
     assert_eq!(

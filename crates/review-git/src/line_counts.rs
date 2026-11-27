@@ -113,7 +113,7 @@ pub(crate) async fn count(
     let index_of: HashMap<String, usize> =
         files.iter().enumerate().map(|(index, file)| (file.path.clone(), index)).collect();
     let mut plan = Plan::new(tree_order(&files));
-    let mut missing = missing_blobs(git, &files, &plan.uncounted()).await?;
+    let mut missing = missing_blobs(git, blob_ids(&files, &plan.uncounted())).await?;
     let mut checked_at = Instant::now();
     let is_streamed = !missing.is_empty();
     let mut running = JoinSet::new();
@@ -172,7 +172,7 @@ pub(crate) async fn count(
             else => break,
         }
         if !plan.is_counted() && checked_at.elapsed() >= RECHECK {
-            missing = missing_blobs(git, &files, &plan.uncounted()).await?;
+            missing = missing_blobs(git, blob_ids(&files, &plan.uncounted())).await?;
             checked_at = Instant::now();
         }
     }
@@ -223,25 +223,26 @@ fn count_chunk(
     }
 }
 
-/// The ids of the blobs of the files at `indexes` that the mirror does not have, asked without
-/// fetching: `git rev-list --objects --no-walk --ignore-missing --missing=print` lists the blobs
-/// it has and skips the others. Not `git cat-file --batch-check`: offline, git 2.47 answers
-/// `<id> missing`, but git 2.39.5 (Debian 12) stops at the first missing blob with "could not
-/// fetch … from promisor remote", and no file would ever count.
-async fn missing_blobs(
-    git: &GitCommand<'_>,
-    files: &[ChangedFile],
-    indexes: &[usize],
-) -> Result<HashSet<String>> {
-    let mut asked = HashSet::new();
+/// The ids of the blobs the files at `indexes` have on either side.
+fn blob_ids<'f>(files: &'f [ChangedFile], indexes: &[usize]) -> Vec<&'f str> {
+    let mut ids = Vec::new();
     for file in indexes.iter().filter_map(|&index| files.get(index)) {
         let blobs = [(file.has_old_blob(), &file.old_oid), (file.has_new_blob(), &file.new_oid)];
-        for (exists, oid) in blobs {
-            if exists {
-                asked.insert(oid.as_str());
-            }
-        }
+        ids.extend(blobs.into_iter().filter(|(exists, _)| *exists).map(|(_, oid)| oid.as_str()));
     }
+    ids
+}
+
+/// The blobs among `ids` that the mirror does not have, asked without fetching:
+/// `git rev-list --objects --no-walk --ignore-missing --missing=print` lists the blobs it has and
+/// skips the others. Not `git cat-file --batch-check`: offline, git 2.47 answers `<id> missing`,
+/// but git 2.39.5 (Debian 12) stops at the first missing blob with "could not fetch … from
+/// promisor remote", and no file would ever count.
+pub(crate) async fn missing_blobs<'a>(
+    git: &GitCommand<'_>,
+    ids: impl IntoIterator<Item = &'a str>,
+) -> Result<HashSet<String>> {
+    let mut asked: HashSet<&str> = ids.into_iter().collect();
     if asked.is_empty() {
         return Ok(HashSet::new());
     }

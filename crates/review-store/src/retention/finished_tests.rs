@@ -6,13 +6,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use super::finished::FinishedPullRequest;
 use super::mirrors::NothingInUse;
 use super::refs::{self, test_repo};
-use super::sweep::CacheLimits;
+use super::sweep::{CacheLimits, FinishedPullRequest};
 use super::sweep_tests::{Cache, InUse};
 use super::{Leases, MirrorUse, Retention, Schedule, mirror_stamp};
-use crate::test_support::wait_for;
+use crate::flat_layout::pull_request_file;
+use crate::test_support::{wait_for, write_file};
 use crate::{AppPaths, stable_hash};
 
 const MERGED: &str = "gh-1|cli/cli|1";
@@ -23,24 +23,15 @@ fn finished(key: &str) -> FinishedPullRequest {
 }
 
 fn log(paths: &AppPaths, key: &str, log_id: &str) -> PathBuf {
-    let path = paths.pull_request_log_file("gh-1", key, log_id);
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, b"log").unwrap();
-    path
+    write_file(&paths.pull_request_log_file("gh-1", key, log_id), b"log")
 }
 
 fn viewed(paths: &AppPaths, key: &str) -> PathBuf {
-    let path = crate::viewed::file_for(&paths.viewed_dir(), "gh-1", key);
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, b"{}").unwrap();
-    path
+    write_file(&pull_request_file(&paths.viewed_dir(), "gh-1", key), b"{}")
 }
 
 fn thread_marks(paths: &AppPaths, key: &str) -> PathBuf {
-    let path = crate::threads::file_for(&paths.threads_dir(), "gh-1", key);
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, b"{}").unwrap();
-    path
+    write_file(&pull_request_file(&paths.threads_dir(), "gh-1", key), b"{}")
 }
 
 /// A mirror with real refs, stamped with the pull requests that fetched them.
