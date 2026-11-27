@@ -36,8 +36,8 @@ pub(crate) struct PageApp {
 }
 
 impl PageApp {
-    /// Opens pull request `key` on a connection named `id` (with `token`, or anonymous), each
-    /// frame `frame` seconds long. `configure` sets the services up before the page opens;
+    /// Opens pull request `key` on its connection `key.connection_id` (with `token`, or
+    /// anonymous), each frame `frame` seconds long. `configure` sets the services up before the page opens;
     /// `provider` hands out the test's script for the connection.
     pub(crate) fn start(
         key: PullRequestKey,

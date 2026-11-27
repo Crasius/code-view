@@ -87,9 +87,9 @@ fn linked_key<D, T, C>(
     threads: &Live<T>,
     commits: &Live<C>,
     native: usize,
-    connections: u64,
+    connections: &review_store::ConnectionStore,
 ) -> LinkedKey {
-    (detail.version(), threads.version(), commits.version(), native, connections)
+    (detail.version(), threads.version(), commits.version(), native, connections.revision())
 }
 
 /// The Linked card's rows, rebuilt when the texts they come from changed.
@@ -424,7 +424,7 @@ impl OverviewTab {
             &session.threads,
             &session.commits,
             native.len(),
-            services.connections.revision(),
+            &services.connections,
         );
         let here = session.here();
         if self.linked.key != Some(key) {
@@ -578,9 +578,11 @@ mod tests {
         let detail: Live<u8> = Live::seeded(Some(1));
         let mut threads: Live<Vec<String>> = Live::seeded(Some(vec!["See #3".into()]));
         let commits: Live<Vec<String>> = Live::default();
-        let before = linked_key(&detail, &threads, &commits, 0, 1);
+        let scratch = ScratchDir::new("linked-reloaded-thread");
+        let store = ConnectionStore::open(&scratch.app_paths()).expect("empty store");
+        let before = linked_key(&detail, &threads, &commits, 0, &store);
         threads.set(vec!["See #3, and #4 too".into()]);
-        assert_ne!(linked_key(&detail, &threads, &commits, 0, 1), before, "as many threads");
+        assert_ne!(linked_key(&detail, &threads, &commits, 0, &store), before, "as many threads");
     }
 
     /// An edited connection (a new base URL) keeps the number of connections, and the rows it
@@ -595,11 +597,11 @@ mod tests {
         let detail: Live<u8> = Live::seeded(Some(1));
         let threads: Live<Vec<String>> = Live::default();
         let commits: Live<Vec<String>> = Live::default();
-        let before = linked_key(&detail, &threads, &commits, 0, store.revision());
+        let before = linked_key(&detail, &threads, &commits, 0, &store);
         let moved = Connection { base_url: "https://gitlab.other.example".into(), ..connection };
         store.upsert(moved).expect("edit the connection");
         assert_eq!(store.all().len(), 1, "an edit adds no connection");
-        let after = linked_key(&detail, &threads, &commits, 0, store.revision());
+        let after = linked_key(&detail, &threads, &commits, 0, &store);
         assert_ne!(after, before, "the edited connection rebuilds the rows");
     }
 

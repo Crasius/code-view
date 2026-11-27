@@ -211,9 +211,7 @@ fn the_vote_composers_text_survives_a_reload_and_a_tab_switch() {
         |app, what| assert!(app.page().has_unsent_input(), "{what} lost the composer's text"),
     );
     app.kit.page_mut().show_tab(Tab::Overview);
-    for _ in 0..4 {
-        app.kit.frame();
-    }
+    app.frame_until("the Overview", |app| app.shows("Merge status"));
     assert_eq!(app.page().tab(), Tab::Overview);
     assert!(app.page().has_unsent_input(), "the Overview tab lost the composer's text");
 }
@@ -282,16 +280,9 @@ impl App {
         let mut app = Self { kit, host, origin };
         app.kit.set_focus(true);
         // Colors come from their own worker threads, which need real time, not frames.
-        let started = Instant::now();
-        while !(app.shows_diff() && app.is_settled()) {
-            assert!(
-                started.elapsed() < WAIT_LIMIT,
-                "the open file, colored and counted, did not come: {}",
-                app.loads()
-            );
-            app.kit.frame();
-            cv_testkit::let_threads_run(Duration::from_millis(10));
-        }
+        app.frame_until("the open file, colored and counted", |app| {
+            app.shows_diff() && app.is_settled()
+        });
         app
     }
 

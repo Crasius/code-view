@@ -201,11 +201,14 @@ fn show_draft(
 ) -> Option<HeaderAction> {
     let open = draft.as_mut()?;
     let outcome = composer(ui, key, kind, anchor, open, !can_write)?;
-    let closed = draft.take()?;
-    match outcome {
-        Outcome::Submitted { .. } => Some(vote(closed.entry.vote, Some(closed.text))),
+    let submitted = match outcome {
+        Outcome::Submitted { .. } => {
+            Some(vote(open.entry.vote, Some(std::mem::take(&mut open.text))))
+        }
         Outcome::Cancelled | Outcome::Dismissed => None,
-    }
+    };
+    *draft = None;
+    submitted
 }
 
 fn vote(vote: ReviewVote, comment: Option<String>) -> HeaderAction {
