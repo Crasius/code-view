@@ -170,22 +170,66 @@ fn commit_row(
         palette.text,
         text_width,
     );
+    let author =
+        elide::line(&painter, &commit.author_name, small, palette.text_secondary, text_width);
+    let tooltip = hover_text(commit, subject.elided, author.elided);
     painter.galley(
         pos2(text_left, rect.center().y - 9.0 - subject.size().y / 2.0),
         subject,
         palette.text,
     );
-    let author =
-        elide::line(&painter, &commit.author_name, small, palette.text_secondary, text_width);
     painter.galley(
         pos2(text_left, rect.center().y + 10.0 - author.size().y / 2.0),
         author,
         palette.text_secondary,
     );
     cv_widgets::focus::ring(ui, &response, rect);
-    let response = response.on_hover_text("Show this commit's changes");
+    let response = response.on_hover_text(tooltip);
     let parent = commit.parents.first()?;
     response
         .clicked()
         .then(|| CompareRange::Commit { sha: commit.sha.clone(), parent: parent.clone() })
+}
+
+/// The row's tooltip: what a click does, after the full subject when the subject or the author is
+/// cut, and the full author when that is.
+fn hover_text(commit: &CommitInfo, is_subject_cut: bool, is_author_cut: bool) -> String {
+    const HINT: &str = "Show this commit's changes";
+    match (is_subject_cut, is_author_cut) {
+        (false, false) => HINT.to_owned(),
+        (true, false) => format!("{}\n{HINT}", commit.subject),
+        (_, true) => format!("{}\n{}\n{HINT}", commit.subject, commit.author_name),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use review_git::CommitInfo;
+
+    use super::hover_text;
+
+    #[test]
+    fn a_cut_row_tells_its_subject_and_author_in_full_on_hover() {
+        let commit = CommitInfo {
+            sha: "0123456789abcdef".to_owned(),
+            parents: Vec::new(),
+            author_name: "Ada Lovelace".to_owned(),
+            author_email: "ada@example.com".to_owned(),
+            authored_at: 0,
+            subject: "Teach the engine to weave".to_owned(),
+        };
+        let cases = [
+            ((false, false), "Show this commit's changes"),
+            ((true, false), "Teach the engine to weave\nShow this commit's changes"),
+            ((false, true), "Teach the engine to weave\nAda Lovelace\nShow this commit's changes"),
+            ((true, true), "Teach the engine to weave\nAda Lovelace\nShow this commit's changes"),
+        ];
+        for ((is_subject_cut, is_author_cut), expected) in cases {
+            assert_eq!(
+                hover_text(&commit, is_subject_cut, is_author_cut),
+                expected,
+                "subject cut {is_subject_cut}, author cut {is_author_cut}"
+            );
+        }
+    }
 }

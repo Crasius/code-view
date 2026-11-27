@@ -27,6 +27,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
+use super::a11y_check::is_icon_glyph;
 use cv_pr_diff::find::bar::painted_now as find_widget_now;
 use cv_widgets::surfaces;
 
@@ -503,18 +504,20 @@ pub fn untold_elisions(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
     let mut findings = Vec::new();
     for text in elided {
         harness.hover_at(text.visible().center());
-        let mut has_tooltip = false;
+        let mut is_told = false;
         for _ in 0..40 {
             harness.step();
             let shown = frame(harness);
-            if shown.texts.iter().any(|tip| tip.layer.order == Order::Tooltip) {
-                has_tooltip = true;
+            if shown.texts.iter().any(|tip| {
+                tip.layer.order == Order::Tooltip && !tip.is_elided && tells(&tip.text, &text.text)
+            }) {
+                is_told = true;
                 break;
             }
         }
-        if !has_tooltip {
+        if !is_told {
             findings.push(format!(
-                "elided text {:?} {} has no tooltip",
+                "elided text {:?} {} has no tooltip with its full text",
                 short(&text.text),
                 show(text.ink)
             ));
@@ -525,6 +528,19 @@ pub fn untold_elisions(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
         }
     }
     findings
+}
+
+/// Whether the tooltip `tip` holds `text` in full. A tooltip is also the accessible description,
+/// so it tells an icon of `text` in words ([`super::a11y_check`]): "feature → main" reads
+/// "feature into main". The runs of `text` between its icons are looked for in `tip`, in order.
+fn tells(tip: &str, text: &str) -> bool {
+    let mut rest = tip;
+    text.split(is_icon_glyph).map(str::trim).filter(|run| !run.is_empty()).all(|run| {
+        rest.find(run).is_some_and(|at| {
+            rest = &rest[at + run.len()..];
+            true
+        })
+    })
 }
 
 fn short(text: &str) -> String {
@@ -538,4 +554,27 @@ fn short(text: &str) -> String {
 
 fn show(rect: Rect) -> String {
     format!("[{:.0},{:.0} {:.0}×{:.0}]", rect.left(), rect.top(), rect.width(), rect.height())
+}
+
+#[cfg(test)]
+mod tests {
+    use cv_base::theme::icons::ARROW_RIGHT;
+
+    use super::tells;
+
+    #[test]
+    fn a_tooltip_tells_a_text_only_with_all_of_it() {
+        let branches = format!("!4  ·  feature {ARROW_RIGHT} main");
+        let cases = [
+            ("Fix the parser\nShow this commit's changes", "Fix the parser", true),
+            ("Show this commit's changes", "Fix the parser", false),
+            ("Fix the", "Fix the parser", false),
+            ("!4  ·  feature into main", branches.as_str(), true),
+            ("!4  ·  main into feature", branches.as_str(), false),
+            ("!4  ·  feature", branches.as_str(), false),
+        ];
+        for (tip, text, is_told) in cases {
+            assert_eq!(tells(tip, text), is_told, "{tip:?} tells {text:?}");
+        }
+    }
 }

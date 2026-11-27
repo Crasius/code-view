@@ -71,7 +71,7 @@ fn names(node: &Node) -> impl Iterator<Item = (&'static str, &str)> {
 }
 
 /// A private-use code point: where the bundled icon fonts put their glyphs.
-fn is_icon_glyph(c: char) -> bool {
+pub(super) fn is_icon_glyph(c: char) -> bool {
     ('\u{E000}'..='\u{F8FF}').contains(&c)
 }
 
