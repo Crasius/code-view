@@ -25,7 +25,7 @@ fn provider(server: &MockServer, token: Option<&str>) -> GitHubProvider {
 }
 
 fn pull(head: &str, updated_at: &str) -> Value {
-    let mut pull: Value = serde_json::from_str(include_str!("fixtures/pull_request.json"))
+    let mut pull: Value = serde_json::from_str(include_str!("../fixtures/pull_request.json"))
         .expect("pull request fixture");
     pull["head"]["sha"] = json!(head);
     pull["updated_at"] = json!(updated_at);

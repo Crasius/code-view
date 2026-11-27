@@ -42,7 +42,7 @@ async fn edits_a_review_thread_comment_by_its_database_id() {
         .and(body_json(json!({ "body": "Use a slice here." })))
         .respond_with(
             ResponseTemplate::new(200)
-                .set_body_json(fixture(include_str!("fixtures/review_comment_edited.json"))),
+                .set_body_json(fixture(include_str!("../fixtures/review_comment_edited.json"))),
         )
         .expect(1)
         .mount(&server)
@@ -64,7 +64,7 @@ async fn edits_a_general_comment_as_an_issue_comment() {
         .and(body_json(json!({ "body": "Ready for another look." })))
         .respond_with(
             ResponseTemplate::new(200)
-                .set_body_json(fixture(include_str!("fixtures/issue_comment_edited.json"))),
+                .set_body_json(fixture(include_str!("../fixtures/issue_comment_edited.json"))),
         )
         .expect(1)
         .mount(&server)
@@ -84,7 +84,7 @@ async fn edits_a_review_body_through_the_review() {
         .and(body_json(json!({ "body": "Approved after the rename." })))
         .respond_with(
             ResponseTemplate::new(200)
-                .set_body_json(fixture(include_str!("fixtures/review_edited.json"))),
+                .set_body_json(fixture(include_str!("../fixtures/review_edited.json"))),
         )
         .expect(1)
         .mount(&server)

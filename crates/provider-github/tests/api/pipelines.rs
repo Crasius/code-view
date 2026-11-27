@@ -39,7 +39,7 @@ fn ok_json(body: Value) -> ResponseTemplate {
 #[tokio::test]
 async fn forbidden_check_runs_still_show_runs_and_statuses() {
     let (server, provider) = setup().await;
-    let pull: Value = serde_json::from_str(include_str!("fixtures/pull_request.json"))
+    let pull: Value = serde_json::from_str(include_str!("../fixtures/pull_request.json"))
         .expect("pull request fixture");
     mount_get(&server, &format!("/pulls/{NUMBER}"), ok_json(pull)).await;
     mount_get(&server, "/actions/runs", ok_json(json!({ "workflow_runs": [] }))).await;
@@ -117,7 +117,7 @@ async fn job_graph_follows_the_workflow_files_needs() {
 #[tokio::test]
 async fn listed_runs_read_their_workflow_file_without_another_run_request() {
     let (server, provider) = setup().await;
-    let pull: Value = serde_json::from_str(include_str!("fixtures/pull_request.json"))
+    let pull: Value = serde_json::from_str(include_str!("../fixtures/pull_request.json"))
         .expect("pull request fixture");
     mount_get(&server, &format!("/pulls/{NUMBER}"), ok_json(pull)).await;
     let listed = |id: u64| {

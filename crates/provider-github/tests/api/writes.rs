@@ -20,7 +20,8 @@ const REVIEWED_SHA: &str = "reviewed000";
 const PULL_NODE_ID: &str = "PR_kwDOAbc";
 
 fn pull_fixture() -> Value {
-    serde_json::from_str(include_str!("fixtures/pull_request.json")).expect("pull request fixture")
+    serde_json::from_str(include_str!("../fixtures/pull_request.json"))
+        .expect("pull request fixture")
 }
 
 async fn setup() -> (MockServer, GitHubProvider) {

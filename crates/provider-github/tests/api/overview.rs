@@ -374,7 +374,7 @@ async fn a_rest_listing_asks_for_checks_an_earlier_search_listed() {
         .mount(&server)
         .await;
     let rest_row: Value =
-        serde_json::from_str(include_str!("fixtures/pull_request.json")).expect("fixture");
+        serde_json::from_str(include_str!("../fixtures/pull_request.json")).expect("fixture");
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/contoso/app/pulls"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([rest_row])))

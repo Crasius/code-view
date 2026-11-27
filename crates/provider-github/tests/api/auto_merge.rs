@@ -24,7 +24,7 @@ async fn setup() -> (MockServer, GitHubProvider) {
     };
     let provider = GitHubProvider::new(connection, reqwest::Client::new());
     let pull: Value =
-        serde_json::from_str(include_str!("fixtures/pull_request.json")).expect("fixture");
+        serde_json::from_str(include_str!("../fixtures/pull_request.json")).expect("fixture");
     Mock::given(method("GET"))
         .and(path(format!("/api/v3/repos/{REPO}/pulls/{NUMBER}")))
         .respond_with(ResponseTemplate::new(200).set_body_json(pull))
@@ -103,7 +103,7 @@ async fn disable_sends_the_node_id() {
 async fn auto_merge_on_the_detail_names_method_and_author() {
     let (server, provider) = setup().await;
     let mut pull: Value =
-        serde_json::from_str(include_str!("fixtures/pull_request.json")).expect("fixture");
+        serde_json::from_str(include_str!("../fixtures/pull_request.json")).expect("fixture");
     pull["auto_merge"] = json!({ "enabled_by": { "login": "mona", "id": 1 }, "merge_method": "squash", "commit_title": "T", "commit_message": "" });
     Mock::given(method("GET"))
         .and(path(format!("/api/v3/repos/{REPO}/pulls/{NUMBER}")))
