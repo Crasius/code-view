@@ -43,8 +43,9 @@ pub fn with_gutter(padding: Margin) -> Margin {
 /// scope that holds only the area. egui measures the area's end from last frame's content, and
 /// the content may have grown since (cards measured, comments shown, a longer log): a placed
 /// offset past that end is where the view goes, not a pull past it. Rubber-banding would spring
-/// it back and leave the view coasting, so it is off in `ui` for that frame and egui clamps the
-/// offset to this frame's content instead. The wheel, a drag and a fling keep it.
+/// it back and leave the view coasting, so it is off in `ui` for that frame (scroll areas nested in
+/// the content inherit that) and egui clamps the offset to this frame's content instead. The
+/// wheel, a drag and a fling keep it.
 pub fn placed(ui: &mut Ui, area: ScrollArea, offset: Option<f32>) -> ScrollArea {
     let Some(offset) = offset else {
         return area;
