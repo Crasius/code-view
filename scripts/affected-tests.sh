@@ -2,11 +2,11 @@
 # Prints the cargo-nextest filterset of the tests a change needs: the packages that own a changed
 # file, the packages whose Rust sources name a changed file (include_bytes! across crates, paths
 # read at run time), and every package that depends on one of them through any kind of dependency,
-# dev-dependencies included. Both CIs call it (ci/test.sh, ci/github-plan.sh) and so can a
-# developer:
-#   cargo nextest run --workspace -E "$(sh scripts/affected-tests.sh main)"
-# The build stays the whole workspace: only the run is filtered, so dependencies keep the feature
-# set of `--workspace` and a warm build cache stays valid (docs/release.md, Tests).
+# dev-dependencies included. Its callers: both CIs (ci/test.sh, ci/github-plan.sh), which build
+# `--workspace` and filter only the run, so dependencies keep the feature set of `--workspace` and
+# a warm build cache stays valid (docs/release.md, Tests); and the step `test` of scripts/check.sh,
+# which turns the filterset into `cargo test -p` flags (rule testing, Running). A developer runs
+# `sh scripts/check.sh test [--base <rev>]`.
 # It prints `all()` when a shared input changed (the lockfile, the root manifest, the toolchain,
 # cargo, git or CI configuration, cv-testkit, a build script) or the base is unknown, and `none()`
 # when only files no test reads changed (docs, agent rules, marketing). Otherwise the filterset is

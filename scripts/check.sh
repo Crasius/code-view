@@ -136,9 +136,9 @@ step_commands() {
       filter=$(sh scripts/affected-tests.sh "$fork" HEAD) || return 1
       case $filter in
         'none()') ;;
-        'all()') echo 'cargo test --locked --workspace' ;;
+        'all()') echo 'cargo test --locked --no-fail-fast --workspace' ;;
         *)
-          printf 'cargo test --locked'
+          printf 'cargo test --locked --no-fail-fast'
           printf '%s\n' "$filter" | tr '|' '\n' | sed -n 's/.*package(=\([A-Za-z0-9_-]*\)).*/ -p \1/p' | tr -d '\n'
           echo ;;
       esac ;;
@@ -213,7 +213,7 @@ list() {
     fi
   done
   printf '\ntest (by name)\n'
-  printf '  cargo test --locked -p <package>... for the filterset of sh scripts/affected-tests.sh <fork point of --base> HEAD\n'
+  printf '  cargo test --locked --no-fail-fast -p <package>... for the filterset of sh scripts/affected-tests.sh <fork point of --base> HEAD\n'
   printf '  (all() runs --workspace, none() runs nothing)\n'
   printf '\n--changed [--base <rev>]\n'
   printf '  rustfmt --check -l <changed .rs files outside vendor/>\n'
