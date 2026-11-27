@@ -7,3 +7,7 @@ e51afe82e0b179af1750ed1eca66884e26a28c45:crates/provider-azure/src/pull_requests
 # Scripted tokens of a walkthrough, which only ever reach its fake provider.
 e51afe82e0b179af1750ed1eca66884e26a28c45:crates/review-app/src/app/setup_walkthrough.rs:gitlab-pat:26
 e51afe82e0b179af1750ed1eca66884e26a28c45:crates/review-app/src/app/setup_walkthrough.rs:gitlab-pat:27
+# The same two tokens in the commit that moved them to their own module, read on 2026-11-27. They
+# are shorter since, so that the scan reads none in them wherever they move.
+5a65974b6f9327dc795aab4ad0b8e1682dcde4cb:crates/review-app/src/app/scripted_gitlab.rs:gitlab-pat:21
+5a65974b6f9327dc795aab4ad0b8e1682dcde4cb:crates/review-app/src/app/scripted_gitlab.rs:gitlab-pat:22
