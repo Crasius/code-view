@@ -2,7 +2,8 @@
 # check.sh: the one entry point for the repository's checks, for contributors, lanes and both CIs.
 #
 #   sh scripts/check.sh [--base <rev>]            the static gate: fmt hygiene repo-lint clippy deps
-#   sh scripts/check.sh [--base <rev>] <step>...  only the named steps; also advisories, shear, test
+#   sh scripts/check.sh [--base <rev>] <step>...  only the named steps; also advisories,
+#                                                 licenses, shear, test
 #   sh scripts/check.sh --changed [--base <rev>]  rustfmt on the changed .rs files, clippy on their crates
 #   sh scripts/check.sh --list                    every step with its commands
 #
@@ -10,9 +11,9 @@
 # failed, 2 = a usage error. --base is repo-lint's allowlist base and the fork point `test` and
 # --changed compare with; without it repo-lint and `test` take main when it resolves, else HEAD,
 # and --changed looks at the uncommitted files only.
-# A missing tool (cargo-deny, cargo-shear): without CI set the step prints SKIPPED with the install
-# command and the summary lists it as NOT-VERIFIED, the exit code stays; with CI set the step
-# fails. The versions come from ci/install-build-deps.sh, the one place that pins them.
+# A missing tool (cargo-deny, cargo-about, cargo-shear): without CI set the step prints SKIPPED
+# with the install command and the summary lists it as NOT-VERIFIED, the exit code stays; with CI
+# set the step fails. The versions come from ci/install-build-deps.sh, the one place that pins them.
 # shear is not in the default list: cargo-shear is not installed on the machine whose local checks
 # are the gate, so CI runs it by name (`sh scripts/check.sh shear`).
 # CARGO_BUILD_JOBS limits cargo's jobs; the script passes no -j. CHECK_BUILD_SECONDS=<file>
@@ -28,7 +29,7 @@ set -u
 nl='
 '
 
-usage_line='usage: sh scripts/check.sh [--base <rev>] [fmt|hygiene|repo-lint|clippy|deps|advisories|shear|test]... | --changed [--base <rev>] | --list'
+usage_line='usage: sh scripts/check.sh [--base <rev>] [fmt|hygiene|repo-lint|clippy|deps|advisories|licenses|shear|test]... | --changed [--base <rev>] | --list'
 usage() {
   printf 'check: %s\n%s\n' "$1" "$usage_line" >&2
   exit 2
@@ -47,7 +48,7 @@ while [ $# -gt 0 ]; do
     --list) mode=list; shift ;;
     --changed) mode=changed; shift ;;
     -h | --help) printf '%s\n' "$usage_line"; exit 0 ;;
-    fmt | hygiene | repo-lint | clippy | deps | advisories | shear | test) steps="$steps $1"; shift ;;
+    fmt | hygiene | repo-lint | clippy | deps | advisories | licenses | shear | test) steps="$steps $1"; shift ;;
     *) usage "unknown step or option $1" ;;
   esac
 done
@@ -84,6 +85,7 @@ base_rev() {
 step_tool() {
   case $1 in
     deps | advisories) echo cargo-deny ;;
+    licenses) echo cargo-about ;;
     shear) echo cargo-shear ;;
   esac
 }
@@ -121,6 +123,9 @@ step_commands() {
     # on a passing run. `cargo deny check bans` by hand shows who pulls a crate in.
     deps) echo 'cargo deny --locked check --hide-inclusion-graph bans sources' ;;
     advisories) echo 'cargo deny --locked check --hide-inclusion-graph advisories' ;;
+    # The release build's notices for all six shipped targets at once, so that a licence outside
+    # ci/about.toml fails before the release tag; the file itself is scratch.
+    licenses) echo 'sh ci/notices.sh target/check-notices.txt --target x86_64-pc-windows-msvc --target aarch64-pc-windows-msvc --target x86_64-unknown-linux-gnu --target aarch64-unknown-linux-gnu --target aarch64-apple-darwin --target x86_64-apple-darwin' ;;
     shear) echo 'cargo shear' ;;
     test)
       rev=$(base_rev) || return 1
@@ -193,9 +198,10 @@ run_step() {
 
 list() {
   printf 'Default steps (sh scripts/check.sh [--base <rev>]): %s\n' "$default_steps"
-  for step in $default_steps advisories shear; do
+  for step in $default_steps advisories licenses shear; do
     case $step in
       advisories) printf '\nadvisories (by name; fetches the advisory database)\n' ;;
+      licenses) printf '\nlicenses (by name; the licences of the six shipped targets)\n' ;;
       shear) printf '\nshear (CI only: not in the default list; run it by name)\n' ;;
       *) printf '\n%s\n' "$step" ;;
     esac

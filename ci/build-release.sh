@@ -25,8 +25,7 @@ glibc=2.31
 write_notices() {
     notices="$1"
     shift
-    cargo-about generate --locked --config ci/about.toml --manifest-path crates/review-app/Cargo.toml "$@" \
-        -o "$notices" ci/about.hbs
+    sh ci/notices.sh "$notices" "$@"
     {
         printf '\n================================================================================\n'
         printf 'The Phosphor icon fonts, built into the program\n\n'
@@ -39,37 +38,6 @@ write_notices() {
         printf '(https://github.com/sharkdp/bat, https://codeberg.org/CosmicHarper/two-face)\n\n'
         env -u RUSTFLAGS cargo run --quiet --locked -p review-grammars --example grammar_notices
     } >> "$notices"
-}
-
-# Writes the app bundle macOS launches, with the values of [package.metadata.bundle] in
-# crates/review-app/Cargo.toml: Finder and the Dock read its name and icon from Info.plist.
-bundle_macos() {
-    contents="$1/Code View.app/Contents"
-    mkdir -p "$contents/MacOS" "$contents/Resources"
-    cp "$2" "$contents/MacOS/CodeView"
-    cp crates/review-app/assets/icon/codeview.icns "$contents/Resources/codeview.icns"
-    cat > "$contents/Info.plist" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDevelopmentRegion</key><string>en</string>
-  <key>CFBundleDisplayName</key><string>Code View</string>
-  <key>CFBundleExecutable</key><string>CodeView</string>
-  <key>CFBundleIconFile</key><string>codeview</string>
-  <key>CFBundleIdentifier</key><string>de.crasius.codeview</string>
-  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-  <key>CFBundleName</key><string>Code View</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>$version</string>
-  <key>CFBundleVersion</key><string>$version</string>
-  <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
-  <key>LSMinimumSystemVersion</key><string>$MACOSX_DEPLOYMENT_TARGET</string>
-  <key>NSHighResolutionCapable</key><true/>
-  <key>NSHumanReadableCopyright</key><string>Copyright 2026 Northbyte. Functional Source License 1.1 (FSL-1.1-ALv2).</string>
-</dict>
-</plist>
-EOF
 }
 
 # A static C runtime: a fresh Windows need not have the Visual C++ redistributable. Its libraries name
@@ -100,10 +68,11 @@ case "$platform" in
     macos)
         # Creative Downloads takes one macOS depot without an architecture, so one universal binary
         # serves Apple silicon and Intel. The image brings the SDK (SDKROOT).
-        export MACOSX_DEPLOYMENT_TARGET=12.0
+        MACOSX_DEPLOYMENT_TARGET="$(sh scripts/bundle-macos.sh --deployment-target)"
+        export MACOSX_DEPLOYMENT_TARGET
         rustup target add aarch64-apple-darwin x86_64-apple-darwin
         cargo zigbuild --locked --release -p review-app --bin CodeView --target universal2-apple-darwin
-        bundle_macos "$output" "$target_dir/universal2-apple-darwin/release/CodeView"
+        sh scripts/bundle-macos.sh "$output" "$target_dir/universal2-apple-darwin/release/CodeView" "$version"
         write_notices "$output/Code View.app/Contents/Resources/THIRD-PARTY-NOTICES.txt" \
             --target aarch64-apple-darwin --target x86_64-apple-darwin
         ;;

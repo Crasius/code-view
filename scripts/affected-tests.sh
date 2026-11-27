@@ -2,8 +2,8 @@
 # Prints the cargo-nextest filterset of the tests a change needs: the packages that own a changed
 # file, the packages whose Rust sources name a changed file (include_bytes! across crates, paths
 # read at run time), and every package that depends on one of them through any kind of dependency,
-# dev-dependencies included. Both CIs call it (.gitlab-ci.yml, .github/workflows/pull-request.yml)
-# and so can a developer:
+# dev-dependencies included. Both CIs call it (ci/test.sh, ci/github-plan.sh) and so can a
+# developer:
 #   cargo nextest run --workspace -E "$(sh scripts/affected-tests.sh main)"
 # The build stays the whole workspace: only the run is filtered, so dependencies keep the feature
 # set of `--workspace` and a warm build cache stays valid (docs/release.md, Tests).

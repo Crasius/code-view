@@ -5,14 +5,13 @@
 # feature, which adds no dependency, so on test's cache only review-app compiles again; `-p
 # review-app` would resolve the features of that package alone and rebuild dependencies. The
 # executable runs as ci/test.sh runs it: in the package's folder. lint checks the group's lints
-# (ci/lint.sh).
+# (ci/lint.sh, the clippy step of scripts/check.sh).
+# nextest's list of the binaries builds them and names the executable under its binary id, in a
+# flat object (as ci/test.sh picks it).
 set -eu
-built="$(mktemp)"
-cargo test --locked --workspace --features review-app/measurements --no-run \
-    --message-format=json-render-diagnostics > "$built"
-app_exe="$(grep '"name":"CodeView"' "$built" | grep '"overflow_checks":[a-z]*,"test":true}' |
-    sed -n 's/.*"executable":"\([^"]*\)".*/\1/p' | head -n 1)"
-rm -f "$built"
+app_exe="$(cargo nextest list --locked --workspace --features review-app/measurements \
+    --list-type binaries-only --message-format json |
+    sed -n 's/.*"review-app::bin\/CodeView":{[^}]*"binary-path":"\([^"]*\)".*/\1/p')"
 [ -x "$app_exe" ] || { echo "measurements: no test executable of review-app's binary" >&2; exit 1; }
 cd crates/review-app
 "$app_exe" app::memory_walkthrough::memory_ --nocapture
