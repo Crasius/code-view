@@ -6,7 +6,7 @@ use egui_kittest::kittest::Queryable;
 use review_core::{Connection, ProviderKind};
 use review_store::stable_hash;
 
-use super::setup_walkthrough::harness;
+use super::scripted_gitlab::app_on_scripted_gitlab;
 use super::walkthrough::{press, saved_paths, wait_until};
 use cv_runtime::route::Route;
 use cv_testkit::{Clicks, ScratchDir, samples};
@@ -26,7 +26,7 @@ fn storage_measures_clears_after_asking_and_forgets_removed_connections() {
         std::fs::write(file, vec![b'x'; bytes]).expect("write the file");
     }
 
-    let mut harness = harness(paths);
+    let mut harness = app_on_scripted_gitlab(paths);
     harness.state_mut().navigator.go(Route::Settings);
     harness.step();
     harness.click_at(harness.get_by_role_and_label(Role::Tab, "Storage").rect());

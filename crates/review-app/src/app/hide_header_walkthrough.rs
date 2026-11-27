@@ -28,8 +28,7 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use review_store::{AppSettings, HeaderMode, HeaderModes};
 
 use super::ReviewApp;
-use super::github_mock::{GitHubHost, open_pull_request};
-use super::tree_side_walkthrough::{long_file, open_long_file};
+use super::github_mock::{GitHubHost, long_file, open_long_file, open_pull_request};
 use super::walkthrough::{app, tab_rect, wheel};
 use cv_runtime::route::Route;
 use cv_testkit::Clicks;

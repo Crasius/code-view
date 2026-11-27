@@ -11,7 +11,9 @@ use super::assistant_script::{
     answer_text, ask, install_claude, long_file, wait_for_prompts, wait_for_session,
 };
 use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
-use super::walkthrough::{app, click_now, shows_file_view, wait_for, wait_for_link};
+use super::walkthrough::{
+    app, click_now, shows_file_view, wait_for, wait_for_link, wait_until_still,
+};
 use cv_code::line_source::Pane;
 use cv_pr_diff::diff_view::{flash_asks_for_frames, flashed_lines};
 use cv_testkit::ScratchDir;
@@ -51,14 +53,13 @@ fn cite_and_flash(layout: DiffLayout, range: &str) -> Vec<u32> {
     wait_for_prompts(&mut harness, &mut agent);
     answer_text(&agent, &format!("Here:\n\n{citation}"));
     wait_for_link(&mut harness, &citation);
-    // The answer's layout settles before the click.
-    for _ in 0..10 {
-        harness.step();
-    }
+    let at_rest = wait_until_still(&mut harness, "the citation at rest", |harness| {
+        harness.query_by_label(&citation).map(|node| node.rect())
+    });
     assert!(flashed_lines(&harness.ctx).is_empty(), "nothing flashes before the click");
 
     // Frame by frame: the flash starts on the frame the lines are painted, at full strength.
-    let center = harness.get_by_label(&citation).rect().center();
+    let center = at_rest.center();
     click_now(&mut harness, center);
     let arrived = wait_for(
         &mut harness,

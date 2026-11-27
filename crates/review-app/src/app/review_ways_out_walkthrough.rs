@@ -19,7 +19,7 @@ const REQUEST_CHANGES: &str = "Request changes";
 
 #[test]
 fn request_changes_needs_a_comment_and_posts_it() {
-    let scratch = ScratchDir::new("bug-actions-request-changes");
+    let scratch = ScratchDir::new("ways-out-request-changes");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
@@ -55,7 +55,7 @@ fn request_changes_needs_a_comment_and_posts_it() {
 
 #[test]
 fn failed_merge_keeps_its_way_out_and_retries_once() {
-    let scratch = ScratchDir::new("bug-actions-merge");
+    let scratch = ScratchDir::new("ways-out-merge");
     let host = GitHubHost::with_pull_request(scratch.path());
     host.refuse_merge();
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -121,7 +121,7 @@ fn failed_merge_keeps_its_way_out_and_retries_once() {
 
 #[test]
 fn own_vote_shows_and_a_click_opens_the_menu() {
-    let scratch = ScratchDir::new("bug-actions-own-vote");
+    let scratch = ScratchDir::new("ways-out-own-vote");
     let host = GitHubHost::with_pull_request(scratch.path());
     host.sign_in_as_me();
     host.my_review("APPROVED");
@@ -141,7 +141,7 @@ fn own_vote_shows_and_a_click_opens_the_menu() {
 
 #[test]
 fn header_load_error_offers_retry_and_f5_loads() {
-    let scratch = ScratchDir::new("bug-actions-load-error");
+    let scratch = ScratchDir::new("ways-out-load-error");
     let host = GitHubHost::with_pull_request(scratch.path());
     host.fail_pull_request();
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);

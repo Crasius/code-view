@@ -1,35 +1,23 @@
 //! Walks the connection wizard and the "Fix token" path like a user, against a scripted provider:
-//! no network, no real tokens, no command-line tools. Runs with `cargo test`.
+//! no network, no real tokens, no command-line tools ([`super::scripted_gitlab`]). Runs with
+//! `cargo test`.
 
-use std::sync::Arc;
-
-use async_trait::async_trait;
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_core::setup::{Access, Feature, FeatureCheck, ScopeKind};
-use review_core::{
-    AccessProblem, AccessReport, Capabilities, Connection, MergeStrategy, Provider, ProviderError,
-    ProviderKind, PullRequestQuery, PullRequestSummary, Result, ReviewVote, ScopeCandidate,
-    UserIdentity,
-};
-use review_store::{AppPaths, ConnectionStore, LINUX_HELP_URL, TokenVault, VaultProblem};
+use review_core::{Connection, ProviderKind};
+use review_store::{ConnectionStore, LINUX_HELP_URL, TokenVault, VaultProblem};
 
 use super::ReviewApp;
+use super::scripted_gitlab::{COMPLETE_TOKEN, LIMITED_TOKEN, app_on_scripted_gitlab};
 use super::walkthrough::{press, saved_paths, settle_background, wait_until};
-use cv_settings::onboarding::CliTools;
-use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{Clicks, ScratchDir, samples};
-
-/// Scripted tokens; they only ever reach the fake provider below.
-const LIMITED_TOKEN: &str = "glpat-walkthrough-fine-grained";
-const COMPLETE_TOKEN: &str = "glpat-walkthrough-complete";
 
 #[test]
 fn wizard_first_run_to_saved_connection() {
     let scratch = ScratchDir::new("setup-first-run");
     let paths = scratch.app_paths();
-    let mut harness = harness(paths.clone());
+    let mut harness = app_on_scripted_gitlab(paths.clone());
 
     to_gitlab_token_step(&mut harness);
 
@@ -74,7 +62,7 @@ fn wizard_first_run_to_saved_connection() {
 fn save_failure_stays_on_the_step_with_its_cause() {
     let scratch = ScratchDir::new("setup-save-failure");
     let paths = scratch.app_paths();
-    let mut harness = harness(paths.clone());
+    let mut harness = app_on_scripted_gitlab(paths.clone());
     to_gitlab_token_step(&mut harness);
     wait_until(&mut harness, "the token step", |harness| {
         harness.query_by_role(Role::PasswordInput).is_some()
@@ -117,7 +105,7 @@ fn missing_keyring_offers_a_tokenless_save() {
     }));
     let scratch = ScratchDir::new("setup-missing-keyring");
     let paths = scratch.app_paths().with_token_vault(TokenVault::Refusing(problem));
-    let mut harness = harness(paths.clone());
+    let mut harness = app_on_scripted_gitlab(paths.clone());
     to_gitlab_token_step(&mut harness);
     wait_until(&mut harness, "the keyring message", |harness| {
         harness.query_by_label_contains(&problem.title).is_some()
@@ -157,7 +145,7 @@ fn missing_keyring_offers_a_tokenless_save() {
 #[test]
 fn token_pages_offer_cli_and_checklists() {
     let scratch = ScratchDir::new("setup-token-pages");
-    let mut harness = harness(scratch.app_paths());
+    let mut harness = app_on_scripted_gitlab(scratch.app_paths());
 
     wait_until(&mut harness, "the welcome screen", |harness| {
         harness.query_by_label_contains("GitHub.com or GitHub").is_some()
@@ -202,7 +190,7 @@ fn fix_token_from_a_denied_request() {
         token: Some(LIMITED_TOKEN.into()),
         ..samples::connection("gl-1", ProviderKind::GitLab, "https://gitlab.com")
     };
-    let mut harness = harness(saved_paths(&scratch, &[connection]));
+    let mut harness = app_on_scripted_gitlab(saved_paths(&scratch, &[connection]));
 
     wait_until(&mut harness, "the access banner", |harness| {
         harness.query_by_label_contains("Tabletop: The fine-grained token").is_some()
@@ -220,19 +208,6 @@ fn fix_token_from_a_denied_request() {
 
 /// The wizard's Back button (its arrow icon is painted, not part of the name).
 const BACK: &str = "Back";
-
-pub(super) fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
-    super::startup::start(Harness::builder().with_size([1280.0, 1000.0]), |creation| {
-        let mut app = ReviewApp::new(creation, paths, |connection: Connection, http| {
-            let gitlab = provider_gitlab::GitLabProvider::new(connection.clone(), http);
-            Arc::new(Scripted(ScriptedGitLab { gitlab, connection })) as Arc<dyn Provider>
-        });
-        // Both sign-in tools as if installed, before the harness's first frame, which opens the
-        // setup with the tools it has.
-        app.settings.set_cli_tools(CliTools { github: true, azure: true });
-        app
-    })
-}
 
 fn type_token(harness: &mut Harness<'_, ReviewApp>, token: &str) {
     harness.get_by_role(Role::PasswordInput).focus();
@@ -261,133 +236,4 @@ fn complete_token_to_groups(harness: &mut Harness<'_, ReviewApp>) {
     wait_until(harness, "the groups step", |harness| {
         harness.query_by_label("Save connection").is_some()
     });
-}
-
-/// GitLab as the user met it: a fine-grained token without "Merge Request: Read", then a token
-/// with the api scope. Denials are explained by the real GitLab provider.
-struct ScriptedGitLab {
-    gitlab: provider_gitlab::GitLabProvider,
-    connection: Connection,
-}
-
-impl ScriptedGitLab {
-    fn is_complete(&self) -> bool {
-        self.connection.token() == Some(COMPLETE_TOKEN)
-    }
-
-    fn denied(path: &str) -> ProviderError {
-        ProviderError::Status {
-            status: 403,
-            path: path.to_owned(),
-            body: r#"{"message":"Access denied: This operation requires a fine-grained personal access token with the following project permissions: [Merge Request: Read]."}"#.to_owned(),
-        }
-    }
-}
-
-fn user() -> UserIdentity {
-    UserIdentity {
-        id: "7".into(),
-        display_name: "Ada Lovelace".into(),
-        login: Some("ada".into()),
-        avatar_url: None,
-    }
-}
-
-static CAPABILITIES: std::sync::LazyLock<Capabilities> =
-    std::sync::LazyLock::new(|| Capabilities {
-        votes: vec![ReviewVote::Approved, ReviewVote::None],
-        merge_strategies: vec![MergeStrategy::Merge],
-        has_label_catalog: true,
-        running_logs: review_core::RunningLogs::Growing,
-    });
-
-#[async_trait]
-impl Script for ScriptedGitLab {
-    fn capabilities(&self) -> &Capabilities {
-        &CAPABILITIES
-    }
-
-    async fn current_user(&self) -> Result<UserIdentity> {
-        Ok(user())
-    }
-
-    async fn list_pull_requests(
-        &self,
-        _query: &PullRequestQuery,
-    ) -> Result<Vec<PullRequestSummary>> {
-        if self.is_complete() {
-            Ok(Vec::new())
-        } else {
-            Err(Self::denied("/api/v4/merge_requests"))
-        }
-    }
-
-    async fn inspect_access(&self) -> Result<AccessReport> {
-        let checks = if self.is_complete() {
-            Feature::ALL
-                .iter()
-                .map(|feature| {
-                    FeatureCheck::new(*feature, Access::Granted, "Granted by the api scope.")
-                })
-                .collect()
-        } else {
-            vec![
-                FeatureCheck::new(
-                    Feature::ReadPullRequests,
-                    Access::Missing,
-                    "Needs Merge Request: Read.",
-                ),
-                FeatureCheck::new(Feature::Vote, Access::Missing, "Needs Merge Request: Approve."),
-                FeatureCheck::new(
-                    Feature::Comment,
-                    Access::Unverified,
-                    "Needs Merge Request: Create and Merge Request: Update. Only a write could confirm it, so make sure it is selected.",
-                ),
-                FeatureCheck::new(
-                    Feature::Labels,
-                    Access::Unverified,
-                    "Needs Merge Request: Update. Only a write could confirm it, so make sure it is selected.",
-                ),
-                FeatureCheck::new(Feature::Merge, Access::Missing, "Needs Merge Request: Merge."),
-                FeatureCheck::new(
-                    Feature::Pipelines,
-                    Access::Limited,
-                    "Pipelines show, but job logs need Job: Read.",
-                ),
-                FeatureCheck::new(Feature::GitClone, Access::Granted, "Code: Download granted."),
-            ]
-        };
-        let token_kind = if self.is_complete() {
-            "Personal access token"
-        } else {
-            "Fine-grained personal access token"
-        };
-        Ok(AccessReport {
-            user: user(),
-            token_kind: token_kind.to_owned(),
-            scopes: Vec::new(),
-            expires_at: Some("2027-10-18".to_owned()),
-            checks,
-            notes: Vec::new(),
-        })
-    }
-
-    async fn discover_scopes(&self) -> Result<Vec<ScopeCandidate>> {
-        Ok(vec![
-            ScopeCandidate {
-                key: "ttrpg".into(),
-                display_name: "TTRPG".into(),
-                kind: ScopeKind::Group,
-            },
-            ScopeCandidate {
-                key: "tools".into(),
-                display_name: "Tools".into(),
-                kind: ScopeKind::Group,
-            },
-        ])
-    }
-
-    fn explain_denial(&self, error: &ProviderError) -> Option<AccessProblem> {
-        self.gitlab.explain_denial(error)
-    }
 }

@@ -17,7 +17,7 @@ use cv_testkit::ScratchDir;
 const CONNECTION_ID: &str = "gh";
 
 #[test]
-fn forwarded_link_opens_only_what_its_token_reads() {
+fn opens_only_what_its_token_reads() {
     let scratch = ScratchDir::new("forwarded-link");
     let host = GitHubHost::with_pull_request(scratch.path());
     host.add_linked_pull_requests(Duration::ZERO);

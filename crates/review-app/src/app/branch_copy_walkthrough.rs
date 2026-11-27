@@ -24,6 +24,9 @@ use cv_testkit::ScratchDir;
 
 const SOURCE_CHIP: &str = "Copy branch name: feature";
 const TARGET_CHIP: &str = "Copy branch name: main";
+/// The check mark shows for 1.5 s (`cv_widgets::copy_chip`); two seconds of 1/60 s frames are past
+/// it.
+const CONFIRMATION_FRAMES: usize = 120;
 
 #[test]
 fn branch_copy_from_the_row_menu_and_the_header_chips() {
@@ -59,8 +62,7 @@ fn branch_copy_from_the_row_menu_and_the_header_chips() {
     assert_eq!(copied(&mut harness).as_deref(), Some("feature"), "the chip copies the source");
     let confirmed = harness.get_by_role_and_label(Role::Button, "Copied feature").rect();
     assert_eq!(confirmed, source, "the confirmation keeps the chip's place and size");
-    // The check mark goes away after a moment (harness frames are 1/60 s).
-    harness.run_steps(120);
+    harness.run_steps(CONFIRMATION_FRAMES);
     assert!(harness.query_by_role_and_label(Role::Button, SOURCE_CHIP).is_some(), "back");
 
     // Enter on the focused target chip copies the target.
@@ -114,7 +116,7 @@ fn number_copy_from_the_row_menu_and_the_header_number() {
     assert!(copy.ends_with(&url_tail), "the number copies the web address: {copy}");
     let confirmed = harness.get_by_role_and_label(Role::Button, "Copied link to #7").rect();
     assert_eq!(confirmed, number, "the confirmation keeps the number's place and size");
-    harness.run_steps(120);
+    harness.run_steps(CONFIRMATION_FRAMES);
     assert!(harness.query_by_role_and_label(Role::Button, NUMBER_LINK).is_some(), "back");
 
     // Enter on the focused number copies too.

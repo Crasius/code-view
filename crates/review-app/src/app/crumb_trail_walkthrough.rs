@@ -5,8 +5,8 @@
 //! Walks the list into a pull request and on to the one its description links (the trail grows,
 //! and a pull request already in it cuts it back), back and forward (each page with the trail it
 //! had), the crumbs (they go up the trail they show), the repositories page down to a pull request
-//! (the structure, as before) and the entries without a way to show: the first page, the search,
-//! a pasted link and the rail, which all fall back to the structure.
+//! (the structure) and the entries without a way to show: the first page, the search, a pasted
+//! link and the rail, which all fall back to the structure.
 //! `cargo test -p review-app crumb_trail`
 
 use std::sync::Arc;
@@ -17,7 +17,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_core::{
     Connection, ItemKind, ItemRef, LinkedItem, LinkedState, ProviderKind, PullRequestDetail,
-    PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result,
+    PullRequestQuery, PullRequestSummary, RepositoryInfo, Result,
 };
 
 use super::ReviewApp;
@@ -34,7 +34,7 @@ const LIST: &str = "My pull requests";
 const BAR_BOTTOM: f32 = 44.0;
 
 #[test]
-fn crumb_trail_follows_the_way_the_user_came() {
+fn follows_the_way_the_user_came() {
     let scratch = ScratchDir::new("crumb-trail");
     let mut harness = start(&scratch);
 
@@ -257,24 +257,9 @@ fn title(number: u64) -> &'static str {
 
 fn summary(number: u64) -> PullRequestSummary {
     PullRequestSummary {
-        repository_key: REPOSITORY.to_owned(),
-        repository_name: "site".to_owned(),
-        number,
-        title: title(number).to_owned(),
-        author: samples::author(),
-        state: PullRequestState::Open,
-        is_draft: false,
-        source_branch: format!("feature/{number}"),
-        target_branch: "main".to_owned(),
-        created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
-        updated_at: None,
+        title: title(number).into(),
         web_url: format!("https://github.com/{REPOSITORY}/pull/{number}"),
-        labels: Vec::new(),
-        reviewers: Vec::new(),
-        checks: None,
-        diff_stat: review_core::DiffStat::default(),
-        head_sha: None,
-        target_sha: None,
+        ..samples::summary(REPOSITORY, number)
     }
 }
 
@@ -302,12 +287,7 @@ impl Script for CrumbTrailScript {
         Ok(PullRequestDetail {
             summary: summary(number),
             description: format!("Goes with #{other}."),
-            target_sha: "b".repeat(40),
-            head_sha: "a".repeat(40),
-            merge_status: review_core::MergeStatus::Mergeable,
-            git_fetch_refs: Vec::new(),
-            closed_at: None,
-            auto_complete: None,
+            ..samples::detail(REPOSITORY, number)
         })
     }
 

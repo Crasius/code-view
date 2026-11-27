@@ -163,7 +163,7 @@ fn assert_stable(harness: &mut Harness<'_, ReviewApp>, labels: &[&str]) {
 }
 
 #[test]
-fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
+fn gives_the_diff_the_window_and_keeps_its_place() {
     let (_scratch, _host, mut harness) = app("focus-files");
     walkthrough::files_tab(&mut harness);
     walkthrough::open_in_tree(&mut harness, LONG_FILE);
@@ -261,7 +261,7 @@ fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
 
 #[test]
 #[expect(clippy::too_many_lines, reason = "one walkthrough scenario, told step by step")]
-fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
+fn gives_a_log_the_window_and_keeps_its_place() {
     let (_scratch, _host, mut harness) = app("focus-log");
     harness.click_at(harness.get_by_role_and_label(Role::Tab, "Pipelines").rect());
     wait_until(&mut harness, "the job's row", |harness| {
@@ -373,7 +373,7 @@ fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
 }
 
 #[test]
-fn focus_mode_folds_the_original_versions_banner_into_its_strip() {
+fn folds_the_original_versions_banner_into_its_strip() {
     let scratch = ScratchDir::new("focus-origin");
     let mut host = GitHubHost::with_pull_request(scratch.path());
     let documented = (1..=60).fold(String::new(), |mut text, line| {

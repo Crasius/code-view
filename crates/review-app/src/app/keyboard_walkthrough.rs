@@ -21,7 +21,7 @@ use cv_testkit::ScratchDir;
 
 #[test]
 fn pick_tabs_and_open_the_shortcuts() {
-    let scratch = ScratchDir::new("ux-keys-tabs");
+    let scratch = ScratchDir::new("keyboard-tabs");
     let host = GitHubHost::with_pull_request(scratch.path());
     let connection = host.connection("gh", "Acme");
     let mut harness = app(&scratch, std::slice::from_ref(&connection));
@@ -77,7 +77,7 @@ fn pick_tabs_and_open_the_shortcuts() {
 
 #[test]
 fn move_through_the_list_rows() {
-    let scratch = ScratchDir::new("ux-keys-list");
+    let scratch = ScratchDir::new("keyboard-list");
     let rows: Vec<_> = (1..=30)
         .map(|number| search_row(number, &format!("Change {number}"), REPOSITORY))
         .collect();

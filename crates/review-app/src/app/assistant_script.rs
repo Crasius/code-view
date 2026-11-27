@@ -1,6 +1,7 @@
 //! The scripted assistant the assistant walkthroughs share: a Claude Code CLI that is installed
 //! with two models ([`cv_services::agents::FakeAgents`] in place of the real CLI), the composer's
-//! question, the waits for the started session and its prompts, and a plain answer.
+//! question, the waits for the started session and its prompts, and a plain answer; and
+//! [`answered`], the pull request whose answer the mini chat and the model chip walkthroughs open.
 
 use std::fmt::Write as _;
 
@@ -9,8 +10,10 @@ use egui_kittest::Harness;
 use review_agent::{AgentEvent, AgentKind, FakeAgent, ModelInfo, SessionConfig, Usage};
 
 use super::ReviewApp;
-use super::walkthrough::{type_into, wait_for};
+use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
+use super::walkthrough::{app, type_into, wait_for, wait_for_link};
 use cv_services::agents::FakeCli;
+use cv_testkit::ScratchDir;
 
 /// The empty composer's placeholder.
 pub(super) const PLACEHOLDER: &str = "Ask anything about this pull request";
@@ -74,4 +77,39 @@ pub(super) fn long_file(head: bool) -> Vec<u8> {
             text
         })
         .into_bytes()
+}
+
+/// The path of [`long_file`] in [`answered`]'s pull request.
+pub(super) const LONG: &str = "src/long.rs";
+/// In the checkout, not changed by the pull request.
+pub(super) const NOTES: &str = "docs/notes.md";
+/// Four references, each alone in its paragraph so a click on the paragraph's middle hits it.
+const ANSWER: &str = "The greeting:\n\nsrc/lib.rs:2\n\nThe long file:\n\nsrc/long.rs:60-62\n\n\
+                      The notes:\n\ndocs/notes.md:2\n\nAnd its end:\n\nsrc/long.rs:100";
+/// The first reference of [`answered`]'s answer.
+pub(super) const FIRST: &str = "src/lib.rs:2";
+
+/// The pull request with the long file changed and the notes unchanged, its answer to the first
+/// question in the Overview's card, the mini chat on or off.
+pub(super) fn answered(
+    name: &str,
+    mini_chat: bool,
+) -> (Harness<'static, ReviewApp>, FakeAgent, ScratchDir) {
+    let scratch = ScratchDir::new(name);
+    let notes = b"# Notes\nSee the greeting.\nNothing else.\n".to_vec();
+    let files = [
+        ExtraFile { path: LONG, base: long_file(false), head: long_file(true) },
+        ExtraFile { path: NOTES, base: notes.clone(), head: notes },
+    ];
+    let host = GitHubHost::with_pull_request_files(scratch.path(), &files);
+    let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
+    install_claude(&harness, true);
+    harness.state_mut().services.settings.assistant.mini_chat = mini_chat;
+    open_pull_request(&mut harness);
+    ask(&mut harness, "Where is the greeting?");
+    let (_, mut agent) = wait_for_session(&mut harness);
+    wait_for_prompts(&mut harness, &mut agent);
+    answer_text(&agent, ANSWER);
+    wait_for_link(&mut harness, FIRST);
+    (harness, agent, scratch)
 }

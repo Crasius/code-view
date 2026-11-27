@@ -10,7 +10,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
-use super::mini_chat_walkthrough::{FIRST, answered};
+use super::assistant_script::{FIRST, answered};
 use super::walkthrough::{click_now, wait_until};
 use cv_pr_assistant::mini::SHRINK;
 use cv_testkit::Clicks;

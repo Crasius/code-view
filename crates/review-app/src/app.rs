@@ -66,6 +66,8 @@ mod change_breakdown_walkthrough;
 #[cfg(test)]
 mod checkout_finish_walkthrough;
 #[cfg(test)]
+mod checkout_scenario;
+#[cfg(test)]
 mod checkout_walkthrough;
 #[cfg(test)]
 mod cite_flash_walkthrough;
@@ -169,6 +171,8 @@ mod request_budget;
 mod restart_walkthrough;
 #[cfg(test)]
 mod review_ways_out_walkthrough;
+#[cfg(test)]
+mod scripted_gitlab;
 #[cfg(test)]
 mod scripted_platforms;
 #[cfg(test)]

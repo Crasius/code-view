@@ -597,7 +597,7 @@ fn turned_off_in_settings_leaves_the_page_and_starts_nothing() {
 
     harness.state_mut().navigator.go(Route::MyPullRequests);
     open_pull_request(&mut harness);
-    harness.run_steps(20);
+    settle_background(&mut harness);
     assert!(harness.query_by_label(CARD).is_none(), "no card");
     assert!(!has_group(&harness, CARD_LABEL), "no card");
     harness.key_press_modifiers(Modifiers::ALT, Key::A);
@@ -686,7 +686,7 @@ fn wheel_over_conversation(harness: &mut Harness<'_, ReviewApp>, delta: f32) -> 
     Moved { page: page_now - page, conversation: conversation_now - conversation }
 }
 
-/// "New conversation" sits on the title line of card and panel, no longer in the chip's menu. One
+/// "New conversation" sits on the title line of card and panel; the chip's menu has none. One
 /// click empties the conversation, Undo brings it back; Ctrl+N does the same in the panel, and
 /// the next question ends the chance to undo.
 #[test]

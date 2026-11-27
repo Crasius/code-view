@@ -1,8 +1,8 @@
 //! A long press on a breadcrumb moves the window: a short click still navigates, a press held
 //! still past [`platform::LONG_PRESS`] sends one `StartDrag`, shows the grabbing hand and leads
-//! nowhere on release, a press that moves first does neither (as before), and the current page's
-//! crumb moves the window too. Asserts the viewport commands and the cursor the app sends; the
-//! window itself does not move in a test. No network, no tokens.
+//! nowhere on release, a press that moves first does neither, and the current page's crumb moves
+//! the window too. Asserts the viewport commands and the cursor the app sends; the window itself
+//! does not move in a test. No network, no tokens.
 
 use egui::{CursorIcon, Event, Modifiers, PointerButton, Pos2, Role, ViewportCommand, ViewportId};
 use egui_kittest::Harness;

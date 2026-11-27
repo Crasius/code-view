@@ -30,7 +30,7 @@ const APP_LISTING: &str = "/api/v4/projects/team%2Fapp/merge_requests";
 /// The star in the repository browser saves the favorite at once; after a restart the
 /// repository's own page shows it starred, and its star there removes it again.
 #[test]
-fn favorites_star_in_the_repository_browser_persists() {
+fn star_in_the_repository_browser_persists() {
     let gitlab = GitLabHost::start();
     let scratch = ScratchDir::new("favorites-star");
     let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab")]);
@@ -85,7 +85,7 @@ fn favorites_star_in_the_repository_browser_persists() {
 /// updated first, each with its platform. GitLab asks once per starred project; GitHub (with a
 /// token) covers both starred repositories with one search.
 #[test]
-fn favorites_card_mixes_two_platforms_newest_updated_first() {
+fn card_mixes_two_platforms_newest_updated_first() {
     let gitlab = GitLabHost::start();
     let github = GitHubHost::start("acme", &github_rows());
     let (_scratch, mut harness) = with_favorites(
@@ -158,7 +158,7 @@ fn favorites_card_mixes_two_platforms_newest_updated_first() {
 /// asks each starred repository for the user's own pull requests (GitLab: the project's listing
 /// with `scope=created_by_me`; GitHub: the search with `author:@me`), so rows of others leave it.
 #[test]
-fn favorites_card_follows_the_role_filter() {
+fn card_follows_the_role_filter() {
     let gitlab = GitLabHost::start();
     let github = GitHubHost::start("acme", &github_rows());
     let (_scratch, mut harness) = with_favorites(
@@ -188,7 +188,7 @@ fn favorites_card_follows_the_role_filter() {
 /// A Favorites card the role filter empties says so and offers to clear the filters, which brings
 /// its rows back.
 #[test]
-fn favorites_card_emptied_by_a_filter_offers_to_clear_it() {
+fn card_emptied_by_a_filter_offers_to_clear_it() {
     let gitlab = GitLabHost::start();
     let (_scratch, mut harness) = with_favorites(
         "favorites-role-empty",
@@ -222,7 +222,7 @@ fn favorites_card_emptied_by_a_filter_offers_to_clear_it() {
 /// hidden, a note at the top of the card says why from the first frame on, and "Add token" opens
 /// the connection's setup at its token step.
 #[test]
-fn favorites_hidden_by_a_role_are_named_with_the_way_to_a_token() {
+fn hidden_by_a_role_are_named_with_the_way_to_a_token() {
     let gitlab = GitLabHost::start();
     let public = Connection { token: None, ..gitlab.connection("public", "Public GitLab") };
     let (_scratch, mut harness) = with_favorites(
@@ -264,7 +264,7 @@ fn favorites_hidden_by_a_role_are_named_with_the_way_to_a_token() {
 /// Without favorites the card says what a star does and leads to the repositories; a row's
 /// context menu stars its repository right there.
 #[test]
-fn favorites_empty_card_leads_to_the_repositories_and_rows_star_from_their_menu() {
+fn empty_card_leads_to_the_repositories_and_rows_star_from_their_menu() {
     let gitlab = GitLabHost::start();
     let scratch = ScratchDir::new("favorites-empty");
     let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab")]);
@@ -294,7 +294,7 @@ fn favorites_empty_card_leads_to_the_repositories_and_rows_star_from_their_menu(
 /// their order. The choice survives a restart; the tool brings the lane back with today's order,
 /// and the card's own menu hides it again.
 #[test]
-fn favorites_lane_hidden_lifts_starred_rows_and_asks_nothing() {
+fn lane_hidden_lifts_starred_rows_and_asks_nothing() {
     let gitlab = GitLabHost::start();
     let scratch = ScratchDir::new("favorites-lane");
     let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab")]);

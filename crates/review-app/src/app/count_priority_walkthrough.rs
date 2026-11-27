@@ -115,7 +115,7 @@ fn filter_tree(harness: &mut Harness<'_, ReviewApp>, text: &str) {
 }
 
 #[test]
-fn count_priority_a_file_opened_deep_in_tree_order_counts_with_its_neighbours_first() {
+fn a_file_opened_deep_in_tree_order_counts_with_its_neighbours_first() {
     let scratch = ScratchDir::new("count-priority");
     let mut host = GitHubHost::with_pull_request_files(scratch.path(), &many_files());
     let held = host.hold_batch_downloads();
@@ -205,7 +205,7 @@ const FAR: &str = "web/far.rs";
 const FAR_THREAD: &str = "Is this far file right?";
 
 #[test]
-fn count_priority_a_resting_pointer_on_a_thread_row_loads_its_file_ahead() {
+fn a_resting_pointer_on_a_thread_row_loads_its_file_ahead() {
     let scratch = ScratchDir::new("count-priority-hover");
     let lines = |name: &str, changed: bool| -> Vec<u8> {
         let text = (0..400).fold(String::new(), |mut text, line| {
@@ -268,7 +268,7 @@ fn counted_label(counted: usize) -> String {
 }
 
 #[test]
-fn count_priority_counts_arrive_chunk_by_chunk() {
+fn counts_arrive_chunk_by_chunk() {
     let scratch = ScratchDir::new("count-priority-chunks");
     let files: Vec<ExtraFile> =
         FEW_PATHS.iter().enumerate().map(|(index, path)| changed(path.as_str(), index)).collect();

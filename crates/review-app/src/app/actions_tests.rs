@@ -6,13 +6,10 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use review_core::{
-    Capabilities, Connection, DiffStat, GitRemote, Label, MergeOptions, MergeStatus, MergeStrategy,
-    NewThread, ProviderError, ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestState,
-    PullRequestSummary, Result, ReviewThread, ReviewVote, Reviewer, ThreadComment, ThreadStatus,
-    UserIdentity,
+    Capabilities, Connection, Label, MergeOptions, MergeStrategy, ProviderKind, PullRequestDetail,
+    PullRequestQuery, PullRequestState, PullRequestSummary, Result, ReviewThread, ReviewVote,
+    Reviewer, ThreadStatus, UserIdentity,
 };
-use review_store::ConnectionStore;
-use tokio::io::AsyncWrite;
 
 use cv_lists::pull_request_list::PullRequestListPage;
 use cv_pr_session::actions::{ActionRunner, Refresh, Ticket, Write};
@@ -23,7 +20,7 @@ use cv_runtime::route::PullRequestKey;
 use cv_services::Services;
 use cv_services::writes::Effect;
 use cv_testkit::provider::{Script, Scripted};
-use cv_testkit::{ScratchDir, poll_until};
+use cv_testkit::{ScratchDir, poll_until, samples};
 
 mod overview;
 
@@ -105,20 +102,20 @@ impl World {
 
 /// Services over the scripted host, with its one connection stored and "me" known.
 fn scripted_services(dir: &ScratchDir, ctx: egui::Context) -> Services {
-    let paths = dir.app_paths();
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: CONNECTION.to_owned(),
-            name: "Scripted".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: ProviderKind::GitHub.default_base_url().to_owned(),
-            organizations: Vec::new(),
-            token: Some("scripted".to_owned()),
-        })
-        .expect("store the connection");
+    let paths = super::walkthrough::saved_paths(
+        dir,
+        &[Connection {
+            name: "Scripted".into(),
+            token: Some("scripted".into()),
+            ..samples::connection(
+                CONNECTION,
+                ProviderKind::GitHub,
+                ProviderKind::GitHub.default_base_url(),
+            )
+        }],
+    );
     let services = Services::new(ctx, paths, |_, _| Arc::new(Scripted(LaggingHost)));
-    services.identities.learned(CONNECTION, me());
+    services.identities.learned(CONNECTION, samples::author());
     services
 }
 
@@ -161,7 +158,10 @@ fn my_vote_shows_at_once_and_stays_while_the_host_has_none() {
         vote.start(&world.session, &world.services, &mut world.actions)
     });
     let my_vote = |reviewers: &[Reviewer]| {
-        reviewers.iter().find(|reviewer| reviewer.identity.id == me().id).map(|mine| mine.vote)
+        reviewers
+            .iter()
+            .find(|reviewer| reviewer.identity.id == samples::author().id)
+            .map(|mine| mine.vote)
     };
     assert_eq!(my_vote(&world.detail().summary.reviewers), Some(ReviewVote::Approved));
     world.reload(refresh);
@@ -267,10 +267,6 @@ fn person(id: &str, login: &str) -> UserIdentity {
     }
 }
 
-fn me() -> UserIdentity {
-    person("1", "ada")
-}
-
 fn bea() -> UserIdentity {
     person("3", "bea")
 }
@@ -282,18 +278,9 @@ fn label(name: &str) -> Label {
 /// The pull request as the host keeps answering, whatever was written.
 fn summary() -> PullRequestSummary {
     PullRequestSummary {
-        repository_key: REPOSITORY.to_owned(),
-        repository_name: "app".to_owned(),
-        number: NUMBER,
-        title: "Speed up login".to_owned(),
+        title: "Speed up login".into(),
         author: person("2", "ana"),
-        state: PullRequestState::Open,
-        is_draft: false,
-        source_branch: "feature".to_owned(),
-        target_branch: "main".to_owned(),
-        created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
-        updated_at: None,
-        web_url: String::new(),
+        source_branch: "feature".into(),
         labels: vec![label("bug")],
         reviewers: vec![Reviewer {
             identity: bea(),
@@ -301,10 +288,7 @@ fn summary() -> PullRequestSummary {
             is_required: false,
             is_group: false,
         }],
-        checks: None,
-        diff_stat: DiffStat::default(),
-        head_sha: None,
-        target_sha: None,
+        ..samples::summary(REPOSITORY, NUMBER)
     }
 }
 
@@ -324,14 +308,6 @@ impl Script for LaggingHost {
         &CAPABILITIES
     }
 
-    async fn current_user(&self) -> Result<UserIdentity> {
-        Ok(me())
-    }
-
-    async fn git_remote(&self, _repo: &str) -> Result<GitRemote> {
-        Err(ProviderError::Unsupported("No files in this test.".to_owned()))
-    }
-
     async fn list_pull_requests(
         &self,
         _query: &PullRequestQuery,
@@ -340,16 +316,7 @@ impl Script for LaggingHost {
     }
 
     async fn pull_request(&self, _repo: &str, _number: u64) -> Result<PullRequestDetail> {
-        Ok(PullRequestDetail {
-            summary: summary(),
-            description: String::new(),
-            target_sha: "b".repeat(40),
-            head_sha: "a".repeat(40),
-            merge_status: MergeStatus::Mergeable,
-            git_fetch_refs: Vec::new(),
-            closed_at: None,
-            auto_complete: None,
-        })
+        Ok(PullRequestDetail { summary: summary(), ..samples::detail(REPOSITORY, NUMBER) })
     }
 
     async fn merge(&self, _repo: &str, _number: u64, _options: &MergeOptions) -> Result<()> {
@@ -410,25 +377,6 @@ impl Script for LaggingHost {
         }])
     }
 
-    async fn create_thread(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread: &NewThread,
-    ) -> Result<ReviewThread> {
-        Err(ProviderError::Unsupported("No new threads in this test.".to_owned()))
-    }
-
-    async fn reply(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _body: &str,
-    ) -> Result<ThreadComment> {
-        Err(ProviderError::Unsupported("No replies in this test.".to_owned()))
-    }
-
     async fn set_thread_status(
         &self,
         _repo: &str,
@@ -445,15 +393,5 @@ impl Script for LaggingHost {
 
     async fn set_labels(&self, _repo: &str, _number: u64, _labels: &[String]) -> Result<()> {
         Ok(())
-    }
-
-    async fn download_log(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _log_id: &str,
-        _sink: &mut (dyn AsyncWrite + Unpin + Send),
-    ) -> Result<()> {
-        Err(ProviderError::Unsupported("No logs in this test.".to_owned()))
     }
 }

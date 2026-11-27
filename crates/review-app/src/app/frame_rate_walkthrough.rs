@@ -22,7 +22,7 @@ const ROW: &str = "Frame rate limit";
 const NEXT_ROW: &str = "Pane sizes";
 
 #[test]
-fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
+fn limit_defaults_to_45_applies_live_and_is_saved() {
     let scratch = ScratchDir::new("frame-rate");
     let connection = Connection {
         name: "Contoso GitHub".to_owned(),

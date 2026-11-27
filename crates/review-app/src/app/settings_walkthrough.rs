@@ -12,9 +12,8 @@ use review_core::{Connection, ProviderKind};
 use review_store::{DiffLayout, TreeSide};
 
 use super::ReviewApp;
-use super::github_mock::GitHubHost;
+use super::github_mock::{GitHubHost, assert_tree_at, long_file, open_long_file};
 use super::scripted_platforms::platforms;
-use super::tree_side_walkthrough as tree_side;
 use super::walkthrough::{
     app, app_with, has, saved_paths, saved_settings, wait_until, wait_until_still,
 };
@@ -144,7 +143,7 @@ fn sample_lines_fit_their_panes() {
 #[test]
 fn file_tree_side_moves_the_tree() {
     let scratch = ScratchDir::new("settings-tree-side");
-    let host = GitHubHost::with_pull_request_files(scratch.path(), &[tree_side::long_file()]);
+    let host = GitHubHost::with_pull_request_files(scratch.path(), &[long_file()]);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
     wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
@@ -168,8 +167,8 @@ fn file_tree_side_moves_the_tree() {
     wait_until(&mut harness, "the pull request list", |harness| {
         harness.state().route == Route::MyPullRequests
     });
-    tree_side::open_long_file(&mut harness);
-    tree_side::assert_tree_at(&harness, TreeSide::Right);
+    open_long_file(&mut harness);
+    assert_tree_at(&harness, TreeSide::Right);
 }
 
 /// Every on/off row's checkbox centers on the row's name and description together. It used to

@@ -16,50 +16,13 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use review_agent::FakeAgent;
 
 use super::ReviewApp;
-use super::assistant_script::{
-    answer_text, ask, install_claude, long_file, wait_for_prompts, wait_for_session,
-};
-use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
-use super::walkthrough::{app, click_now, shows_file_view, type_into, wait_for_link, wait_until};
+use super::assistant_script::{FIRST, LONG, NOTES, answer_text, answered, wait_for_prompts};
+use super::walkthrough::{click_now, shows_file_view, type_into, wait_until};
 use cv_pr_assistant::mini::{
     self, ANSWERING, CARD_LABEL, FOLLOW_UP, NEXT, OPEN, OPEN_AT_HEAD, PREVIOUS, SHRINK, SKIP_NEXT,
 };
 use cv_pr_diff::diff_view::flashed_lines;
 use cv_testkit::Clicks;
-use cv_testkit::ScratchDir;
-
-const LONG: &str = "src/long.rs";
-/// In the checkout, not changed by the pull request.
-const NOTES: &str = "docs/notes.md";
-/// Four references, each alone in its paragraph so a click on the paragraph's middle hits it.
-const ANSWER: &str = "The greeting:\n\nsrc/lib.rs:2\n\nThe long file:\n\nsrc/long.rs:60-62\n\n\
-                      The notes:\n\ndocs/notes.md:2\n\nAnd its end:\n\nsrc/long.rs:100";
-pub(super) const FIRST: &str = "src/lib.rs:2";
-
-/// The pull request with the long file changed and the notes unchanged, its answer to the first
-/// question in the Overview's card, the mini chat on or off.
-pub(super) fn answered(
-    name: &str,
-    mini_chat: bool,
-) -> (Harness<'static, ReviewApp>, FakeAgent, ScratchDir) {
-    let scratch = ScratchDir::new(name);
-    let notes = b"# Notes\nSee the greeting.\nNothing else.\n".to_vec();
-    let files = [
-        ExtraFile { path: LONG, base: long_file(false), head: long_file(true) },
-        ExtraFile { path: NOTES, base: notes.clone(), head: notes },
-    ];
-    let host = GitHubHost::with_pull_request_files(scratch.path(), &files);
-    let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    install_claude(&harness, true);
-    harness.state_mut().services.settings.assistant.mini_chat = mini_chat;
-    open_pull_request(&mut harness);
-    ask(&mut harness, "Where is the greeting?");
-    let (_, mut agent) = wait_for_session(&mut harness);
-    wait_for_prompts(&mut harness, &mut agent);
-    answer_text(&agent, ANSWER);
-    wait_for_link(&mut harness, FIRST);
-    (harness, agent, scratch)
-}
 
 /// The whole tour with the mini chat on.
 #[test]
