@@ -25,6 +25,7 @@ use bytes::Bytes;
 use reqwest::{Client, ClientBuilder, Method, Request, RequestBuilder, Response, Url};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::error::{ProviderError, Result};
 
@@ -143,6 +144,18 @@ pub async fn status_error(response: Response) -> ProviderError {
     ProviderError::Status { status, path, body: trimmed_body }
 }
 
+/// Copies the body of `response` into `sink`, chunk by chunk.
+pub async fn copy_body(
+    mut response: Response,
+    sink: &mut (dyn AsyncWrite + Unpin + Send),
+) -> Result<()> {
+    while let Some(chunk) = response.chunk().await? {
+        sink.write_all(&chunk).await?;
+    }
+    sink.flush().await?;
+    Ok(())
+}
+
 /// Parses the `rel="next"` target out of an RFC 8288 `Link` header (GitHub, GitLab).
 pub fn next_link(response: &Response) -> Option<String> {
     let header = response.headers().get(reqwest::header::LINK)?.to_str().ok()?;
@@ -168,10 +181,65 @@ pub fn origin(url: &Url) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
     use reqwest::Method;
     use serde_json::json;
+    use tokio::io::AsyncWrite;
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::{cache, is_write, parse_next_link, write_guard};
+    use super::{cache, copy_body, is_write, parse_next_link, write_guard};
+    use crate::ProviderError;
+
+    /// A sink whose every write fails, as a full disk does.
+    struct FullDisk;
+
+    impl AsyncWrite for FullDisk {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+            _: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            Poll::Ready(Err(io::Error::other("disk full")))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    /// A job log larger than one chunk arrives whole; a sink that cannot take it ends the copy
+    /// with a local error, not a network one.
+    #[tokio::test]
+    async fn copies_a_body_of_many_chunks_and_reports_a_failing_sink() {
+        let server = MockServer::start().await;
+        let log: Vec<u8> = (0..=u8::MAX).cycle().take(4 * 1024 * 1024).collect();
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(log.clone()))
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+
+        let mut copied = Vec::new();
+        let response = client.get(server.uri()).send().await.expect("answer");
+        copy_body(response, &mut copied).await.expect("copied");
+        assert_eq!(copied.len(), log.len());
+        assert!(copied == log, "the copy has every byte in order");
+
+        let response = client.get(server.uri()).send().await.expect("answer");
+        let failed = copy_body(response, &mut FullDisk).await;
+        assert!(
+            matches!(&failed, Err(ProviderError::Local(message)) if message.contains("disk full")),
+            "{failed:?}"
+        );
+    }
 
     #[test]
     fn graphql_queries_are_reads_and_mutations_writes() {
