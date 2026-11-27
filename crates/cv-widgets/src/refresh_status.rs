@@ -44,7 +44,7 @@ pub fn show(ui: &mut Ui, status: RefreshStatus<'_>) -> bool {
     );
     let font = egui::FontId::proportional(style::SMALL_SIZE);
     let mut retry = false;
-    if updating > 0.0 {
+    if updating > 0.0 && !matches!(status, RefreshStatus::Failed(_)) {
         let painter = ui.painter_at(rect);
         let text = "Updating…";
         let galley = painter.layout_no_wrap(text.to_owned(), font.clone(), palette.text_secondary);
@@ -79,7 +79,11 @@ pub fn show(ui: &mut Ui, status: RefreshStatus<'_>) -> bool {
         let color = if response.hovered() { palette.text } else { palette.warning };
         ui.painter().galley_with_override_text_color(target.min, galley, color);
         crate::focus::ring(ui, &response, target.expand(4.0));
-        retry = response.on_hover_text(format!("The last refresh failed: {message}")).clicked();
+        retry = response
+            .on_hover_ui(|ui| {
+                ui.label(format!("The last refresh failed: {message}"));
+            })
+            .clicked();
     }
     retry
 }
@@ -132,7 +136,49 @@ pub fn show_compact(ui: &mut Ui, status: RefreshStatus<'_>) -> bool {
                 color,
             );
             crate::focus::ring(ui, &response, rect);
-            response.on_hover_text(format!("Not updated: {message}\nClick to retry.")).clicked()
+            response
+                .on_hover_ui(|ui| {
+                    ui.label(format!("Not updated: {message}\nClick to retry."));
+                })
+                .clicked()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cv_base::theme;
+    use egui::{Context, RawInput, Shape};
+
+    use super::{RefreshStatus, show};
+
+    /// The texts one frame at `time` paints for `status`.
+    fn painted_texts(ctx: &Context, time: f64, status: RefreshStatus<'_>) -> Vec<String> {
+        let input = RawInput { time: Some(time), ..RawInput::default() };
+        let output = ctx.run_ui(input, |ui| {
+            show(ui, status);
+        });
+        let texts = output
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                Shape::Text(text) => Some(text.galley.text().to_owned()),
+                _ => None,
+            })
+            .collect();
+        output.drop_without_applying_deltas();
+        texts
+    }
+
+    #[test]
+    fn a_failed_refresh_does_not_paint_over_the_fading_updating_note() {
+        let ctx = Context::default();
+        theme::fonts::install(&ctx);
+        for frame in 0..30 {
+            painted_texts(&ctx, f64::from(frame) / 60.0, RefreshStatus::Updating);
+        }
+        let texts = painted_texts(&ctx, 0.51, RefreshStatus::Failed("timed out"));
+        assert!(texts.iter().any(|text| text.contains("Not updated")), "{texts:?}");
+        assert!(!texts.iter().any(|text| text.contains("Updating")), "{texts:?}");
     }
 }

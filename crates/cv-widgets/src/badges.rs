@@ -1,6 +1,7 @@
+use egui::ecolor::HexColor;
 use egui::{Color32, Response, RichText, Ui};
 
-use cv_base::theme::{self, Palette, icons};
+use cv_base::theme::{self, Palette, icons, style};
 use review_core::{Label, PullRequestState, ReviewVote, RunStatus};
 
 /// A rounded chip with text, used for states, labels and counts.
@@ -11,7 +12,7 @@ pub fn pill(ui: &mut Ui, text: &str, fill: Color32, text_color: Color32) -> Resp
     let padding = egui::vec2(8.0, 2.0);
     let (rect, response) =
         ui.allocate_exact_size(galley.size() + padding * 2.0, egui::Sense::hover());
-    ui.painter().rect_filled(rect, 10, fill);
+    ui.painter().rect_filled(rect, style::RADIUS_CHIP, fill);
     ui.painter().galley(rect.min + padding, galley, text_color);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
     response
@@ -39,7 +40,11 @@ pub fn label_chip(ui: &mut Ui, label: &Label) -> Response {
 
 /// The label's own color, tinted so `palette.text` stays readable on it.
 pub fn label_fill(label: &Label, palette: &Palette) -> Color32 {
-    let base = label.color.as_deref().and_then(parse_hex).unwrap_or(palette.text_secondary);
+    let base = label
+        .color
+        .as_deref()
+        .and_then(|hex| HexColor::from_str_without_hash(hex.trim_start_matches('#')).ok())
+        .map_or(palette.text_secondary, |hex| hex.color());
     if palette.is_dark { base.gamma_multiply(0.45) } else { base.gamma_multiply(0.22) }
 }
 
@@ -92,12 +97,28 @@ pub fn icon_text(icon: &str, color: Color32, size: f32) -> RichText {
     RichText::new(icon).color(color).size(size)
 }
 
-fn parse_hex(hex: &str) -> Option<Color32> {
-    let digits = hex.trim_start_matches('#');
-    if digits.len() != 6 {
-        return None;
+#[cfg(test)]
+mod tests {
+    use cv_base::theme::Palette;
+    use egui::Color32;
+    use review_core::Label;
+
+    use super::label_fill;
+
+    fn fill(color: Option<&str>) -> Color32 {
+        let label =
+            Label { name: "bug".into(), color: color.map(str::to_owned), description: None };
+        label_fill(&label, &Palette::LIGHT)
     }
-    let value = u32::from_str_radix(digits, 16).ok()?;
-    let [_, red, green, blue] = value.to_be_bytes();
-    Some(Color32::from_rgb(red, green, blue))
+
+    #[test]
+    fn a_label_is_tinted_with_its_hex_color_with_or_without_the_hash() {
+        let red = Color32::from_rgb(0xD7, 0x3A, 0x4A).gamma_multiply(0.22);
+        assert_eq!(fill(Some("d73a4a")), red);
+        assert_eq!(fill(Some("#d73a4a")), red);
+        assert_eq!(fill(Some("#f00")), Color32::from_rgb(0xFF, 0, 0).gamma_multiply(0.22));
+        let fallback = Palette::LIGHT.text_secondary.gamma_multiply(0.22);
+        assert_eq!(fill(Some("not a colour")), fallback);
+        assert_eq!(fill(None), fallback);
+    }
 }
