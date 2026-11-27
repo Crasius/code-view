@@ -15,22 +15,25 @@
   }
 
   // The user is working on this site in this tab: Code View stays out of the way.
-  function isBrowsingHere() {
+  function hasBrowsedHere() {
     const host = location.host;
     let hasBrowsed = false;
     try {
       hasBrowsed = sessionStorage.getItem(BROWSING_KEY) === host;
-      sessionStorage.setItem(BROWSING_KEY, host);
     } catch {
       // Storage blocked for this site: only the referrer counts.
     }
-    let isFromHere = false;
-    try {
-      isFromHere = document.referrer !== '' && new URL(document.referrer).host === host;
-    } catch {
-      isFromHere = false;
-    }
+    const isFromHere = document.referrer !== '' && new URL(document.referrer).host === host;
     return hasBrowsed || isFromHere;
+  }
+
+  // Written only when the page stays in the browser, never on a page Code View takes.
+  function markBrowsing() {
+    try {
+      sessionStorage.setItem(BROWSING_KEY, location.host);
+    } catch {
+      // Storage blocked for this site: nothing to remember.
+    }
   }
 
   function isRevisit() {
@@ -53,11 +56,16 @@
 
   async function handOver() {
     const url = location.href;
-    if (!looksLikePullRequest(url) || isRevisit() || isBrowsingHere()) {
+    if (!looksLikePullRequest(url)) {
+      return;
+    }
+    if (isRevisit() || hasBrowsedHere()) {
+      markBrowsing();
       return;
     }
     const answer = await send({ type: 'navigation', url });
-    if (!answer || !answer.open) {
+    if (!answer?.open) {
+      markBrowsing();
       return;
     }
     window.stop();
@@ -81,9 +89,6 @@
     }
   }
 
-  if (window.top !== window) {
-    return;
-  }
   document.addEventListener('click', notePass, true);
   document.addEventListener('auxclick', notePass, true);
   handOver();
