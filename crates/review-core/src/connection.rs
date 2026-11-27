@@ -38,7 +38,7 @@ impl ProviderKind {
 /// `organizations` scope listings: GitHub owners (orgs or users), GitLab group paths,
 /// Azure DevOps organizations. Azure DevOps Services needs at least one; for GitHub and
 /// GitLab an empty list means "everything the token sees".
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Connection {
     pub id: String,
     pub name: String,
@@ -48,6 +48,19 @@ pub struct Connection {
     pub token: Option<String>,
 }
 
+impl std::fmt::Debug for Connection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Connection")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("kind", &self.kind)
+            .field("base_url", &self.base_url)
+            .field("organizations", &self.organizations)
+            .field("token", &self.token.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
+}
+
 impl Connection {
     pub fn token(&self) -> Option<&str> {
         self.token.as_deref().filter(|token| !token.is_empty())
@@ -55,5 +68,27 @@ impl Connection {
 
     pub fn base_url(&self) -> &str {
         self.base_url.trim_end_matches('/')
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connection_debug_never_prints_the_token() {
+        let connection = Connection {
+            id: "c1".to_owned(),
+            name: "Work".to_owned(),
+            kind: ProviderKind::GitHub,
+            base_url: "https://github.example.test".to_owned(),
+            organizations: vec!["acme".to_owned()],
+            token: Some("secret-token".to_owned()),
+        };
+
+        let printed = format!("{connection:?}");
+
+        assert!(!printed.contains("secret-token"), "{printed}");
+        assert!(printed.contains("<redacted>"), "{printed}");
     }
 }
