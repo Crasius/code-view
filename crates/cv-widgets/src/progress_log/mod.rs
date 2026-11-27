@@ -17,16 +17,14 @@ use review_git::{GitEvent, GitProgress};
 use time::{OffsetDateTime, UtcOffset};
 
 pub use self::redact::redact;
-use crate::buttons;
 use crate::numbers::group_digits;
+use crate::{buttons, copy_chip};
 
 /// Older lines fall out of the log once it holds this many.
 pub const MAX_LINES: usize = 500;
 const LOG_FONT_SIZE: f32 = 12.0;
 /// Extra space between log rows on top of the font's row height.
 const LOG_LEADING: f32 = 5.0;
-/// How long "Copy log" reads "Copied" after a click.
-const COPIED_SECONDS: f64 = 2.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LineKind {
@@ -201,21 +199,15 @@ pub fn copy_button(ui: &mut Ui, log: &ProgressLog) -> egui::Response {
 
 /// "Copy log" for a log kept as plain lines (a checkout's saved log).
 pub fn copy_text_button(ui: &mut Ui, text: impl FnOnce() -> String) -> egui::Response {
-    let copied_id = ui.next_auto_id().with("copied_at");
-    let time = ui.input(|input| input.time);
-    let copied_at: Option<f64> = ui.data(|data| data.get_temp(copied_id));
-    let is_copied = copied_at.is_some_and(|at| time - at < COPIED_SECONDS);
-    let copy = if is_copied {
+    // Keyed before the button exists: its label depends on the confirmation.
+    let id = ui.next_auto_id();
+    let copy = if copy_chip::is_showing_copied(ui, id) {
         buttons::subtle(ui, icons::CHECK, "Copied")
     } else {
         buttons::subtle(ui, icons::COPY, "Copy log")
     };
     if copy.clicked() {
-        ui.ctx().copy_text(text());
-        ui.data_mut(|data| data.insert_temp(copied_id, time));
-        ui.ctx().request_repaint_after(Duration::from_secs_f64(COPIED_SECONDS));
-    } else if let Some(at) = copied_at.filter(|_| is_copied) {
-        ui.ctx().request_repaint_after(Duration::from_secs_f64(COPIED_SECONDS - (time - at)));
+        copy_chip::mark_copied(ui.ctx(), id, text());
     }
     copy
 }

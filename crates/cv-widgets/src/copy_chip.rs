@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use cv_base::theme::{self, fonts, icons, style};
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
-use egui::{Align2, CursorIcon, FontId, Galley, Response, Sense, Ui, WidgetInfo, pos2, vec2};
+use egui::{
+    Align2, Context, CursorIcon, FontId, Galley, Id, Response, Sense, Ui, WidgetInfo, pos2, vec2,
+};
 
 use super::{focus, row};
 
@@ -81,18 +83,32 @@ pub fn show(ui: &mut Ui, icon: &str, text: &str, tooltip: &str, max_width: f32) 
 /// the copy is recent enough that the widget still shows its confirmation. Schedules the repaint
 /// that takes the confirmation away again.
 pub fn copy_on_click(ui: &Ui, response: &Response, text: &str) -> bool {
-    let copied_id = response.id.with("copied_at");
-    let now = ui.input(|input| input.time);
     if response.clicked() {
-        ui.ctx().copy_text(text.to_owned());
-        ui.data_mut(|data| data.insert_temp(copied_id, now));
+        mark_copied(ui.ctx(), response.id, text.to_owned());
     }
-    let copied_at: Option<f64> = ui.data(|data| data.get_temp(copied_id));
-    let is_copied = copied_at.is_some_and(|at| now - at < COPIED_SECONDS);
-    if let Some(at) = copied_at.filter(|_| is_copied) {
-        ui.ctx().request_repaint_after(Duration::from_secs_f64(at + COPIED_SECONDS - now));
-    }
-    is_copied
+    is_showing_copied(ui, response.id)
+}
+
+/// Copies `text` and starts the "Copied" confirmation of `id`.
+pub fn mark_copied(ctx: &Context, id: Id, text: String) {
+    let now = ctx.input(|input| input.time);
+    ctx.copy_text(text);
+    ctx.data_mut(|data| data.insert_temp(copied_id(id), now));
+}
+
+/// Whether `id` still shows "Copied"; asks for the frame that ends it.
+pub fn is_showing_copied(ui: &Ui, id: Id) -> bool {
+    let now = ui.input(|input| input.time);
+    let copied_at: Option<f64> = ui.data(|data| data.get_temp(copied_id(id)));
+    let Some(at) = copied_at.filter(|at| now - at < COPIED_SECONDS) else {
+        return false;
+    };
+    ui.ctx().request_repaint_after(Duration::from_secs_f64(at + COPIED_SECONDS - now));
+    true
+}
+
+fn copied_id(id: Id) -> Id {
+    id.with("copied_at")
 }
 
 /// Padding on both sides, the icon and the gap after it.
@@ -109,4 +125,40 @@ fn text_galley(ui: &Ui, text: &str, max_width: f32, color: egui::Color32) -> Arc
     let mut job = LayoutJob::single_section(text.to_owned(), TextFormat::simple(font(), color));
     job.wrap = TextWrapping::truncate_at_width(max_width);
     ui.fonts_mut(|fonts| fonts.layout_job(job))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use egui::{Context, Id, RawInput, ViewportId};
+
+    /// One frame at `time`: whether `id` shows "Copied", and when egui paints next.
+    fn frame(ctx: &Context, time: f64, copy: bool) -> (bool, Duration) {
+        let id = Id::unique("copy");
+        let mut is_copied = false;
+        let input = RawInput { time: Some(time), ..RawInput::default() };
+        let mut output = ctx.run_ui(input, |ui| {
+            if copy {
+                super::mark_copied(ui.ctx(), id, "a1b2c3d".to_owned());
+            }
+            is_copied = super::is_showing_copied(ui, id);
+        });
+        output.textures_delta.clear();
+        (is_copied, output.viewport_output[&ViewportId::ROOT].repaint_delay)
+    }
+
+    #[test]
+    fn copied_shows_for_a_moment_and_wakes_the_frame_that_ends_it() {
+        let ctx = Context::default();
+        assert!(!frame(&ctx, 0.0, false).0, "nothing copied yet");
+        assert!(frame(&ctx, 1.0, true).0, "copied this frame");
+        let (is_copied, wake) = frame(&ctx, 2.0, false);
+        assert!(is_copied);
+        assert!(
+            (wake.as_secs_f64() - 0.5).abs() < 0.01,
+            "the next frame comes when the confirmation ends, not {wake:?}"
+        );
+        assert!(!frame(&ctx, 2.6, false).0, "gone after {}s", super::COPIED_SECONDS);
+    }
 }
