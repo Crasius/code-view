@@ -17,7 +17,7 @@
 # shear is not in the default list: cargo-shear is not installed on the machine whose local checks
 # are the gate, so CI runs it by name (`sh scripts/check.sh shear`).
 # CARGO_BUILD_JOBS limits cargo's jobs; the script passes no -j. CHECK_BUILD_SECONDS=<file>
-# receives the seconds the compile steps (clippy, doc) took together (ci/target-stamp.sh).
+# receives the seconds the clippy step took (ci/target-stamp.sh).
 # --changed is what .agents/hooks/rust-stop-gate.sh (the Stop hook) and a lane's turn end run:
 # exit 0 = clean (one line on stdout names what it checked), 2 = findings on stderr, 1 = clippy did
 # not run (stderr says why).
@@ -193,7 +193,7 @@ run_step() {
   IFS=$old_ifs
   set +f
   case $step in
-    clippy | doc) build_seconds=$((${build_seconds:-0} + $(date +%s) - started)) ;;
+    clippy) build_seconds=$((${build_seconds:-0} + $(date +%s) - started)) ;;
   esac
   [ "$status" = PASS ] || failed=1
   record "$step" "$status"

@@ -73,7 +73,8 @@ for f in $changed; do
             .github/PULL_REQUEST_TEMPLATE.md | AGENTS.md | CLAUDE.md | README.md | CONTRIBUTING.md | \
             CLA.md | SECURITY.md | LICENSE | .gitignore | .gitleaksignore | rustfmt.toml | clippy.toml | \
             deny.toml | .agents/hooks/* | scripts/check.sh | scripts/worktree.sh | scripts/land-pr.sh | \
-            scripts/start-background.ps1 | scripts/package-macos.sh | scripts/bundle-macos.sh)
+            scripts/start-background.ps1 | scripts/ship.ps1 | scripts/package-macos.sh | scripts/bundle-macos.sh | \
+            browser-extension/README.md)
             # Read by no test; the lint job checks format, lints and repository rules.
             continue
             ;;

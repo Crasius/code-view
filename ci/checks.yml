@@ -152,8 +152,7 @@ default:
     - target/ci-build-id-bins
     - target/debug/deps/*-????????????????
 
-# The default steps of scripts/check.sh (format, hygiene, repository rules, the clippy passes, the
-# dependency bans and sources, rustdoc) and its step shear (ci/lint.sh).
+# The default steps of scripts/check.sh (`--list` names them) and its step shear (ci/lint.sh).
 lint:
   extends: .cargo-checks
   variables:
@@ -197,8 +196,9 @@ test:
       junit: target/nextest/ci/junit.xml
 
 # review-app's heap measurements (ci/measurements.sh), beside test in main's pipelines and by hand
-# in a merge request; never on a tag and never on GitHub. They read test's cache and write none,
-# so on a warm cache they build only what the feature changes and end before test.
+# in a merge request that changes a cargo input; never on a tag and never on GitHub. They read
+# test's cache and write none, so on a warm cache they build only what the feature changes and end
+# before test.
 measurements:
   extends: .cargo-checks
   rules:
@@ -206,6 +206,9 @@ measurements:
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths: !reference [.rust-inputs]
+        compare_to: refs/heads/main
       when: manual
       allow_failure: true
   cache:
@@ -223,7 +226,8 @@ measurements:
 # crates, and the licences of the crates that link on each of the six shipped targets, which the
 # release build checks again (ci/notices.sh). It compiles nothing. Advisories appear without a
 # commit, so it also runs alone in a scheduled pipeline. In a merge request only when the
-# dependency set, its configuration or the scripts it runs changed.
+# dependency set, its configuration, the scripts it runs or the pipeline files that define it
+# changed.
 supply-chain:
   stage: test
   extends: .rust
@@ -242,6 +246,8 @@ supply-chain:
           - ci/install-build-deps.sh
           - ci/notices.sh
           - scripts/check.sh
+          - ci/checks.yml
+          - .gitlab-ci.yml
         compare_to: refs/heads/main
     - if: $CI_PIPELINE_SOURCE != "merge_request_event"
   script:
