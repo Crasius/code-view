@@ -107,7 +107,7 @@ fn question(ui: &mut Ui, turn: &ChatTurn, index: usize) {
         }
         let icon = match turn.kind {
             // Drafts of earlier versions are dropped when the conversation loads.
-            TurnKind::Question | TurnKind::Draft => "",
+            TurnKind::Question => "",
             TurnKind::Update => icons::GIT_BRANCH,
         };
         let text = if icon.is_empty() {

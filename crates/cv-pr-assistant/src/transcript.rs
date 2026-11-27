@@ -13,11 +13,10 @@ pub(super) mod saver;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use review_agent::{AgentError, AgentEvent, StepOutcome, ToolStep};
-use review_store::{Chat, ChatQuote, ChatStep, ChatTurn, ChatUsage, TurnEnd, TurnKind};
-
-/// [`ChatStep::kind`] of a stretch of thinking.
-pub const THINKING: &str = "thinking";
+use review_agent::{AgentError, AgentEvent, StepKind, StepOutcome, ToolStep};
+use review_store::{
+    Chat, ChatQuote, ChatStep, ChatStepKind, ChatTurn, ChatUsage, TurnEnd, TurnKind,
+};
 
 /// What an event meant for the conversation.
 #[derive(Debug, PartialEq)]
@@ -77,10 +76,11 @@ fn apply_at(chat: &mut Chat, event: AgentEvent, now: u64) -> Applied {
         AgentEvent::ThinkingDone => end_thinking(turn, now),
         AgentEvent::Tool(step) => turn.steps.push(tool_step(step, now)),
         AgentEvent::ToolDone { id, outcome } => {
-            let open =
-                turn.steps.iter_mut().rev().find(|step| {
-                    step.id == id && step.duration_ms.is_none() && step.kind != THINKING
-                });
+            let open = turn.steps.iter_mut().rev().find(|step| {
+                step.id == id
+                    && step.duration_ms.is_none()
+                    && step.kind != Some(ChatStepKind::Thinking)
+            });
             if let Some(step) = open {
                 step.duration_ms = step.started_ms.map(|started| now.saturating_sub(started));
                 step.is_failed = outcome == StepOutcome::Failed;
@@ -129,7 +129,7 @@ fn think(turn: &mut ChatTurn, text: &str, now: u64) {
     match turn.steps.last_mut().filter(|step| is_open_thinking(step)) {
         Some(step) => step.thinking.push_str(text),
         None => turn.steps.push(ChatStep {
-            kind: THINKING.to_owned(),
+            kind: Some(ChatStepKind::Thinking),
             started_ms: Some(now),
             thinking: text.to_owned(),
             ..ChatStep::default()
@@ -144,17 +144,28 @@ fn end_thinking(turn: &mut ChatTurn, now: u64) {
 }
 
 fn is_open_thinking(step: &ChatStep) -> bool {
-    step.kind == THINKING && step.duration_ms.is_none()
+    step.kind == Some(ChatStepKind::Thinking) && step.duration_ms.is_none()
 }
 
 fn tool_step(step: ToolStep, now: u64) -> ChatStep {
     ChatStep {
         tool: step.tool,
         detail: step.detail,
-        kind: step.kind.as_str().to_owned(),
+        kind: Some(chat_kind(step.kind)),
         id: step.id,
         started_ms: Some(now),
         ..ChatStep::default()
+    }
+}
+
+/// The stored kind of a tool step.
+fn chat_kind(kind: StepKind) -> ChatStepKind {
+    match kind {
+        StepKind::Read => ChatStepKind::Read,
+        StepKind::Search => ChatStepKind::Search,
+        StepKind::Run => ChatStepKind::Run,
+        StepKind::Edit => ChatStepKind::Edit,
+        StepKind::Other => ChatStepKind::Other,
     }
 }
 
@@ -184,7 +195,7 @@ pub fn settle_loaded(chat: &mut Chat) {
 
 #[cfg(test)]
 mod tests {
-    use review_agent::{AgentKind, StepKind, ToolStep, Usage};
+    use review_agent::{AgentKind, Usage};
 
     use super::*;
 
@@ -216,8 +227,8 @@ mod tests {
         let step = &turn.steps[0];
         assert_eq!((step.tool.as_str(), step.detail.as_str()), ("Read", "src/a.rs"));
         assert_eq!(
-            (step.kind.as_str(), step.duration_ms, step.is_failed),
-            ("read", Some(400), false)
+            (step.kind, step.duration_ms, step.is_failed),
+            (Some(ChatStepKind::Read), Some(400), false)
         );
         assert_eq!(turn.usage.map(|usage| usage.cache_read), Some(12_000));
         assert_eq!(turn.end, TurnEnd::Done);
@@ -246,17 +257,16 @@ mod tests {
         apply_at(&mut chat, AgentEvent::TurnDone(Usage::default()), 9_000);
 
         let steps = &chat.turns[0].steps;
-        let shape: Vec<(&str, Option<u64>, bool)> = steps
-            .iter()
-            .map(|step| (step.kind.as_str(), step.duration_ms, step.is_failed))
-            .collect();
+        let shape: Vec<(Option<ChatStepKind>, Option<u64>, bool)> =
+            steps.iter().map(|step| (step.kind, step.duration_ms, step.is_failed)).collect();
+        let (thought, read) = (Some(ChatStepKind::Thinking), Some(ChatStepKind::Read));
         assert_eq!(
             shape,
             [
-                (THINKING, Some(6_000), false),
-                ("read", None, false),
-                ("read", Some(500), true),
-                (THINKING, Some(2_000), false),
+                (thought, Some(6_000), false),
+                (read, None, false),
+                (read, Some(500), true),
+                (thought, Some(2_000), false),
             ]
         );
         assert_eq!(steps[0].thinking, "The parser branches on the first byte.");
