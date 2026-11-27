@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use egui::{Key, Modifiers, PointerButton};
+use review_core::{Connection, Provider};
 use review_store::AppPaths;
 
 use cv_base::platform::{self, pointer};
@@ -19,7 +22,6 @@ use cv_runtime::route::{
 use cv_runtime::toasts::{ToastAction, WaysOut};
 use cv_runtime::trail::Trail;
 use cv_services::Services;
-use cv_services::connection::providers::ProviderFactory;
 use cv_settings::onboarding;
 use cv_settings::settings::{self, SettingsPage};
 use cv_shell::attention::{Attention, Cue};
@@ -235,10 +237,12 @@ pub struct ReviewApp {
 }
 
 impl ReviewApp {
+    /// `factory` builds the provider of each connection: the hosts' providers in `main`, a
+    /// closure over a scripted one in a walkthrough.
     pub fn new(
         creation: &eframe::CreationContext<'_>,
         paths: AppPaths,
-        factory: ProviderFactory,
+        factory: impl Fn(Connection, reqwest::Client) -> Arc<dyn Provider> + Send + Sync + 'static,
     ) -> Self {
         let ctx = creation.egui_ctx.clone();
         theme::fonts::install(&ctx);

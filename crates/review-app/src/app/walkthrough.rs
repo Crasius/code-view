@@ -16,6 +16,7 @@
 //! [`app_with`] on providers of the test's own.
 
 use std::cell::Cell;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use egui::{
@@ -24,11 +25,10 @@ use egui::{
 };
 use egui_kittest::kittest::{AccessKitNode, NodeT, Queryable};
 use egui_kittest::{Harness, HarnessBuilder};
-use review_core::Connection;
+use review_core::{Connection, Provider};
 use review_store::{AppPaths, AppSettings, ConnectionStore, DiffLayout};
 
 use super::{ReviewApp, startup};
-use cv_services::connection::providers::ProviderFactory;
 use cv_testkit::{Clicks, ScratchDir};
 
 /// How long a wait may go on at all. Work in flight counts only here: it goes at the pace of git
@@ -54,7 +54,7 @@ pub(super) fn saved_paths(scratch: &ScratchDir, connections: &[Connection]) -> A
 pub(super) fn app_with(
     builder: HarnessBuilder<ReviewApp>,
     paths: AppPaths,
-    factory: ProviderFactory,
+    factory: impl Fn(Connection, reqwest::Client) -> Arc<dyn Provider> + Send + Sync + 'static,
 ) -> Harness<'static, ReviewApp> {
     startup::start(builder, move |creation| ReviewApp::new(creation, paths, factory))
 }
