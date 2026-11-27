@@ -10,7 +10,7 @@
 )]
 
 mod band;
-pub mod checkout;
+mod checkout;
 mod commits;
 mod header;
 mod header_reveal;
@@ -30,6 +30,7 @@ use std::sync::Arc;
 
 use review_store::{PullRequestStart, PullRequestTab as Tab};
 
+pub use self::checkout::reveal as reveal_checkout;
 use self::checkout::CheckoutButton;
 use self::header_reveal::HeaderReveal;
 use self::live::{Activity, Drafts, LiveAction, LiveUpdates};

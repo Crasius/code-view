@@ -27,7 +27,7 @@ use review_store::checkouts::{
 };
 
 use self::face::{Face, face};
-pub use self::face::{chip, chip_width};
+pub(crate) use self::face::{chip, chip_width};
 use cv_base::theme::style;
 use cv_pr_session::session::PullRequestSession;
 use cv_runtime::intents::{self, SettingsSection};
@@ -70,7 +70,7 @@ struct Choice {
 
 /// The header's checkout button and its popover, per page.
 #[derive(Default)]
-pub struct CheckoutButton {
+pub(crate) struct CheckoutButton {
     choice: Option<Choice>,
     /// "Change folder…": the folder the new worktree goes into, instead of the pattern's.
     folder: Option<PathBuf>,
@@ -588,7 +588,7 @@ fn look_up(
 
 /// The pull request's head as the page has it in the mirror: the checkout follows it; once the
 /// pull request shows merged or closed, its checkout gets what Settings says. Call once per frame.
-pub fn follow(session: &PullRequestSession, services: &mut Services) {
+pub(crate) fn follow(session: &PullRequestSession, services: &mut Services) {
     if session.detail.ready().is_some_and(|detail| detail.summary.state != PullRequestState::Open) {
         checkouts::finished(services, &session.key);
     }
