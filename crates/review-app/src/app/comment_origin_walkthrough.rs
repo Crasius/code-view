@@ -12,7 +12,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, wait_until};
+use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
 use super::github_mock::{CURRENT_TEXT, FILE, GitHubHost, THREAD_TEXT};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -58,7 +58,7 @@ fn comment_origin_shows_the_version_an_outdated_thread_was_written_on() {
     wait_until(&mut harness, "the original version from the overview", |harness| {
         harness.query_by_label_contains(&banner).is_some()
     });
-    assert!(harness.query_by_label(&format!("Diff of {FILE}")).is_some(), "the Files tab shows it");
+    assert!(shows_file_view(&harness, FILE), "the Files tab shows it");
     harness.key_press(egui::Key::Escape);
     settle(&mut harness);
     assert!(harness.query_by_label_contains(&banner).is_none(), "Esc goes back");
@@ -174,8 +174,7 @@ fn open_latest_diff(harness: &mut Harness<'_, ReviewApp>) {
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, FILE).rect());
     wait_until(harness, "the latest diff", |harness| {
-        harness.query_by_label(&format!("Diff of {FILE}")).is_some()
-            && harness.query_by_label_contains(DETACHED).is_some()
+        shows_file_view(harness, FILE) && harness.query_by_label_contains(DETACHED).is_some()
     });
     harness.click_at(harness.get_by_label_contains(DETACHED).rect());
     wait_until(harness, "the outdated card", |harness| {

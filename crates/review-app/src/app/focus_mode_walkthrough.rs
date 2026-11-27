@@ -195,8 +195,9 @@ fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
         harness.query_by_role_and_label(Role::TreeItem, LONG_FILE).is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, LONG_FILE).rect());
-    let diff = format!("Diff of {LONG_FILE}");
-    wait_until(&mut harness, "the long diff", |harness| has(harness, &diff));
+    wait_until(&mut harness, "the long diff", |harness| {
+        action_e2e::shows_file_view(harness, LONG_FILE)
+    });
     // N steps through the changes: the diff scrolls well into the file.
     for _ in 0..20 {
         harness.key_press(Key::N);

@@ -20,7 +20,7 @@ use egui_kittest::kittest::Queryable;
 use review_store::DiffLayout;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, wait_until};
+use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_base::theme::{self, icons};
 use cv_code::find_paint::{HitSide, last_current as last_current_find};
@@ -87,7 +87,7 @@ fn the_find_widget_searches_the_focused_pane() {
     harness.state_mut().services.settings.diff_layout = DiffLayout::SideBySide;
     open_in_tree(&mut harness, CODE);
     let label = format!("Diff of {CODE}");
-    wait_until(&mut harness, "the text diff", |harness| harness.query_by_label(&label).is_some());
+    wait_until(&mut harness, "the text diff", |harness| shows_file_view(harness, CODE));
     let diff = harness.get_by_label(&label).rect();
     let (left, right) = (at_share(diff, 0.25), at_share(diff, 0.7));
 
@@ -370,18 +370,12 @@ fn a_newly_opened_file_starts_at_its_top() {
 
     for (from, to) in [("src/a.rs", "src/b.rs"), ("src/b.rs", "src/c.rs")] {
         open_in_tree(&mut harness, from);
-        let label = format!("Diff of {from}");
-        wait_until(&mut harness, "the text diff", |harness| {
-            harness.query_by_label(&label).is_some()
-        });
-        let diff = harness.get_by_label(&label).rect();
+        wait_until(&mut harness, "the text diff", |harness| shows_file_view(harness, from));
+        let diff = harness.get_by_label(&format!("Diff of {from}")).rect();
         scroll_down(&mut harness, diff.center());
         forget_view_box(&harness.ctx);
         open_in_tree(&mut harness, to);
-        let label = format!("Diff of {to}");
-        wait_until(&mut harness, "the next diff", |harness| {
-            harness.query_by_label(&label).is_some()
-        });
+        wait_until(&mut harness, "the next diff", |harness| shows_file_view(harness, to));
         assert_at_top(&mut harness, to);
         // The second pair goes inline.
         harness.state_mut().services.settings.diff_layout = DiffLayout::Inline;

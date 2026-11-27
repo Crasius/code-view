@@ -30,6 +30,7 @@ use review_store::{AppPaths, ConnectionStore};
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
+use super::action_e2e::shows_file_view;
 use super::{ReviewApp, clip_check};
 use cv_base::platform::FOCUS_MODE_KEY;
 use cv_pr_diff::find::bar::last_bar as last_find_bar;
@@ -238,9 +239,7 @@ impl Audit {
                 .expect("the handler")
                 .rect(),
         );
-        wait_for(harness, "the long diff", |harness| {
-            harness.query_by_label(&format!("Diff of {LONG_PATH}")).is_some()
-        });
+        wait_for(harness, "the long diff", |harness| shows_file_view(harness, LONG_PATH));
         pump(harness, 1.0);
         self.check("09-diff-side-by-side");
         self.find_in_diff();

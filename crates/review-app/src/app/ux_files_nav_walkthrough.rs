@@ -13,7 +13,7 @@ use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, wait_until};
+use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
 use super::github_mock::{ExtraFile, FILE, GitHubHost, NUMBER, REPOSITORY};
 use cv_runtime::route::PullRequestTab;
 use cv_testkit::Clicks;
@@ -87,7 +87,7 @@ fn ux_files_nav_steps_through_the_review_to_the_vote() {
     wait_until(&mut harness, "the note under the arrows", |harness| {
         harness.query_by_label(EDGE_HINT).is_some()
     });
-    assert!(harness.query_by_label(&format!("Diff of {C}")).is_some(), "the file stays open");
+    assert!(shows_file_view(&harness, C), "the file stays open");
     harness.key_press(Key::N);
     wait_for_diff(&mut harness, FILE);
     harness.run_steps(3);
@@ -135,6 +135,7 @@ fn open_in_tree(harness: &mut Harness<'_, ReviewApp>, path: &str) {
 }
 
 fn wait_for_diff(harness: &mut Harness<'_, ReviewApp>, path: &str) {
-    let label = format!("Diff of {path}");
-    wait_until(harness, &label, |harness| harness.query_by_label(&label).is_some());
+    wait_until(harness, &format!("the file view of {path}"), |harness| {
+        shows_file_view(harness, path)
+    });
 }

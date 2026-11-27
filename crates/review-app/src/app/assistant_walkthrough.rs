@@ -22,7 +22,7 @@ use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
 use super::action_e2e::{
-    app, open_diff, open_pull_request, press, type_into, wait_for, wait_until,
+    app, open_diff, open_pull_request, press, shows_file_view, type_into, wait_for, wait_until,
 };
 use super::github_mock::{FILE, GitHubHost, TITLE};
 use cv_pr_assistant::CARD_LABEL;
@@ -98,11 +98,10 @@ fn assistant_answers_a_typed_question_and_a_citation_opens_the_line() {
     assert_centered(&harness, "Question 1", QUESTION);
     // Checked against the checkout, the citation becomes a link into the Files tab.
     let center = harness.query_all_by_label(CITATION).next().expect("the citation").rect().center();
-    let diff = format!("Diff of {FILE}");
     wait_for(
         &mut harness,
         "the cited file",
-        |harness| harness.query_by_label(&diff).map(|_| ()),
+        |harness| shows_file_view(harness, FILE).then_some(()),
         |harness| primary_click(harness, center),
     );
 }

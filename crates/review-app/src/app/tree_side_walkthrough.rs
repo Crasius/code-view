@@ -10,7 +10,7 @@ use egui_kittest::kittest::Queryable;
 use review_store::{AppPaths, AppSettings, TreeSide};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, wait_until};
+use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_base::platform::FOCUS_MODE_KEY;
 use cv_shell::focus_mode::{self, Surface};
@@ -103,9 +103,7 @@ pub(super) fn open_long_file(harness: &mut Harness<'_, ReviewApp>) {
         harness.query_by_role_and_label(Role::TreeItem, LONG_FILE).is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, LONG_FILE).rect());
-    wait_until(harness, "the long diff", |harness| {
-        harness.query_by_label(&format!("Diff of {LONG_FILE}")).is_some()
-    });
+    wait_until(harness, "the long diff", |harness| shows_file_view(harness, LONG_FILE));
 }
 
 #[test]

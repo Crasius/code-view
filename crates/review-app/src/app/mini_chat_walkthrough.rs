@@ -18,7 +18,9 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use review_agent::{AgentEvent, AgentKind, FakeAgent, ModelInfo, Usage};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, type_into, wait_for, wait_for_link, wait_until};
+use super::action_e2e::{
+    app, open_pull_request, shows_file_view, type_into, wait_for, wait_for_link, wait_until,
+};
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_code::diff_paint::flashed_lines;
 use cv_pr_assistant::mini::{
@@ -105,7 +107,7 @@ fn open_from_the_citation(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
     let center = harness.get_by_label(FIRST).rect().center();
     primary_click(harness, center);
     wait_until(harness, "the cited file with the mini chat", |harness| {
-        harness.query_by_label("Diff of src/lib.rs").is_some() && has_card(harness)
+        shows_file_view(harness, "src/lib.rs") && has_card(harness)
     });
     assert!(harness.query_by_label("Reference 1 of 4").is_some());
     let room = cv_pr_session::assistant_link::room(&harness.ctx).expect("the Files tab's content");
@@ -235,9 +237,7 @@ fn mini_chat_off_leaves_the_citation_as_it_was() {
     harness.run_steps(4);
     let center = harness.get_by_label(FIRST).rect().center();
     primary_click(&mut harness, center);
-    wait_until(&mut harness, "the cited file", |harness| {
-        harness.query_by_label("Diff of src/lib.rs").is_some()
-    });
+    wait_until(&mut harness, "the cited file", |harness| shows_file_view(harness, "src/lib.rs"));
     harness.run_steps(4);
     assert!(!has_card(&harness) && mini::drawn(&harness.ctx).is_none(), "no mini chat");
 
