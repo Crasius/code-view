@@ -38,7 +38,7 @@ You need Xcode's command-line tools (`xcode-select --install`) and Rust (rustup)
 
 ```sh
 cargo run -p review-app --bin CodeView            # debug build, runs from the terminal
-cargo clippy --workspace --all-targets -- -D warnings
+sh scripts/check.sh                               # the checks; --list names their commands
 cargo test --workspace
 ```
 
@@ -53,10 +53,9 @@ minutes (`REVIEW_TEST_WATCHDOG_SECS` changes the limit).
 
 ## Build an installable app
 
-From the repository root, install the packaging tool once, then run:
+From the repository root, run:
 
 ```sh
-cargo install cargo-bundle --version 0.12.0 --locked
 ./scripts/package-macos.sh
 ```
 
@@ -68,12 +67,14 @@ It signs the app ad hoc, validates its metadata and signature, and creates:
   `dist/CodeView-macos-x86_64.dmg` on Intel: open it and drag **Code View** onto
   **Applications**, then launch Code View from Applications or Spotlight.
 - A `.zip` beside the disk image containing the same app.
-- The app itself at `target/<Rust host>/release/bundle/osx/Code View.app`.
+- The app itself at `target/<Rust host>/release/bundle/Code View.app`.
 
 No Rust toolchain is needed on the Mac where the app is installed. Git is still
 needed for repository operations. The script fixes its build output to the repository's
 `target` directory and replaces its generated disk image and archive on subsequent runs.
 A plain `cargo build` still builds only the executable; use this script for installation.
+The bundle itself (its `Info.plist`, the icon, the macOS minimum version) is written by
+`scripts/bundle-macos.sh`, which the release build (`ci/build-release.sh`) calls too.
 
 For a single app supporting both Apple silicon and Intel:
 
@@ -209,8 +210,6 @@ Remaining behavior and compatibility checks:
 - The browser extension: registering the host manifests, Chrome or Edge starting the host inside
   the app bundle, and a second start handing its link over the socket.
 - The bundle: Intel/macOS 12 runtime compatibility and icon appearance in the Dock and Finder.
-- CI: the snapshot and walkthrough tests render with wgpu; GitHub's macOS runners have no GPU, so
-  those tests may need a software adapter or a skip there.
 
 ## Traffic-light alignment regression check
 

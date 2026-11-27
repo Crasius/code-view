@@ -10,7 +10,7 @@ cargo run -q -p repo-lint -- --lengths         # shipped line counts over 400, l
 cargo run -q -p repo-lint -- --shrink-allowlist  # lower allowlist entries to the current lengths
 ```
 
-Exit 0 = clean, 1 = findings (one line each: `path[:line]: RLxxx name: message and fix`), 2 = the tool could not run. It runs in `sh .agents/hooks/repo-check.sh` (through `check-repo-lint.sh`) and in CI (`ci/lint.sh`, `.github/workflows/pull-request.yml`). The Rust rules it enforces live in `.agents/rules/rust.md`; this file documents the checks.
+Exit 0 = clean, 1 = findings (one line each: `path[:line]: RLxxx name: message and fix`), 2 = the tool could not run. It runs as the `repo-lint` step of `sh scripts/check.sh` and in CI (`ci/lint.sh`, `.github/workflows/pull-request.yml`). The Rust rules it enforces live in `.agents/rules/rust.md`; this file documents the checks.
 
 ## Terms
 
@@ -74,7 +74,7 @@ Ids are stable: a rule keeps its id, a retired id is never reused, and a retired
 
 ### RL011 workspace-dependency
 - Rule: every dependency of a member is declared once in `[workspace.dependencies]` and used with `workspace = true`; a member may add features (rule `rust`, Dependencies).
-- Why: one place for versions and feature choices keeps the lock file free of duplicate versions and makes every dependency visible in one table.
+- Why: one place for versions and feature choices keeps the workspace's own crates on one version of each dependency and makes every dependency visible in one table. Duplicate versions that crates below the workspace pull in are the `deps` step's (`sh scripts/check.sh`, `deny.toml`), which reports them.
 - Enforced by: repo-lint on member manifests.
 
 ### RL012 todo-comment

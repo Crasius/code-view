@@ -9,8 +9,7 @@
 //! `harness.run_steps(n)` (only after pure UI input on data already loaded).
 //!
 //! Every wait is bounded: it fails after [`IDLE_LIMIT`] with nothing in flight in the background,
-//! or after [`LIMIT`] at all, and names what it waited for and what the screen showed. Rule
-//! `testing` still names this kit by its old home, `action_e2e`.
+//! or after [`LIMIT`] at all, and names what it waited for and what the screen showed.
 //!
 //! The app runs headless (`egui_kittest`), driven through its accessibility tree and pointer
 //! events like a user: [`app`] on the real providers against mock hosts ([`super::github_mock`]),

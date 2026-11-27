@@ -21,6 +21,7 @@ The app is egui, but it must feel like a fluid modern web app, not like a "nativ
 - Icons come from the bundled Phosphor fonts through `cv_base::theme::icons`. No emoji as icons.
 - Reuse `cv-widgets` (buttons, rows, tabs, states, skeleton, splitter, badges, elide, ...) before you write a new one. A pattern used twice becomes a widget.
 - Motion goes through `cv_base::theme::motion` and respects the system's reduced-motion setting.
+- A scroll area whose offset the app places (a jump to a line, a restored position) goes through `cv_widgets::scroll::placed`, because egui measures the area's end from last frame's content and would spring an offset past it back; its regression tests are in `cv-widgets` (`scroll.rs`).
 
 ## Messages and states
 - No dead ends. Every hint, error and empty state carries the direct action: "Open on GitHub/GitLab/Azure DevOps" with the exact URL, Retry, Refresh, or "Add token"/"Fix token" into the setup at the right step. Name the platform concretely.
@@ -29,7 +30,7 @@ The app is egui, but it must feel like a fluid modern web app, not like a "nativ
 
 ## Acceptance for every UI change
 - Light and dark palette.
-- The smallest window size and a large one; text that does not fit elides, nothing clips or overlaps (`crates/review-app/src/app/clip_audit.rs`, `app/clip_check.rs`).
+- The smallest window size and a large one; text that does not fit elides, nothing clips or overlaps (`crates/review-app/src/app/layout_audit_walkthrough.rs`, `app/clip_check.rs`).
 - Keyboard only: every interactive element is reachable and shows a visible focus.
 - Zoom levels other than 100 % (`crates/cv-shell/src/zoom.rs`).
 - Frame cost stays low on large pull requests: no per-frame allocation or layout of the whole diff; check with the frame statistics (Ctrl+Shift+F) for diff and list changes.

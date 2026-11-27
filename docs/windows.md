@@ -20,9 +20,12 @@ From the repository root, in PowerShell or Git Bash:
 ```sh
 cargo run -p review-app --bin CodeView                       # debug build, with a console for its output
 cargo build --release -p review-app --bin CodeView           # target/release/CodeView.exe
+cargo build --profile debugging -p review-app                # target/debugging/, for a debugger
 ```
 
-The checks before a pull request are in `AGENTS.md` (Commands). Scripts under `scripts/` and `.agents/hooks/` are POSIX sh: run them as `sh scripts/<name>.sh` (Git Bash's `sh`, also from PowerShell).
+Dev builds carry line tables only; a debugger session needs the full debug info of the `debugging` profile.
+
+The checks before a pull request are `sh scripts/check.sh` and the tests of the changed crates (`AGENTS.md`, Commands). Scripts under `scripts/` and `.agents/hooks/` are POSIX sh: run them as `sh scripts/<name>.sh` (Git Bash's `sh`, also from PowerShell).
 
 The release build is a GUI program without a console (`windows_subsystem = "windows"` in `crates/review-app/src/main.rs`); problems show in the app or in the log files under the cache folder. The debug build keeps its console.
 

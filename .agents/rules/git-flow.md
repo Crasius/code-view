@@ -34,12 +34,6 @@ No squash and no rebase, on either side. Why: GitHub marks a pull request merged
 - The history guard denies these commands. A sole writer whose HEAD is its own commit may re-run the command with the shell comment `# history-rewrite-ok: <reason>`.
 - Never use a bare `git stash`. Why: all worktrees share one stash, and a bare pop can apply another session's changes. Set work aside with a commit on your branch instead.
 
-## A branch from before the rustfmt commit
-The workspace was reformatted in one layout-only commit, `fd6cc6b` ("Format the workspace with rustfmt"). A branch that forked before it merges in three steps, so that real conflicts and layout conflicts never mix:
-1. `git merge fd6cc6b^` and resolve the real conflicts as usual.
-2. `git merge fd6cc6b`. For each conflicted `.rs` file, take your side and format it: `git checkout --ours -- <files>`, then `rustfmt --edition 2024 <files>`, `git add -- <files>` and commit the merge. Why this is safe: `fd6cc6b` changed only layout, so your content formatted by rustfmt is the merged result. Then run `cargo fmt --all` once and commit what it changes: the lines your branch added in files that merged without a conflict.
-3. `git merge main`, then `cargo fmt --all --check`.
-
 ## A branch from before the public root
 The public history of `main` starts at one root commit (`git rev-list --max-parents=0 main`), made on 2026-11-26. The earlier history lives only in the private archive project (GitLab `northbyte/code-view/app-archive`) and must never reach `main`, the GitLab project or GitHub; never push old tags or old branches. A branch that forked before the root shares no commit with `main`, so `git merge main` refuses it; never pass `--allow-unrelated-histories`, which would pull the old history into `main`. Transplant the work instead (`git cherry-pick` applies each commit's diff, so it needs no shared history):
 1. Commit the work on the old branch.
