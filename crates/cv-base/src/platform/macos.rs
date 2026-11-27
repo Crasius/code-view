@@ -40,7 +40,7 @@ thread_local! {
 pub const AZURE_CLI: &str = "az";
 pub const HAS_SAVE_DIALOG: bool = true;
 /// A clone's folder as Settings › Local checkouts shows it in its example.
-pub const EXAMPLE_CLONE: &str = "/home/you/src/login-app";
+pub const EXAMPLE_CLONE: &str = "/Users/you/src/login-app";
 /// The terminals Settings › Local checkouts offers, with their names.
 pub const TERMINALS: &[(TerminalChoice, &str)] = &[(TerminalChoice::System, "Terminal")];
 /// Where command-line tools live that an app started from the Finder or the Dock does not see:
