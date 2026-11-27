@@ -106,11 +106,18 @@ impl Services {
             Err(error) => {
                 let folder = ToastAction::open_folder(paths.config_dir());
                 toasts.error(format!("Could not read saved connections: {error}"), folder);
-                let recovered = ConnectionStore::load(
-                    paths.config_dir().join("connections.recovered.json"),
-                    paths.token_vault(),
-                )
-                .expect("an absent recovery file always loads");
+                let recovered_file = paths.config_dir().join("connections.recovered.json");
+                let recovered =
+                    match ConnectionStore::load(recovered_file.clone(), paths.token_vault()) {
+                        Ok(recovered) => recovered,
+                        Err(error) => {
+                            toasts.error(
+                                format!("Could not read the recovered connections either: {error}"),
+                                ToastAction::open_folder(paths.config_dir()),
+                            );
+                            ConnectionStore::empty(recovered_file, paths.token_vault())
+                        }
+                    };
                 (recovered, false)
             }
         };
@@ -243,22 +250,29 @@ fn load_settings(paths: &AppPaths, toasts: &mut Toasts) -> AppSettings {
     AppSettings::default()
 }
 
+/// A user of the tests whose display name is the login.
+#[cfg(test)]
+fn person(id: &str, login: &str) -> review_core::UserIdentity {
+    review_core::UserIdentity {
+        id: id.into(),
+        display_name: login.into(),
+        login: Some(login.into()),
+        avatar_url: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use review_store::{AppPaths, AppSettings};
+    use review_store::AppSettings;
 
     use cv_testkit::ScratchDir;
 
     use super::Services;
 
-    fn paths(dir: &ScratchDir) -> AppPaths {
-        AppPaths::new(dir.path().join("config"), dir.path().join("cache"))
-    }
-
     #[test]
     fn unreadable_settings_are_kept_aside_and_reported() {
         let dir = ScratchDir::new("services-unreadable-settings");
-        let paths = paths(&dir);
+        let paths = dir.app_paths();
         std::fs::create_dir_all(paths.config_dir()).unwrap();
         std::fs::write(paths.settings_file(), "{\"theme\": \"Dark\", ").unwrap();
         let mut services =
@@ -276,7 +290,7 @@ mod tests {
     #[test]
     fn unreadable_connections_keep_the_per_connection_settings() {
         let dir = ScratchDir::new("services-unreadable-connections");
-        let paths = paths(&dir);
+        let paths = dir.app_paths();
         std::fs::create_dir_all(paths.config_dir()).unwrap();
         let mut settings = AppSettings::default();
         settings.collapsed_connections.insert("gh".to_owned());
@@ -288,5 +302,22 @@ mod tests {
         services.save_settings();
         let saved = AppSettings::load(&paths.settings_file()).unwrap();
         assert!(saved.collapsed_connections.contains("gh"), "kept on disk");
+    }
+
+    #[test]
+    fn an_unreadable_recovery_file_no_longer_aborts_the_start() {
+        let dir = ScratchDir::new("services-unreadable-recovery");
+        let paths = dir.app_paths();
+        std::fs::create_dir_all(paths.config_dir()).unwrap();
+        let recovered = paths.config_dir().join("connections.recovered.json");
+        std::fs::write(paths.connections_file(), "not json").unwrap();
+        std::fs::write(&recovered, "not json").unwrap();
+        let services =
+            Services::new(egui::Context::default(), paths, cv_providers::create_provider);
+        assert_eq!(services.connections.all(), []);
+        let errors = services.toasts.error_texts();
+        assert_eq!(errors.len(), 2, "both unreadable files are reported: {errors:?}");
+        assert!(errors[1].starts_with("Could not read the recovered connections either"));
+        assert_eq!(std::fs::read_to_string(&recovered).unwrap(), "not json", "left as it was");
     }
 }

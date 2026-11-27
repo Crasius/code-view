@@ -1,29 +1,19 @@
 use cv_runtime::cache::page_cache::{list_part, pull_request_part};
 use cv_runtime::route::PullRequestKey;
-use cv_testkit::ScratchDir;
+use cv_testkit::{ScratchDir, samples};
 use review_core::{
-    AutoComplete, DiffStat, Label, MergeStatus, MergeStrategy, PullRequestDetail, PullRequestScope,
-    PullRequestState, PullRequestSummary, ReviewThread, ReviewVote, Reviewer, StateFilter,
-    ThreadStatus, UserIdentity,
+    AutoComplete, Label, MergeStrategy, PullRequestDetail, PullRequestScope, PullRequestState,
+    PullRequestSummary, ReviewThread, ReviewVote, Reviewer, StateFilter, ThreadStatus,
+    UserIdentity,
 };
-use review_store::AppPaths;
 
 use super::{Added, Answer, Effect, SETTLE_WINDOW, Writes, record};
-use crate::Services;
+use crate::{Services, person};
 
 const CONNECTION: &str = "gh";
 
 fn key(number: u64) -> PullRequestKey {
     PullRequestKey { connection_id: CONNECTION.into(), repository_key: "acme/app".into(), number }
-}
-
-fn person(id: &str, login: &str) -> UserIdentity {
-    UserIdentity {
-        id: id.into(),
-        display_name: login.into(),
-        login: Some(login.into()),
-        avatar_url: None,
-    }
 }
 
 fn me() -> UserIdentity {
@@ -40,38 +30,15 @@ fn label(name: &str) -> Label {
 
 fn row(number: u64) -> PullRequestSummary {
     PullRequestSummary {
-        repository_key: "acme/app".into(),
-        repository_name: "app".into(),
-        number,
-        title: format!("Change {number}"),
         author: person("2", "ana"),
-        state: PullRequestState::Open,
-        is_draft: false,
-        source_branch: "feature".into(),
-        target_branch: "main".into(),
-        created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
-        updated_at: None,
-        web_url: String::new(),
         labels: vec![label("bug")],
         reviewers: vec![reviewer(person("3", "bea"), ReviewVote::Approved)],
-        checks: None,
-        diff_stat: DiffStat::default(),
-        head_sha: None,
-        target_sha: None,
+        ..samples::summary("acme/app", number)
     }
 }
 
 fn detail(number: u64) -> PullRequestDetail {
-    PullRequestDetail {
-        summary: row(number),
-        description: String::new(),
-        target_sha: "b".repeat(40),
-        head_sha: "a".repeat(40),
-        merge_status: MergeStatus::Mergeable,
-        git_fetch_refs: Vec::new(),
-        closed_at: None,
-        auto_complete: None,
-    }
+    PullRequestDetail { summary: row(number), ..samples::detail("acme/app", number) }
 }
 
 fn thread(id: &str) -> ReviewThread {
@@ -112,7 +79,7 @@ fn lists() -> [String; 4] {
 #[test]
 fn a_merge_changes_the_remembered_detail_summary_and_lists_at_once() {
     let dir = ScratchDir::new("writes-merge-cache");
-    let paths = AppPaths::new(dir.path().join("config"), dir.path().join("cache"));
+    let paths = dir.app_paths();
     let mut services =
         Services::new(egui::Context::default(), paths, cv_providers::create_provider);
     let storage_key = key(7).storage_key();
