@@ -531,8 +531,7 @@ fn with_favorites(
 }
 
 fn start_app(paths: &AppPaths) -> Harness<'static, ReviewApp> {
-    let builder =
-        Harness::builder().with_size([1440.0, 900.0]).with_step_dt(0.25).allow_missing_glyphs();
+    let builder = Harness::builder().with_size([1440.0, 900.0]).with_step_dt(0.25);
     app_with(builder, paths.clone(), cv_providers::create_provider)
 }
 

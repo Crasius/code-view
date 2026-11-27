@@ -30,8 +30,6 @@ use self::jump::JumpBox;
 const CAPTION_HEIGHT: f32 = 40.0;
 /// The in-app row below a system title bar.
 const BAR_HEIGHT: f32 = 44.0;
-/// The gap between the trail, the search box and the window's own parts.
-const GAP: f32 = 12.0;
 /// The trail keeps at least this much room while the search box rests beside it at its narrowest;
 /// with less, the box rests hidden (Ctrl+K still opens it) and the trail takes its room too.
 const TRAIL_MIN_WIDTH: f32 = 240.0;
@@ -106,61 +104,42 @@ impl TitleBar {
                         bar.bottom() - 0.5,
                         Stroke::new(1.0, palette.border),
                     );
-                    self.show_integrated(ui, bar, navigation, services, lists)
-                } else {
-                    let Navigation { trail, history, navigator } = navigation;
-                    let left = bar.left() + style::SPACE_S;
-                    let arrows = arrows::show(ui, bar, left, services, history, navigator);
-                    let trail_left = arrows.right();
-                    let shown = self.show_trail(
-                        ui,
-                        bar,
-                        trail_left,
-                        bar.right(),
-                        trail,
-                        services,
-                        navigator,
-                    );
-                    let route = trail.route();
-                    let (search, action) =
-                        self.show_jump(ui, bar, shown.right(), bar.right(), route, services, lists);
-                    let after = search.map_or(shown.right(), |search| search.right()) + GAP;
-                    let (_, chip) = checkouts::show(ui, bar, after, bar.right() - GAP, services);
-                    action.or(chip)
                 }
+                let Navigation { trail, history, navigator } = navigation;
+                let caption = self.is_integrated.then(|| platform::Caption::show(ui, bar, true));
+                let free = caption.as_ref().map_or(bar.x_range(), platform::Caption::free);
+                let left = free.min + style::SPACE_S;
+                let arrows = arrows::show(ui, bar, left, services, history, navigator);
+                let trail_left = arrows.right();
+                let shown =
+                    self.show_trail(ui, bar, trail_left, free.max, trail, services, navigator);
+                let (search, action) = self.show_jump(
+                    ui,
+                    bar,
+                    shown.right(),
+                    free.max,
+                    trail.route(),
+                    services,
+                    lists,
+                );
+                let after = search.map_or(shown.right(), |search| search.right()) + style::SPACE_M;
+                let (chips, chip) =
+                    checkouts::show(ui, bar, after, free.max - style::SPACE_M, services);
+                if let Some(caption) = caption {
+                    // Trail and search box first: the caption checks read them by position.
+                    let holes = [
+                        shown,
+                        search.unwrap_or(Rect::NOTHING),
+                        self.jump.popup_rect().unwrap_or(Rect::NOTHING),
+                        self.crumbs.popup_rect().unwrap_or(Rect::NOTHING),
+                        arrows,
+                        chips,
+                    ];
+                    caption.publish(ui.ctx(), &holes);
+                }
+                action.or(chip)
             })
             .inner
-    }
-
-    fn show_integrated(
-        &mut self,
-        ui: &mut Ui,
-        bar: Rect,
-        navigation: Navigation<'_>,
-        services: &Services,
-        lists: &[&PullRequestListPage],
-    ) -> Option<JumpAction> {
-        let Navigation { trail, history, navigator } = navigation;
-        let caption = platform::Caption::show(ui, bar, true);
-        let free = caption.free();
-        let arrows = arrows::show(ui, bar, free.min + style::SPACE_S, services, history, navigator);
-        let trail_left = arrows.right();
-        let shown = self.show_trail(ui, bar, trail_left, free.max, trail, services, navigator);
-        let (search, action) =
-            self.show_jump(ui, bar, shown.right(), free.max, trail.route(), services, lists);
-        let after = search.map_or(shown.right(), |search| search.right()) + GAP;
-        let (chips, chip) = checkouts::show(ui, bar, after, free.max - GAP, services);
-        // Trail and search box first: the caption checks read them by position.
-        let holes = [
-            shown,
-            search.unwrap_or(Rect::NOTHING),
-            self.jump.popup_rect().unwrap_or(Rect::NOTHING),
-            self.crumbs.popup_rect().unwrap_or(Rect::NOTHING),
-            arrows,
-            chips,
-        ];
-        caption.publish(ui.ctx(), &holes);
-        action.or(chip)
     }
 
     /// The breadcrumb trail from `left`, ending where the search box's narrowest width still fits
@@ -180,9 +159,12 @@ impl TitleBar {
         services: &Services,
         navigator: &mut Navigator,
     ) -> Rect {
-        let beside_search = before - GAP - jump::MIN_WIDTH - GAP;
-        let right =
-            if beside_search - left >= TRAIL_MIN_WIDTH { beside_search } else { before - GAP };
+        let beside_search = before - style::SPACE_M - jump::MIN_WIDTH - style::SPACE_M;
+        let right = if beside_search - left >= TRAIL_MIN_WIDTH {
+            beside_search
+        } else {
+            before - style::SPACE_M
+        };
         let area = Rect::from_min_max(pos2(left, bar.top()), pos2(right.max(left), bar.bottom()));
         self.crumbs.show(ui, area, trail, services, navigator)
     }
@@ -205,12 +187,12 @@ impl TitleBar {
         lists: &[&PullRequestListPage],
     ) -> (Option<Rect>, Option<JumpAction>) {
         let is_open = self.jump.take_open_request(ui.ctx());
-        let (mut from, to) = (after + GAP, before - GAP);
+        let (mut from, to) = (after + style::SPACE_M, before - style::SPACE_M);
         if to - from < jump::MIN_WIDTH {
             if !is_open {
                 return (None, None);
             }
-            from = bar.left() + GAP;
+            from = bar.left() + style::SPACE_M;
         }
         let width = (to - from).min(jump::MAX_WIDTH);
         if width <= 0.0 {

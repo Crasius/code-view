@@ -42,12 +42,17 @@ pub const CURRENT_TEXT: &str = "Is this line still needed?";
 
 /// Opens the pull request from its row in "My pull requests" and waits for its tabs.
 pub fn open_pull_request(harness: &mut Harness<'_, ReviewApp>) {
-    let row = format!("{NUMBER} {TITLE}");
-    wait_until(harness, "the pull request row", |harness| harness.query_by_label(&row).is_some());
-    harness.click_at(harness.get_by_label(&row).rect());
+    click_pull_request_row(harness);
     wait_until(harness, "the pull request", |harness| {
         harness.query_by_role_and_label(Role::Tab, "Overview").is_some()
     });
+}
+
+/// Clicks the pull request's row in "My pull requests" once it shows.
+pub fn click_pull_request_row(harness: &mut Harness<'_, ReviewApp>) {
+    let row = format!("{NUMBER} {TITLE}");
+    wait_until(harness, "the pull request row", |harness| harness.query_by_label(&row).is_some());
+    harness.click_at(harness.get_by_label(&row).rect());
 }
 
 /// Opens [`FILE`] in the Files tab once the mirror fetched it; returns the diff's area.
@@ -274,13 +279,18 @@ impl GitHubHost {
     }
 
     /// `GET /pulls/7` reads after `delay` (before the page opens), with no reviews: a slow host.
+    /// Both answers outrank those a host with a pull request mounted.
     pub fn delay_detail(&self, delay: std::time::Duration) {
+        let priority = self.take_priority();
         self.mount(
             repository_api("GET", &format!("/pulls/{NUMBER}"))
-                .respond_with(ok(json!({})).set_delay(delay)),
+                .respond_with(ok(json!({})).set_delay(delay))
+                .with_priority(priority),
         );
         self.mount(
-            repository_api("GET", &format!("/pulls/{NUMBER}/reviews")).respond_with(ok(json!([]))),
+            repository_api("GET", &format!("/pulls/{NUMBER}/reviews"))
+                .respond_with(ok(json!([])))
+                .with_priority(priority),
         );
     }
 

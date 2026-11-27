@@ -5,7 +5,7 @@
 //! the branch checked out already, a fork, a failure, local commits), Settings › Local checkouts,
 //! and that a new head of the pull request moves the checkout silently, or says why it did not.
 //! Needs `git` on PATH, no network; terminals and agents open in the fake.
-//! `cargo test -p review-app checkout_walkthrough`
+//! `cargo test -p review-app --bin CodeView app::checkout_walkthrough`
 
 use std::path::{Path, PathBuf};
 
@@ -100,7 +100,7 @@ pub(super) fn head_of(dir: &Path) -> String {
 }
 
 #[test]
-fn checkout_walkthrough_offers_runs_and_opens_claude_in_a_new_worktree() {
+fn offers_runs_and_opens_claude_in_a_new_worktree() {
     let Setup { scratch: _scratch, host, mut harness, clone } = start("main");
     open_form(&mut harness);
 
@@ -173,7 +173,7 @@ fn checkout_walkthrough_offers_runs_and_opens_claude_in_a_new_worktree() {
 }
 
 #[test]
-fn checkout_walkthrough_follows_a_new_head_silently_and_says_why_when_it_cannot() {
+fn follows_a_new_head_silently_and_says_why_when_it_cannot() {
     let Setup { scratch: _scratch, mut host, mut harness, clone } = start("follow");
     open_form(&mut harness);
     click_last(&mut harness, "Check out");
@@ -221,7 +221,7 @@ fn checkout_walkthrough_follows_a_new_head_silently_and_says_why_when_it_cannot(
 }
 
 #[test]
-fn checkout_walkthrough_cards_lead_on_from_each_dead_end() {
+fn cards_lead_on_from_each_dead_end() {
     let Setup { scratch: _scratch, host: _host, mut harness, clone } = start("cards");
 
     // A clone with changes: Your clone turns into the card, a worktree is the way on.
@@ -258,7 +258,7 @@ fn checkout_walkthrough_cards_lead_on_from_each_dead_end() {
 }
 
 #[test]
-fn checkout_walkthrough_adopts_a_branch_checked_out_already() {
+fn adopts_a_branch_checked_out_already() {
     let Setup { scratch: _scratch, host: _host, mut harness, clone } = start("adopt");
     git(&clone, &["switch", "-q", "feature"]);
     open_form_card(&mut harness, "ALREADY CHECKED OUT");
@@ -272,7 +272,7 @@ fn checkout_walkthrough_adopts_a_branch_checked_out_already() {
 }
 
 #[test]
-fn checkout_walkthrough_asks_for_a_fork_and_names_its_branch() {
+fn asks_for_a_fork_and_names_its_branch() {
     let Setup { scratch: _scratch, host: _host, mut harness, clone } = start("fork");
     // The branch is not on the clone's remote: the pull request comes from a fork.
     git(&clone, &["update-ref", "-d", "refs/remotes/origin/feature"]);
@@ -289,7 +289,7 @@ fn checkout_walkthrough_asks_for_a_fork_and_names_its_branch() {
 }
 
 #[test]
-fn checkout_walkthrough_clones_from_the_mirror_without_a_clone() {
+fn clones_from_the_mirror_without_a_clone() {
     let Setup { scratch, host, mut harness, clone: _clone } = start("no-clone");
     harness.state_mut().services.settings.checkouts.search_folders = Some(Vec::new());
     open_form_card(&mut harness, "NO LOCAL CLONE FOUND");
@@ -322,7 +322,7 @@ fn open_form_card(harness: &mut Harness<'_, ReviewApp>, card: &str) {
 }
 
 #[test]
-fn checkout_walkthrough_settings_section_lists_clones_folders_and_the_pattern() {
+fn settings_section_lists_clones_folders_and_the_pattern() {
     let Setup { scratch, host: _host, mut harness, clone: _clone } = start("settings");
     harness.state_mut().navigator.go(Route::Settings);
     wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);

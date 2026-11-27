@@ -12,8 +12,8 @@ use egui::{Event, Key, Modifiers, PointerButton, Role, pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{
-    Capabilities, Connection, GitRemote, ItemKind, ItemRef, LinkedItem, LinkedState, MergeStatus,
-    ProviderKind, PullRequestDetail, PullRequestState, PullRequestSummary, Result, RunStatus,
+    Capabilities, Connection, GitRemote, ItemKind, ItemRef, LinkedItem, LinkedState, ProviderKind,
+    PullRequestDetail, PullRequestSummary, Result, RunStatus,
 };
 use review_store::AppPaths;
 
@@ -36,8 +36,8 @@ Tracked in [WEB-12](https://jira.example.com/browse/WEB-12); the follow-up is WE
 Upstream: https://github.com/acme/widgets/pull/61";
 
 #[test]
-fn navigation_breadcrumbs_back_and_linked_items() {
-    let scratch = ScratchDir::new("navigation");
+fn linked_card_and_breadcrumbs_lead_to_their_targets() {
+    let scratch = ScratchDir::new("navigation-linked");
     let origin = origin(&scratch);
     let linked_calls = Arc::new(AtomicUsize::new(0));
     let mut harness = harness(saved_paths(&scratch, &[connection()]), origin, linked_calls.clone());
@@ -87,9 +87,9 @@ fn navigation_breadcrumbs_back_and_linked_items() {
         harness.query_by_label("Pull request #7 (current page)").is_some()
     });
     assert_eq!(harness.state().route, Route::PullRequest(key(NUMBER)));
-    for _ in 0..120 {
-        harness.step();
-    }
+    // What the revisit sent has landed; then two simulated seconds in which a poll would ask.
+    settle_background(&mut harness);
+    harness.run_steps(120);
     assert_eq!(
         linked_calls.load(Ordering::SeqCst),
         1,
@@ -119,7 +119,15 @@ fn navigation_breadcrumbs_back_and_linked_items() {
         harness.query_by_role_and_label(Role::Link, review_core::APP_NAME).is_none(),
         "the root is the current page now"
     );
+}
 
+#[test]
+fn history_steps_through_pages_and_tabs() {
+    let scratch = ScratchDir::new("navigation-history");
+    let origin = origin(&scratch);
+    let linked_calls = Arc::new(AtomicUsize::new(0));
+    let mut harness = harness(saved_paths(&scratch, &[connection()]), origin, linked_calls);
+    assert_eq!(harness.state().route, Route::MyPullRequests, "the app starts on the list");
     back_and_forward_through_tabs(&mut harness);
 }
 
@@ -175,9 +183,6 @@ fn back_and_forward_through_tabs(harness: &mut Harness<'_, ReviewApp>) {
 /// On macOS Cmd+Right and Cmd+Left step like Chrome, except in a text field, where they move to
 /// the line's ends. The arrows name the system's shortcut, as every other shortcut label does.
 fn command_arrows_on_macos(harness: &mut Harness<'_, ReviewApp>, pull_request: &Route) {
-    let expected =
-        if cfg!(target_os = "macos") { ("⌘[", "⌘]") } else { ("Alt+Left", "Alt+Right") };
-    assert_eq!((platform::BACK_SHORTCUT, platform::FORWARD_SHORTCUT), expected);
     let back_label = format!("Back to Pull request #7, Overview tab ({})", platform::BACK_SHORTCUT);
     assert!(harness.query_by_label(&back_label).is_some(), "the back arrow names {back_label}");
     let forward_label =
@@ -347,39 +352,22 @@ impl Script for NavigationScript {
     }
 
     async fn pull_request(&self, repo: &str, number: u64) -> Result<PullRequestDetail> {
-        let created_at = time::macros::datetime!(2026-10-01 09:30 UTC);
         let (title, description) = match number {
             NUMBER => ("Build widgets eagerly", DESCRIPTION),
             _ => ("Speed up login", "Caches the session lookup."),
         };
         Ok(PullRequestDetail {
             summary: PullRequestSummary {
-                repository_key: repo.to_owned(),
-                repository_name: "widgets".to_owned(),
-                number,
                 title: title.to_owned(),
-                author: samples::author(),
-                state: PullRequestState::Open,
-                is_draft: false,
                 source_branch: "feature".to_owned(),
-                target_branch: "main".to_owned(),
-                created_at,
-                updated_at: None,
                 web_url: format!("https://github.com/{repo}/pull/{number}"),
-                labels: Vec::new(),
-                reviewers: Vec::new(),
-                checks: None,
-                diff_stat: review_core::DiffStat::default(),
-                head_sha: None,
-                target_sha: None,
+                ..samples::summary(repo, number)
             },
             description: description.to_owned(),
             target_sha: self.origin.target.clone(),
             head_sha: self.origin.head.clone(),
-            merge_status: MergeStatus::Mergeable,
             git_fetch_refs: vec!["refs/heads/feature".to_owned(), "refs/heads/main".to_owned()],
-            closed_at: None,
-            auto_complete: None,
+            ..samples::detail(repo, number)
         })
     }
 

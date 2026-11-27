@@ -9,7 +9,7 @@ use egui_kittest::kittest::Queryable;
 use super::super::ReviewApp;
 use super::super::github_mock::{ExtraFile, GitHubHost, open_diff, open_pull_request};
 use super::super::walkthrough::{app, has, hover_until_add_comment, press, type_into, wait_until};
-use super::{commits_tab, reload_button};
+use super::{commits_tab, has_draft, reload_button};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -33,7 +33,7 @@ fn live_push_to_the_file_of_a_comment_draft_waits_for_reload() {
 
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Reload").rect());
     wait_until(&mut harness, "the pushed commit", |harness| commits_tab(harness, 2));
-    assert!(has_draft(&harness), "the draft stays");
+    assert!(has_draft(&harness, DRAFT), "the draft stays");
     press(&mut harness, "Show changes");
     wait_until(&mut harness, "the pushed range", |harness| {
         has(harness, "Showing what was pushed since you last looked")
@@ -69,7 +69,7 @@ fn live_push_to_another_file_applies_beside_a_comment_draft() {
     wait_until(&mut harness, "the pushed commit", |harness| commits_tab(harness, 2));
     assert!(reload_button(&harness).is_none(), "the push does not touch the commented file");
     assert!(!has(&harness, "Updated: "), "an applied update shows no card");
-    assert!(has_draft(&harness), "the draft stays where it is");
+    assert!(has_draft(&harness, DRAFT), "the draft stays where it is");
 }
 
 #[test]
@@ -95,13 +95,4 @@ fn write_comment(harness: &mut Harness<'_, ReviewApp>, diff: egui::Rect) {
     hover_until_add_comment(harness, diff, &[0.75]);
     harness.click_at(harness.get_by_label("Add comment").rect());
     type_into(harness, "Leave a comment", DRAFT);
-}
-
-fn has_draft(harness: &Harness<'_, ReviewApp>) -> bool {
-    harness
-        .query_by(|node| {
-            matches!(node.role(), Role::TextInput | Role::MultilineTextInput)
-                && node.value().as_deref() == Some(DRAFT)
-        })
-        .is_some()
 }

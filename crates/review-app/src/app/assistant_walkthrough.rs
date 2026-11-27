@@ -38,7 +38,7 @@ const CITATION: &str = "src/lib.rs:1";
 /// agent in a checkout with the pull request's brief; its answer streams in with the tool step and
 /// the token counts, and the cited line opens in the Files tab.
 #[test]
-fn assistant_answers_a_typed_question_and_a_citation_opens_the_line() {
+fn answers_a_typed_question_and_a_citation_opens_the_line() {
     let scratch = ScratchDir::new("assistant-answer");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -85,7 +85,7 @@ fn assistant_answers_a_typed_question_and_a_citation_opens_the_line() {
 /// A finished answer ends with its token counts, no buttons under it; the conversation is still
 /// there after a restart.
 #[test]
-fn assistant_conversation_survives_a_restart() {
+fn conversation_survives_a_restart() {
     let scratch = ScratchDir::new("assistant-restart");
     let host = GitHubHost::with_pull_request(scratch.path());
     {
@@ -112,7 +112,7 @@ fn assistant_conversation_survives_a_restart() {
 /// Alt+A on lines selected in the diff opens the assistant with them attached; the question names
 /// them for the agent.
 #[test]
-fn assistant_alt_a_quotes_the_selected_lines() {
+fn alt_a_quotes_the_selected_lines() {
     let scratch = ScratchDir::new("assistant-quote");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -156,7 +156,7 @@ fn assistant_alt_a_quotes_the_selected_lines() {
 /// Without the CLI the card links its install guide; installed but signed out it offers a terminal
 /// to sign in; each "Check again" goes on with the waiting question.
 #[test]
-fn assistant_missing_and_signed_out_clis_show_their_fix() {
+fn missing_and_signed_out_clis_show_their_fix() {
     let scratch = ScratchDir::new("assistant-states");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -181,7 +181,7 @@ fn assistant_missing_and_signed_out_clis_show_their_fix() {
 
 /// The default model picked in Settings is saved and starts the next conversation.
 #[test]
-fn assistant_default_model_from_settings_starts_the_next_conversation() {
+fn default_model_from_settings_starts_the_next_conversation() {
     let scratch = ScratchDir::new("assistant-model");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -211,7 +211,7 @@ fn assistant_default_model_from_settings_starts_the_next_conversation() {
 /// is disabled and says what to do; once the checkout is there it opens the CLI fresh in it, after
 /// the first answer it resumes the session. Tests only record the terminal.
 #[test]
-fn assistant_terminal_button_opens_the_cli_in_the_checkout() {
+fn terminal_button_opens_the_cli_in_the_checkout() {
     let scratch = ScratchDir::new("assistant-terminal");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -271,7 +271,7 @@ fn press_terminal(harness: &mut Harness<'_, ReviewApp>) {
 /// "Jump to latest" leads back down. The side column's splitter sizes the panel too, and that
 /// width survives a restart.
 #[test]
-fn assistant_panel_keeps_the_side_column_and_the_composer_at_the_bottom() {
+fn panel_keeps_the_side_column_and_the_composer_at_the_bottom() {
     let scratch = ScratchDir::new("assistant-panel");
     let host = GitHubHost::with_pull_request(scratch.path());
     let width = {
@@ -362,7 +362,7 @@ fn has_group(harness: &Harness<'_, ReviewApp>, name: &str) -> bool {
 /// the column's visible height); it survives a restart; the reset (Enter on the splitter) forgets
 /// it and the card fills again.
 #[test]
-fn assistant_card_fills_the_side_column_until_dragged() {
+fn card_fills_the_side_column_until_dragged() {
     let scratch = ScratchDir::new("assistant-card-height");
     let host = GitHubHost::with_pull_request(scratch.path());
     {
@@ -538,7 +538,7 @@ fn answered(harness: &mut Harness<'_, ReviewApp>, text: &str) -> FakeAgent {
 /// click into the card arms it and the wheel scrolls the conversation; a click outside gives the
 /// wheel back to the page.
 #[test]
-fn assistant_card_takes_the_wheel_only_after_a_click_into_it() {
+fn card_takes_the_wheel_only_after_a_click_into_it() {
     let scratch = ScratchDir::new("assistant-wheel");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -578,7 +578,7 @@ fn assistant_card_takes_the_wheel_only_after_a_click_into_it() {
 /// Assistant rows read as inactive and no CLI is looked for or started; turned on again, it is
 /// back without a restart.
 #[test]
-fn assistant_turned_off_in_settings_leaves_the_page_and_starts_nothing() {
+fn turned_off_in_settings_leaves_the_page_and_starts_nothing() {
     let scratch = ScratchDir::new("assistant-off");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -691,7 +691,7 @@ fn wheel_over_conversation(harness: &mut Harness<'_, ReviewApp>, delta: f32) -> 
 /// click empties the conversation, Undo brings it back; Ctrl+N does the same in the panel, and
 /// the next question ends the chance to undo.
 #[test]
-fn assistant_new_conversation_takes_one_click_and_can_be_undone() {
+fn new_conversation_takes_one_click_and_can_be_undone() {
     let scratch = ScratchDir::new("assistant-new");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -743,7 +743,7 @@ const UNDO_NOTE: &str = "Started a new conversation.";
 /// Regression: the question being written stays through a switch of the agent, of the model and a
 /// new conversation, in the card and in the panel; only sending it empties the composer.
 #[test]
-fn assistant_draft_survives_switching_agent_and_model() {
+fn draft_survives_switching_agent_and_model() {
     let scratch = ScratchDir::new("assistant-draft");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -795,7 +795,7 @@ fn assistant_draft_survives_switching_agent_and_model() {
 /// Send, and the follow-up it took vanished unasked; now it offers Stop until the answer is in,
 /// then takes the follow-up.
 #[test]
-fn assistant_mini_chat_on_an_earlier_answer_waits_for_the_running_one() {
+fn mini_chat_on_an_earlier_answer_waits_for_the_running_one() {
     let scratch = ScratchDir::new("assistant-mini-busy");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -830,7 +830,7 @@ fn assistant_mini_chat_on_an_earlier_answer_waits_for_the_running_one() {
 /// stays through switching the model and the agent both ways, also while a question runs and after
 /// it failed.
 #[test]
-fn assistant_draft_survives_switching_over_kept_conversations() {
+fn draft_survives_switching_over_kept_conversations() {
     use review_agent::{AgentError, StepOutcome};
     let scratch = ScratchDir::new("assistant-draft-kept");
     let host = GitHubHost::with_pull_request(scratch.path());
@@ -899,7 +899,7 @@ fn assistant_draft_survives_switching_over_kept_conversations() {
 /// Regression: the mini chat writes the same draft as the card. A follow-up typed there is still
 /// in the card's composer after a switch of the agent closed the mini chat.
 #[test]
-fn assistant_mini_chat_follow_up_survives_switching_the_agent() {
+fn mini_chat_follow_up_survives_switching_the_agent() {
     let scratch = ScratchDir::new("assistant-mini-draft");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -1008,7 +1008,7 @@ fn press_new_conversation(harness: &mut Harness<'_, ReviewApp>) {
 /// The filled card's height follows the window, not the header: scrolled until the header slid
 /// away, the conversation keeps its height to the point; a taller window still grows it.
 #[test]
-fn assistant_card_keeps_its_height_while_the_header_slides_away() {
+fn card_keeps_its_height_while_the_header_slides_away() {
     let scratch = ScratchDir::new("assistant-card-header");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);

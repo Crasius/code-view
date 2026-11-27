@@ -6,12 +6,10 @@
 
 use std::fmt::Write as _;
 
-use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use super::ReviewApp;
 use super::github_mock::{CURRENT_LINE, GitHubHost, ReplacedHead, open_pull_request};
-use super::walkthrough::{app, press, wait_until};
+use super::walkthrough::{app, press, settle_background, wait_until};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -41,18 +39,16 @@ fn thread_cards_show_their_code_from_the_mirror() {
         harness.query_by_label(&location).is_some()
     });
     harness.get_by_label(&location).scroll_to_me();
-    settle(&mut harness);
+    settle_background(&mut harness);
     let commented = format!("Changed line {CURRENT_LINE}, commented: /// Line {CURRENT_LINE} of");
     wait_until(&mut harness, "the current thread's code", |harness| {
         harness.query_by_label_contains(&commented).is_some()
     });
     assert!(harness.query_by_label("Lines 17–23").is_some(), "three lines on each side");
     press(&mut harness, "Show 10 more lines above");
-    settle(&mut harness);
-    assert!(
-        harness.query_by_label_contains("Changed line 7: /// Line 7 of").is_some(),
-        "ten more lines above"
-    );
+    wait_until(&mut harness, "ten more lines above", |harness| {
+        harness.query_by_label_contains("Changed line 7: /// Line 7 of").is_some()
+    });
 
     // The outdated thread: the version it was written on, where line 1 replaced the old greeting.
     let version = format!("Version {} · ", &replaced[..7]);
@@ -64,11 +60,11 @@ fn thread_cards_show_their_code_from_the_mirror() {
     });
     let diff = harness.get_all_by_label("Diff").next().expect("the outdated card's switch");
     diff.scroll_to_me();
-    settle(&mut harness);
+    settle_background(&mut harness);
     let target =
         harness.get_all_by_label("Diff").next().expect("the outdated card's switch").rect();
     harness.click_at(target);
-    settle(&mut harness);
+    settle_background(&mut harness);
     assert_eq!(
         harness.query_all_by_label_contains("Removed line 1: pub fn greet() ->").count(),
         2,
@@ -81,10 +77,4 @@ fn thread_cards_show_their_code_from_the_mirror() {
     wait_until(&mut harness, "the original version", |harness| {
         harness.query_by_label_contains(&banner).is_some()
     });
-}
-
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..20 {
-        harness.step();
-    }
 }
