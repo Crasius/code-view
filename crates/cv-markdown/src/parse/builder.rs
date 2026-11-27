@@ -349,32 +349,13 @@ impl Builder {
 
     pub(super) fn finish(mut self) -> Parsed {
         let blocks = self.finish_blocks();
-        let mut sources = std::mem::take(&mut self.sources);
-        sources.resize(blocks.len(), BlockSource::default());
-        Parsed { blocks, sources }
+        Parsed { blocks, sources: self.sources }
     }
 
     fn finish_blocks(&mut self) -> Vec<Block> {
         self.flush_inline();
-        while self.stack.len() > 1 {
-            // Unbalanced input cannot happen with pulldown-cmark, but never drop content.
-            match self.stack.pop() {
-                Some(Container::Quote(alert, blocks)) => {
-                    self.push_block(Block::Quote { alert, blocks });
-                }
-                Some(Container::List(start, items)) => {
-                    self.push_block(Block::List { start, items });
-                }
-                Some(Container::Item(item)) => {
-                    self.push_block(Block::List { start: None, items: vec![item] });
-                }
-                Some(Container::Table { alignments, header, rows, .. }) => {
-                    self.push_block(Block::Table { alignments, header, rows });
-                }
-                Some(Container::Root(_)) | None => {}
-            }
-        }
-        match self.stack.pop() {
+        debug_assert_eq!(self.stack.len(), 1, "pulldown-cmark balances its events");
+        match self.stack.drain(..).next() {
             Some(Container::Root(blocks)) => blocks,
             _ => Vec::new(),
         }

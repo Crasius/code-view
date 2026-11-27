@@ -38,6 +38,7 @@ use std::borrow::Cow;
 use std::ops::Range;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use cv_base::mailbox;
 use cv_base::platform::shortcut;
 use cv_runtime::cache::memory::{self, BoundedCache, Holder};
 use egui::Ui;
@@ -132,17 +133,9 @@ pub struct Units {
 impl Units {
     /// The pieces of `text` in `platform`'s dialect, as [`render`] would show them.
     pub fn parse(text: &str, platform: Option<ProviderKind>) -> Self {
-        let visible = without_html_comments(text);
-        if visible.trim().is_empty() {
+        let Some(source) = dialect_source(text, platform) else {
             return Self { blocks: Vec::new(), units: Vec::new() };
-        }
-        let visible = mermaid::containers_as_fences(&visible);
-        let source = match platform {
-            Some(ProviderKind::AzureDevOps) => azure_headings(&visible),
-            Some(ProviderKind::GitHub | ProviderKind::GitLab) | None => visible,
         };
-        // Comments keep their line breaks, diagram containers their length and Azure DevOps
-        // headings only gain a space: lines of `source` are lines of `text`.
         let breaks: Vec<usize> = source.match_indices('\n').map(|(at, _)| at).collect();
         let line_of = |offset: usize| breaks.partition_point(|at| *at < offset) as u32 + 1;
         let lines_of = |bytes: &Range<usize>| {
@@ -151,39 +144,36 @@ impl Units {
         let parsed = parse::parse_with_sources(&source, platform);
         let mut units = Vec::with_capacity(parsed.blocks.len());
         for (index, (block, source)) in parsed.blocks.iter().zip(&parsed.sources).enumerate() {
-            match block {
-                parse::Block::List { items, .. } if items.len() == source.items.len() => {
-                    for (item_index, (item, bytes)) in items.iter().zip(&source.items).enumerate() {
-                        let mut text = String::new();
-                        item.plain_text(&mut text);
-                        let mut sources = Vec::new();
-                        parse::image_sources(&item.blocks, &mut sources);
-                        units.push(Unit {
-                            block: index,
-                            item: Some(item_index),
-                            kind: UnitKind::ListItem,
-                            lines: lines_of(bytes),
-                            signature: egui::epaint::util::hash(("item", format!("{item:?}"))),
-                            text,
-                            images: sources.len(),
-                        });
-                    }
-                }
-                _ => {
+            if let parse::Block::List { items, .. } = block {
+                for (item_index, (item, bytes)) in items.iter().zip(&source.items).enumerate() {
                     let mut text = String::new();
-                    block.plain_text(&mut text);
+                    item.plain_text(&mut text);
                     let mut sources = Vec::new();
-                    parse::image_sources(std::slice::from_ref(block), &mut sources);
+                    parse::image_sources(&item.blocks, &mut sources);
                     units.push(Unit {
                         block: index,
-                        item: None,
-                        kind: unit_kind(block),
-                        lines: lines_of(&source.bytes),
-                        signature: egui::epaint::util::hash(format!("{block:?}")),
+                        item: Some(item_index),
+                        kind: UnitKind::ListItem,
+                        lines: lines_of(bytes),
+                        signature: egui::epaint::util::hash(("item", format!("{item:?}"))),
                         text,
                         images: sources.len(),
                     });
                 }
+            } else {
+                let mut text = String::new();
+                block.plain_text(&mut text);
+                let mut sources = Vec::new();
+                parse::image_sources(std::slice::from_ref(block), &mut sources);
+                units.push(Unit {
+                    block: index,
+                    item: None,
+                    kind: unit_kind(block),
+                    lines: lines_of(&source.bytes),
+                    signature: egui::epaint::util::hash(format!("{block:?}")),
+                    text,
+                    images: sources.len(),
+                });
             }
         }
         Self { blocks: parsed.blocks, units }
@@ -296,7 +286,7 @@ impl Units {
         match unit.kind {
             UnitKind::Code => unit.text.split('\n').count() as f32 * line_height + body * 1.6,
             UnitKind::Heading => line_height * 1.4 * lines,
-            UnitKind::Rule => cv_base::theme::style::SPACE_S * 2.0 * scale + 1.0,
+            UnitKind::Rule => render::rule_height(scale),
             UnitKind::Table => line_height * 1.6 * lines,
             UnitKind::Paragraph | UnitKind::ListItem | UnitKind::Quote => line_height * lines,
         }
@@ -402,11 +392,11 @@ pub fn current_links(ctx: &egui::Context) -> Option<Arc<dyn LinkResolver>> {
 
 /// The link target the user clicked to open in the app this frame, once.
 pub fn take_in_app_request(ctx: &egui::Context) -> Option<String> {
-    ctx.data_mut(|data| data.remove_temp::<String>(egui::Id::unique(IN_APP_ID)))
+    mailbox::take(ctx, egui::Id::unique(IN_APP_ID))
 }
 
 fn request_in_app(ctx: &egui::Context, target: &str) {
-    ctx.data_mut(|data| data.insert_temp(egui::Id::unique(IN_APP_ID), target.to_owned()));
+    mailbox::post(ctx, egui::Id::unique(IN_APP_ID), target.to_owned());
 }
 
 /// Tooltip text for a link: what it is, then how it opens.
@@ -459,16 +449,23 @@ impl Document {
 
 /// The blocks of `text` in `platform`'s dialect; none when only whitespace or comments remain.
 fn parse_for(text: &str, platform: Option<ProviderKind>) -> Vec<parse::Block> {
+    dialect_source(text, platform).map_or_else(Vec::new, |source| parse::parse(&source, platform))
+}
+
+/// `text` as `platform`'s dialect hands it to the parser; `None` when only whitespace or comments
+/// remain. Comments keep their line breaks, diagram containers their length and Azure DevOps
+/// headings only gain a space: lines of the result are lines of `text`.
+fn dialect_source(text: &str, platform: Option<ProviderKind>) -> Option<String> {
     let visible = without_html_comments(text);
     if visible.trim().is_empty() {
-        return Vec::new();
+        return None;
     }
     let visible = mermaid::containers_as_fences(&visible);
     let source = match platform {
         Some(ProviderKind::AzureDevOps) => azure_headings(&visible),
         Some(ProviderKind::GitHub | ProviderKind::GitLab) | None => visible,
     };
-    parse::parse(&source, platform)
+    Some(source.into_owned())
 }
 
 /// HTML comments are hidden on every platform (templates use them for instructions). A comment
@@ -548,6 +545,8 @@ mod images_tests;
 mod mermaid_tests;
 #[cfg(test)]
 mod render_tests;
+#[cfg(test)]
+mod test_document;
 
 #[cfg(test)]
 mod tests {

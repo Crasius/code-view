@@ -258,30 +258,9 @@ pub fn parse_with_sources(text: &str, platform: Option<ProviderKind>) -> Parsed 
 /// Every link target in `blocks`, in reading order: URLs and shorthand references (a linked image's
 /// link too), not image sources.
 pub fn link_targets(blocks: &[Block], targets: &mut Vec<String>) {
-    fn add(inline: &Inline, targets: &mut Vec<String>) {
-        for run in &inline.runs {
-            if let Some(link) = run.style.link.as_ref() {
-                targets.push(link.clone());
-            }
-        }
-    }
-    for block in blocks {
-        match block {
-            Block::Paragraph(inline) | Block::Heading(_, inline) => add(inline, targets),
-            Block::List { items, .. } => {
-                for item in items {
-                    link_targets(&item.blocks, targets);
-                }
-            }
-            Block::Quote { blocks, .. } => link_targets(blocks, targets),
-            Block::Table { header, rows, .. } => {
-                for cell in header.iter().chain(rows.iter().flatten()) {
-                    add(cell, targets);
-                }
-            }
-            Block::Code { .. } | Block::Rule => {}
-        }
-    }
+    for_each_inline(blocks, &mut |inline| {
+        targets.extend(inline.runs.iter().filter_map(|run| run.style.link.clone()));
+    });
 }
 
 /// Every image source in `blocks`, in reading order.
@@ -293,22 +272,25 @@ pub fn image_sources<'a>(blocks: &'a [Block], sources: &mut Vec<&'a str>) {
 
 /// Every image (and video) of `blocks` as written, in reading order.
 pub fn image_specs<'a>(blocks: &'a [Block], specs: &mut Vec<&'a ImageSpec>) {
-    fn add<'a>(inline: &'a Inline, specs: &mut Vec<&'a ImageSpec>) {
+    for_each_inline(blocks, &mut |inline| {
         specs.extend(inline.runs.iter().filter_map(|run| run.style.image.as_deref()));
-    }
+    });
+}
+
+/// Calls `f` with every inline of `blocks` in reading order: paragraphs, headings and table cells,
+/// inside lists and quotes too. Code and rules have none.
+fn for_each_inline<'a>(blocks: &'a [Block], f: &mut impl FnMut(&'a Inline)) {
     for block in blocks {
         match block {
-            Block::Paragraph(inline) | Block::Heading(_, inline) => add(inline, specs),
+            Block::Paragraph(inline) | Block::Heading(_, inline) => f(inline),
             Block::List { items, .. } => {
                 for item in items {
-                    image_specs(&item.blocks, specs);
+                    for_each_inline(&item.blocks, f);
                 }
             }
-            Block::Quote { blocks, .. } => image_specs(blocks, specs),
+            Block::Quote { blocks, .. } => for_each_inline(blocks, f),
             Block::Table { header, rows, .. } => {
-                for cell in header.iter().chain(rows.iter().flatten()) {
-                    add(cell, specs);
-                }
+                header.iter().chain(rows.iter().flatten()).for_each(&mut *f);
             }
             Block::Code { .. } | Block::Rule => {}
         }
@@ -497,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn tables_quotes_code_and_rules() {
+    fn gfm_tables_alerts_bare_fences_and_rules_become_their_blocks() {
         let blocks = parse(
             "| a | b |\n| - | - |\n| 1 | 2 |\n\n> [!NOTE]\n> quoted\n\n```\ncode\n```\n\n---\n",
             None,

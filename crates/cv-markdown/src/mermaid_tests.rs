@@ -1,17 +1,14 @@
 //! Mermaid fences in rendered Markdown, drawn by the real renderer (on a thread in tests): the
 //! diagram arriving, the source toggle, the failure note and the lightbox.
 
-use std::time::{Duration, Instant};
-
-use cv_base::theme;
 use cv_testkit::Clicks;
 use egui::accesskit::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
 use review_core::ProviderKind;
-use review_store::ThemePreference;
 
 use super::RenderOptions;
+use super::test_document::{self, lines};
 
 const FLOWCHART: &str = "```mermaid\nflowchart LR\n  A[Start] --> B{Choice}\n  B --> C[Done]\n```";
 
@@ -32,53 +29,29 @@ fn harness_with(
     size: [f32; 2],
     options: RenderOptions,
 ) -> Harness<'static, Scene> {
-    Harness::builder()
-        .with_size(size)
-        .with_context_setup(|ctx| {
-            theme::fonts::install(ctx);
-            theme::activate(ctx, ThemePreference::Light);
-        })
-        .build_ui_state(
-            |ui, scene: &mut Scene| {
-                let mut area = egui::ScrollArea::vertical().id_salt("document").auto_shrink(false);
-                if let Some(offset) = scene.offset.take() {
-                    area = area.vertical_scroll_offset(offset);
-                }
-                area.show(ui, |ui| super::render(ui, "doc", &scene.text, scene.options));
-                super::show_lightbox(ui.ctx());
-            },
-            Scene { text, offset, options },
-        )
+    Harness::builder().with_size(size).with_context_setup(test_document::light).build_ui_state(
+        |ui, scene: &mut Scene| {
+            test_document::scrolled(ui, &mut scene.offset, &scene.text, scene.options);
+        },
+        Scene { text, offset, options },
+    )
 }
 
 /// Runs frames until `done` holds (the renderer works on its own thread).
-#[expect(
-    clippy::disallowed_methods,
-    reason = "the diagram is drawn on a background thread that offers the test no wake-up"
-)]
 fn run_until(
     harness: &mut Harness<'_, Scene>,
     what: &str,
     done: impl Fn(&Harness<'_, Scene>) -> bool,
 ) {
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while !done(harness) {
-        assert!(Instant::now() < deadline, "timed out waiting for {what}");
-        std::thread::sleep(Duration::from_millis(10));
-        harness.run_steps(1);
-    }
+    cv_testkit::poll_until(what, || {
+        harness.step();
+        done(harness)
+    });
     harness.run_steps(2);
 }
 
 fn has_diagram(harness: &Harness<'_, Scene>) -> bool {
     harness.query_by_role_and_label(Role::Image, "Mermaid diagram").is_some()
-}
-
-fn lines(count: usize) -> String {
-    (0..count)
-        .map(|index| format!("Line {index} of the document."))
-        .collect::<Vec<_>>()
-        .join("\n\n")
 }
 
 #[test]
