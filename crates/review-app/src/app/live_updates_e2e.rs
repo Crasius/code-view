@@ -58,11 +58,17 @@ fn live_reply_while_writing_waits_for_reload_and_keeps_the_draft() {
         harness.query_by_label("Kept it as an alias.").is_some()
     });
     assert!(harness.query_by_label("New").is_some(), "the reply that came in live is marked");
-    let draft = harness.query_by(|node| {
-        matches!(node.role(), Role::TextInput | Role::MultilineTextInput)
-            && node.value().as_deref() == Some("Half an answer")
-    });
-    assert!(draft.is_some(), "the reply box stays open with the draft");
+    assert!(has_draft(&harness, "Half an answer"), "the reply box stays open with the draft");
+}
+
+/// Whether a text field holds `text`, all of it.
+fn has_draft(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
+    harness
+        .query_by(|node| {
+            matches!(node.role(), Role::TextInput | Role::MultilineTextInput)
+                && node.value().as_deref() == Some(text)
+        })
+        .is_some()
 }
 
 /// The Commits tab counts `count` commits: the page shows that version of the pull request.

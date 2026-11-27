@@ -5,7 +5,7 @@
 //! Hovering the file tree's totals, then the folder summary's, shows the same five rows in their
 //! fixed order with the mock's numbers and the total; each row's name sits centered in its row.
 //! Keyboard focus on the totals shows it too.
-//! `cargo test -p review-app change_breakdown`
+//! `cargo test -p review-app --bin CodeView app::change_breakdown_walkthrough`
 
 use egui::{Rect, Role};
 use egui_kittest::Harness;
@@ -50,7 +50,7 @@ fn files() -> [ExtraFile; 4] {
 }
 
 #[test]
-fn change_breakdown_shows_on_the_tree_and_summary_totals() {
+fn shows_on_the_tree_and_summary_totals() {
     let scratch = ScratchDir::new("change-breakdown");
     let host = GitHubHost::with_pull_request_files(scratch.path(), &files());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);

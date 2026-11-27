@@ -39,7 +39,7 @@ const HEAD_SHA: &str = "3f9a2c1d8e7b6a5f4e3d2c1b0a9f8e7d6c5b4a39";
 /// Which pipelines the scripted provider reports.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Scenario {
-    /// Everything passed, as the user's merge request !17.
+    /// Everything passed.
     Green,
     /// A failed pipeline, a failed status check and a running pipeline among passing ones.
     Mixed,
@@ -632,7 +632,7 @@ fn pipelines_attempts_open_earlier_attempts_in_the_app() {
         harness
             .get_by_role_and_label(
                 Role::TreeItem,
-                "Checkout dotnet/aspnetcore@refs/pull/69916/merge to s",
+                "Checkout fabrikam/web@refs/pull/69916/merge to s",
             )
             .rect(),
     );
@@ -730,8 +730,7 @@ impl App {
         paths: AppPaths,
         size: [f32; 2],
     ) -> Harness<'static, ReviewApp> {
-        let builder =
-            Harness::builder().with_size(size).with_step_dt(1.0 / 60.0).allow_missing_glyphs();
+        let builder = Harness::builder().with_size(size).with_step_dt(1.0 / 60.0);
         let calls = calls.clone();
         let mut harness = app_with(builder, paths, move |_, _| {
             Arc::new(Scripted(PipelinesScript::new(scenario, calls.clone())))
@@ -809,7 +808,7 @@ fn stage(pipeline: u64, name: &str, after: Option<&str>, jobs: Vec<PipelineJob>)
     }
 }
 
-/// The user's pipeline #2279: five stages, the cleanup jobs manual.
+/// Pipeline #2279: five stages, the cleanup jobs manual.
 fn pipeline_2279() -> Vec<PipelineJob> {
     use RunStatus::*;
     vec![
@@ -878,13 +877,13 @@ fn pipeline_2281() -> Vec<PipelineJob> {
     ]
 }
 
-const ADO_RUN: &str = "dotnet-android #1639760";
+const ADO_RUN: &str = "fabrikam-mobile #1639760";
 const ADO_RESULTS: &str = "https://dev.azure.com/erika/public/_build/results?buildId=1639760";
 const ADO_RUNNING_JOB: &str = "macOS > Tests > MSBuild 9";
 const ADO_WAITING_JOB: &str = "macOS > Tests > MSBuild 10";
-const ADO_SKIPPED_JOB: &str = "MAUI Integration";
+const ADO_SKIPPED_JOB: &str = "Integration";
 
-/// As `build_job_tree` maps the public timeline of `dnceng-public` build 1639760 while it ran:
+/// As `build_job_tree` maps a running Azure DevOps timeline:
 /// jobs get their own log only once they finished, their finished tasks have theirs.
 fn azure_1639760() -> Vec<PipelineJob> {
     use RunStatus::*;
@@ -903,7 +902,7 @@ fn azure_1639760() -> Vec<PipelineJob> {
         };
     let tasks = vec![
         ado("init", "Initialize job", Succeeded, Some("227"), Vec::new()),
-        ado("tests", "run Xamarin.Android.Build.Tests - macOS-9", Running, None, Vec::new()),
+        ado("tests", "run Build.Tests - macOS-9", Running, None, Vec::new()),
         ado("diagnose", "diagnose hanging processes (macOS/Linux)", Queued, None, Vec::new()),
     ];
     let running = ado("running", ADO_RUNNING_JOB, Running, None, tasks);
@@ -915,19 +914,19 @@ fn azure_1639760() -> Vec<PipelineJob> {
         vec![ado("pending", "Initialize job", Queued, None, Vec::new())],
     );
     let mut msbuild = stage(1_639_760, "MSBuild Tests", None, vec![running, waiting]);
-    let mut maui = stage(
+    let mut devices = stage(
         1_639_760,
-        "MAUI Tests",
+        "Device Tests",
         None,
         vec![ado("skipped", ADO_SKIPPED_JOB, Skipped, None, Vec::new())],
     );
-    for stage in [&mut msbuild, &mut maui] {
+    for stage in [&mut msbuild, &mut devices] {
         stage.web_url = Some(ADO_RESULTS.to_owned());
     }
-    vec![msbuild, maui]
+    vec![msbuild, devices]
 }
 
-const RETRIED_RUN: &str = "aspnetcore-ci #1639558";
+const RETRIED_RUN: &str = "fabrikam-web-ci #1639558";
 const RETRIED_RESULTS: &str = "https://dev.azure.com/erika/public/_build/results?buildId=1639558";
 const RETRIED_JOB: &str = "Source-Build (Managed)";
 const STAGE_ATTEMPT: &str = "1639558:6884a131:6884a131";
@@ -971,7 +970,7 @@ fn azure_1639558() -> Vec<PipelineJob> {
         retried_node("t-init-2", "Initialize job", Succeeded, Some("257"), (10, 10), Vec::new()),
         retried_node(
             "t-checkout-2",
-            "Checkout dotnet/aspnetcore@refs/pull/69916/merge to s",
+            "Checkout fabrikam/web@refs/pull/69916/merge to s",
             Failed,
             Some("259"),
             (10, 12),
@@ -1020,7 +1019,7 @@ fn attempt_1639558(target: &str) -> Option<PipelineJob> {
             retried_node("t-init-1", "Initialize job", Succeeded, Some("75"), (5, 5), Vec::new()),
             retried_node(
                 "t-checkout-1",
-                "Checkout dotnet/aspnetcore@refs/pull/69916/merge to s",
+                "Checkout fabrikam/web@refs/pull/69916/merge to s",
                 Failed,
                 Some("87"),
                 (5, 8),

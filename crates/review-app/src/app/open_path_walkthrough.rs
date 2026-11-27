@@ -10,9 +10,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::github_mock::{ExtraFile, GitHubHost, NUMBER, TITLE};
+use super::github_mock::{ExtraFile, GitHubHost, click_pull_request_row};
 use super::walkthrough::{LIMIT, app, wait_until};
-use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 /// True once a mirror's bare repository exists in the app's cache.
@@ -23,21 +22,15 @@ fn has_mirror(scratch: &Path) -> bool {
     entries.flatten().any(|entry| entry.path().join("HEAD").is_file())
 }
 
-/// Clicks the pull request's row in "My pull requests" once it shows.
-fn click_row(harness: &mut Harness<'_, ReviewApp>) {
-    let row = format!("{NUMBER} {TITLE}");
-    wait_until(harness, "the pull request row", |harness| harness.query_by_label(&row).is_some());
-    harness.click_at(harness.get_by_label(&row).rect());
-}
-
 #[test]
 fn the_mirror_opens_while_the_detail_is_still_loading() {
     let scratch = ScratchDir::new("open-path-overlap");
     let host = GitHubHost::with_pull_request(scratch.path());
-    // The detail never answers, so a mirror that opens cannot have waited for it.
-    host.fail_pull_request();
+    // The held detail outranks the real one and never answers within the test, so a mirror that
+    // opens cannot have waited for it.
+    host.delay_detail(LIMIT + Duration::from_secs(60));
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    click_row(&mut harness);
+    click_pull_request_row(&mut harness);
     wait_until(&mut harness, "the mirror", |_| has_mirror(scratch.path()));
 }
 
@@ -84,7 +77,7 @@ fn open_path_latency() {
 }
 
 fn time_to_files(harness: &mut Harness<'_, ReviewApp>) -> Duration {
-    click_row(harness);
+    click_pull_request_row(harness);
     let started = Instant::now();
     loop {
         harness.step();

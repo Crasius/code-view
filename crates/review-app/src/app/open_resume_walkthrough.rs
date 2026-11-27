@@ -10,7 +10,9 @@ use review_store::{AppPaths, AppSettings, LastPlace, LastTab, PullRequestStart, 
 
 use super::ReviewApp;
 use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
-use super::walkthrough::{app, files_tab, shows_file_view, shows_folder_view, wait_until};
+use super::walkthrough::{
+    app, files_tab, press_role, settle_background, shows_file_view, shows_folder_view, wait_until,
+};
 use cv_runtime::route::{PullRequestTab, Route};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -56,11 +58,7 @@ fn choose_files_in_settings(harness: &mut Harness<'_, ReviewApp>) {
         harness.query_by_label("Pull requests open on").is_some()
     });
     // The row sits below the fold of Appearance.
-    harness.get_by_role_and_label(Role::RadioButton, "Files").scroll_to_me();
-    for _ in 0..5 {
-        harness.step();
-    }
-    harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "Files").rect());
+    press_role(harness, Role::RadioButton, "Files");
     wait_until(harness, "the choice", |harness| {
         harness.state().services.settings.pull_request_start == PullRequestStart::Files
     });
@@ -124,7 +122,7 @@ fn open_resume_a_vanished_file_falls_back_to_the_first_file() {
     // The first app's background work (the mirror it opens for the page, a git process that
     // outlives the app) ends before the second app opens the same mirror: two at once fail on
     // git's config lock ("could not lock config file ... File exists").
-    super::walkthrough::wait_idle(&mut harness);
+    settle_background(&mut harness);
     drop(harness);
 
     let paths = paths(&scratch);

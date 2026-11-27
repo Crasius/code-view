@@ -30,7 +30,7 @@ fn file(path: &'static str, value: u32) -> ExtraFile {
 }
 
 #[test]
-fn bug_keys_mark_viewed_then_step_and_triage_threads() {
+fn mark_viewed_then_step_and_triage_threads() {
     let scratch = ScratchDir::new("bug-keys");
     let host =
         GitHubHost::with_pull_request_files(scratch.path(), &[file(FIRST, 1), file(SECOND, 2)]);

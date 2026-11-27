@@ -2,7 +2,7 @@
 //! GitLab connection answered by a scripted provider. Checks that every mark carries the platform
 //! and host as its accessible name: on the overview, each connection's breadcrumb and list, and
 //! a pull request header, whose mark links to the pull request.
-//! `cargo test -p review-app provider_icons`
+//! `cargo test -p review-app --bin CodeView app::provider_icons_walkthrough`
 
 use egui::Role;
 use egui_kittest::Harness;
@@ -11,7 +11,10 @@ use review_core::{Connection, ProviderKind};
 
 use super::ReviewApp;
 use super::scripted_platforms::{HOSTS, origin, platforms, title};
-use super::walkthrough::{app_with, files_tab, has, opened_urls, saved_paths, wait_until};
+use super::walkthrough::{
+    app_with, files_tab, has, opened_urls, press, saved_paths, settle_background, shows,
+    shows_folder_view, wait_until,
+};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::{Clicks, ScratchDir, samples};
 
@@ -22,15 +25,15 @@ fn provider_icons_name_the_platform_everywhere() {
     let origin = origin(&scratch);
     let connections: Vec<Connection> = HOSTS
         .iter()
-        .map(|&(id, name, kind, base_url, _, _)| Connection {
-            name: name.to_owned(),
-            organizations: if kind == ProviderKind::AzureDevOps {
+        .map(|host| Connection {
+            name: host.name.to_owned(),
+            organizations: if host.kind == ProviderKind::AzureDevOps {
                 vec!["contoso".to_owned()]
             } else {
                 Vec::new()
             },
             token: Some("scripted".to_owned()),
-            ..samples::connection(id, kind, base_url)
+            ..samples::connection(host.id, host.kind, host.base_url)
         })
         .collect();
     let builder = Harness::builder().with_size([1280.0, 1080.0]).with_step_dt(1.0 / 60.0);
@@ -38,41 +41,45 @@ fn provider_icons_name_the_platform_everywhere() {
         app_with(builder, saved_paths(&scratch, &connections), platforms(Some(origin)));
 
     wait_until(&mut harness, "every card", |harness| {
-        HOSTS.iter().all(|(_, _, kind, ..)| has(harness, &title(*kind, 1)))
+        HOSTS.iter().all(|host| has(harness, &title(host.kind, 1)))
     });
-    for (_, _, _, _, _, mark) in HOSTS {
+    for host in &HOSTS {
         // Card header plus one per row: never a mark without its platform and host.
         assert!(
-            harness.query_all_by_role_and_label(Role::Image, mark).count() >= 3,
-            "{mark} on the card and its rows"
+            harness.query_all_by_role_and_label(Role::Image, host.mark).count() >= 3,
+            "{} on the card and its rows",
+            host.mark
         );
     }
     harness.state_mut().navigator.go(Route::MyPullRequests);
-    settle(&mut harness);
-    for (id, connection_name, kind, _, repository, mark) in HOSTS {
+    settle_background(&mut harness);
+    for host in &HOSTS {
         // As from outside: the trail is the structure, with the connection's crumb.
         harness.state_mut().navigator.jump(Route::RepositoryPullRequests {
-            connection_id: id.to_owned(),
-            repository_key: repository.to_owned(),
+            connection_id: host.id.to_owned(),
+            repository_key: host.repository.to_owned(),
         });
-        wait_until(&mut harness, "the repository's rows", |harness| has(harness, &title(kind, 1)));
+        wait_until(&mut harness, "the repository's rows", |harness| {
+            has(harness, &title(host.kind, 1))
+        });
         assert!(
-            harness.query_by_role_and_label(Role::Link, connection_name).is_some(),
-            "{connection_name} crumb"
+            harness.query_by_role_and_label(Role::Link, host.name).is_some(),
+            "{} crumb",
+            host.name
         );
-        if kind == ProviderKind::AzureDevOps {
-            crumb_tooltip(&mut harness, connection_name, mark);
+        if host.kind == ProviderKind::AzureDevOps {
+            crumb_tooltip(&mut harness, host.name, host.mark);
         }
     }
-    for (id, _, kind, _, repository, _) in HOSTS {
+    for host in &HOSTS {
         let key = PullRequestKey {
-            connection_id: id.to_owned(),
-            repository_key: repository.to_owned(),
+            connection_id: host.id.to_owned(),
+            repository_key: host.repository.to_owned(),
             number: 1,
         };
         harness.state_mut().navigator.go(Route::PullRequest(key));
         // The page keeps the tab it showed last; its header names it on every tab.
-        let shown = title(kind, 1);
+        let shown = title(host.kind, 1);
         wait_until(&mut harness, "the pull request header", |harness| {
             harness.query_by_role_and_label(Role::Tab, "Overview").is_some() && has(harness, &shown)
         });
@@ -85,13 +92,14 @@ fn provider_icons_name_the_platform_everywhere() {
 fn crumb_tooltip(harness: &mut Harness<'_, ReviewApp>, connection_name: &str, mark: &str) {
     let marks = harness.query_all_by_label(mark).count();
     harness.get_by_role_and_label(Role::Link, connection_name).hover();
-    for _ in 0..60 {
-        harness.step();
-    }
-    assert!(has(harness, "This connection's repositories"), "the crumb's tooltip is open");
+    wait_until(harness, "the crumb's tooltip", |harness| {
+        has(harness, "This connection's repositories")
+    });
     assert!(harness.query_all_by_label(mark).count() > marks, "the crumb's tooltip names {mark}");
     harness.event(egui::Event::PointerGone);
-    settle(harness);
+    wait_until(harness, "the crumb's tooltip closed", |harness| {
+        !has(harness, "This connection's repositories")
+    });
 }
 
 /// The pull request header's platform mark: a link (Enter opens the pull request), with a hover
@@ -136,24 +144,17 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
     assert_eq!(opened_urls(harness), [PAGE], "a middle click opens the pull request");
     assert!(!harness.state().autoscroll.is_active(), "and starts no autoscroll");
     harness.event(egui::Event::PointerGone);
-    settle(harness);
+    settle_background(harness);
     harness.get_by_role_and_label(Role::Link, LINK).hover();
-    for _ in 0..60 {
-        harness.step();
-    }
-    assert!(has(harness, "Right-click for more links"), "the mark's tooltip");
+    wait_until(harness, "the mark's tooltip", |harness| has(harness, "Right-click for more links"));
 
     // On the Files tab the menu also offers the shown file.
     files_tab(harness);
-    // The tab opens on the summary of the changed files;
-    // the card's View opens the file.
-    wait_until(harness, "the changed files", |harness| has(harness, "README.md"));
-    if let Some(view) = harness.query_by_label("View README.md") {
-        harness.click_at(view.rect());
-        settle(harness);
-    }
+    // The tab opens on the summary; the card's View opens the file.
+    press(harness, "View README.md");
+    wait_until(harness, "README.md's view", |harness| !shows_folder_view(harness));
     harness.secondary_click_at(harness.get_by_role_and_label(Role::Link, LINK).rect());
-    settle(harness);
+    wait_until(harness, "the mark's menu", |harness| shows(harness, "Copy link"));
     for item in ["Open pull request on GitHub", "Open this file on GitHub", "Copy link"] {
         assert!(harness.query_by_label(item).is_some(), "menu item {item}");
     }
@@ -166,20 +167,11 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
             && opened[0].ends_with("/README.md"),
         "the menu opens the file at the head commit: {opened:?}"
     );
-    // The file header no longer offers a platform link beside its toggles.
+    // The file header carries no platform link; the mark's menu above is the one way out.
     assert!(
         harness.query_by_label("Open on GitHub").is_none(),
         "no platform button in the file header"
     );
-    harness.key_press(egui::Key::Escape);
-    harness.event(egui::Event::PointerGone);
-    settle(harness);
-}
-
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..30 {
-        harness.step();
-    }
 }
 
 /// A middle click at `at`, one frame each for press and release, whose raw input first runs

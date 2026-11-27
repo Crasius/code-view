@@ -17,32 +17,43 @@ use super::github_mock::FolderBytes;
 use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{ScratchDir, git};
 
-/// (id, name, platform, web root, repository, accessible name of its mark).
-pub(super) const HOSTS: [(&str, &str, ProviderKind, &str, &str, &str); 3] = [
-    (
-        "ado",
-        "Contoso Azure DevOps",
-        ProviderKind::AzureDevOps,
-        "https://dev.azure.com/contoso",
-        "contoso/Web/site",
-        "Azure DevOps · dev.azure.com",
-    ),
-    (
-        "gh",
-        "Contoso GitHub",
-        ProviderKind::GitHub,
-        "https://github.com",
-        "contoso/widgets",
-        "GitHub · github.com",
-    ),
-    (
-        "gl",
-        "Fabrikam GitLab",
-        ProviderKind::GitLab,
-        "https://gitlab.example.com",
-        "fabrikam/app",
-        "GitLab self-managed · gitlab.example.com",
-    ),
+/// One scripted platform's connection and the repository its pull requests live in.
+pub(super) struct ScriptedHost {
+    pub(super) id: &'static str,
+    pub(super) name: &'static str,
+    pub(super) kind: ProviderKind,
+    /// The web root.
+    pub(super) base_url: &'static str,
+    pub(super) repository: &'static str,
+    /// The accessible name of the platform's mark.
+    pub(super) mark: &'static str,
+}
+
+pub(super) const HOSTS: [ScriptedHost; 3] = [
+    ScriptedHost {
+        id: "ado",
+        name: "Contoso Azure DevOps",
+        kind: ProviderKind::AzureDevOps,
+        base_url: "https://dev.azure.com/contoso",
+        repository: "contoso/Web/site",
+        mark: "Azure DevOps · dev.azure.com",
+    },
+    ScriptedHost {
+        id: "gh",
+        name: "Contoso GitHub",
+        kind: ProviderKind::GitHub,
+        base_url: "https://github.com",
+        repository: "contoso/widgets",
+        mark: "GitHub · github.com",
+    },
+    ScriptedHost {
+        id: "gl",
+        name: "Fabrikam GitLab",
+        kind: ProviderKind::GitLab,
+        base_url: "https://gitlab.example.com",
+        repository: "fabrikam/app",
+        mark: "GitLab self-managed · gitlab.example.com",
+    },
 ];
 
 /// The title of pull request `number` on the platform `kind`.
@@ -93,7 +104,8 @@ pub(super) fn platforms(
     origin: Option<Origin>,
 ) -> impl Fn(Connection, reqwest::Client) -> Arc<dyn Provider> + Send + Sync + 'static {
     move |connection, _| {
-        let Some(&(_, _, _, _, repository, _)) = HOSTS.iter().find(|(id, ..)| *id == connection.id)
+        let Some(repository) =
+            HOSTS.iter().find(|host| host.id == connection.id).map(|host| host.repository)
         else {
             panic!("no script for connection {}", connection.id)
         };
