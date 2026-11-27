@@ -9,8 +9,8 @@ use egui::{
     UiBuilder, pos2, vec2,
 };
 
-use cv_base::theme::motion::mix;
 use cv_base::theme::{Palette, icons, style};
+use cv_code::diff_paint;
 use cv_markdown::Marks;
 use cv_pr_threads::markers;
 use cv_widgets::focus;
@@ -36,11 +36,7 @@ pub(super) fn look_colors(
         Look::Plain => (Color32::TRANSPARENT, Color32::TRANSPARENT, None),
         Look::Added => (palette.diff_added_line, palette.success, Some("+")),
         Look::Removed => (palette.diff_deleted_line, palette.error, Some("\u{2212}")),
-        Look::Focus => (
-            mix(palette.surface, palette.accent, if palette.is_dark { 0.10 } else { 0.05 }),
-            palette.accent,
-            None,
-        ),
+        Look::Focus => (diff_paint::focus_tint(palette), palette.accent, None),
     }
 }
 

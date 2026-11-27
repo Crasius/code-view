@@ -5,8 +5,8 @@
 use std::ops::Range;
 
 use egui::{
-    Align, Align2, CursorIcon, FontId, Layout, Pos2, Rangef, Rect, Sense, Shape, Stroke, Ui,
-    UiBuilder, pos2, vec2,
+    Align, Align2, CursorIcon, FontId, Layout, Pos2, Rangef, Rect, Sense, Stroke, Ui, UiBuilder,
+    pos2, vec2,
 };
 use review_core::DiffSide;
 
@@ -24,8 +24,8 @@ use cv_widgets::numbers::group_digits;
 use cv_widgets::states::{self, Action};
 use cv_widgets::{buttons, focus, glyph};
 
-const WEDGE_WIDTH: f32 = 7.0;
-const WEDGE_HALF_HEIGHT: f32 = 5.0;
+/// The removal wedge's hit area: the wedge and a margin that makes it easy to hover.
+const WEDGE_HIT_HEIGHT: f32 = 18.0;
 /// The fold bar's icon in the gutter, between `icons::SIZE_SMALL` and `icons::SIZE`.
 const FOLD_ICON_SIZE: f32 = 15.0;
 /// Removed blocks a New only wedge shows when hovered; the rest are counted.
@@ -58,13 +58,7 @@ pub(super) fn show_fold(
         gap_bar::background(&palette)
     };
     let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
-    painter.rect_filled(rect, 0, fill);
-    let edge = Stroke::new(
-        1.0,
-        mix(palette.surface, palette.accent, if palette.is_dark { 0.22 } else { 0.16 }),
-    );
-    painter.hline(rect.x_range(), rect.top() + 0.5, edge);
-    painter.hline(rect.x_range(), rect.bottom() - 0.5, edge);
+    gap_bar::paint_band(&painter, rect, &palette, fill);
     let label = fold_label(model, &pairs);
     painter.text(
         pos2(rect.left() + GUTTER / 2.0 + 1.0, rect.center().y),
@@ -189,10 +183,7 @@ pub(super) fn show_removal(
     let model = frame.model;
     let lane = frame.lanes.column(DiffSide::New);
     let left = frame.origin.x + lane.min;
-    let hit = Rect::from_center_size(
-        pos2(left + GUTTER / 2.0, y),
-        vec2(GUTTER, WEDGE_HALF_HEIGHT * 2.0 + 8.0),
-    );
+    let hit = Rect::from_center_size(pos2(left + GUTTER / 2.0, y), vec2(GUTTER, WEDGE_HIT_HEIGHT));
     let id = frame.id.with(("removal", pairs.start));
     let removed: Vec<usize> = model.pairs[pairs].iter().filter_map(|pair| pair.old).collect();
     let label = match removed.len() {
@@ -208,22 +199,14 @@ pub(super) fn show_removal(
         )
     });
     focus::ring(ui, &response, hit);
-    let grow = if response.hovered() { 1.5 } else { 0.0 };
-    if response.hovered() {
-        let text_left = left + GUTTER;
-        ui.painter().hline(
-            text_left..=frame.origin.x + lane.max - RIGHT_PADDING,
-            y,
-            Stroke::new(1.0, palette.error.gamma_multiply(0.6)),
-        );
-    }
-    let tip = left + STRIPE_WIDTH;
-    let points = vec![
-        pos2(tip, y - WEDGE_HALF_HEIGHT - grow),
-        pos2(tip + WEDGE_WIDTH + grow, y),
-        pos2(tip, y + WEDGE_HALF_HEIGHT + grow),
-    ];
-    ui.painter().add(Shape::convex_polygon(points, palette.error, Stroke::NONE));
+    diff_paint::paint_wedge_at(
+        ui.painter(),
+        left + STRIPE_WIDTH,
+        Rangef::new(left + GUTTER, frame.origin.x + lane.max - RIGHT_PADDING),
+        y,
+        palette,
+        response.hovered(),
+    );
     let clicked = response.clicked();
     response.on_hover_ui(|ui| {
         ui.set_max_width(TOOLTIP_WIDTH);

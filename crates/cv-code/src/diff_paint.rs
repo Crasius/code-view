@@ -8,7 +8,7 @@ use std::ops::Range;
 use cv_base::theme::{Palette, motion};
 use cv_widgets::mono_text;
 use cv_widgets::text_selection::{self, RowSelection};
-use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Shape, Stroke, Ui, pos2, vec2};
+use egui::{Align2, Color32, FontId, Painter, Pos2, Rangef, Rect, Shape, Stroke, Ui, pos2, vec2};
 use review_git::LineKind;
 
 use crate::code_job::{self, JobStyle};
@@ -212,7 +212,8 @@ fn focus_colors(kind: LineKind, palette: &Palette) -> LineColors {
     }
 }
 
-fn focus_tint(palette: &Palette) -> Color32 {
+/// New only: the light accent tint of a changed line.
+pub fn focus_tint(palette: &Palette) -> Color32 {
     motion::mix(palette.surface, palette.accent, if palette.is_dark { 0.10 } else { 0.05 })
 }
 
@@ -227,20 +228,29 @@ pub fn paint_wedge(
     palette: &Palette,
     is_active: bool,
 ) {
-    let left = metrics.focus_bar_left(pane.left());
+    let hairline = Rangef::new(pane.left() + metrics.text_inset(false), pane.right());
+    paint_wedge_at(painter, metrics.focus_bar_left(pane.left()), hairline, y, palette, is_active);
+}
+
+/// The red wedge of removed content with its back edge at `tip_left`, pointing at `y`; active it
+/// grows a little and draws a hairline over `hairline`. [`paint_wedge`] places it in a code pane,
+/// the rendered diff in its own gutter.
+pub fn paint_wedge_at(
+    painter: &Painter,
+    tip_left: f32,
+    hairline: Rangef,
+    y: f32,
+    palette: &Palette,
+    is_active: bool,
+) {
     let grow = if is_active { 1.5 } else { 0.0 };
     if is_active {
-        let code_left = pane.left() + metrics.text_inset(false);
-        painter.hline(
-            code_left..=pane.right(),
-            y,
-            Stroke::new(1.0, palette.error.gamma_multiply(0.6)),
-        );
+        painter.hline(hairline, y, Stroke::new(1.0, palette.error.gamma_multiply(0.6)));
     }
     let points = vec![
-        pos2(left, y - WEDGE_HALF_HEIGHT - grow),
-        pos2(left + WEDGE_WIDTH + grow, y),
-        pos2(left, y + WEDGE_HALF_HEIGHT + grow),
+        pos2(tip_left, y - WEDGE_HALF_HEIGHT - grow),
+        pos2(tip_left + WEDGE_WIDTH + grow, y),
+        pos2(tip_left, y + WEDGE_HALF_HEIGHT + grow),
     ];
     painter.add(Shape::convex_polygon(points, palette.error, Stroke::NONE));
 }
