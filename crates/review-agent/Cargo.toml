@@ -12,7 +12,7 @@ workspace = true
 
 [features]
 # A scripted session for the app's walkthroughs: no process, no network.
-fake = []
+test-support = []
 
 [dependencies]
 review-core.workspace = true

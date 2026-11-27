@@ -87,7 +87,7 @@ cv-widgets = { workspace = true, features = ["test-support"] }
 cv-testkit.workspace = true
 egui_kittest = { workspace = true, features = ["eframe"] }
 # Walkthroughs drive the assistant with a scripted session, no CLI process.
-review-agent = { workspace = true, features = ["fake"] }
+review-agent = { workspace = true, features = ["test-support"] }
 review-git.workspace = true
 provider-gitlab.workspace = true
 async-trait.workspace = true

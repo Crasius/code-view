@@ -21,7 +21,7 @@ doctest = false
 # Enabled only from [dev-dependencies] and from the test-support features above.
 test-support = [
     "dep:cv-testkit",
-    "review-agent/fake",
+    "review-agent/test-support",
     "cv-base/test-support",
     "cv-media/test-support",
     "cv-runtime/test-support",
@@ -56,6 +56,6 @@ cv-testkit.workspace = true
 cv-providers.workspace = true
 provider-github.workspace = true
 # The tests drive the agent directory with scripted sessions, no CLI process.
-review-agent = { workspace = true, features = ["fake"] }
+review-agent = { workspace = true, features = ["test-support"] }
 serde_json.workspace = true
 wiremock.workspace = true

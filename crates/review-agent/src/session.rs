@@ -125,7 +125,7 @@ impl Session {
 
     /// A session without a process for the app's walkthroughs: the returned [`FakeAgent`] sees
     /// every prompt and plays events back.
-    #[cfg(feature = "fake")]
+    #[cfg(feature = "test-support")]
     pub fn fake() -> (Self, mpsc::UnboundedReceiver<AgentEvent>, FakeAgent) {
         let (commands, command_rx) = mpsc::unbounded_channel();
         let (events, event_rx) = mpsc::unbounded_channel();
@@ -134,13 +134,13 @@ impl Session {
 }
 
 /// The other end of [`Session::fake`].
-#[cfg(feature = "fake")]
+#[cfg(feature = "test-support")]
 pub struct FakeAgent {
     commands: mpsc::UnboundedReceiver<Command>,
     events: mpsc::UnboundedSender<AgentEvent>,
 }
 
-#[cfg(feature = "fake")]
+#[cfg(feature = "test-support")]
 impl FakeAgent {
     /// The prompts asked so far and not yet taken; interrupts show as `None`.
     pub fn take_prompts(&mut self) -> Vec<Option<String>> {
