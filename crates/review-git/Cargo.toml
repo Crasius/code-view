@@ -14,8 +14,9 @@ workspace = true
 doctest = false
 
 [features]
-# `ChangedFile::sample` for other crates' tests (src/changed_files.rs); enabled only from
-# [dev-dependencies].
+# `ChangedFile::sample` for other crates' tests (src/changed_files.rs) and `download_chunk_sizes`,
+# the chunk plan a walkthrough counts the mirror's fetches against (src/line_counts.rs); enabled
+# only from [dev-dependencies].
 test-support = []
 
 [dependencies]

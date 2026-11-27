@@ -76,6 +76,7 @@ const RECHECK: Duration = Duration::from_secs(1);
 
 /// The sizes of the chunks `files` changed files download in when none of their blobs is local and
 /// their paths are short enough that no chunk reaches [`MAX_PATH_BYTES`]: one fetch each.
+#[cfg(any(test, feature = "test-support"))]
 pub fn download_chunk_sizes(files: usize) -> Vec<usize> {
     let mut sizes = Vec::new();
     let (mut next, mut rest) = (FIRST_CHUNK, files);

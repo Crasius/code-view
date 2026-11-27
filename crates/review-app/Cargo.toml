@@ -70,7 +70,8 @@ cv-testkit.workspace = true
 egui_kittest = { workspace = true, features = ["eframe"] }
 # Walkthroughs drive the assistant with a scripted session, no CLI process.
 review-agent = { workspace = true, features = ["test-support"] }
-review-git.workspace = true
+# The request budget counts the mirror's fetches against the chunk plan.
+review-git = { workspace = true, features = ["test-support"] }
 provider-gitlab.workspace = true
 async-trait.workspace = true
 # Also the icon renderer (examples/render_icon.rs).

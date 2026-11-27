@@ -14,9 +14,10 @@ workspace = true
 doctest = false
 
 [features]
-# The sample diff's probe other crates' tests read (`settings::sample_slack`) and the browser
-# extension row's registration in memory instead of the user's registry; forwards to the cv
-# crates below. Enabled only from [dev-dependencies] and from the test-support features above.
+# The sample diff's probe other crates' tests read (`settings::sample_slack`), the browser
+# extension row's registration in memory instead of the user's registry, and no CLI sign-in tools
+# in place of the ones on `PATH` (`SettingsPage::set_cli_tools` sets a test's own); forwards to the
+# cv crates below. Enabled only from [dev-dependencies] and from the test-support features above.
 test-support = [
     "cv-base/test-support",
     "cv-code/test-support",

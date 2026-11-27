@@ -287,13 +287,16 @@ pub fn git(dir: &Path, args: &[&str]) -> String {
     git_output(command.args(GIT_FIXTURE_CONFIG).args(args), args)
 }
 
-/// `git` on the repository `git_dir` (`--git-dir`), or in the current folder without one, with
-/// the user's own configuration (streams for `fast-import` name their own committer).
+/// `git` on the repository `git_dir` (`--git-dir`), or without one from the system's temp folder,
+/// so git never reads the checkout the tests run from (a worktree whose `.git` file names a path
+/// this machine does not have stops every git command started inside it). With the user's own
+/// configuration (streams for `fast-import` name their own committer).
 pub fn git_in(git_dir: Option<&Path>, args: &[&str]) -> String {
     let mut command = Command::new("git");
-    if let Some(git_dir) = git_dir {
-        command.arg("--git-dir").arg(git_dir);
-    }
+    match git_dir {
+        Some(git_dir) => command.arg("--git-dir").arg(git_dir),
+        None => command.current_dir(std::env::temp_dir()),
+    };
     git_output(command.args(args), args)
 }
 
