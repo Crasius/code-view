@@ -2,8 +2,8 @@
 //! host, `CodeView <url>`) and this start's command-line link. A pull request link of a saved
 //! connection opens only once its token read it, the same check a copied link takes
 //! ([`link_access`]); a refused one opens no page and says why, with the page on its platform and
-//! the token setup ([`link_access::announce_refusal`]). Any other link opens as a typed one does, whose
-//! error toast offers the connection setup or the browser.
+//! the token setup ([`link_access::announce_refusal`]). Any other link opens as a typed one
+//! does, whose error toast offers the connection setup or the browser.
 
 use cv_runtime::route::PullRequestKey;
 use cv_services::Services;
