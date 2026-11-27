@@ -9,9 +9,9 @@ use serde_json::{Value, json};
 use wiremock::matchers::{body_json, body_partial_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const REPO: &str = "group/sub/project";
+use crate::support::{self, REPO, TOKEN};
+
 const MR: &str = "/api/v4/projects/group%2Fsub%2Fproject/merge_requests/7";
-use crate::support::{self, TOKEN};
 
 fn user(id: u64, username: &str) -> Value {
     json!({ "id": id, "username": username, "name": username })

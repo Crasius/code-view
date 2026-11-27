@@ -8,9 +8,8 @@ use serde_json::json;
 use wiremock::matchers::{body_partial_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use crate::support::{self, TOKEN};
+use crate::support::{self, REPO, TOKEN};
 
-const REPO: &str = "group/sub/project";
 const MR: &str = "/api/v4/projects/group%2Fsub%2Fproject/merge_requests/7";
 
 #[tokio::test]

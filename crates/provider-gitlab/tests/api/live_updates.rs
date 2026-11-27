@@ -7,9 +7,8 @@ use serde_json::{Value, json};
 use wiremock::matchers::{method, path, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use crate::support::{self, TOKEN};
+use crate::support::{self, REPO, TOKEN};
 
-const REPO: &str = "group/sub/project";
 const MR: &str = "/api/v4/projects/group%2Fsub%2Fproject/merge_requests/7";
 
 fn merge_request(head: &str, notes: u64) -> Value {
