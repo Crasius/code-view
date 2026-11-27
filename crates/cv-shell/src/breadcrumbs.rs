@@ -115,8 +115,9 @@ pub fn take_trail_click(ctx: &Context) -> Option<usize> {
     mailbox::take::<usize>(ctx, click_id())
 }
 
-/// The trail as shown in the title bar. Measured and placed only when the trail, the page's levels, the connections, the scale or the
-/// room change; a frame without changes paints the cached galleys at the cached positions.
+/// The trail as shown in the title bar. Measured and placed only when the trail, the page's
+/// levels, the connections, the scale or the room change; a frame without changes paints the
+/// cached galleys at the cached positions.
 #[derive(Default)]
 pub struct Breadcrumbs {
     model: Option<Model>,
