@@ -15,25 +15,25 @@ mod traffic_lights;
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
+use egui::{Rangef, Rect, Ui, ViewportBuilder};
 use objc2::rc::Weak;
 use objc2_app_kit::{NSView, NSWindow};
 use review_store::checkouts::TerminalChoice;
 
-thread_local! {
-    // Do not keep a closed window alive. Native view access stays on the UI thread.
-    static CAPTION_WINDOW: RefCell<Option<Weak<NSWindow>>> = const { RefCell::new(None) };
-}
-use std::process::Command;
-
-use egui::{Rangef, Rect, Ui, ViewportBuilder};
-
+use super::portable::spawn_reaped;
 pub use super::portable::{
     DialogOwner, FrameHold, PlacedWindow, dialog_owner, downloads_dir, hide_console,
     hide_std_console, register_chrome_fonts,
 };
 use super::window_drag::DragArea;
 use super::{FontFace, FontSources, PageSwipe, SaveRequest, VariableUiFont};
+
+thread_local! {
+    // Do not keep a closed window alive. Native view access stays on the UI thread.
+    static CAPTION_WINDOW: RefCell<Option<Weak<NSWindow>>> = const { RefCell::new(None) };
+}
 
 /// Found through the `PATH` that [`prepare_environment`] completes.
 pub const AZURE_CLI: &str = "az";
@@ -42,8 +42,6 @@ pub const HAS_SAVE_DIALOG: bool = true;
 pub const EXAMPLE_CLONE: &str = "/home/you/src/login-app";
 /// The terminals Settings › Local checkouts offers, with their names.
 pub const TERMINALS: &[(TerminalChoice, &str)] = &[(TerminalChoice::System, "Terminal")];
-/// The traffic lights and the room after them, from the window's left edge (points).
-const TRAFFIC_LIGHTS_WIDTH: f32 = 76.0;
 /// Where command-line tools live that an app started from the Finder or the Dock does not see:
 /// GUI apps get the minimal `/usr/bin:/bin:/usr/sbin:/sbin` (Homebrew on Apple silicon, Homebrew
 /// on Intel, MacPorts).
@@ -74,7 +72,7 @@ pub fn viewport(builder: ViewportBuilder) -> ViewportBuilder {
 
 /// Reveals `path` in the Finder; fails when `open` does not start.
 pub fn open_folder(path: &Path) -> std::io::Result<()> {
-    Command::new("open").arg(path).spawn().map(drop)
+    spawn_reaped(Command::new("open").arg(path))
 }
 
 /// Opens Terminal in `dir` running `program` with `args`, through AppleScript.
@@ -87,11 +85,11 @@ pub fn open_terminal(dir: &Path, program: &str, args: &[String]) -> std::io::Res
     }
     // An AppleScript string literal escapes backslashes and double quotes.
     let script_text = line.replace('\\', r"\\").replace('"', "\\\"");
-    Command::new("osascript")
-        .args(["-e", &format!("tell application \"Terminal\" to do script \"{script_text}\"")])
-        .args(["-e", "tell application \"Terminal\" to activate"])
-        .spawn()
-        .map(drop)
+    spawn_reaped(
+        Command::new("osascript")
+            .args(["-e", &format!("tell application \"Terminal\" to do script \"{script_text}\"")])
+            .args(["-e", "tell application \"Terminal\" to activate"]),
+    )
 }
 
 /// San Francisco (variable; Helvetica where it is missing), SF Mono where installed, else Menlo or
@@ -175,7 +173,7 @@ impl Caption {
                             / zoom
                     })
                 })
-                .unwrap_or(TRAFFIC_LIGHTS_WIDTH / zoom)
+                .unwrap_or(traffic_lights::FALLBACK_INSET as f32 / zoom)
         };
         Self { bar, inset, drag: DragArea::sense(ui, bar) }
     }
@@ -235,7 +233,7 @@ pub fn ask_save_path(_owner: DialogOwner, request: &SaveRequest<'_>) -> Option<P
 
 /// Opens Terminal in `dir`; macOS has no other terminal to choose.
 pub fn open_shell(dir: &Path, _terminal: TerminalChoice) -> std::io::Result<()> {
-    Command::new("open").args(["-a", "Terminal"]).arg(dir).spawn().map(drop)
+    spawn_reaped(Command::new("open").args(["-a", "Terminal"]).arg(dir))
 }
 
 /// The folder chooser through AppleScript; `None` when cancelled. Blocks, so it runs on a worker

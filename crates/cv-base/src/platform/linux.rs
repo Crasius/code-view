@@ -10,6 +10,7 @@ use std::process::Command;
 use egui::{Rangef, Rect, Ui, ViewportBuilder};
 use review_store::checkouts::TerminalChoice;
 
+use super::portable::spawn_reaped;
 pub use super::portable::{
     DialogOwner, FrameHold, PlacedWindow, dialog_owner, hide_console, hide_std_console,
     register_chrome_fonts,
@@ -66,32 +67,26 @@ pub fn viewport(builder: ViewportBuilder) -> ViewportBuilder {
 /// The XDG Downloads folder (`XDG_DOWNLOAD_DIR` in `~/.config/user-dirs.dirs`, localized on many
 /// desktops), else `~/Downloads`.
 pub fn downloads_dir() -> Option<PathBuf> {
-    let home = PathBuf::from(std::env::var_os("HOME")?);
-    let config =
-        std::env::var_os("XDG_CONFIG_HOME").map_or_else(|| home.join(".config"), PathBuf::from);
+    let home = std::env::home_dir()?;
+    let config = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|config| config.is_absolute())
+        .unwrap_or_else(|| home.join(".config"));
     let user_dirs = std::fs::read_to_string(config.join("user-dirs.dirs")).unwrap_or_default();
     Some(user_dir(&user_dirs, "XDG_DOWNLOAD_DIR", &home).unwrap_or_else(|| home.join("Downloads")))
 }
 
-/// Opens `path` in the desktop's file manager; a waiting thread reaps `xdg-open` when it exits.
-/// Fails when `xdg-open` does not start.
+/// Opens `path` in the desktop's file manager; fails when `xdg-open` does not start.
 pub fn open_folder(path: &Path) -> std::io::Result<()> {
-    let mut child = Command::new("xdg-open").arg(path).spawn()?;
-    std::thread::spawn(move || child.wait());
-    Ok(())
+    spawn_reaped(Command::new("xdg-open").arg(path))
 }
 
 /// Opens the desktop's default terminal (`x-terminal-emulator`) in `dir` running `program` with
-/// `args`; a waiting thread reaps it when it exits.
+/// `args`.
 pub fn open_terminal(dir: &Path, program: &str, args: &[String]) -> std::io::Result<()> {
-    let mut child = Command::new("x-terminal-emulator")
-        .arg("-e")
-        .arg(program)
-        .args(args)
-        .current_dir(dir)
-        .spawn()?;
-    std::thread::spawn(move || child.wait());
-    Ok(())
+    spawn_reaped(
+        Command::new("x-terminal-emulator").arg("-e").arg(program).args(args).current_dir(dir),
+    )
 }
 
 /// The desktop's interface and monospace fonts as fontconfig resolves them, then the usual files.
@@ -260,11 +255,9 @@ fn user_dir(user_dirs: &str, key: &str, home: &Path) -> Option<PathBuf> {
     (path.is_absolute() && path != home).then_some(path)
 }
 
-/// Opens the desktop's default terminal in `dir`; a waiting thread reaps it when it exits.
+/// Opens the desktop's default terminal in `dir`.
 pub fn open_shell(dir: &Path, _terminal: TerminalChoice) -> std::io::Result<()> {
-    let mut child = Command::new("x-terminal-emulator").current_dir(dir).spawn()?;
-    std::thread::spawn(move || child.wait());
-    Ok(())
+    spawn_reaped(Command::new("x-terminal-emulator").current_dir(dir))
 }
 
 /// The folder chooser of `zenity` (GNOME) or `kdialog` (KDE), whichever is installed; `None` when

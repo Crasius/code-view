@@ -14,10 +14,18 @@ pub fn hide_console(_command: &mut tokio::process::Command) {}
 /// [`hide_console`] for a process run from a thread of its own.
 pub fn hide_std_console(_command: &mut std::process::Command) {}
 
+/// Starts `command` and leaves a thread that waits for it, so the finished child is reaped instead
+/// of staying a zombie until the app exits.
+pub fn spawn_reaped(command: &mut std::process::Command) -> std::io::Result<()> {
+    let mut child = command.spawn()?;
+    std::thread::spawn(move || child.wait());
+    Ok(())
+}
+
 /// `~/Downloads` (Linux reads the XDG user folders instead).
 #[cfg(not(target_os = "linux"))]
 pub fn downloads_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join("Downloads"))
+    std::env::home_dir().map(|home| home.join("Downloads"))
 }
 
 /// The window chrome draws with no font of its own.

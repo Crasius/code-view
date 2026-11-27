@@ -5,7 +5,12 @@
 use objc2_app_kit::{NSView, NSWindow, NSWindowButton, NSWindowStyleMask};
 use objc2_foundation::NSPoint;
 
-const FALLBACK_INSET: f64 = 76.0;
+/// The traffic lights and the room after them, in points, when they cannot be measured.
+pub(super) const FALLBACK_INSET: f64 = 76.0;
+/// How many views may lie between a traffic light and the window's root view.
+const MAX_TITLE_BAR_DEPTH: usize = 8;
+/// Room between the last traffic light and the app's content, in points.
+const GAP_AFTER_BUTTONS: f64 = 12.0;
 
 pub(crate) fn align(window: &NSWindow, height: f64, center_from_top: f64) -> f64 {
     // AppKit owns the sliding title bar and button layout in native full screen.
@@ -40,7 +45,7 @@ pub(crate) fn align(window: &NSWindow, height: f64, center_from_top: f64) -> f64
         // SAFETY: as above, `view` is one of those ancestors.
         parent = unsafe { view.superview() };
         ancestors.push(view);
-        if ancestors.len() > 8 {
+        if ancestors.len() > MAX_TITLE_BAR_DEPTH {
             return FALLBACK_INSET;
         }
     }
@@ -85,5 +90,5 @@ pub(crate) fn align(window: &NSWindow, height: f64, center_from_top: f64) -> f64
         );
         right_edge = right_edge.max(right.x - bounds.origin.x);
     }
-    right_edge + 12.0
+    right_edge + GAP_AFTER_BUTTONS
 }
