@@ -10,8 +10,9 @@ use egui::{IdSalt, Rect, Ui, vec2};
 use review_store::RenderedWidth;
 
 use super::bars::{paint_header, show_banner};
-use super::lanes::{Areas, Lanes};
-use super::model::{Mode, Model};
+use super::lanes::{Areas, Lanes, reading_column};
+use super::model::Model;
+use super::rows::begin_frame;
 use super::{Frame, MarkdownDiff, Place, RenderedEvent, RenderedInputs};
 use cv_base::theme;
 use cv_code::diff_paint;
@@ -110,20 +111,13 @@ fn lay_out(
     inputs: &RenderedInputs<'_>,
     embedding: &Embedding,
 ) -> (Arc<Model>, Areas, Lanes) {
-    let model = diff.ensure_model(inputs);
-    let mode = Mode::of(model.has_old, model.has_new, inputs.layout);
-    diff.follow_thread_visibility(inputs.show_threads);
-    diff.ensure_rows(&model, mode, inputs.context, inputs.threads);
+    let (model, mode, has_banner) = begin_frame(diff, ui.ctx(), inputs);
     diff.pending.take_if(|place| !matches!(place, Place::Thread(_)));
-    diff.cards.begin(ui.ctx());
-    let has_banner = model.has_old && model.has_new && diff.hunks.is_empty();
     let full = Rect::from_min_size(embedding.origin, vec2(embedding.width, height(diff).max(1.0)));
     let areas = Areas::new(full, mode, has_banner, embedding.split, 0.0);
     let content = areas.content;
     diff.embedded.chrome = content.top() - full.top();
-    let choice = embedding.width_choice;
-    let column =
-        (!choice.full && mode != Mode::Columns).then(|| (choice.reading * inputs.scale).round());
+    let column = reading_column(embedding.width_choice, mode, inputs.scale);
     let lanes = Lanes::new(mode, content.width(), areas.left_width, column);
     diff.viewport.0 = embedding.view.translate(-content.min.to_vec2());
     diff.scroll_to = None;

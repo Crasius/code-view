@@ -13,25 +13,18 @@ use super::align::{self, Change, Pair};
 use super::threads::ThreadRow;
 use cv_markdown::{ImageBase, RenderOptions, Units};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) enum Side {
-    Old,
-    New,
+/// The index of `side` in an `[old, new]` pair.
+pub(super) fn slot(side: DiffSide) -> usize {
+    match side {
+        DiffSide::Old => 0,
+        DiffSide::New => 1,
+    }
 }
 
-impl Side {
-    pub fn of(side: DiffSide) -> Self {
-        match side {
-            DiffSide::Old => Side::Old,
-            DiffSide::New => Side::New,
-        }
-    }
-
-    pub fn diff_side(self) -> DiffSide {
-        match self {
-            Side::Old => DiffSide::Old,
-            Side::New => DiffSide::New,
-        }
+pub(super) fn other(side: DiffSide) -> DiffSide {
+    match side {
+        DiffSide::Old => DiffSide::New,
+        DiffSide::New => DiffSide::Old,
     }
 }
 
@@ -45,14 +38,14 @@ pub(super) enum Mode {
     /// One column of the new version, its changes in the accent color, removals as wedges.
     NewOnly,
     /// Only one version exists (an added or a deleted file): shown whole, unmarked.
-    Whole(Side),
+    Whole(DiffSide),
 }
 
 impl Mode {
     pub fn of(has_old: bool, has_new: bool, layout: DiffLayout) -> Self {
         match (has_old, has_new) {
-            (false, _) => Mode::Whole(Side::New),
-            (true, false) => Mode::Whole(Side::Old),
+            (false, _) => Mode::Whole(DiffSide::New),
+            (true, false) => Mode::Whole(DiffSide::Old),
             (true, true) => match layout {
                 DiffLayout::SideBySide => Mode::Columns,
                 DiffLayout::Inline => Mode::Unified,
@@ -75,7 +68,7 @@ pub(super) enum Look {
 /// One block on screen: unit `unit` of `side`'s text, from pair `pair`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Cell {
-    pub side: Side,
+    pub side: DiffSide,
     pub unit: usize,
     pub pair: usize,
     pub look: Look,
@@ -128,6 +121,14 @@ impl Row {
     }
 }
 
+/// How many pairs were added, removed and edited.
+#[derive(Debug, Default, Clone, Copy)]
+pub(super) struct Counts {
+    pub added: usize,
+    pub removed: usize,
+    pub edited: usize,
+}
+
 /// Both versions parsed and lined up.
 pub(super) struct Model {
     pub key: u64,
@@ -139,8 +140,7 @@ pub(super) struct Model {
     /// The pair holding each unit of the old and of the new text.
     pub old_pairs: Vec<usize>,
     pub new_pairs: Vec<usize>,
-    /// Pairs added, removed and edited.
-    pub counts: [usize; 3],
+    pub counts: Counts,
     /// Where the relative image paths of the old and of the new version point.
     pub images: [Option<ImageBase>; 2],
 }
@@ -166,7 +166,7 @@ impl Model {
                 .collect(),
         };
         let (mut old_pairs, mut new_pairs) = (vec![0; old.len()], vec![0; new.len()]);
-        let mut counts = [0; 3];
+        let mut counts = Counts::default();
         for (index, pair) in pairs.iter().enumerate() {
             if let Some(unit) = pair.old {
                 old_pairs[unit] = index;
@@ -175,9 +175,9 @@ impl Model {
                 new_pairs[unit] = index;
             }
             match pair.change {
-                Change::Added => counts[0] += 1,
-                Change::Removed => counts[1] += 1,
-                Change::Modified => counts[2] += 1,
+                Change::Added => counts.added += 1,
+                Change::Removed => counts.removed += 1,
+                Change::Modified => counts.edited += 1,
                 Change::Equal => {}
             }
         }
@@ -200,27 +200,23 @@ impl Model {
     pub fn options(
         &self,
         options: RenderOptions,
-        side: Side,
+        side: DiffSide,
         border: Option<Color32>,
     ) -> RenderOptions {
-        let images = match side {
-            Side::Old => self.images[0],
-            Side::New => self.images[1],
-        };
-        RenderOptions { images, image_border: border, ..options }
+        RenderOptions { images: self.images[slot(side)], image_border: border, ..options }
     }
 
-    pub fn units(&self, side: Side) -> &Units {
+    pub fn units(&self, side: DiffSide) -> &Units {
         match side {
-            Side::Old => &self.old,
-            Side::New => &self.new,
+            DiffSide::Old => &self.old,
+            DiffSide::New => &self.new,
         }
     }
 
-    pub fn pair_of(&self, side: Side, unit: usize) -> Option<usize> {
+    pub fn pair_of(&self, side: DiffSide, unit: usize) -> Option<usize> {
         match side {
-            Side::Old => self.old_pairs.get(unit).copied(),
-            Side::New => self.new_pairs.get(unit).copied(),
+            DiffSide::Old => self.old_pairs.get(unit).copied(),
+            DiffSide::New => self.new_pairs.get(unit).copied(),
         }
     }
 }

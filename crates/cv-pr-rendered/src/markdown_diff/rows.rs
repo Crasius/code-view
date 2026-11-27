@@ -1,17 +1,19 @@
 //! The rows of a layout built from the lined-up pairs: shown and folded runs, a card row under
 //! the block of each thread, the space above each row, the changes to step through and the
-//! overview strip's marks.
+//! overview strip's marks. Every frame starts with the rows for its model and mode
+//! ([`begin_frame`]).
 
 use std::collections::HashSet;
 use std::ops::Range;
+use std::sync::Arc;
 
-use review_core::ReviewThread;
+use review_core::{DiffSide, ReviewThread};
 use review_git::FULL_FILE_CONTEXT;
 
-use super::ROW_PAD;
 use super::align::{Change, Pair};
-use super::model::{Cell, Look, Mode, Model, Row, Side};
+use super::model::{Cell, Look, Mode, Model, Row, slot};
 use super::threads::{self, Placement, ThreadRow};
+use super::{MarkdownDiff, ROW_PAD, RenderedInputs};
 use cv_base::theme::style;
 use cv_markdown::Units;
 use cv_pr_diff::diff_overview::{ChangeBlock, Overview};
@@ -36,6 +38,22 @@ pub(super) struct Built {
 pub(super) enum Segment {
     Shown(usize),
     Folded(Range<usize>),
+}
+
+/// The start of every frame of `diff`, in the file view and embedded: the model, its mode, the
+/// rows for it, and whether the banner over a diff without visible changes shows.
+pub(super) fn begin_frame(
+    diff: &mut MarkdownDiff,
+    ctx: &egui::Context,
+    inputs: &RenderedInputs<'_>,
+) -> (Arc<Model>, Mode, bool) {
+    let model = diff.ensure_model(inputs);
+    let mode = Mode::of(model.has_old, model.has_new, inputs.layout);
+    diff.follow_thread_visibility(inputs.show_threads);
+    diff.ensure_rows(&model, mode, inputs.context, inputs.threads);
+    diff.cards.begin(ctx);
+    let has_banner = model.has_old && model.has_new && diff.hunks.is_empty();
+    (model, mode, has_banner)
 }
 
 pub(super) fn build(
@@ -70,8 +88,8 @@ pub(super) fn unit_rows(rows: &[Row], model: &Model) -> (Vec<Option<usize>>, Vec
     for (index, row) in rows.iter().enumerate() {
         for cell in row.cells().into_iter().flatten() {
             match cell.side {
-                Side::Old => old_rows[cell.unit] = Some(index),
-                Side::New => new_rows[cell.unit] = Some(index),
+                DiffSide::Old => old_rows[cell.unit] = Some(index),
+                DiffSide::New => new_rows[cell.unit] = Some(index),
             }
         }
     }
@@ -95,7 +113,7 @@ pub(super) fn place_threads(
             pair_rows[pair] = index;
         }
     }
-    let mut under: Vec<(usize, Side, u32, ThreadRow)> = Vec::with_capacity(threads.len());
+    let mut under: Vec<(usize, DiffSide, u32, ThreadRow)> = Vec::with_capacity(threads.len());
     let mut folded = Vec::new();
     for (index, thread) in threads.iter().enumerate() {
         match threads::place(
@@ -120,7 +138,9 @@ pub(super) fn place_threads(
     if under.is_empty() {
         return folded;
     }
-    under.sort_by_key(|(row, lane, line, thread)| (*row, *lane == Side::New, *line, thread.thread));
+    under.sort_by_key(|(row, lane, line, thread)| {
+        (*row, *lane == DiffSide::New, *line, thread.thread)
+    });
     let mut merged = Vec::with_capacity(rows.len() + under.len());
     let mut next = under.into_iter().peekable();
     for (index, row) in rows.drain(..).enumerate() {
@@ -173,7 +193,7 @@ pub(super) fn segments(
 }
 
 pub(super) fn push_pair(rows: &mut Vec<Row>, index: usize, pair: &Pair, mode: Mode) {
-    let cell = |side: Side, unit: usize, look: Look| Cell { side, unit, pair: index, look };
+    let cell = |side: DiffSide, unit: usize, look: Look| Cell { side, unit, pair: index, look };
     let one = |cell: Cell| Row::Blocks { left: Some(cell), right: None };
     let is_equal = pair.change == Change::Equal;
     match mode {
@@ -181,22 +201,22 @@ pub(super) fn push_pair(rows: &mut Vec<Row>, index: usize, pair: &Pair, mode: Mo
             let (old_look, new_look) =
                 if is_equal { (Look::Plain, Look::Plain) } else { (Look::Removed, Look::Added) };
             rows.push(Row::Blocks {
-                left: pair.old.map(|unit| cell(Side::Old, unit, old_look)),
-                right: pair.new.map(|unit| cell(Side::New, unit, new_look)),
+                left: pair.old.map(|unit| cell(DiffSide::Old, unit, old_look)),
+                right: pair.new.map(|unit| cell(DiffSide::New, unit, new_look)),
             });
         }
         Mode::Unified => match (is_equal, pair.old, pair.new) {
-            (true, _, Some(new)) => rows.push(one(cell(Side::New, new, Look::Plain))),
-            (true, Some(old), None) => rows.push(one(cell(Side::Old, old, Look::Plain))),
+            (true, _, Some(new)) => rows.push(one(cell(DiffSide::New, new, Look::Plain))),
+            (true, Some(old), None) => rows.push(one(cell(DiffSide::Old, old, Look::Plain))),
             (true, None, None) => {}
             (false, old, new) => {
-                rows.extend(old.map(|unit| one(cell(Side::Old, unit, Look::Removed))));
-                rows.extend(new.map(|unit| one(cell(Side::New, unit, Look::Added))));
+                rows.extend(old.map(|unit| one(cell(DiffSide::Old, unit, Look::Removed))));
+                rows.extend(new.map(|unit| one(cell(DiffSide::New, unit, Look::Added))));
             }
         },
         Mode::NewOnly => match pair.new {
             Some(new) => rows.push(one(cell(
-                Side::New,
+                DiffSide::New,
                 new,
                 if is_equal { Look::Plain } else { Look::Focus },
             ))),
@@ -207,8 +227,8 @@ pub(super) fn push_pair(rows: &mut Vec<Row>, index: usize, pair: &Pair, mode: Mo
         },
         Mode::Whole(side) => {
             let unit = match side {
-                Side::Old => pair.old,
-                Side::New => pair.new,
+                DiffSide::Old => pair.old,
+                DiffSide::New => pair.new,
             };
             rows.extend(unit.map(|unit| one(cell(side, unit, Look::Plain))));
         }
@@ -223,10 +243,6 @@ pub(super) fn spaces(rows: &[Row], model: &Model, columns: bool) -> Vec<f32> {
     let mut last: [Option<usize>; 2] = [None, None];
     let mut previous: Option<Cell> = None;
     let mut after_fold = false;
-    let slot = |side: Side| match side {
-        Side::Old => 0,
-        Side::New => 1,
-    };
     for (index, row) in rows.iter().enumerate() {
         let space = match row {
             // A card's band keeps its own room; the block after it is spaced from the block above.
