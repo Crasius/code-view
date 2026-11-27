@@ -115,7 +115,8 @@ const LABELLED_LAYOUTS: [Segment<'static, DiffLayout>; 3] = {
         Segment { icon: None, ..side_by_side },
     ]
 };
-/// [`LAYOUT_SEGMENTS`] as (layout, icon, label, tooltip), for the crates that still read tuples.
+/// [`LAYOUT_SEGMENTS`] as (layout, icon, label, tooltip) tuples, for cv-pr-summary's header and
+/// cv-pr-files' focus strip.
 pub const LAYOUTS: [(DiffLayout, &str, &str, &str); 3] = {
     let [new_only, inline, side_by_side] = LAYOUT_SEGMENTS;
     [layout_tuple(new_only), layout_tuple(inline), layout_tuple(side_by_side)]

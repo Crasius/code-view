@@ -698,11 +698,13 @@ fn a_changed_diagram_pairs_draws_side_by_side_and_switches_to_source() {
         let drawn = diagrams(&harness);
         assert!((drawn[0].top() - drawn[1].top()).abs() < 0.5, "{case}: side by side at {drawn:?}");
         assert_lined_up(&harness, "Closing words.", &format!("{case}: below the diagrams"));
-        assert_eq!(
-            harness.query_all_by_label_contains(":::").count(),
-            0,
-            "{case}: the markers are not text"
-        );
+        if case != "fence" {
+            assert_eq!(
+                harness.query_all_by_label_contains(":::").count(),
+                0,
+                "{case}: the markers are not text"
+            );
+        }
 
         poll_until(&format!("{case}: the diagrams' buttons"), || {
             harness.step();

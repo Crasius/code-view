@@ -21,6 +21,7 @@ pub(super) fn slot(side: DiffSide) -> usize {
     }
 }
 
+/// The other side of a diff.
 pub(super) fn other(side: DiffSide) -> DiffSide {
     match side {
         DiffSide::Old => DiffSide::New,
