@@ -13,20 +13,39 @@ use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
 use cv_widgets::splitter::{Splitter, share_range};
 
-/// The panes of a row at `rect`: the whole row for one pane, else the left one `left_width` wide
-/// and the right one; each with its slot (0 left, 1 right).
-pub(super) fn pane_rects(
-    rect: Rect,
-    single_pane: bool,
-    left_width: f32,
-) -> Vec<(Pane, usize, Rect)> {
-    if single_pane {
-        return vec![(Pane::Inline, 0, rect)];
+/// One or two panes of a row, each with its slot (0 left, 1 right), kept without an allocation
+/// because every painted row asks for them.
+#[derive(Clone, Copy)]
+pub(super) struct PaneRects {
+    rects: [(Pane, usize, Rect); 2],
+    len: usize,
+}
+
+impl PaneRects {
+    pub fn as_slice(&self) -> &[(Pane, usize, Rect)] {
+        &self.rects[..self.len]
     }
-    vec![
-        (Pane::Left, 0, Rect::from_min_size(rect.min, vec2(left_width, rect.height()))),
-        (Pane::Right, 1, Rect::from_min_max(pos2(rect.left() + left_width, rect.top()), rect.max)),
-    ]
+}
+
+impl IntoIterator for PaneRects {
+    type Item = (Pane, usize, Rect);
+    type IntoIter = std::iter::Take<std::array::IntoIter<(Pane, usize, Rect), 2>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.rects.into_iter().take(self.len)
+    }
+}
+
+/// The panes of a row at `rect`: the whole row for one pane, else the left one `left_width` wide
+/// and the right one.
+pub(super) fn pane_rects(rect: Rect, single_pane: bool, left_width: f32) -> PaneRects {
+    if single_pane {
+        let whole = (Pane::Inline, 0, rect);
+        return PaneRects { rects: [whole; 2], len: 1 };
+    }
+    let left = Rect::from_min_size(rect.min, vec2(left_width, rect.height()));
+    let right = Rect::from_min_max(pos2(rect.left() + left_width, rect.top()), rect.max);
+    PaneRects { rects: [(Pane::Left, 0, left), (Pane::Right, 1, right)], len: 2 }
 }
 
 /// The panes of `content` the find widget searches one at a time, the left one `left_width` wide.
@@ -171,7 +190,12 @@ mod tests {
             harness.step();
         }
         harness.event(wheel(TouchPhase::End, vec2(0.0, 0.0)));
-        harness.run_steps(5);
+        rest(harness, "the gesture to come to rest");
+    }
+
+    /// Steps until the page requests no more frames.
+    fn rest(harness: &mut Harness<'_, Page>, what: &str) {
+        cv_testkit::poll_until(what, || harness.run_ok().is_some());
     }
 
     /// Sideways travel over long lines scrolls the code and is no swipe: the panes take what they
@@ -198,19 +222,19 @@ mod tests {
                 },
                 page,
             );
-        harness.run_steps(10);
+        rest(&mut harness, "the diff to settle");
         harness.hover_at(pos2(600.0, 300.0));
         harness.step();
 
         // Fingers to the left: the code scrolls right, far past a swipe's travel.
         gesture(&mut harness, -40.0, 8);
-        let offset = harness.state().fixture.view.sideways.offsets[0];
+        let offset = harness.state().fixture.view.kept_place().1[0];
         assert!(offset > 300.0, "the code scrolled sideways: {offset}");
         assert_eq!(harness.state().steps, [], "no step forward");
 
         // Fingers to the right, past the left edge: the gesture began on the code, so it stays its.
         gesture(&mut harness, 40.0, 12);
-        assert_eq!(harness.state().fixture.view.sideways.offsets[0], 0.0, "back at the start");
+        assert_eq!(harness.state().fixture.view.kept_place().1[0], 0.0, "back at the start");
         assert_eq!(harness.state().steps, [], "no step back");
     }
 }

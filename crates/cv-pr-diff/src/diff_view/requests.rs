@@ -1,8 +1,8 @@
 //! Requests from outside the text diff, carried out once the rows hold what they need: lines the
-//! rendered Markdown diff hands over, the assistant cited or the find bar goes to
-//! ([`LineRequest`]) and a thread to
-//! scroll to. Lines in a collapsed gap are shown first, which rebuilds the rows, and the request
-//! waits for that. Cited lines and the lines of a thread scrolled to flash once on screen.
+//! rendered Markdown diff hands over, the assistant cited or the find bar goes to ([`LineRequest`])
+//! and a thread to scroll to. Lines in a collapsed gap are shown first, which rebuilds the rows,
+//! and the request waits for that. Cited lines and the lines of a thread scrolled to flash once on
+//! screen.
 
 use std::ops::RangeInclusive;
 
@@ -178,9 +178,7 @@ fn carry_out(
         {
             built.expand_gap(gap, Expand::All);
         }
-        let is_settled =
-            inputs.contents.is_some_and(|contents| contents.error.is_some() || inputs.can_expand());
-        let is_waiting = hidden.is_some() || !is_settled;
+        let is_waiting = hidden.is_some() || !inputs.are_contents_settled();
         return LineOutcome { is_waiting, ..LineOutcome::default() };
     };
     let pane = match (inputs.layout.is_single_pane(), side) {
@@ -259,20 +257,17 @@ fn reveal_thread(
         return ThreadReveal::Keep;
     };
     let anchor = thread.anchor.as_ref().filter(|_| !thread.is_outdated && inputs.can_expand());
-    let gap = anchor.and_then(|anchor| {
-        built.gaps.iter().zip(&built.reveals).position(|(gap, reveal)| {
-            reveal.hidden(gap) > 0 && gap.contains(anchor.old_line, anchor.new_line)
-        })
-    });
-    if let Some(gap) = gap {
+    if let Some(gap) = anchor.and_then(|anchor| built.gap_of(anchor.old_line, anchor.new_line)) {
         built.expand_gap(gap, Expand::All);
         return ThreadReveal::Keep;
     }
     // Contents may still arrive (and with them the gap after the last hunk); outdated threads
     // stay detached.
-    let is_settled =
-        inputs.contents.is_some_and(|contents| contents.error.is_some() || inputs.can_expand());
-    if thread.is_outdated || is_settled { ThreadReveal::Drop } else { ThreadReveal::Keep }
+    if thread.is_outdated || inputs.are_contents_settled() {
+        ThreadReveal::Drop
+    } else {
+        ThreadReveal::Keep
+    }
 }
 
 /// The lines `thread` is written on, in the side its (last) line counts in.

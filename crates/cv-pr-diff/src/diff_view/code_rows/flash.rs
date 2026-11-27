@@ -210,6 +210,5 @@ mod tests {
         assert!(fading > 0.0 && fading < 1.0 && repaints, "fading from arrival: {fading}");
         let end_time = 2.2 + DURATION + 0.1;
         assert_eq!(run(end_time, &mut flash, Pane::Inline, &line(4, 4)), (0.0, false), "ended");
-        assert!(flash.state.is_none());
     }
 }

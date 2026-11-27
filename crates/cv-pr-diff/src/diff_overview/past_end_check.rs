@@ -62,8 +62,12 @@ fn wheel(harness: &mut Harness<'_, Fixture>, delta: f32) {
         modifiers: Modifiers::NONE,
         source: MouseWheelSource::Wheel,
     });
-    // The wheel's smooth scroll eases over a few frames.
-    harness.run_steps(20);
+    rest(harness, "the wheel's smooth scroll to ease out");
+}
+
+/// Steps until the view requests no more frames.
+fn rest(harness: &mut Harness<'_, Fixture>, what: &str) {
+    cv_testkit::poll_until(what, || harness.run_ok().is_some());
 }
 
 /// Nothing repaints once the view rests: the frames settle within the harness's few steps.
@@ -134,19 +138,31 @@ fn dragging_the_view_box_to_the_bottom_stops_at_the_end() {
     harness.event(Event::PointerMoved(pos2(x, strip.bottom() - 1.0)));
     harness.step();
     harness.drop_at(pos2(x, strip.bottom() - 1.0));
-    harness.run_steps(4);
+    rest(&mut harness, "the view to rest after the drop");
     let (top, end) = (harness.state().view.view_top(), end(&harness));
     assert!((top - end).abs() < 1.0, "the drag goes to the end of the rows: {top} vs {end}");
     assert_box_at_bottom(&harness, "dragged to the bottom");
 }
 
+/// A short file does not scroll, side by side or New only; the New only case belongs to the owner
+/// report that "scroll past the end" did not work in New only.
 #[test]
 fn a_file_shorter_than_the_view_does_not_scroll() {
-    let mut harness = shown(12, true);
-    assert!(harness.state().view.height() < HEIGHT / 2.0, "the file fits the view");
-    wheel(&mut harness, -5_000.0);
-    assert!(harness.state().view.view_top().abs() < 0.01, "nothing to scroll");
-    assert_eq!(last_view_box(&harness.ctx), None, "no view box on rows that do not scroll");
+    for (name, fixture) in
+        [("side by side", file_fixture(12)), ("new only", new_only_fixture(14, 2))]
+    {
+        let mut harness = harness(fixture);
+        past_end::set_for_test(&harness.ctx, true);
+        settle(&mut harness);
+        assert!(harness.state().view.height() < HEIGHT / 2.0, "{name}: the file fits the view");
+        wheel(&mut harness, -5_000.0);
+        assert!(harness.state().view.view_top().abs() < 0.01, "{name}: nothing to scroll");
+        assert_eq!(
+            last_view_box(&harness.ctx),
+            None,
+            "{name}: no view box on rows that do not scroll"
+        );
+    }
 }
 
 #[test]
@@ -213,7 +229,8 @@ fn added_fixture(lines: u32) -> Fixture {
 
 /// Owner report: "scroll past the end" did not work in New only. Its rows end in removals of no
 /// height, an added file has one pane: the wheel takes either on until the last head line is at
-/// the top, and a New only file shorter than the view still does not scroll.
+/// the top. A New only file shorter than the view still does not scroll: the case is in
+/// [`a_file_shorter_than_the_view_does_not_scroll`].
 #[test]
 fn new_only_and_an_added_file_scroll_past_the_end() {
     let cases = [
@@ -237,11 +254,4 @@ fn new_only_and_an_added_file_scroll_past_the_end() {
         );
         assert_box_at_bottom(&harness, name);
     }
-
-    let mut harness = harness(new_only_fixture(14, 2));
-    past_end::set_for_test(&harness.ctx, true);
-    settle(&mut harness);
-    assert!(harness.state().view.height() < HEIGHT / 2.0, "the file fits the view");
-    wheel(&mut harness, -5_000.0);
-    assert!(harness.state().view.view_top().abs() < 0.01, "new only: nothing to scroll");
 }

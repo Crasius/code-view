@@ -1,7 +1,8 @@
-//! What one frame of the text diff lays its rows out with: what it shows ([`DiffInputs`]), the code metrics and wrap columns
-//! ([`RowLayout`]), where the rows go on screen ([`Screen`], [`Frame`]) and the part in view; for
-//! rows shown inside another view's scrolling (a card of the folder summary), where they go in
-//! that view ([`Embedded`]) and what showing them gave (see [`super::DiffView::show_embedded`]).
+//! What one frame of the text diff lays its rows out with: what it shows ([`DiffInputs`]), the
+//! code metrics and wrap columns ([`RowLayout`]), where the rows go on screen ([`Screen`],
+//! [`Frame`]) and the part in view; for rows shown inside another view's scrolling (a card of the
+//! folder summary), where they go in that view ([`Embedded`]) and what showing them gave (see
+//! [`super::DiffView::show_embedded`]).
 
 use std::sync::Arc;
 
@@ -52,6 +53,11 @@ impl DiffInputs<'_> {
     /// Both file versions are loaded, so collapsed lines can be shown.
     pub fn can_expand(&self) -> bool {
         self.contents.is_some_and(|contents| contents.old.is_some() && contents.new.is_some())
+    }
+
+    /// The file's versions are in or failed to load: no more lines will come with them.
+    pub fn are_contents_settled(&self) -> bool {
+        self.contents.is_some_and(|contents| contents.error.is_some() || self.can_expand())
     }
 }
 
@@ -208,10 +214,16 @@ impl Embedded {
                 syntax_mix: syntax_mix(ui.ctx(), inputs),
             };
             let reach = view.sideways.clamp(view.built.widest, &layout);
-            let screen = Screen { content: shown, strip: Rect::NOTHING, left_width, layout: &layout, reach };
+            let screen =
+                Screen { content: shown, strip: Rect::NOTHING, left_width, layout: &layout, reach };
             if shown.is_positive() {
                 surfaces::mark_horizontal_scroll(ui, shown);
-                view.sideways.wheel(ui, &frame, inputs.layout.is_single_pane(), screen.reach.max_offsets);
+                view.sideways.wheel(
+                    ui,
+                    &frame,
+                    inputs.layout.is_single_pane(),
+                    screen.reach.max_offsets,
+                );
             }
             view.track_pointer(ui, &background, &frame, inputs);
             let local = view.place.viewport.0;
@@ -230,14 +242,12 @@ impl Embedded {
             let mut split = self.split;
             let committed = shown.is_positive() && {
                 view.sideways.show_scrollbars(ui, &screen, inputs.layout);
-                let drag = panes::split_handle(ui, inputs.layout, rect, shown.y_range(), &mut split);
+                let drag =
+                    panes::split_handle(ui, inputs.layout, rect, shown.y_range(), &mut split);
                 view.is_resizing = drag.is_dragged;
                 drag.committed
             };
-            #[expect(
-                clippy::float_cmp,
-                reason = "change detection: the splitter writes a new share only when moved, so any difference is a move"
-            )]
+            #[expect(clippy::float_cmp, reason = "the splitter writes a new share only when moved")]
             let is_moved = split != self.split;
             EmbeddedOutput {
                 event: painted.0,
