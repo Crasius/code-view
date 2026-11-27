@@ -34,6 +34,8 @@ use review_core::{DiffSide, NewThread, ThreadAnchor};
 
 use self::card_rows::{CardRow, Drafting, Placed, Revealed};
 use self::cards::CardHeights;
+#[cfg(any(test, feature = "test-support"))]
+pub use self::code_rows::flash::{flash_asks_for_frames, flashed_lines};
 use self::code_rows::menu::{self, MenuChoice, MenuItems};
 use self::code_rows::{CodeRows, RowAction};
 pub use self::frame::{DiffInputs, Embedded, EmbeddedOutput, keep_below};

@@ -14,8 +14,6 @@ use review_git::LineKind;
 use crate::code_job::{self, JobStyle};
 use crate::find_paint::{self, FindMark};
 use crate::line_source::CodeLine;
-#[cfg(any(test, feature = "test-support"))]
-use crate::line_source::Pane;
 
 const STRIPE_WIDTH: f32 = 3.0;
 const MARKER_WIDTH: f32 = 20.0;
@@ -664,39 +662,3 @@ pub fn mix(from: Color32, to: Color32, amount: f32) -> Color32 {
 fn snap(position: Pos2) -> Pos2 {
     pos2(position.x.round(), position.y.round())
 }
-
-/// The lines the last frame painted with the flash of a line the view was sent to, for tests:
-/// (pane, line number, strength).
-#[cfg(any(test, feature = "test-support"))]
-pub fn flashed_lines(ctx: &egui::Context) -> Vec<(Pane, u32, f32)> {
-    let (pass, lines) = ctx
-        .data(|data| data.get_temp::<FlashedLines>(egui::Id::unique(FLASHED)))
-        .unwrap_or_default();
-    if pass + 1 == ctx.cumulative_pass_nr() { lines } else { Vec::new() }
-}
-
-/// Notes line `number` of `pane` painted with the flash at `strength` (see [`flashed_lines`]).
-#[cfg(any(test, feature = "test-support"))]
-pub fn note_flashed(ctx: &egui::Context, pane: Pane, number: u32, strength: f32) {
-    let pass = ctx.cumulative_pass_nr();
-    ctx.data_mut(|data| {
-        let painted = data.get_temp_mut_or_default::<FlashedLines>(egui::Id::unique(FLASHED));
-        if painted.0 != pass {
-            *painted = (pass, Vec::new());
-        }
-        painted.1.push((pane, number, strength));
-    });
-}
-
-/// Whether the flash asked for a frame in the pass before the last (egui reports a pass's repaint
-/// causes in the next one), for tests: other parts of the app may ask too.
-#[cfg(any(test, feature = "test-support"))]
-pub fn flash_asks_for_frames(ctx: &egui::Context) -> bool {
-    let is_flash = |file: &str| file.replace('\\', "/").ends_with("code_rows/flash.rs");
-    ctx.repaint_causes().iter().any(|cause| is_flash(cause.file))
-}
-
-#[cfg(any(test, feature = "test-support"))]
-type FlashedLines = (u64, Vec<(Pane, u32, f32)>);
-#[cfg(any(test, feature = "test-support"))]
-const FLASHED: &str = "diff_flashed_lines";

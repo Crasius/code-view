@@ -136,20 +136,35 @@ pub fn fade(elapsed: f64, is_reduced: bool) -> f32 {
     (left * left) as f32
 }
 
-/// Notes `line` flashed in `pane`, for tests (see `diff_paint::flashed_lines`).
+/// Notes `line` flashed in `pane`, for tests (see [`flashed_lines`]).
 #[cfg(any(test, feature = "test-support"))]
 fn note(ctx: &Context, pane: Pane, line: Option<&CodeLine<'_>>, strength: f32) {
     if let Some(line) = line {
         let number =
             if pane == Pane::Left { line.old_line } else { line.new_line.max(line.old_line) };
-        cv_code::diff_paint::note_flashed(ctx, pane, number, strength);
+        cv_base::frame_probe::note(ctx, FLASH_NOTE, (pane, number, strength));
     }
 }
+
+/// The lines the last frame painted with the flash, for tests: (pane, line number, strength).
+#[cfg(any(test, feature = "test-support"))]
+pub fn flashed_lines(ctx: &Context) -> Vec<(Pane, u32, f32)> {
+    cv_base::frame_probe::last(ctx, FLASH_NOTE)
+}
+
+/// Whether the flash asked for a frame in the pass before the last (egui reports a pass's repaint
+/// causes in the next one), for tests: other parts of the app may ask too.
+#[cfg(any(test, feature = "test-support"))]
+pub fn flash_asks_for_frames(ctx: &Context) -> bool {
+    ctx.repaint_causes().iter().any(|cause| cause.file == file!())
+}
+
+#[cfg(any(test, feature = "test-support"))]
+const FLASH_NOTE: &str = "diff_flashed_lines";
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cv_code::diff_paint;
 
     #[test]
     fn the_flash_holds_then_eases_out_and_ends() {
@@ -197,7 +212,7 @@ mod tests {
             // egui reports a pass's repaint causes in the pass after it.
             let input = egui::RawInput { time: Some(time), ..egui::RawInput::default() };
             ctx.run_ui(input, |_| {}).drop_without_applying_deltas();
-            (strength, diff_paint::flash_asks_for_frames(&ctx))
+            (strength, flash_asks_for_frames(&ctx))
         };
         let _first = run(0.0, &mut flash, Pane::Inline, &line(1, 1));
         flash.start(Some(target));
