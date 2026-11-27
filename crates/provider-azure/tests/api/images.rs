@@ -2,27 +2,16 @@
 //! API and never along a redirect to storage; the sign-in page the server answers without access
 //! (`203 Non-Authoritative Information` with HTML) means the image is private.
 
-use provider_azure::AzureDevOpsProvider;
+use review_core::Provider;
 use review_core::http::image::{Body, Validators};
-use review_core::{Connection, Provider, ProviderKind, http};
 use wiremock::matchers::{header_exists, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
+
+use crate::support::{COLLECTION, TOKEN, provider};
 
 const ATTACHMENT: &str =
     "/coll/project/_apis/git/repositories/repo/pullRequests/42/attachments/shot.png";
 const PNG: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
-
-fn provider(server: &MockServer) -> AzureDevOpsProvider {
-    let connection = Connection {
-        id: "azure-images".to_owned(),
-        name: "mock".to_owned(),
-        kind: ProviderKind::AzureDevOps,
-        base_url: server.uri(),
-        organizations: vec!["coll".to_owned()],
-        token: Some("dummy-pat".to_owned()),
-    };
-    AzureDevOpsProvider::new(connection, http::build_client())
-}
 
 #[tokio::test]
 async fn attachments_take_the_pat_and_storage_does_not() {
@@ -47,7 +36,7 @@ async fn attachments_take_the_pat_and_storage_does_not() {
         .mount(&storage)
         .await;
 
-    let body = provider(&server)
+    let body = provider(&server, &[COLLECTION], Some(TOKEN))
         .fetch_image(
             "coll/project/repo",
             &format!("{}{ATTACHMENT}", server.uri()),
@@ -77,7 +66,7 @@ async fn the_sign_in_page_means_the_image_is_private() {
         .mount(&server)
         .await;
 
-    let body = provider(&server)
+    let body = provider(&server, &[COLLECTION], Some(TOKEN))
         .fetch_image(
             "coll/project/repo",
             &format!("{}{ATTACHMENT}", server.uri()),

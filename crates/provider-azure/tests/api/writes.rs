@@ -2,49 +2,22 @@
 //! Basic auth and body as documented on learn.microsoft.com/rest/api/azure/devops/git.
 //! The base URL is the mock server root with the collection in the path, the Azure DevOps Server layout.
 
-use provider_azure::AzureDevOpsProvider;
 use review_core::{
-    Connection, DiffSide, FilePositions, LineRange, MergeOptions, MergeStrategy, NewThread,
-    Provider, ProviderError, ProviderKind, RangeDetail, RerunAction, RerunKind, ReviewVote,
-    ThreadAnchor, ThreadStatus, http,
+    DiffSide, FilePositions, LineRange, MergeOptions, MergeStrategy, NewThread, Provider,
+    ProviderError, RangeDetail, RerunAction, RerunKind, ReviewVote, ThreadAnchor, ThreadStatus,
 };
 use serde_json::{Value, json};
 use wiremock::matchers::{body_json, body_partial_json, header, method, path, query_param};
-use wiremock::{Match, Mock, MockBuilder, MockServer, Request, ResponseTemplate};
+use wiremock::{Match, Mock, MockServer, Request, ResponseTemplate};
 
-const COLLECTION: &str = "coll";
-const REPO: &str = "coll/My Project/web";
-const PR: u64 = 7;
-/// `base64(":dummy-pat")`.
-const AUTHORIZATION: &str = "Basic OmR1bW15LXBhdA==";
+use crate::support::{
+    AUTHORIZATION, COLLECTION, PR, REPO, TOKEN, api, mount_source_tip, ok, provider, pull_request,
+};
+
 const ME: &str = "me-id";
-
-fn provider(server: &MockServer, token: Option<&str>) -> AzureDevOpsProvider {
-    let connection = Connection {
-        id: "test".to_owned(),
-        name: "test".to_owned(),
-        kind: ProviderKind::AzureDevOps,
-        base_url: server.uri(),
-        organizations: vec![COLLECTION.to_owned()],
-        token: token.map(str::to_owned),
-    };
-    AzureDevOpsProvider::new(connection, http::build_client())
-}
 
 fn pr_path(suffix: &str) -> String {
     format!("/{COLLECTION}/My%20Project/_apis/git/repositories/web/pullrequests/{PR}{suffix}")
-}
-
-/// Method + exact path + `api-version=7.1` + PAT header.
-fn api(verb: &str, url_path: &str) -> MockBuilder {
-    Mock::given(method(verb))
-        .and(path(url_path))
-        .and(query_param("api-version", "7.1"))
-        .and(header("authorization", AUTHORIZATION))
-}
-
-fn ok(body: Value) -> ResponseTemplate {
-    ResponseTemplate::new(200).set_body_json(body)
 }
 
 /// Asserts that a top-level JSON body field is absent.
@@ -99,7 +72,7 @@ async fn set_vote_puts_each_vote_value_on_own_reviewer_entry() {
             .mount(&server)
             .await;
     }
-    let provider = provider(&server, Some("dummy-pat"));
+    let provider = provider(&server, &[COLLECTION], Some(TOKEN));
     for (vote, _) in votes {
         provider.set_vote(REPO, PR, vote, None).await.unwrap();
     }
@@ -122,7 +95,7 @@ async fn set_vote_with_comment_adds_general_thread() {
         .expect(1)
         .mount(&server)
         .await;
-    provider(&server, Some("dummy-pat"))
+    provider(&server, &[COLLECTION], Some(TOKEN))
         .set_vote(REPO, PR, ReviewVote::Approved, Some(" Looks good "))
         .await
         .unwrap();
@@ -140,8 +113,10 @@ async fn create_thread_on_pull_request() {
         .mount(&server)
         .await;
     let thread = NewThread { body: "General".to_owned(), anchor: None };
-    let created =
-        provider(&server, Some("dummy-pat")).create_thread(REPO, PR, &thread).await.unwrap();
+    let created = provider(&server, &[COLLECTION], Some(TOKEN))
+        .create_thread(REPO, PR, &thread)
+        .await
+        .unwrap();
     assert_eq!(created.id, "4");
     assert!(created.anchor.is_none());
     assert_eq!(created.comments[0].body, "General");
@@ -194,8 +169,10 @@ async fn create_thread_on_new_line_attaches_to_latest_iteration_change() {
         range: None,
     };
     let thread = NewThread { body: "New side".to_owned(), anchor: Some(anchor) };
-    let created =
-        provider(&server, Some("dummy-pat")).create_thread(REPO, PR, &thread).await.unwrap();
+    let created = provider(&server, &[COLLECTION], Some(TOKEN))
+        .create_thread(REPO, PR, &thread)
+        .await
+        .unwrap();
     let anchor = created.anchor.unwrap();
     assert_eq!(
         (anchor.path.as_str(), anchor.new_line, anchor.old_line),
@@ -247,8 +224,10 @@ async fn create_thread_on_deleted_line_uses_left_file_and_pages_changes() {
         range: None,
     };
     let thread = NewThread { body: "Old side".to_owned(), anchor: Some(anchor) };
-    let created =
-        provider(&server, Some("dummy-pat")).create_thread(REPO, PR, &thread).await.unwrap();
+    let created = provider(&server, &[COLLECTION], Some(TOKEN))
+        .create_thread(REPO, PR, &thread)
+        .await
+        .unwrap();
     let anchor = created.anchor.unwrap();
     assert_eq!((anchor.old_line, anchor.new_line), (Some(4), None));
 }
@@ -298,8 +277,10 @@ async fn create_thread_on_a_line_range_spans_right_file_start_to_end() {
         }),
     };
     let thread = NewThread { body: "Range".to_owned(), anchor: Some(anchor) };
-    let created =
-        provider(&server, Some("dummy-pat")).create_thread(REPO, PR, &thread).await.unwrap();
+    let created = provider(&server, &[COLLECTION], Some(TOKEN))
+        .create_thread(REPO, PR, &thread)
+        .await
+        .unwrap();
     let anchor = created.anchor.unwrap();
     assert_eq!(anchor.new_line, Some(14));
     assert_eq!(
@@ -333,7 +314,7 @@ async fn reply_posts_comment_under_first_comment() {
         .mount(&server)
         .await;
     let comment =
-        provider(&server, Some("dummy-pat")).reply(REPO, PR, "9", "Answer").await.unwrap();
+        provider(&server, &[COLLECTION], Some(TOKEN)).reply(REPO, PR, "9", "Answer").await.unwrap();
     assert_eq!((comment.id.as_str(), comment.body.as_str()), ("2", "Answer"));
 }
 
@@ -348,7 +329,7 @@ async fn set_thread_status_patches_fixed_and_active() {
             .mount(&server)
             .await;
     }
-    let provider = provider(&server, Some("dummy-pat"));
+    let provider = provider(&server, &[COLLECTION], Some(TOKEN));
     provider.set_thread_status(REPO, PR, "9", ThreadStatus::Resolved).await.unwrap();
     provider.set_thread_status(REPO, PR, "9", ThreadStatus::Active).await.unwrap();
 }
@@ -376,7 +357,7 @@ async fn set_labels_adds_missing_and_deletes_unwanted() {
         .mount(&server)
         .await;
     let labels = ["Bug".to_owned(), "ui".to_owned()];
-    provider(&server, Some("dummy-pat")).set_labels(REPO, PR, &labels).await.unwrap();
+    provider(&server, &[COLLECTION], Some(TOKEN)).set_labels(REPO, PR, &labels).await.unwrap();
 }
 
 #[tokio::test]
@@ -399,7 +380,10 @@ async fn add_reviewer_resolves_identity_then_puts_zero_vote() {
         .expect(1)
         .mount(&server)
         .await;
-    provider(&server, Some("dummy-pat")).add_reviewer(REPO, PR, " jo@example.com ").await.unwrap();
+    provider(&server, &[COLLECTION], Some(TOKEN))
+        .add_reviewer(REPO, PR, " jo@example.com ")
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -427,7 +411,7 @@ async fn adding_the_signed_in_user_puts_their_own_identity_without_a_search() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, Some("dummy-pat"));
+    let provider = provider(&server, &[COLLECTION], Some(TOKEN));
     let me = provider.current_user().await.unwrap();
     assert_eq!(me.login.as_deref(), Some("me@example.com"));
     provider.add_reviewer(REPO, PR, "ME@example.com").await.unwrap();
@@ -441,40 +425,19 @@ async fn remove_reviewer_deletes_reviewer_entry() {
         .expect(1)
         .mount(&server)
         .await;
-    provider(&server, Some("dummy-pat")).remove_reviewer(REPO, PR, "jo-id").await.unwrap();
-}
-
-fn pull_request_json() -> Value {
-    json!({
-        "pullRequestId": PR, "status": "active",
-        "repository": { "name": "web", "project": { "name": "My Project" } },
-        "createdBy": { "id": "author", "displayName": "Author" },
-        "creationDate": "2026-10-01T08:00:00Z", "title": "T",
-        "sourceRefName": "refs/heads/feature", "targetRefName": "refs/heads/main",
-        "lastMergeSourceCommit": { "commitId": "head-sha" }, "lastMergeTargetCommit": { "commitId": "target-sha" }
-    })
-}
-
-/// `Refs - List` of the source branch (`refs/heads/feature`) answers `tip`, `times` times.
-async fn mount_source_tip(server: &MockServer, tip: &str, times: u64) {
-    api("GET", &format!("/{COLLECTION}/My%20Project/_apis/git/repositories/web/refs"))
-        .and(query_param("filter", "heads/feature"))
-        .respond_with(ok(json!({ "count": 2, "value": [
-            { "name": "refs/heads/feature-2", "objectId": "other-sha" },
-            { "name": "refs/heads/feature", "objectId": tip }
-        ] })))
-        .up_to_n_times(times)
-        .expect(times)
-        .mount(server)
-        .await;
+    provider(&server, &[COLLECTION], Some(TOKEN)).remove_reviewer(REPO, PR, "jo-id").await.unwrap();
 }
 
 /// The completion carries the reviewed source commit, not one fetched before it.
 #[tokio::test]
 async fn merge_completes_with_each_strategy_against_the_reviewed_source_commit() {
     let server = MockServer::start().await;
-    api("GET", &pr_path("")).respond_with(ok(pull_request_json())).expect(4).mount(&server).await;
-    mount_source_tip(&server, "reviewed-sha", 4).await;
+    api("GET", &pr_path(""))
+        .respond_with(ok(pull_request(&json!({}))))
+        .expect(4)
+        .mount(&server)
+        .await;
+    mount_source_tip(&server, "reviewed-sha", Some(4)).await;
     let strategies = [
         (MergeStrategy::Merge, "noFastForward"),
         (MergeStrategy::Squash, "squash"),
@@ -488,12 +451,12 @@ async fn merge_completes_with_each_strategy_against_the_reviewed_source_commit()
                 "lastMergeSourceCommit": { "commitId": "reviewed-sha" },
                 "completionOptions": { "mergeStrategy": ado, "deleteSourceBranch": true, "mergeCommitMessage": "Merged" }
             })))
-            .respond_with(ok(pull_request_json()))
+            .respond_with(ok(pull_request(&json!({}))))
             .expect(1)
             .mount(&server)
             .await;
     }
-    let provider = provider(&server, Some("dummy-pat"));
+    let provider = provider(&server, &[COLLECTION], Some(TOKEN));
     for (strategy, _) in strategies {
         let options = MergeOptions {
             strategy,
@@ -511,13 +474,15 @@ async fn merge_completes_with_each_strategy_against_the_reviewed_source_commit()
 #[tokio::test]
 async fn merge_refuses_a_source_branch_pushed_past_the_reviewed_commit_before_completing() {
     let server = MockServer::start().await;
-    let lagging = json!({ "lastMergeSourceCommit": { "commitId": "reviewed-sha" } });
-    let mut pull_request = pull_request_json();
-    pull_request.as_object_mut().unwrap().extend(lagging.as_object().unwrap().clone());
-    api("GET", &pr_path("")).respond_with(ok(pull_request)).expect(1).mount(&server).await;
-    mount_source_tip(&server, "pushed-sha", 1).await;
-    api("PATCH", &pr_path("")).respond_with(ok(pull_request_json())).expect(0).mount(&server).await;
-    let provider = provider(&server, Some("dummy-pat"));
+    let lagging = pull_request(&json!({ "lastMergeSourceCommit": { "commitId": "reviewed-sha" } }));
+    api("GET", &pr_path("")).respond_with(ok(lagging)).expect(1).mount(&server).await;
+    mount_source_tip(&server, "pushed-sha", Some(1)).await;
+    api("PATCH", &pr_path(""))
+        .respond_with(ok(pull_request(&json!({}))))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let provider = provider(&server, &[COLLECTION], Some(TOKEN));
     let options = MergeOptions {
         strategy: MergeStrategy::Squash,
         delete_source_branch: false,
@@ -534,8 +499,12 @@ async fn merge_refuses_a_source_branch_pushed_past_the_reviewed_commit_before_co
 #[tokio::test]
 async fn merge_refused_for_a_moved_source_reports_new_commits() {
     let server = MockServer::start().await;
-    api("GET", &pr_path("")).respond_with(ok(pull_request_json())).expect(4).mount(&server).await;
-    mount_source_tip(&server, "reviewed-sha", 1).await;
+    api("GET", &pr_path(""))
+        .respond_with(ok(pull_request(&json!({}))))
+        .expect(4)
+        .mount(&server)
+        .await;
+    mount_source_tip(&server, "reviewed-sha", Some(1)).await;
     api("PATCH", &pr_path(""))
         .respond_with(
             ResponseTemplate::new(409)
@@ -544,7 +513,7 @@ async fn merge_refused_for_a_moved_source_reports_new_commits() {
         .expect(2)
         .mount(&server)
         .await;
-    let provider = provider(&server, Some("dummy-pat"));
+    let provider = provider(&server, &[COLLECTION], Some(TOKEN));
     let mut options = MergeOptions {
         strategy: MergeStrategy::Squash,
         delete_source_branch: false,
@@ -554,7 +523,7 @@ async fn merge_refused_for_a_moved_source_reports_new_commits() {
     let error = provider.merge(REPO, PR, &options).await.expect_err("source moved to head-sha");
     assert!(matches!(error, ProviderError::HeadMoved), "{error:?}");
 
-    mount_source_tip(&server, "head-sha", 1).await;
+    mount_source_tip(&server, "head-sha", Some(1)).await;
     "head-sha".clone_into(&mut options.head_sha);
     let error = provider.merge(REPO, PR, &options).await.expect_err("refused at the same head");
     assert_eq!(error.status(), Some(409));
@@ -573,12 +542,12 @@ async fn lifecycle_and_metadata_updates_patch_the_pull_request() {
     for body in bodies {
         api("PATCH", &pr_path(""))
             .and(body_partial_json(body))
-            .respond_with(ok(pull_request_json()))
+            .respond_with(ok(pull_request(&json!({}))))
             .expect(1)
             .mount(&server)
             .await;
     }
-    let provider = provider(&server, Some("dummy-pat"));
+    let provider = provider(&server, &[COLLECTION], Some(TOKEN));
     provider.close(REPO, PR).await.unwrap();
     provider.reopen(REPO, PR).await.unwrap();
     provider.set_draft(REPO, PR, true).await.unwrap();
@@ -601,7 +570,7 @@ async fn stage_retry_patches_the_stage_with_state_retry() {
             .mount(&server)
             .await;
     }
-    let provider = provider(&server, Some("dummy-pat"));
+    let provider = provider(&server, &[COLLECTION], Some(TOKEN));
     let rerun_all = RerunAction::new(RerunKind::StageAll, "42:Deploy_integration");
     provider.rerun(REPO, PR, "build:42", &rerun_all).await.unwrap();
     let retry_failed = RerunAction::new(RerunKind::StageFailed, "42:Deploy_integration");
@@ -616,7 +585,7 @@ async fn stage_retry_patches_the_stage_with_state_retry() {
 #[tokio::test]
 async fn writes_without_token_send_nothing() {
     let server = MockServer::start().await;
-    let provider = provider(&server, None);
+    let provider = provider(&server, &[COLLECTION], None);
     let options = MergeOptions {
         strategy: MergeStrategy::Squash,
         delete_source_branch: false,

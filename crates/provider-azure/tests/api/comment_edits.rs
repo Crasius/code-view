@@ -1,36 +1,21 @@
 //! Editing and deleting pull request thread comments against a mocked Azure DevOps REST API (7.1),
 //! as documented under learn.microsoft.com/rest/api/azure/devops/git/pull-request-thread-comments.
 
-use provider_azure::AzureDevOpsProvider;
-use review_core::{Connection, Provider, ProviderKind, http};
+use review_core::Provider;
 use serde_json::{Value, json};
 use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const COLLECTION: &str = "coll";
-const REPO: &str = "coll/My Project/web";
-/// `base64(":dummy-pat")`.
-const AUTHORIZATION: &str = "Basic OmR1bW15LXBhdA==";
+use crate::support::{AUTHORIZATION, COLLECTION, REPO, TOKEN, provider};
+
 const COMMENT: &str =
     "/coll/My%20Project/_apis/git/repositories/web/pullrequests/7/threads/41/comments/2";
-
-fn provider(server: &MockServer) -> AzureDevOpsProvider {
-    let connection = Connection {
-        id: "test".to_owned(),
-        name: "test".to_owned(),
-        kind: ProviderKind::AzureDevOps,
-        base_url: server.uri(),
-        organizations: vec![COLLECTION.to_owned()],
-        token: Some("dummy-pat".to_owned()),
-    };
-    AzureDevOpsProvider::new(connection, http::build_client())
-}
 
 #[tokio::test]
 async fn edits_a_comment_by_its_content() {
     let server = MockServer::start().await;
     let edited: Value =
-        serde_json::from_str(include_str!("fixtures/comment_edited.json")).expect("fixture");
+        serde_json::from_str(include_str!("../fixtures/comment_edited.json")).expect("fixture");
     Mock::given(method("PATCH"))
         .and(path(COMMENT))
         .and(query_param("api-version", "7.1"))
@@ -40,7 +25,7 @@ async fn edits_a_comment_by_its_content() {
         .expect(1)
         .mount(&server)
         .await;
-    let comment = provider(&server)
+    let comment = provider(&server, &[COLLECTION], Some(TOKEN))
         .edit_comment(REPO, 7, "41", "2", "Use a slice here.")
         .await
         .expect("edited");
@@ -60,7 +45,10 @@ async fn deletes_a_comment() {
         .expect(1)
         .mount(&server)
         .await;
-    provider(&server).delete_comment(REPO, 7, "41", "2").await.expect("deleted");
+    provider(&server, &[COLLECTION], Some(TOKEN))
+        .delete_comment(REPO, 7, "41", "2")
+        .await
+        .expect("deleted");
 }
 
 /// Azure DevOps keeps a deleted comment with `isDeleted: true`: the listing hides it, and the
@@ -83,7 +71,8 @@ async fn deleted_comments_stay_hidden() {
         .respond_with(ResponseTemplate::new(200).set_body_json(threads))
         .mount(&server)
         .await;
-    let listed = provider(&server).threads(REPO, 7).await.expect("threads");
+    let listed =
+        provider(&server, &[COLLECTION], Some(TOKEN)).threads(REPO, 7).await.expect("threads");
     assert_eq!(listed.len(), 1, "the thread without comments left is gone");
     let ids: Vec<&str> = listed[0].comments.iter().map(|comment| comment.id.as_str()).collect();
     assert_eq!(ids, ["1"]);

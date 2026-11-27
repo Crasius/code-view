@@ -1,25 +1,14 @@
 //! Pull request statuses against a mock Azure DevOps REST API (api-version 7.1): a status posted
 //! on an earlier iteration is an older run; the iterations are read only when a status names one.
 
-use provider_azure::AzureDevOpsProvider;
-use review_core::{Connection, Provider, ProviderKind};
+use review_core::Provider;
 use serde_json::json;
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const PR: &str = "/coll/Web/_apis/git/repositories/site/pullrequests/7";
+use crate::support::{COLLECTION, TOKEN, provider};
 
-fn provider(server: &MockServer) -> AzureDevOpsProvider {
-    let connection = Connection {
-        id: "azure-statuses".to_owned(),
-        name: "mock".to_owned(),
-        kind: ProviderKind::AzureDevOps,
-        base_url: server.uri(),
-        organizations: vec!["coll".to_owned()],
-        token: Some("dummy-pat".to_owned()),
-    };
-    AzureDevOpsProvider::new(connection, review_core::http::build_client())
-}
+const PR: &str = "/coll/Web/_apis/git/repositories/site/pullrequests/7";
 
 async fn mount_without_builds(server: &MockServer) {
     Mock::given(method("GET"))
@@ -50,7 +39,10 @@ async fn statuses_of_an_earlier_iteration_are_older_runs() {
         .expect(1)
         .mount(&server)
         .await;
-    let runs = provider(&server).pipeline_runs("coll/Web/site", 7).await.expect("runs");
+    let runs = provider(&server, &[COLLECTION], Some(TOKEN))
+        .pipeline_runs("coll/Web/site", 7)
+        .await
+        .expect("runs");
     let heads: Vec<(&str, bool)> =
         runs.iter().map(|run| (run.name.as_str(), run.is_head)).collect();
     assert_eq!(heads, [("lint", true), ("sonar", false)]);
@@ -73,6 +65,9 @@ async fn statuses_of_the_pull_request_need_no_iterations() {
         .expect(0)
         .mount(&server)
         .await;
-    let runs = provider(&server).pipeline_runs("coll/Web/site", 7).await.expect("runs");
+    let runs = provider(&server, &[COLLECTION], Some(TOKEN))
+        .pipeline_runs("coll/Web/site", 7)
+        .await
+        .expect("runs");
     assert!(runs.iter().all(|run| run.is_head), "{runs:?}");
 }

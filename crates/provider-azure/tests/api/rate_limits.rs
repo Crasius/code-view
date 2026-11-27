@@ -4,25 +4,14 @@
 
 use std::time::{Duration, Instant};
 
-use provider_azure::AzureDevOpsProvider;
-use review_core::{Connection, Provider, ProviderError, ProviderKind, http};
+use review_core::{Provider, ProviderError, http};
 use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const REPOSITORIES: &str = "/coll/_apis/git/repositories";
+use crate::support::{COLLECTION, TOKEN, provider};
 
-fn provider(server: &MockServer) -> AzureDevOpsProvider {
-    let connection = Connection {
-        id: "azure-rate".to_owned(),
-        name: "mock".to_owned(),
-        kind: ProviderKind::AzureDevOps,
-        base_url: server.uri(),
-        organizations: vec!["coll".to_owned()],
-        token: Some("dummy-pat".to_owned()),
-    };
-    AzureDevOpsProvider::new(connection, http::build_client())
-}
+const REPOSITORIES: &str = "/coll/_apis/git/repositories";
 
 fn blocked() -> ResponseTemplate {
     ResponseTemplate::new(429)
@@ -41,7 +30,10 @@ async fn still_blocked_ends_in_rate_limited_error() {
     let server = MockServer::start().await;
     mount_repositories(&server, blocked()).await;
 
-    let error = provider(&server).list_repositories(None).await.expect_err("still blocked");
+    let error = provider(&server, &[COLLECTION], Some(TOKEN))
+        .list_repositories(None)
+        .await
+        .expect_err("still blocked");
     assert!(matches!(error, ProviderError::RateLimited { .. }), "{error:?}");
     assert_eq!(server.received_requests().await.expect("recorded").len(), 2);
 }
@@ -57,7 +49,7 @@ async fn delayed_answer_pauses_the_next_request() {
             .set_body_json(json!({ "count": 0, "value": [] })),
     )
     .await;
-    let provider = provider(&server);
+    let provider = provider(&server, &[COLLECTION], Some(TOKEN));
 
     provider.list_repositories(None).await.expect("delayed but answered");
     assert!(

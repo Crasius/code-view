@@ -3,29 +3,16 @@
 //! the run's timeline lists earlier attempts by id only, and an attempt's own timeline
 //! (`GET build/builds/{id}/timeline/{timelineId}`) is read only when that attempt is opened.
 
-use provider_azure::AzureDevOpsProvider;
-use review_core::{
-    AttemptSource, Connection, Provider, ProviderError, ProviderKind, RunStatus, http,
-};
+use review_core::{AttemptSource, Provider, ProviderError, RunStatus};
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+use crate::support::provider;
 
 const REPO: &str = "contoso/public/web";
 const RUN: &str = "build:1639558";
 const TIMELINE: &str = "/contoso/public/_apis/build/builds/1639558/timeline";
 const ATTEMPT_1: &str = "6884a131-87da-5381-61f3-d7acc3b91d76";
-
-fn anonymous(server: &MockServer) -> AzureDevOpsProvider {
-    let connection = Connection {
-        id: "attempts".to_owned(),
-        name: "contoso".to_owned(),
-        kind: ProviderKind::AzureDevOps,
-        base_url: server.uri(),
-        organizations: vec!["contoso".to_owned()],
-        token: None,
-    };
-    AzureDevOpsProvider::new(connection, http::build_client())
-}
 
 fn fixture(body: &str) -> ResponseTemplate {
     ResponseTemplate::new(200).set_body_raw(body.as_bytes().to_vec(), "application/json")
@@ -37,17 +24,17 @@ async fn earlier_attempts_load_only_when_opened() {
     Mock::given(method("GET"))
         .and(path(TIMELINE))
         .and(query_param("api-version", "7.1"))
-        .respond_with(fixture(include_str!("fixtures/timeline_1639558.json")))
+        .respond_with(fixture(include_str!("../fixtures/timeline_1639558.json")))
         .mount(&server)
         .await;
     Mock::given(method("GET"))
         .and(path(format!("{TIMELINE}/{ATTEMPT_1}")))
         .and(query_param("api-version", "7.1"))
-        .respond_with(fixture(include_str!("fixtures/timeline_1639558_6884a131.json")))
+        .respond_with(fixture(include_str!("../fixtures/timeline_1639558_6884a131.json")))
         .expect(1)
         .mount(&server)
         .await;
-    let provider = anonymous(&server);
+    let provider = provider(&server, &["contoso"], None);
 
     let stages = provider.pipeline_jobs(REPO, 69916, RUN).await.expect("the run's stages");
     let requests = server.received_requests().await.unwrap_or_default();
@@ -82,7 +69,8 @@ async fn earlier_attempts_load_only_when_opened() {
 #[tokio::test]
 async fn a_malformed_attempt_target_sends_nothing() {
     let server = MockServer::start().await;
-    let result = anonymous(&server).pipeline_attempt(REPO, 1, RUN, "1639558").await;
+    let result =
+        provider(&server, &["contoso"], None).pipeline_attempt(REPO, 1, RUN, "1639558").await;
     assert!(matches!(result, Err(ProviderError::Local(_))), "{result:?}");
     assert!(server.received_requests().await.unwrap_or_default().is_empty());
 }
