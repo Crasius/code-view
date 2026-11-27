@@ -21,8 +21,8 @@ use cv_widgets::{buttons, row, skeleton};
 use egui::{Align, RichText, Sense, Ui, vec2};
 
 /// The row's label in the Links section.
-pub const LABEL: &str = "Browser extension";
-pub const DESCRIPTION: &str = "Chrome and Edge open pull request links of your connections here instead of in a tab. \
+pub(crate) const LABEL: &str = "Browser extension";
+pub(crate) const DESCRIPTION: &str = "Chrome and Edge open pull request links of your connections here instead of in a tab. \
      Registering lets the Code View extension start this copy of Code View, for your user only.";
 const INSTRUCTION: &str = "Then in chrome://extensions or edge://extensions, turn on Developer mode, choose Load unpacked and pick the extension folder. After an update, choose Reload on the Code View extension there.";
 const STATUS_WIDTH: f32 = 220.0;
@@ -52,7 +52,7 @@ impl Done {
 }
 
 #[derive(Default)]
-pub struct BrowserExtension {
+pub(crate) struct BrowserExtension {
     registry: Option<Result<Arc<Registry>, String>>,
     status: Option<Status>,
     failure: Option<String>,
@@ -66,7 +66,7 @@ impl BrowserExtension {
         Self { registry: Some(Ok(Arc::new(registry))), ..Self::default() }
     }
 
-    pub fn control(&mut self, ui: &mut Ui, services: &mut Services) {
+    pub(crate) fn control(&mut self, ui: &mut Ui, services: &mut Services) {
         self.finish(ui.ctx(), services);
         let registry = self
             .registry

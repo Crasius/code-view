@@ -4,13 +4,13 @@
 use review_core::ProviderKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Hosting {
+pub(crate) enum Hosting {
     Cloud,
     SelfHosted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedHost {
+pub(crate) struct ResolvedHost {
     pub base_url: String,
     /// Azure DevOps organization (Services) or collection (Server); `None` for GitHub and GitLab.
     pub organization: Option<String>,
@@ -18,7 +18,7 @@ pub struct ResolvedHost {
 
 impl ResolvedHost {
     /// `github.com`, `gitlab.example.com`, `dev.azure.com/contoso`, for headlines and buttons.
-    pub fn display(&self) -> String {
+    pub(crate) fn display(&self) -> String {
         let host = self.base_url.split_once("://").map_or(self.base_url.as_str(), |(_, rest)| rest);
         match &self.organization {
             Some(organization) => format!("{host}/{organization}"),
@@ -27,13 +27,13 @@ impl ResolvedHost {
     }
 
     /// The bare host name, as `gh auth token --hostname` expects it.
-    pub fn host_name(&self) -> &str {
+    pub(crate) fn host_name(&self) -> &str {
         let rest = self.base_url.split_once("://").map_or(self.base_url.as_str(), |(_, rest)| rest);
         rest.split('/').next().unwrap_or(rest)
     }
 }
 
-pub fn cloud_label(kind: ProviderKind) -> &'static str {
+pub(crate) fn cloud_label(kind: ProviderKind) -> &'static str {
     match kind {
         ProviderKind::GitHub => "GitHub.com",
         ProviderKind::GitLab => "GitLab.com",
@@ -41,7 +41,7 @@ pub fn cloud_label(kind: ProviderKind) -> &'static str {
     }
 }
 
-pub fn cloud_detail(kind: ProviderKind) -> &'static str {
+pub(crate) fn cloud_detail(kind: ProviderKind) -> &'static str {
     match kind {
         ProviderKind::GitHub => "github.com, including GitHub Enterprise Cloud organizations",
         ProviderKind::GitLab => "gitlab.com",
@@ -49,7 +49,7 @@ pub fn cloud_detail(kind: ProviderKind) -> &'static str {
     }
 }
 
-pub fn self_hosted_label(kind: ProviderKind) -> &'static str {
+pub(crate) fn self_hosted_label(kind: ProviderKind) -> &'static str {
     match kind {
         ProviderKind::GitHub => "GitHub Enterprise Server",
         ProviderKind::GitLab => "Self-managed GitLab",
@@ -57,7 +57,7 @@ pub fn self_hosted_label(kind: ProviderKind) -> &'static str {
     }
 }
 
-pub fn self_hosted_detail(kind: ProviderKind) -> &'static str {
+pub(crate) fn self_hosted_detail(kind: ProviderKind) -> &'static str {
     match kind {
         ProviderKind::GitHub => "Your company's own GitHub server",
         ProviderKind::GitLab => "Your company's own GitLab server",
@@ -66,7 +66,7 @@ pub fn self_hosted_detail(kind: ProviderKind) -> &'static str {
 }
 
 /// Label and example of the one field the host step asks for.
-pub fn field(kind: ProviderKind, hosting: Hosting) -> (&'static str, &'static str) {
+pub(crate) fn field(kind: ProviderKind, hosting: Hosting) -> (&'static str, &'static str) {
     match (kind, hosting) {
         (ProviderKind::AzureDevOps, Hosting::Cloud) => {
             ("Organization", "contoso, or paste https://dev.azure.com/contoso")
@@ -80,11 +80,15 @@ pub fn field(kind: ProviderKind, hosting: Hosting) -> (&'static str, &'static st
 }
 
 /// The host step needs no input for GitHub.com and GitLab.com.
-pub fn needs_input(kind: ProviderKind, hosting: Hosting) -> bool {
+pub(crate) fn needs_input(kind: ProviderKind, hosting: Hosting) -> bool {
     kind == ProviderKind::AzureDevOps || hosting == Hosting::SelfHosted
 }
 
-pub fn resolve(kind: ProviderKind, hosting: Hosting, input: &str) -> Result<ResolvedHost, String> {
+pub(crate) fn resolve(
+    kind: ProviderKind,
+    hosting: Hosting,
+    input: &str,
+) -> Result<ResolvedHost, String> {
     let input = input.trim();
     match (kind, hosting) {
         (ProviderKind::GitHub | ProviderKind::GitLab, Hosting::Cloud) => {

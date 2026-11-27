@@ -5,7 +5,7 @@
 
 use crate::rich_editor::model::Mark;
 
-pub fn html_mark(name: &str) -> Option<Mark> {
+pub(crate) fn html_mark(name: &str) -> Option<Mark> {
     Some(match name {
         "ins" | "u" => Mark::Underline,
         "sub" => Mark::Subscript,
@@ -19,7 +19,7 @@ pub fn html_mark(name: &str) -> Option<Mark> {
     })
 }
 
-pub struct HtmlTag {
+pub(crate) struct HtmlTag {
     pub name: String,
     pub is_end: bool,
     pub href: Option<String>,
@@ -27,7 +27,7 @@ pub struct HtmlTag {
 
 /// The name of a single tag (`<kbd>`, `</ins>`, `<a href="x">`); `None` for comments,
 /// declarations and anything that is not one tag.
-pub fn html_tag(html: &str) -> Option<HtmlTag> {
+pub(crate) fn html_tag(html: &str) -> Option<HtmlTag> {
     let inner = html.trim().strip_prefix('<')?.strip_suffix('>')?;
     let (is_end, inner) = match inner.strip_prefix('/') {
         Some(rest) => (true, rest),

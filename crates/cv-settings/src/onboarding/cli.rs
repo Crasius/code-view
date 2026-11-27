@@ -4,7 +4,6 @@
 //! `review_store::token_vault`); it is never printed or logged, and error messages only carry the
 //! tool's stderr.
 
-use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -25,12 +24,13 @@ pub struct CliTools {
 }
 
 impl CliTools {
-    pub fn detect() -> Self {
+    #[cfg(not(any(test, feature = "test-support")))]
+    pub(crate) fn detect() -> Self {
         Self { github: on_path(&["gh.exe", "gh"]), azure: on_path(&[platform::AZURE_CLI]) }
     }
 
     /// The sign-in this platform and host can use, if its tool is installed.
-    pub fn login_for(
+    pub(crate) fn login_for(
         self,
         kind: ProviderKind,
         host_name: &str,
@@ -49,6 +49,7 @@ impl CliTools {
     }
 }
 
+#[cfg(not(any(test, feature = "test-support")))]
 fn on_path(file_names: &[&str]) -> bool {
     let Some(path) = std::env::var_os("PATH") else {
         return false;
@@ -57,7 +58,8 @@ fn on_path(file_names: &[&str]) -> bool {
         .any(|directory| file_names.iter().any(|name| is_file(&directory.join(name))))
 }
 
-fn is_file(path: &Path) -> bool {
+#[cfg(not(any(test, feature = "test-support")))]
+fn is_file(path: &std::path::Path) -> bool {
     path.metadata().is_ok_and(|metadata| metadata.is_file())
 }
 
@@ -71,13 +73,13 @@ fn is_host_name(host: &str) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CliLogin {
+pub(crate) enum CliLogin {
     GitHub { host: String },
     Azure,
 }
 
 impl CliLogin {
-    pub fn tool_name(&self) -> &'static str {
+    pub(crate) fn tool_name(&self) -> &'static str {
         match self {
             CliLogin::GitHub { .. } => "GitHub CLI",
             CliLogin::Azure => "Azure CLI",
@@ -85,14 +87,14 @@ impl CliLogin {
     }
 
     /// The command that signs in, for the user to run in a terminal when the tool has no sign-in yet.
-    pub fn sign_in_command(&self) -> String {
+    pub(crate) fn sign_in_command(&self) -> String {
         match self {
             CliLogin::GitHub { host } => format!("gh auth login --hostname {host}"),
             CliLogin::Azure => "az login".to_owned(),
         }
     }
 
-    pub fn explanation(&self) -> &'static str {
+    pub(crate) fn explanation(&self) -> &'static str {
         match self {
             CliLogin::GitHub { .. } => {
                 "Code View asks gh for the token you already use in the terminal. Nothing to create or copy."
@@ -126,7 +128,7 @@ impl CliLogin {
     }
 
     /// Runs the tool and returns the token from its stdout.
-    pub async fn fetch_token(self) -> Result<String, String> {
+    pub(crate) async fn fetch_token(self) -> Result<String, String> {
         let (program, arguments) = self.program_and_arguments();
         let mut command = tokio::process::Command::new(program);
         command

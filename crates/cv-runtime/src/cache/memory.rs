@@ -82,7 +82,7 @@ impl Holder {
         Holder::CodeColors,
     ];
 
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Holder::Images => "images",
             Holder::Diagrams => "diagrams",
@@ -103,7 +103,7 @@ impl Holder {
     }
 
     /// Bytes held under this holder now, over all its caches.
-    pub fn bytes(self) -> usize {
+    pub(crate) fn bytes(self) -> usize {
         self.counter().load(Ordering::Relaxed)
     }
 
@@ -255,7 +255,7 @@ impl<K: Eq + Hash + Clone, V> BoundedCache<K, V> {
     }
 
     /// The value for `key` to change in place, without marking it as used; its weight stays.
-    pub fn peek_mut<Q: Hash + Eq + ?Sized>(&mut self, key: &Q) -> Option<&mut V>
+    pub(crate) fn peek_mut<Q: Hash + Eq + ?Sized>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
     {
@@ -263,7 +263,7 @@ impl<K: Eq + Hash + Clone, V> BoundedCache<K, V> {
     }
 
     /// Every key held, in no order.
-    pub fn keys(&self) -> impl Iterator<Item = &K> {
+    pub(crate) fn keys(&self) -> impl Iterator<Item = &K> {
         self.entries.keys()
     }
 
@@ -291,7 +291,7 @@ impl<K: Eq + Hash + Clone, V> BoundedCache<K, V> {
         }
     }
 
-    pub fn remove<Q: Hash + Eq + ?Sized>(&mut self, key: &Q) -> Option<V>
+    pub(crate) fn remove<Q: Hash + Eq + ?Sized>(&mut self, key: &Q) -> Option<V>
     where
         K: Borrow<Q>,
     {
@@ -302,8 +302,8 @@ impl<K: Eq + Hash + Clone, V> BoundedCache<K, V> {
     }
 
     /// Bytes held.
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn used(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn used(&self) -> usize {
         self.used
     }
 }

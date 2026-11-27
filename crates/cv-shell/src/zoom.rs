@@ -36,7 +36,7 @@ const OVERLAY_FADE: f32 = 0.2;
 const WIDEST_LABELS: [&str; 2] = ["Zoom 200 %", "Code 32.5 px"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Target {
+pub(crate) enum Target {
     App,
     Code,
 }

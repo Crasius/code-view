@@ -12,14 +12,14 @@ use crate::rich_editor::model::{
 
 /// What a rule did.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Fired {
+pub(crate) struct Fired {
     pub caret: Pos,
     /// Marks for the text typed next: a mark rule ends its mark at the caret.
     pub stored: Option<Marks>,
 }
 
 /// Runs the rule that the char just typed before `caret` completes, if any.
-pub fn after_typing(doc: &mut Document, caret: Pos) -> Option<Fired> {
+pub(crate) fn after_typing(doc: &mut Document, caret: Pos) -> Option<Fired> {
     let block = doc.block(caret.block);
     if block.kind.is_source() || block.kind == Kind::Rule {
         return None;
@@ -88,7 +88,7 @@ fn block_rule(doc: &mut Document, caret: Pos, before: &[char]) -> Option<Fired> 
 }
 
 /// The paragraph at `index` (holding only `` ```lang ``) becomes an empty code block.
-pub fn code_fence(doc: &mut Document, index: usize, language: &str) -> Fired {
+pub(crate) fn code_fence(doc: &mut Document, index: usize, language: &str) -> Fired {
     let block = doc.block_mut(index);
     block.content = Inline::default();
     block.kind = Kind::Code(language.to_owned());

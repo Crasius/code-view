@@ -31,15 +31,15 @@ const MAX_ENTRIES: usize = 2048;
 /// Indent of a quote's content: its bar and the gap after it, as the renderer spaces it.
 const QUOTE_INDENT: f32 = QUOTE_BAR_WIDTH + style::SPACE_M;
 /// Width of a list item's marker column, as the renderer's.
-pub const ITEM_INDENT: f32 = style::SPACE_L + style::SPACE_M;
+pub(crate) const ITEM_INDENT: f32 = style::SPACE_L + style::SPACE_M;
 /// Inside a code, HTML or table panel.
-pub const PANEL_INSET: Vec2 = vec2(style::SPACE_M, style::SPACE_S + 2.0);
+pub(crate) const PANEL_INSET: Vec2 = vec2(style::SPACE_M, style::SPACE_S + 2.0);
 const RULE_HEIGHT: f32 = style::SPACE_S * 2.0 + 1.0;
 /// Room between a chip's text and its edges.
 const CHIP_PAD: f32 = 4.0;
 
 /// A laid-out block.
-pub struct Laid {
+pub(crate) struct Laid {
     pub galley: Arc<Galley>,
     pub chips: Vec<Chip>,
     /// Left of the text column, from the content's left edge.
@@ -50,7 +50,7 @@ pub struct Laid {
 }
 
 /// An atom drawn over the space its char reserves.
-pub struct Chip {
+pub(crate) struct Chip {
     /// Char index in the block.
     pub index: usize,
     pub label: String,
@@ -59,7 +59,7 @@ pub struct Chip {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChipKind {
+pub(crate) enum ChipKind {
     Mention,
     Image,
     Raw,
@@ -73,7 +73,7 @@ struct Entry {
 
 /// A list marker in a block's indent column.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Marker {
+pub(crate) enum Marker {
     Bullet { depth: usize },
     Number(u64),
     Task { checked: bool },
@@ -81,7 +81,7 @@ pub enum Marker {
 
 /// Where the blocks are, for one document state and layout key.
 #[derive(Default)]
-pub struct Offsets {
+pub(crate) struct Offsets {
     /// Top of each block, from the content's top.
     pub tops: Vec<f32>,
     pub heights: Vec<f32>,
@@ -90,7 +90,7 @@ pub struct Offsets {
     pub markers: Vec<Vec<(f32, Marker)>>,
 }
 
-pub struct LayoutCache {
+pub(crate) struct LayoutCache {
     key: u64,
     atlas: AtlasWatch,
     atlas_epoch: u64,
@@ -124,7 +124,7 @@ impl Default for LayoutCache {
 
 impl LayoutCache {
     /// Starts a frame at content width `width`.
-    pub fn prepare(
+    pub(crate) fn prepare(
         &mut self,
         ctx: &Context,
         palette: Palette,
@@ -163,12 +163,12 @@ impl LayoutCache {
     }
 
     /// The document changed: offsets are rebuilt at the next look.
-    pub fn invalidate(&mut self) {
+    pub(crate) fn invalidate(&mut self) {
         self.is_dirty = true;
     }
 
     /// Block `index`, laid out.
-    pub fn get(&mut self, ctx: &Context, doc: &Document, index: usize) -> Arc<Laid> {
+    pub(crate) fn get(&mut self, ctx: &Context, doc: &Document, index: usize) -> Arc<Laid> {
         let block = &doc.blocks[index.min(doc.blocks.len() - 1)];
         let key = Arc::as_ptr(block) as usize;
         if let Some(entry) = self.entries.get_mut(&key)
@@ -205,7 +205,7 @@ impl LayoutCache {
     }
 
     /// The blocks' offsets, rebuilt after an edit or a height change.
-    pub fn offsets(&mut self, doc: &Document) -> &Offsets {
+    pub(crate) fn offsets(&mut self, doc: &Document) -> &Offsets {
         if self.is_dirty || self.offsets.tops.len() != doc.blocks.len() {
             self.rebuild(doc);
         }
@@ -241,7 +241,7 @@ impl LayoutCache {
 }
 
 /// Vertical space between two blocks: as the renderer spaces blocks, items of one list closer.
-pub fn gap(previous: &Block, next: &Block) -> f32 {
+pub(crate) fn gap(previous: &Block, next: &Block) -> f32 {
     let same_list = next.nesting.iter().zip(&previous.nesting).any(|(here, there)| {
         here.is_item() && (here.continues(there) || here.is_next_item_of(there))
     });
@@ -256,7 +256,7 @@ pub fn gap(previous: &Block, next: &Block) -> f32 {
 }
 
 /// How far `container` moves its content right: the text, the marker column and the quote bars.
-pub fn container_indent(container: &Container) -> f32 {
+pub(crate) fn container_indent(container: &Container) -> f32 {
     match container {
         Container::Quote(_) => QUOTE_INDENT,
         Container::Item { .. } => ITEM_INDENT,
@@ -264,7 +264,7 @@ pub fn container_indent(container: &Container) -> f32 {
 }
 
 /// The text column's left edge for `nesting`.
-pub fn indent(nesting: &[Container]) -> f32 {
+pub(crate) fn indent(nesting: &[Container]) -> f32 {
     nesting.iter().map(container_indent).sum()
 }
 
@@ -284,7 +284,7 @@ fn estimate(block: &Block, width: f32) -> f32 {
     }
 }
 
-pub fn heading_size(level: u8) -> f32 {
+pub(crate) fn heading_size(level: u8) -> f32 {
     HEADING_SIZES[usize::from(level.clamp(1, 6)) - 1]
 }
 

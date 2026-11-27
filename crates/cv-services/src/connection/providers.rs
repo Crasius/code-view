@@ -21,7 +21,7 @@ pub struct ProviderRegistry {
 }
 
 impl ProviderRegistry {
-    pub fn new(
+    pub(crate) fn new(
         factory: impl Fn(Connection, reqwest::Client) -> Arc<dyn Provider> + Send + Sync + 'static,
     ) -> Self {
         Self {
@@ -34,7 +34,7 @@ impl ProviderRegistry {
 
     /// The connection's handle, its provider rebuilt first when `connection` differs from the one it
     /// was built for.
-    pub fn get(&mut self, connection: &Connection) -> Arc<dyn Provider> {
+    pub(crate) fn get(&mut self, connection: &Connection) -> Arc<dyn Provider> {
         match self.providers.get_mut(&connection.id) {
             Some((cached, provider)) if cached == connection => provider.clone(),
             // Same platform: the new provider goes underneath the handle everybody holds.
@@ -64,7 +64,7 @@ impl ProviderRegistry {
 
     /// After `connection` was saved with new settings: its handle takes them at once (no page has
     /// to be reopened) and its recorded token problem is cleared.
-    pub fn update(&mut self, connection: &Connection) {
+    pub(crate) fn update(&mut self, connection: &Connection) {
         self.get(connection);
         self.issues.clear(&connection.id);
     }

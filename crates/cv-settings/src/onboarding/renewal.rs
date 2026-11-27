@@ -22,13 +22,13 @@ const RENEW_EVERY: Duration = Duration::from_mins(40);
 const REFRESH_KEY: &str = "azure-cli-renewal";
 
 #[derive(Default)]
-pub struct CliRenewal {
+pub(crate) struct CliRenewal {
     has_started: bool,
     running: Vec<(String, Task<Result<String, String>>)>,
 }
 
 impl CliRenewal {
-    pub fn update(&mut self, ctx: &egui::Context, services: &mut Services, tools: CliTools) {
+    pub(crate) fn update(&mut self, ctx: &egui::Context, services: &mut Services, tools: CliTools) {
         self.collect(services);
         if !tools.azure {
             return;
@@ -77,7 +77,7 @@ impl CliRenewal {
 }
 
 /// Only the Azure CLI option stores JWTs; personal access tokens never look like one.
-pub fn uses_azure_cli(connection: &Connection) -> bool {
+pub(crate) fn uses_azure_cli(connection: &Connection) -> bool {
     connection.kind == ProviderKind::AzureDevOps
         && connection.base_url().eq_ignore_ascii_case(ProviderKind::AzureDevOps.default_base_url())
         && connection

@@ -12,7 +12,7 @@ use crate::markdown_editor::PullRequestContext;
 use crate::rich_editor::model::{Atom, Block, Container, Kind, Mark, Marks};
 
 /// How a block's text looks.
-pub struct Look {
+pub(crate) struct Look {
     pub size: f32,
     is_heading: bool,
     color: Color32,
@@ -20,7 +20,7 @@ pub struct Look {
 }
 
 impl Look {
-    pub fn of(block: &Block, palette: &Palette) -> Self {
+    pub(crate) fn of(block: &Block, palette: &Palette) -> Self {
         let is_quoted =
             block.nesting.iter().any(|container| matches!(container, Container::Quote(None)));
         let (size, is_heading) = match block.kind {
@@ -35,7 +35,7 @@ impl Look {
         Self { size, is_heading, color, palette: *palette }
     }
 
-    pub fn code_format(&self) -> TextFormat {
+    pub(crate) fn code_format(&self) -> TextFormat {
         TextFormat {
             font_id: fonts::code_font(style::BODY_SIZE - CODE_SIZE_DELTA),
             color: self.palette.text,
@@ -46,7 +46,7 @@ impl Look {
 
     /// The renderer's text format for `marks` (see `markdown::render::typeset`), plus the marks
     /// the editor writes as HTML.
-    pub fn format(&self, marks: &Marks) -> TextFormat {
+    pub(crate) fn format(&self, marks: &Marks) -> TextFormat {
         let family = if self.is_heading || marks.has(Mark::Bold) {
             fonts::semibold()
         } else {
@@ -83,7 +83,7 @@ impl Look {
 }
 
 /// What an atom's chip says.
-pub fn chip_label(
+pub(crate) fn chip_label(
     atom: &Atom,
     people: Option<&PullRequestContext>,
     platform: ProviderKind,

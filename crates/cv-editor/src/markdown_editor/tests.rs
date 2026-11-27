@@ -355,22 +355,23 @@ fn thread_composer_cancel_asks_like_escape() {
 }
 
 #[test]
-fn markdown_round_trips_unchanged() {
+fn switching_modes_never_rewrites_an_unedited_comment() {
     let source = "## Review notes\n\nThis is **bold**, _italic_, ~~gone~~ and `code` with a [link](https://example.com).\n\n- item\n  - nested\n- [ ] open task\n- [x] done task\n\n1. first\n2. second\n\n> quoted text\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nThanks @octocat, see #12 and !34.\n";
-    let mut probe = Probe::new();
+    let mut probe = platform_probe(ProviderKind::GitHub);
     probe.text = source.to_owned();
     let mut harness = composer(probe, 720.0);
     harness.run_steps(5);
+    assert!(is_mode_selected(&harness, "Rich text"), "the rich editor parsed the comment");
     assert_eq!(harness.state().text, source);
-    // Switching to the preview and back changes nothing either.
-    harness.click_at(harness.get_by_label("Preview").rect());
-    harness.run_steps(3);
-    harness.click_at(harness.get_by_label("Markdown").rect());
-    harness.run_steps(3);
-    assert_eq!(harness.state().text, source);
+    for mode in ["Markdown", "Preview", "Rich text"] {
+        harness.click_at(harness.get_by_role_and_label(Role::Tab, mode).rect());
+        harness.run_steps(3);
+        assert_eq!(harness.state().text, source, "after switching to {mode}");
+    }
 }
 
-/// In Write, a click on `[ ]` places the caret there instead of checking the task.
+/// Markdown shows the source as typed and draws no task box, so a click on `[ ]` places the
+/// caret there instead of checking the task.
 #[test]
 fn clicking_a_task_marker_places_the_caret() {
     let mut probe = Probe::new();

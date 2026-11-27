@@ -9,11 +9,12 @@ use review_core::ProviderKind;
 
 use super::longest_run;
 use super::prepare::{prepared, reads_back};
+use crate::markdown_editor::mention_source;
 use crate::rich_editor::model::{ATOM_CHAR, Atom, HARD_BREAK, Inline, Link, Mark, Run};
 
 /// Where inline content goes.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Context {
+pub(crate) enum Context {
     /// A paragraph: line breaks stay.
     Text,
     /// A heading: one line.
@@ -30,7 +31,7 @@ enum Emphasis {
 }
 
 /// The inline content as Markdown; lines joined by `\n`.
-pub fn inline_markdown(inline: &Inline, platform: ProviderKind, context: Context) -> String {
+pub(crate) fn inline_markdown(inline: &Inline, platform: ProviderKind, context: Context) -> String {
     let runs = prepared(inline, platform, context);
     let written = InlineWriter::write(&runs, platform, context, Emphasis::Delimiters);
     if context == Context::Cell || reads_back(&written, &runs, platform) {
@@ -395,8 +396,7 @@ fn destination(url: &str) -> String {
 /// An atom as Markdown.
 fn atom_source(atom: &Atom, platform: ProviderKind) -> String {
     match atom {
-        Atom::Mention { key } if platform == ProviderKind::AzureDevOps => format!("@<{key}>"),
-        Atom::Mention { key } => format!("@{key}"),
+        Atom::Mention { key } => mention_source(platform, key),
         Atom::Image { src, alt, title } => {
             let alt = alt.replace('\\', "\\\\").replace('[', "\\[").replace(']', "\\]");
             let title = if title.is_empty() {
@@ -411,7 +411,7 @@ fn atom_source(atom: &Atom, platform: ProviderKind) -> String {
 }
 
 /// A run as Markdown source: an atom as its source, text as it is.
-pub fn run_source(run: &Run, platform: ProviderKind) -> Cow<'_, str> {
+pub(crate) fn run_source(run: &Run, platform: ProviderKind) -> Cow<'_, str> {
     match &run.atom {
         Some(atom) => Cow::Owned(atom_source(atom, platform)),
         None => Cow::Borrowed(&run.text),

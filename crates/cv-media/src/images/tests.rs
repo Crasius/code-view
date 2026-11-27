@@ -380,6 +380,32 @@ fn stale_copies_show_at_once_and_are_asked_about_behind_them() {
     }
 }
 
+/// A downloaded body that does not decode leaves the disk again: the next load asks the host
+/// instead of failing from the kept file.
+#[test]
+fn a_downloaded_body_that_does_not_decode_is_not_kept() {
+    let fixture = Fixture::new(Duration::ZERO);
+    let folder = ScratchDir::new("image-store-broken");
+    fixture.runtime.block_on(
+        Mock::given(method("GET"))
+            .and(path("/broken.png"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "image/png")
+                    .set_body_bytes(b"not an image".to_vec()),
+            )
+            .with_priority(1)
+            .mount(&fixture.server),
+    );
+    let file = folder.path().join("broken.png");
+    let target = fixture.kept_target("broken.png", &file);
+    pass(&fixture.ctx, true, None, |ctx| {
+        fixture.store.state(ctx, &target, true);
+    });
+    assert!(matches!(fixture.settled(&target), ImageState::Failed(_)), "the body does not decode");
+    assert!(!file.exists(), "the body that failed is not kept on disk");
+}
+
 #[test]
 fn animated_gifs_keep_every_frame_and_its_delay() {
     let decoded = decode(&gif(30, 20, 3), Some("image/gif"), 1.0).expect("gif");

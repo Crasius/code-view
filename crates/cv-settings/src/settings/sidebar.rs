@@ -8,35 +8,35 @@ use egui::{Align2, Color32, Id, Key, Modifiers, Rect, RichText, Sense, Stroke, U
 
 use super::category::Category;
 
-pub const WIDTH: f32 = 240.0;
+pub(crate) const WIDTH: f32 = 240.0;
 const ENTRY_HEIGHT: f32 = 36.0;
 const SEARCH_ID: &str = "settings_search";
 
 /// What the page shows: a section, or the rows matching a search.
 #[derive(Default)]
-pub struct Navigation {
+pub(crate) struct Navigation {
     pub category: Category,
     pub query: String,
 }
 
 impl Navigation {
     /// The trimmed search, empty while nobody searches.
-    pub fn search(&self) -> &str {
+    pub(crate) fn search(&self) -> &str {
         self.query.trim()
     }
 
-    pub fn open(&mut self, category: Category) {
+    pub(crate) fn open(&mut self, category: Category) {
         self.category = category;
         self.query.clear();
     }
 
     /// Puts the keyboard into the search field.
-    pub fn focus_search(ctx: &egui::Context) {
+    pub(crate) fn focus_search(ctx: &egui::Context) {
         ctx.memory_mut(|memory| memory.request_focus(Id::unique(SEARCH_ID)));
     }
 
     /// The sidebar in `ui`; `problems` counts connections with an access problem.
-    pub fn show(&mut self, ui: &mut Ui, categories: &[Category], problems: usize) {
+    pub(crate) fn show(&mut self, ui: &mut Ui, categories: &[Category], problems: usize) {
         let palette = theme::palette(ui.ctx());
         ui.spacing_mut().item_spacing.y = style::SPACE_XS;
         ui.label(RichText::new("Settings").font(theme::fonts::semibold_font(style::TITLE_SIZE)));

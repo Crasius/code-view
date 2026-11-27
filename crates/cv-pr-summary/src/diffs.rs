@@ -14,7 +14,7 @@ use super::{Compare, DiffSource, FolderSummary, MAX_BUILDS_PER_FRAME, SummaryInp
 use cv_syntax::highlight::LineSpans;
 
 /// A new comparison (live update, another range, other context) makes every diff stale.
-pub fn follow_compare(summary: &mut FolderSummary, compare: Compare<'_>) {
+pub(crate) fn follow_compare(summary: &mut FolderSummary, compare: Compare<'_>) {
     let is_same = summary.compare.as_ref().is_some_and(|(base, head, options)| {
         Compare { base: base.as_str(), head: head.as_str(), options: *options } == compare
     });
@@ -32,7 +32,7 @@ pub fn follow_compare(summary: &mut FolderSummary, compare: Compare<'_>) {
 }
 
 /// Takes in the diffs that arrived: kept for the file view, and shown in their cards.
-pub fn finish_loads(
+pub(crate) fn finish_loads(
     summary: &mut FolderSummary,
     inputs: &SummaryInputs<'_>,
     source: &mut dyn DiffSource,
@@ -81,7 +81,7 @@ fn add_body(
 }
 
 /// The expanded cards on screen and one screen around it, nearest first (see [`Loads::plan`]).
-pub fn plan_wanted(summary: &mut FolderSummary, inputs: &SummaryInputs<'_>) {
+pub(crate) fn plan_wanted(summary: &mut FolderSummary, inputs: &SummaryInputs<'_>) {
     let (slots, collapsed, files) = (&summary.slots, &summary.collapsed, inputs.files);
     let is_expanded = |card: usize| !collapsed.contains(&files[slots[card].file].path);
     summary.loads.plan(&summary.index, summary.viewport, is_expanded);
@@ -89,7 +89,7 @@ pub fn plan_wanted(summary: &mut FolderSummary, inputs: &SummaryInputs<'_>) {
 
 /// Starts the wanted loads the budget allows: from the cache at once, from the mirror a few at
 /// a time, and nothing new while the view flies by or the window is in the background.
-pub fn start_loads(
+pub(crate) fn start_loads(
     summary: &mut FolderSummary,
     ctx: &egui::Context,
     inputs: &SummaryInputs<'_>,
@@ -153,7 +153,7 @@ fn start_rendered(
 }
 
 /// The card shows code that is not loaded, failed or loading yet.
-pub fn needs_load(summary: &FolderSummary, file: &ChangedFile) -> bool {
+pub(crate) fn needs_load(summary: &FolderSummary, file: &ChangedFile) -> bool {
     let shows_code = matches!(
         card::placeholder_body(file, summary.forced.contains(&file.path), None),
         Body::Pending
@@ -163,7 +163,11 @@ pub fn needs_load(summary: &FolderSummary, file: &ChangedFile) -> bool {
 
 /// Queues the syntax colors of the loaded cards on screen and one screen around it that have
 /// none yet, nearest first, so a card scrolled into view is colored already.
-pub fn color_wanted(summary: &mut FolderSummary, ctx: &egui::Context, inputs: &SummaryInputs<'_>) {
+pub(crate) fn color_wanted(
+    summary: &mut FolderSummary,
+    ctx: &egui::Context,
+    inputs: &SummaryInputs<'_>,
+) {
     for &card in summary.loads.wanted() {
         let path = &inputs.files[summary.slots[card].file].path;
         if !summary.collapsed.contains(path)

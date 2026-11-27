@@ -25,7 +25,12 @@ const CARET_WIDTH: f32 = 2.0;
 const EMPTY_LINE_SELECTION: f32 = 6.0;
 
 /// Clicks, drags, double and triple clicks; a click on a task box toggles it.
-pub fn pointer(ui: &Ui, response: &Response, state: &mut State, origin: Pos2) -> Vec<Command> {
+pub(crate) fn pointer(
+    ui: &Ui,
+    response: &Response,
+    state: &mut State,
+    origin: Pos2,
+) -> Vec<Command> {
     let Some(point) = response.interact_pointer_pos() else { return Vec::new() };
     let ctx = ui.ctx();
     let pressed =
@@ -100,7 +105,7 @@ fn visible(state: &mut State, origin: Pos2, clip: Rect) -> std::ops::Range<usize
 }
 
 /// Paints the visible blocks, the selection, the caret and the placeholder.
-pub fn paint(ui: &Ui, state: &mut State, origin: Pos2, has_focus: bool, hint: &str) {
+pub(crate) fn paint(ui: &Ui, state: &mut State, origin: Pos2, has_focus: bool, hint: &str) {
     let palette = theme::palette(ui.ctx());
     let clip = ui.clip_rect();
     let mut range = visible(state, origin, clip);
@@ -323,7 +328,7 @@ fn mark_as_text_edit(ctx: &egui::Context, text_id: Id) {
 }
 
 /// The text area of one frame.
-pub struct Body<'a> {
+pub(crate) struct Body<'a> {
     pub text_id: Id,
     pub options: &'a RichOptions<'a>,
     pub has_focus: bool,
@@ -334,7 +339,12 @@ pub struct Body<'a> {
 impl Body<'_> {
     /// Lays out, takes input, runs commands and paints. Returns the caret's rectangle and the
     /// content's origin.
-    pub fn show(&self, ui: &mut Ui, state: &mut State, clicked: Option<Command>) -> (Rect, Pos2) {
+    pub(crate) fn show(
+        &self,
+        ui: &mut Ui,
+        state: &mut State,
+        clicked: Option<Command>,
+    ) -> (Rect, Pos2) {
         let ctx = ui.ctx().clone();
         let palette = theme::palette(&ctx);
         let width = ui.available_width();

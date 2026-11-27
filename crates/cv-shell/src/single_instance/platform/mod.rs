@@ -8,6 +8,6 @@ mod unix;
 mod windows;
 
 #[cfg(unix)]
-pub use unix::{Endpoint, Listener, Stream, allow_foreground, connect, is_absent};
+pub(crate) use unix::{Endpoint, Listener, Stream, allow_foreground, connect, is_absent};
 #[cfg(windows)]
-pub use windows::{Endpoint, Listener, Stream, allow_foreground, connect, is_absent};
+pub(crate) use windows::{Endpoint, Listener, Stream, allow_foreground, connect, is_absent};

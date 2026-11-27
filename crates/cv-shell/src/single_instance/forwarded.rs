@@ -2,13 +2,12 @@
 //! host, `CodeView <url>`) and this start's command-line link. A pull request link of a saved
 //! connection opens only once its token read it, the same check a copied link takes
 //! ([`link_access`]); a refused one opens no page and says why, with the page on its platform and
-//! the token setup ([`clipboard_links::refuse`]). Any other link opens as a typed one does, whose
-//! error toast offers the connection setup or the browser.
+//! the token setup ([`link_access::announce_refusal`]). Any other link opens as a typed one
+//! does, whose error toast offers the connection setup or the browser.
 
 use cv_runtime::route::PullRequestKey;
 use cv_services::Services;
 
-use crate::links::clipboard_links;
 use crate::links::link_access::{self, AccessCheck, Target, Verdict};
 
 /// What the app does with a forwarded link.
@@ -50,7 +49,7 @@ impl ForwardedLinks {
                     ready.push(Forwarded::Open(key));
                 }
                 Some(Verdict::NoAccess { key, denial }) => {
-                    clipboard_links::refuse(services, &key, denial);
+                    link_access::announce_refusal(services, &key, denial);
                     // The toast is drawn from the next frame.
                     ctx.request_repaint();
                 }

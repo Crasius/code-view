@@ -7,6 +7,6 @@
 907 crates/cv-pr-diff/src/diff_view.rs
 965 crates/cv-pr-rendered/src/markdown_diff.rs
 746 crates/cv-pr-files/src/lib.rs
-838 crates/cv-pr-summary/src/lib.rs
+837 crates/cv-pr-summary/src/lib.rs
 704 crates/cv-pr-pipelines/src/lib.rs
 821 crates/cv-markdown/src/render.rs

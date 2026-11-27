@@ -36,11 +36,11 @@ pub struct DiagramFailure {
 }
 
 impl DiagramFailure {
-    pub fn new(reason: impl Into<String>, line: Option<u32>) -> Self {
+    pub(crate) fn new(reason: impl Into<String>, line: Option<u32>) -> Self {
         Self { reason: reason.into(), line, can_retry: false }
     }
 
-    pub fn retryable(reason: impl Into<String>) -> Self {
+    pub(crate) fn retryable(reason: impl Into<String>) -> Self {
         Self { reason: reason.into(), line: None, can_retry: true }
     }
 }
@@ -115,7 +115,7 @@ impl DiagramTheme {
     }
 
     /// The theme as text fields for the renderer process: a mode flag, then `#rrggbbaa` colors.
-    pub fn fields(&self) -> Vec<String> {
+    pub(crate) fn fields(&self) -> Vec<String> {
         let mut fields = Vec::with_capacity(Self::FIELDS);
         fields.push(if self.is_dark { "dark" } else { "light" }.to_owned());
         let colors = [
@@ -135,7 +135,7 @@ impl DiagramTheme {
     }
 
     /// The theme [`Self::fields`] wrote; `None` for anything else.
-    pub fn from_fields(fields: &[String]) -> Option<Self> {
+    pub(crate) fn from_fields(fields: &[String]) -> Option<Self> {
         if fields.len() != Self::FIELDS {
             return None;
         }

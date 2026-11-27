@@ -34,7 +34,7 @@ use crate::links::link_access::{self, Target};
 /// How long a pull request the app opened stays in the browser. Our own budget: the browser
 /// starts loading the page well within a second of the app's request, and a minute also covers a
 /// browser that has to start first.
-pub const TTL: Duration = Duration::from_secs(60);
+pub(crate) const TTL: Duration = Duration::from_secs(60);
 
 /// The pass list next to the host manifest.
 pub fn file(paths: &AppPaths) -> PathBuf {
@@ -84,7 +84,7 @@ fn load(path: &Path) -> Vec<Pass> {
 
 /// Adds `key` at `now` to the list in `path`, dropping the entries past [`TTL`] and an older pass
 /// of the same pull request.
-pub fn record(path: &Path, key: &PullRequestKey, now: SystemTime) -> io::Result<()> {
+pub(crate) fn record(path: &Path, key: &PullRequestKey, now: SystemTime) -> io::Result<()> {
     let mut passes = load(path);
     passes.retain(|pass| pass.is_fresh(now) && !pass.is_for(key));
     passes.push(Pass {

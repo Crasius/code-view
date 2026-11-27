@@ -28,6 +28,7 @@ use cv_runtime::cache::page_cache::pull_request_part;
 use cv_runtime::intents::AddRequest;
 use cv_runtime::links::pull_request_link;
 use cv_runtime::route::PullRequestKey;
+use cv_runtime::toasts::{ToastAction, WaysOut};
 use cv_services::Services;
 use cv_services::writes::Answer;
 
@@ -37,7 +38,7 @@ pub const BUDGET: Duration = Duration::from_secs(4);
 
 /// What a URL names, before any request.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Target {
+pub(crate) enum Target {
     /// A pull request on a saved connection; `web_url` is its canonical page, the same for every
     /// form of the link (`/files`, a fragment, the `visualstudio.com` host).
     PullRequest { key: PullRequestKey, web_url: String },
@@ -48,7 +49,7 @@ pub enum Target {
 }
 
 /// The connection and pull request `url` names; sends nothing.
-pub fn locate(url: &str, connections: &[Connection]) -> Target {
+pub(crate) fn locate(url: &str, connections: &[Connection]) -> Target {
     let Some(key) = pull_request_link::resolve(url, connections) else {
         return pull_request_link::unconnected_cloud_link(url)
             .map_or(Target::NotAPullRequest, Target::NotConnected);
@@ -63,7 +64,7 @@ pub fn locate(url: &str, connections: &[Connection]) -> Target {
 
 /// What the host's answer to the read says.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Verdict {
+pub(crate) enum Verdict {
     /// The connection read the pull request; its page opens without reading it again.
     Open(PullRequestKey),
     /// The host refused the read; `key.connection_id` names the connection whose token it refused.
@@ -74,7 +75,7 @@ pub enum Verdict {
 
 /// Why the host refused the read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Denial {
+pub(crate) enum Denial {
     /// 401: the token is invalid or expired.
     TokenRefused,
     /// 403: the token lacks the permission for this repository.
@@ -84,7 +85,7 @@ pub enum Denial {
 }
 
 /// One read of a pull request's detail through its connection, under way or answered.
-pub struct AccessCheck {
+pub(crate) struct AccessCheck {
     key: PullRequestKey,
     /// `None` once the connection was gone at the start; `Some(None)` from the task is a read over
     /// [`BUDGET`].
@@ -95,7 +96,7 @@ pub struct AccessCheck {
 
 impl AccessCheck {
     /// Starts the read of `key` on the background runtime.
-    pub fn start(services: &mut Services, key: PullRequestKey) -> Self {
+    pub(crate) fn start(services: &mut Services, key: PullRequestKey) -> Self {
         let connection = services.connection(&key.connection_id).cloned();
         let read = connection.map(|connection| {
             let provider = services.providers.build_uncached(&connection);
@@ -121,7 +122,7 @@ impl AccessCheck {
 
     /// The answer once it is in. A detail that was read goes to the page cache first, stamped with
     /// when it was asked for and with the user's writes the host may not show yet applied.
-    pub fn poll(&mut self, services: &mut Services) -> Option<Verdict> {
+    pub(crate) fn poll(&mut self, services: &mut Services) -> Option<Verdict> {
         let answer = match self.read.as_mut().map(Task::poll) {
             Some(TaskPoll::Pending) => return None,
             Some(TaskPoll::Done(answer)) => answer,
@@ -152,6 +153,41 @@ pub(crate) fn verdict(key: PullRequestKey, error: Option<&ProviderError>) -> Ver
         _ => return Verdict::Unknown(key),
     };
     Verdict::NoAccess { key, denial }
+}
+
+/// The toast for a pull request link its connection's token cannot read: why, then the page on
+/// its platform and the connection's token setup.
+pub(crate) fn announce_refusal(services: &mut Services, key: &PullRequestKey, denial: Denial) {
+    let Some(connection) = services.connection(&key.connection_id) else {
+        return;
+    };
+    let (name, connection) = (short_name(key), &connection.name);
+    let text = match denial {
+        Denial::NotFound => format!(
+            "{name} did not open: connection {connection} cannot find it. It does not exist, or \
+             the token cannot see its repository."
+        ),
+        Denial::Forbidden => {
+            format!(
+                "{name} did not open: the token of connection {connection} has no access to it."
+            )
+        }
+        Denial::TokenRefused => {
+            format!("{name} did not open: the host refused the token of connection {connection}.")
+        }
+    };
+    let fix = ToastAction::fix_token(&key.connection_id);
+    let ways_out =
+        match ToastAction::open_pull_request(services.connection(&key.connection_id), key, None) {
+            Some(page) => WaysOut::new(page).and(fix),
+            None => fix.into(),
+        };
+    services.toasts.error(text, ways_out);
+}
+
+/// `widgets #7`: the repository's last segment and the number.
+pub(crate) fn short_name(key: &PullRequestKey) -> String {
+    format!("{} #{}", key.repository_key.rsplit('/').next().unwrap_or_default(), key.number)
 }
 
 #[cfg(test)]

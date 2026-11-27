@@ -18,7 +18,7 @@ const FACT_LABEL_WIDTH: f32 = 128.0;
 /// Where a failure toast's Retry asks for the failed removal once more.
 const RETRY_REMOVAL_ID: &str = "connections.remove.retry";
 
-pub enum ListAction {
+pub(crate) enum ListAction {
     Add,
     Edit(Connection),
     Check(Connection),
@@ -26,7 +26,7 @@ pub enum ListAction {
 
 /// Which connection is open, and which one asks before it is removed.
 #[derive(Default)]
-pub struct ConnectionList {
+pub(crate) struct ConnectionList {
     expanded: Option<String>,
     confirming_removal: Option<String>,
     /// The connection whose removal failed last, for Retry.
@@ -37,16 +37,16 @@ pub struct ConnectionList {
 
 impl ConnectionList {
     /// Opens `connection_id`'s facts, as when the user clicked its row.
-    pub fn expand(&mut self, connection_id: &str) {
+    pub(crate) fn expand(&mut self, connection_id: &str) {
         self.expanded = Some(connection_id.to_owned());
     }
 
     /// The connection removed this frame, at most once (`SettingsPage::take_removed_connection`).
-    pub fn take_removed(&mut self) -> Option<String> {
+    pub(crate) fn take_removed(&mut self) -> Option<String> {
         self.removed.take()
     }
 
-    pub fn show(&mut self, ui: &mut Ui, services: &mut Services) -> Option<ListAction> {
+    pub(crate) fn show(&mut self, ui: &mut Ui, services: &mut Services) -> Option<ListAction> {
         let mut action = None;
         let mut removed = None;
         if toasts::take_retry(ui.ctx(), egui::Id::unique(RETRY_REMOVAL_ID)) {

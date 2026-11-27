@@ -47,7 +47,6 @@ mod walkthrough_tests;
 
 use std::sync::Arc;
 
-use cv_base::theme::{self, style};
 use egui::mutex::Mutex;
 use egui::{Context, Id, Ui};
 use review_core::ProviderKind;
@@ -58,10 +57,10 @@ use self::layout::LayoutCache;
 use self::model::{Document, Marks, Pos, Selection};
 use self::serialize::InlineCache;
 use crate::markdown_editor::PullRequestContext;
-use crate::markdown_editor::toolbar_layout::{MAX_HEIGHT, ROW_HEIGHT, TEXT_MARGIN};
+use crate::markdown_editor::toolbar_layout::{framed, text_area_heights, toolbar_row};
 
 /// How one rich editor looks and behaves.
-pub struct RichOptions<'a> {
+pub(crate) struct RichOptions<'a> {
     /// Decides the mention syntax and which HTML tags carry underline, sub, sup and kbd.
     pub platform: ProviderKind,
     /// The text area's accessible name, e.g. "Comment".
@@ -73,33 +72,20 @@ pub struct RichOptions<'a> {
     pub is_enabled: bool,
 }
 
-impl Default for RichOptions<'_> {
-    fn default() -> Self {
-        Self {
-            platform: ProviderKind::GitHub,
-            label: "Comment",
-            hint: "Leave a comment",
-            min_rows: 3,
-            grab_focus: false,
-            is_enabled: true,
-        }
-    }
-}
-
 /// What one frame of the editor did.
-pub struct RichOutput {
+pub(crate) struct RichOutput {
     /// The Markdown changed this frame.
     pub is_changed: bool,
     pub has_focus: bool,
 }
 
 /// The text area's id, for focus.
-pub fn text_id(id: Id) -> Id {
+pub(crate) fn text_id(id: Id) -> Id {
     id.with("rich_text")
 }
 
 /// Reads the text again at the next show, dropping the undo history.
-pub fn reload(ctx: &Context, id: Id) {
+pub(crate) fn reload(ctx: &Context, id: Id) {
     if let Some(handle) = ctx.data(|data| data.get_temp::<Handle>(id.with("rich_state"))) {
         handle.lock().synced = None;
     }
@@ -107,7 +93,7 @@ pub fn reload(ctx: &Context, id: Id) {
 
 /// Shows the editor for the Markdown in `text`, with `leading` drawn at the start of the toolbar
 /// row (the composer's mode switch).
-pub fn show_with(
+pub(crate) fn show_with(
     ui: &mut Ui,
     id: Id,
     text: &mut String,
@@ -120,41 +106,18 @@ pub fn show_with(
     state.sync(text, options.platform);
     let text_id = text_id(id);
     let has_focus = ui.memory(|memory| memory.has_focus(text_id));
-    let palette = theme::palette(ui.ctx());
-    let border = if has_focus {
-        egui::Stroke::new(2.0, palette.accent)
-    } else {
-        egui::Stroke::new(1.0, palette.border_strong)
-    };
-    let frame = egui::Frame::new().fill(palette.surface).corner_radius(style::RADIUS_CARD);
-    let shown = frame.show(ui, |ui| {
-        ui.set_width(ui.available_width());
-        ui.spacing_mut().item_spacing.y = 0.0;
-        let clicked = egui::Frame::new()
-            .inner_margin(egui::Margin::symmetric(6, 6))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    leading(ui);
-                    let active = toolbar::Active::of(&state);
-                    let can_mention = PullRequestContext::current(ui.ctx())
-                        .is_some_and(|context| !context.people.is_empty());
-                    toolbar::show(ui, &active, can_mention, options.is_enabled)
-                })
-                .inner
-            })
-            .inner;
-        let divider_y = ui.cursor().top();
-        ui.painter().hline(
-            ui.max_rect().x_range(),
-            divider_y,
-            egui::Stroke::new(1.0, palette.border),
-        );
+    let (caret_rect, origin) = framed(ui, has_focus, |ui| {
+        let clicked = toolbar_row(ui, |ui| {
+            leading(ui);
+            let active = toolbar::Active::of(&state);
+            let can_mention = PullRequestContext::current(ui.ctx())
+                .is_some_and(|context| !context.people.is_empty());
+            toolbar::show(ui, &active, can_mention, options.is_enabled)
+        });
         if clicked.is_some() {
             ui.memory_mut(|memory| memory.request_focus(text_id));
         }
-        let min_height = options.min_rows as f32 * ROW_HEIGHT + TEXT_MARGIN.sum().y;
-        let max_height = MAX_HEIGHT.min(ui.ctx().content_rect().height() * 0.5).max(min_height);
+        let (min_height, max_height) = text_area_heights(ui.ctx(), options.min_rows);
         egui::ScrollArea::vertical()
             .id_salt(id.with("rich_scroll"))
             .max_height(max_height)
@@ -171,13 +134,6 @@ pub fn show_with(
             })
             .inner
     });
-    ui.painter().rect_stroke(
-        shown.response.rect,
-        style::RADIUS_CARD,
-        border,
-        egui::StrokeKind::Inside,
-    );
-    let (caret_rect, origin) = shown.inner;
     let mut is_changed = state.version != state.written;
     let context =
         CommandContext { ui, origin, page_height: 0.0, now: ui.input(|input| input.time) };

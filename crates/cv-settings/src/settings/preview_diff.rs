@@ -91,7 +91,7 @@ const COMMENTED: usize = 1;
 /// The width the sample needs to show its widest line whole in every pane of its widest layout,
 /// frame included. Its widest layout, not the current one: the preview keeps its place while the
 /// user switches layouts, so the layout control never moves under the pointer.
-pub fn width(ui: &Ui, services: &Services) -> f32 {
+pub(crate) fn width(ui: &Ui, services: &Services) -> f32 {
     let metrics = Metrics::new(ui, services.settings.code_font_size, FIRST + NEW.len() as u32);
     let widest = OLD.iter().chain(&NEW).map(|line| line.len()).max().unwrap_or_default();
     let text = (widest + 2) as f32 * metrics.char_width;
@@ -110,7 +110,7 @@ pub fn slack(ctx: &egui::Context) -> Option<f32> {
 #[cfg(any(test, feature = "test-support"))]
 const SLACK_ID: &str = "settings_sample_slack";
 
-pub fn show(ui: &mut Ui, services: &Services) {
+pub(crate) fn show(ui: &mut Ui, services: &Services) {
     let settings = &services.settings;
     let palette = theme::palette(ui.ctx());
     let metrics = Metrics::new(ui, settings.code_font_size, FIRST + NEW.len() as u32);

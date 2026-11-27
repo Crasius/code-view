@@ -10,7 +10,7 @@ use crate::rich_editor::model::{ATOM_CHAR, Atom, Inline, Mark, Marks};
 /// Turns `@login` (GitHub, GitLab) and `@<id>` (Azure DevOps) in plain text into mentions. An
 /// Azure DevOps id that starts with a letter reads as an HTML tag, so `@` before such a raw tag
 /// is a mention too.
-pub fn find_mentions(inline: &mut Inline, platform: ProviderKind) {
+pub(crate) fn find_mentions(inline: &mut Inline, platform: ProviderKind) {
     let has_at = inline.runs().iter().any(|run| run.atom.is_none() && run.text.contains('@'));
     if !has_at {
         return;

@@ -5,4 +5,4 @@
 mod windows;
 
 #[cfg(windows)]
-pub use windows::UserKeys;
+pub(crate) use windows::UserKeys;

@@ -10,7 +10,7 @@ use cv_base::theme::style;
 
 /// Shows `add_contents` scrolled in `area`, one area per folder; at `placed` when the summary
 /// places the view this frame.
-pub fn show<R>(
+pub(crate) fn show<R>(
     ui: &mut Ui,
     area: Rect,
     folder: &str,

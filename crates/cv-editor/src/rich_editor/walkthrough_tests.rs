@@ -56,8 +56,10 @@ fn harness(text: &str, platform: ProviderKind) -> Harness<'static, Probe> {
                 let options = RichOptions {
                     platform: probe.platform,
                     label: "Comment",
+                    hint: "Leave a comment",
+                    min_rows: 3,
                     grab_focus: probe.grab_focus,
-                    ..RichOptions::default()
+                    is_enabled: true,
                 };
                 let id = editor_id();
                 let output = show_with(ui, id, &mut probe.text, &options, |_| {});
@@ -191,6 +193,20 @@ fn a_refused_tab_ends_the_typing_group() {
     assert_eq!(harness.state().text, "- onetwo");
     press(&mut harness, Modifiers::COMMAND, Key::Z);
     assert_eq!(harness.state().text, "- one", "Ctrl+Z undoes only the text typed after the Tab");
+}
+
+/// A Backspace at the document's start deletes nothing, so it writes no text and records no undo
+/// step: Ctrl+Z after it has nothing to undo.
+#[test]
+fn a_backspace_that_deletes_nothing_records_no_undo_step() {
+    let mut harness = harness("one", ProviderKind::GitHub);
+    press(&mut harness, Modifiers::COMMAND, Key::Home);
+    let changes = harness.state().changes;
+    press(&mut harness, Modifiers::NONE, Key::Backspace);
+    assert_eq!(harness.state().changes, changes, "the refused Backspace writes nothing");
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert_eq!(harness.state().changes, changes, "Ctrl+Z finds no step to undo");
+    assert_eq!(harness.state().text, "one");
 }
 
 /// Tab takes the mention list's pick (as Enter does) in a paragraph too, where Tab otherwise moves

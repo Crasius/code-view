@@ -59,7 +59,7 @@ struct Watch {
 }
 
 /// The section: its heading with the chips, then the cards; true when a mode changed.
-pub fn show(ui: &mut Ui, modes: &mut HeaderModes) -> bool {
+pub(crate) fn show(ui: &mut Ui, modes: &mut HeaderModes) -> bool {
     let mut changed = heading(ui, modes);
     ui.add_space(style::SPACE_L);
     let width = ui.available_width();

@@ -138,7 +138,7 @@ pub(super) enum Content {
 }
 
 impl Content {
-    pub fn of(text: &str, initial: Option<&str>) -> Self {
+    pub(crate) fn of(text: &str, initial: Option<&str>) -> Self {
         if text.trim().is_empty() {
             Self::Empty
         } else if initial == Some(text) {
@@ -148,7 +148,7 @@ impl Content {
         }
     }
 
-    pub fn has_text(self) -> bool {
+    pub(crate) fn has_text(self) -> bool {
         self != Self::Empty
     }
 }

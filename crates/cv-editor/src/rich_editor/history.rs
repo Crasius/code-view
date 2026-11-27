@@ -16,7 +16,7 @@ const GROUP_SECONDS: f64 = 1.0;
 
 /// What kind of edit is recorded, for grouping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EditKind {
+pub(crate) enum EditKind {
     /// A char typed; `is_space` says whether it was whitespace.
     Typing {
         is_space: bool,
@@ -33,7 +33,7 @@ struct Entry {
 }
 
 #[derive(Clone, Default)]
-pub struct History {
+pub(crate) struct History {
     undo: VecDeque<Entry>,
     redo: Vec<Entry>,
     /// The open group: its kind, block and the time of its last edit.
@@ -45,7 +45,7 @@ pub struct History {
 impl History {
     /// Records an edit: `doc` and `selection` are the state before it. Call it only when the edit
     /// changed something; a refused command calls `break_group` instead.
-    pub fn record(
+    pub(crate) fn record(
         &mut self,
         doc: &Document,
         selection: Selection,
@@ -73,7 +73,7 @@ impl History {
     }
 
     /// Records the typed text before an input rule rewrites it, and arms Backspace to undo the rule.
-    pub fn record_rule(&mut self, doc: &Document, selection: Selection) {
+    pub(crate) fn record_rule(&mut self, doc: &Document, selection: Selection) {
         self.push(doc, selection);
         self.group = None;
         self.rule_armed = true;
@@ -87,17 +87,17 @@ impl History {
     }
 
     /// A caret move or click ends the open group.
-    pub fn break_group(&mut self) {
+    pub(crate) fn break_group(&mut self) {
         self.group = None;
         self.rule_armed = false;
     }
 
     /// Whether Backspace should undo the input rule that just fired.
-    pub fn takes_backspace(&self) -> bool {
+    pub(crate) fn takes_backspace(&self) -> bool {
         self.rule_armed
     }
 
-    pub fn undo(&mut self, doc: &mut Document, selection: &mut Selection) -> bool {
+    pub(crate) fn undo(&mut self, doc: &mut Document, selection: &mut Selection) -> bool {
         let Some(entry) = self.undo.pop_back() else { return false };
         self.redo.push(Entry {
             blocks: std::mem::replace(&mut doc.blocks, entry.blocks),
@@ -108,7 +108,7 @@ impl History {
         true
     }
 
-    pub fn redo(&mut self, doc: &mut Document, selection: &mut Selection) -> bool {
+    pub(crate) fn redo(&mut self, doc: &mut Document, selection: &mut Selection) -> bool {
         let Some(entry) = self.redo.pop() else { return false };
         self.undo.push_back(Entry {
             blocks: std::mem::replace(&mut doc.blocks, entry.blocks),

@@ -52,7 +52,7 @@ impl FakeAgents {
             .unwrap_or_default()
     }
 
-    pub fn detect(&self, kind: AgentKind) -> Result<AgentCli, AgentError> {
+    pub(crate) fn detect(&self, kind: AgentKind) -> Result<AgentCli, AgentError> {
         match self.cli(kind) {
             FakeCli::Missing => Err(AgentError::NotInstalled(kind)),
             FakeCli::Installed { .. } => Ok(AgentCli {
@@ -63,14 +63,14 @@ impl FakeAgents {
         }
     }
 
-    pub fn list_models(&self, cli: &AgentCli) -> Result<Vec<ModelInfo>, AgentError> {
+    pub(crate) fn list_models(&self, cli: &AgentCli) -> Result<Vec<ModelInfo>, AgentError> {
         match self.cli(cli.kind) {
             FakeCli::Missing => Err(AgentError::NotInstalled(cli.kind)),
             FakeCli::Installed { models, .. } => Ok(models),
         }
     }
 
-    pub fn start(&self, config: SessionConfig) -> Started {
+    pub(crate) fn start(&self, config: SessionConfig) -> Started {
         let kind = config.cli.kind;
         match self.cli(kind) {
             FakeCli::Missing => Err(AgentError::NotInstalled(kind)),
@@ -86,7 +86,7 @@ impl FakeAgents {
         }
     }
 
-    pub fn open_terminal(&self, dir: &Path, program: &str, args: &[String]) {
+    pub(crate) fn open_terminal(&self, dir: &Path, program: &str, args: &[String]) {
         let terminal = FakeTerminal {
             dir: dir.to_path_buf(),
             program: program.to_owned(),

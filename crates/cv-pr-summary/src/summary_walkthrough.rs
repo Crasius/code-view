@@ -239,7 +239,7 @@ fn ten_thousand_files_cost_what_is_on_screen() {
         most_cards = most_cards.max(cards_shown(summary));
         most_rows = most_rows.max(summary.rows_painted);
         assert!(summary.loads.wanted().len() <= MAX_WANTED);
-        assert!(summary.bodies_kept() <= MAX_BODIES, "{} bodies kept", summary.bodies_kept());
+        assert!(summary.bodies.len() <= MAX_BODIES, "{} bodies kept", summary.bodies.len());
         assert!(summary.loads.running() <= MAX_RUNNING);
     };
     // The 20,000-line card fills the screen: it paints the rows in view, not its 20,000.

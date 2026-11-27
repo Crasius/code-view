@@ -24,14 +24,19 @@ use cv_base::platform;
 
 /// Decides how long a frame waits for its slot. Pure: the caller passes the clock in.
 #[derive(Debug, Default)]
-pub struct FramePacer {
+pub(crate) struct FramePacer {
     /// The next slot a continuous frame may start in.
     next_slot: Option<Instant>,
 }
 
 impl FramePacer {
     /// How long a frame that would start at `now` waits; also books the slot it starts in.
-    pub fn wait(&mut self, now: Instant, limit: FrameRateLimit, has_input: bool) -> Duration {
+    pub(crate) fn wait(
+        &mut self,
+        now: Instant,
+        limit: FrameRateLimit,
+        has_input: bool,
+    ) -> Duration {
         let Some(fps) = limit.cap() else {
             self.next_slot = None;
             return Duration::ZERO;

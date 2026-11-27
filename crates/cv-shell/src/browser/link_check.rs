@@ -13,7 +13,7 @@ use cv_runtime::route::PullRequestKey;
 use crate::links::link_access::{self, Denial, Target, Verdict};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkState {
+pub(crate) enum LinkState {
     /// A pull request Code View itself just opened in the browser: it stays there.
     Pass,
     /// A pull request of a saved connection that its token read, or whose host gave no clear
@@ -29,7 +29,7 @@ pub enum LinkState {
 
 impl LinkState {
     /// The state's name in the host's answers.
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Pass => "pass",
             Self::Open => "open",
@@ -41,7 +41,7 @@ impl LinkState {
 }
 
 /// The denial's name in the host's answers.
-pub fn denial_name(denial: Denial) -> &'static str {
+pub(crate) fn denial_name(denial: Denial) -> &'static str {
     match denial {
         Denial::TokenRefused => "token_refused",
         Denial::Forbidden => "forbidden",
@@ -52,7 +52,7 @@ pub fn denial_name(denial: Denial) -> &'static str {
 /// The answer for `url`. `is_passed` says whether the app just opened the pull request in the
 /// browser; otherwise `read` reads its detail through the connection once, within
 /// [`link_access::BUDGET`], and `None` is no answer in time.
-pub fn check(
+pub(crate) fn check(
     url: &str,
     connections: &[Connection],
     is_passed: impl FnOnce(&PullRequestKey) -> bool,
