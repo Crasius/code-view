@@ -70,7 +70,7 @@ const PAGE_PADDING: egui::Margin = egui::Margin::symmetric(32, 24);
 pub struct SettingsPage {
     wizard: Option<Wizard>,
     /// Filled on first use by `tools()`.
-    pub cli_tools: Option<CliTools>,
+    cli_tools: Option<CliTools>,
     renewal: CliRenewal,
     just_saved: Option<String>,
     /// The section shown stays for the session; the first visit opens Connections.

@@ -19,13 +19,6 @@ pub struct CommitInfo {
     pub subject: String,
 }
 
-impl CommitInfo {
-    /// The first 8 hex digits of the id; all of a shorter one.
-    pub fn short_sha(&self) -> &str {
-        self.sha.get(..8).unwrap_or(&self.sha)
-    }
-}
-
 pub(crate) fn parse(output: &[u8]) -> Vec<CommitInfo> {
     let text = String::from_utf8_lossy(output);
     text.split(RECORD_SEPARATOR)

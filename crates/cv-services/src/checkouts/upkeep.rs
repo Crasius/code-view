@@ -279,10 +279,6 @@ pub fn reason(blocked: &Blocked, behind: usize) -> String {
     }
 }
 
-pub fn plural(count: usize, word: &str) -> String {
-    if count == 1 { word.to_owned() } else { format!("{word}s") }
-}
-
 #[cfg(test)]
 mod tests {
     use review_git::checkout::{Blocked, UpdateOutcome};

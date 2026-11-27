@@ -143,13 +143,10 @@ fn has_label_room(ui: &Ui) -> bool {
 
 /// The file header's layouts but New only (the file view's own), with their labels or icons.
 fn layout_segments(is_labelled: bool) -> Vec<Segment<'static, DiffLayout>> {
-    file_header::LAYOUTS
-        .iter()
-        .filter(|(layout, ..)| *layout != DiffLayout::NewOnly)
-        .map(|&(layout, icon, label, hint)| {
-            let segment = Segment::new(layout, label).with_hint(hint);
-            if is_labelled { segment } else { segment.with_icon(icon) }
-        })
+    file_header::LAYOUT_SEGMENTS
+        .into_iter()
+        .filter(|segment| segment.value != DiffLayout::NewOnly)
+        .map(|segment| if is_labelled { Segment { icon: None, ..segment } } else { segment })
         .collect()
 }
 

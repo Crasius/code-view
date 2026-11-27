@@ -119,20 +119,6 @@ const LABELLED_LAYOUTS: [Segment<'static, DiffLayout>; 3] = {
         Segment { icon: None, ..side_by_side },
     ]
 };
-/// [`LAYOUT_SEGMENTS`] as (layout, icon, label, tooltip) tuples, for cv-pr-summary's header and
-/// cv-pr-files' focus strip.
-pub const LAYOUTS: [(DiffLayout, &str, &str, &str); 3] = {
-    let [new_only, inline, side_by_side] = LAYOUT_SEGMENTS;
-    [layout_tuple(new_only), layout_tuple(inline), layout_tuple(side_by_side)]
-};
-
-const fn layout_tuple(
-    segment: Segment<'static, DiffLayout>,
-) -> (DiffLayout, &'static str, &'static str, &'static str) {
-    let icon = segment.icon.expect("every layout has an icon");
-    (segment.value, icon, segment.label, segment.hint)
-}
-
 pub fn show(
     ui: &mut Ui,
     inputs: &HeaderInputs<'_>,
