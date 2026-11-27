@@ -442,13 +442,16 @@ mod tests {
         scene.composer.draft.as_mut().expect("the composer stays open").grab_focus = true;
         harness.run_steps(3);
         submit(&mut harness);
-        assert!(matches!(
-            harness.state().submitted,
-            Some(HeaderAction::Run(LifecycleAction::Vote {
-                vote: ReviewVote::ChangesRequested,
-                comment: Some(ref text),
-            })) if text == "Please split this"
-        ));
-        assert!(!harness.state().composer.has_unsent_text());
+        assert!(
+            matches!(
+                harness.state().submitted,
+                Some(HeaderAction::Run(LifecycleAction::Vote {
+                    vote: ReviewVote::ChangesRequested,
+                    comment: Some(ref text),
+                })) if text == "Please split this"
+            ),
+            "the vote goes out with its comment once writing is allowed"
+        );
+        assert!(!harness.state().composer.has_unsent_text(), "the sent text leaves the composer");
     }
 }

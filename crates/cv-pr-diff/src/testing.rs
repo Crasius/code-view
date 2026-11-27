@@ -274,12 +274,6 @@ pub(crate) fn harness(fixture: Fixture) -> Harness<'static, Fixture> {
     harness_sized(fixture, [1180.0, 760.0])
 }
 
-/// Steps of kittest's default 0.25 s that outlast the flash of a line jumped to
-/// (`flash::DURATION`); the flash repaints every frame, so [`settle`] alone would exceed its
-/// step limit.
-#[cfg(test)]
-pub(crate) const FLASH_STEPS: usize = 12;
-
 /// [`harness`] with a window of another `size`. Eight steps, 2 s simulated, cover the hover delay
 /// and the eased transitions; [`settle`] fails past them.
 #[cfg(test)]
@@ -299,6 +293,12 @@ pub(crate) fn harness_sized(fixture: Fixture, size: [f32; 2]) -> Harness<'static
             fixture,
         )
 }
+
+/// Steps of kittest's default 0.25 s that outlast the flash of a line jumped to
+/// (`flash::DURATION`); the flash repaints every frame, so [`settle`] alone would exceed its
+/// step limit.
+#[cfg(test)]
+pub(crate) const FLASH_STEPS: usize = 12;
 
 /// Shows the fixture's diff the way the files tab does and records what the view asks for; a
 /// switch of "Scroll past the end" sets it, as the tab saves it.
