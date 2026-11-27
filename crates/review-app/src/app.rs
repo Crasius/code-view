@@ -53,6 +53,8 @@ mod actions_tests;
 #[cfg(test)]
 mod activity_walkthrough;
 #[cfg(test)]
+mod assistant_script;
+#[cfg(test)]
 mod assistant_walkthrough;
 #[cfg(test)]
 mod branch_copy_walkthrough;
@@ -61,6 +63,8 @@ mod branch_copy_walkthrough;
 mod breadcrumb_overflow;
 #[cfg(test)]
 mod browser_pass_walkthrough;
+#[cfg(test)]
+mod bug_actions_walkthrough;
 #[cfg(test)]
 mod bug_keys_walkthrough;
 #[cfg(test)]
@@ -71,18 +75,8 @@ mod checkout_finish_walkthrough;
 mod checkout_walkthrough;
 #[cfg(test)]
 mod cite_flash_walkthrough;
-#[cfg(test)]
-mod counting_walkthrough;
-#[cfg(test)]
-mod crumb_drag_walkthrough;
-#[cfg(test)]
-mod crumb_trail_walkthrough;
-#[cfg(test)]
-mod diff_find_walkthrough;
 // egui's debug options (`show_expand_width`) exist only with debug assertions; release test
 // builds (`cargo test --release`, for the live performance checks) leave the clip audit out.
-#[cfg(test)]
-mod bug_actions_walkthrough;
 #[cfg(test)]
 #[cfg(debug_assertions)]
 mod clip_audit;
@@ -97,6 +91,14 @@ mod comment_edit_walkthrough;
 mod comment_origin_walkthrough;
 #[cfg(test)]
 mod count_priority_walkthrough;
+#[cfg(test)]
+mod counting_walkthrough;
+#[cfg(test)]
+mod crumb_drag_walkthrough;
+#[cfg(test)]
+mod crumb_trail_walkthrough;
+#[cfg(test)]
+mod diff_find_walkthrough;
 #[cfg(test)]
 mod favorites_walkthrough;
 #[cfg(test)]

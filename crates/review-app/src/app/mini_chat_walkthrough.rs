@@ -10,27 +10,24 @@
 //! geometry only. Needs `git` on PATH, no network, no real CLI.
 //! `cargo test -p review-app mini_chat`
 
-use std::fmt::Write as _;
-
 use egui::{Event, Key, Modifiers, PointerButton, Pos2, Role, pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use review_agent::{AgentEvent, AgentKind, FakeAgent, ModelInfo, Usage};
+use review_agent::FakeAgent;
 
 use super::ReviewApp;
-use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
-use super::walkthrough::{
-    app, click_now, shows_file_view, type_into, wait_for, wait_for_link, wait_until,
+use super::assistant_script::{
+    answer_text, ask, install_claude, long_file, wait_for_prompts, wait_for_session,
 };
+use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
+use super::walkthrough::{app, click_now, shows_file_view, type_into, wait_for_link, wait_until};
 use cv_code::diff_paint::flashed_lines;
 use cv_pr_assistant::mini::{
     self, ANSWERING, CARD_LABEL, FOLLOW_UP, NEXT, OPEN, OPEN_AT_HEAD, PREVIOUS, SHRINK, SKIP_NEXT,
 };
-use cv_services::agents::FakeCli;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
-const PLACEHOLDER: &str = "Ask anything about this pull request";
 const LONG: &str = "src/long.rs";
 /// In the checkout, not changed by the pull request.
 const NOTES: &str = "docs/notes.md";
@@ -38,17 +35,6 @@ const NOTES: &str = "docs/notes.md";
 const ANSWER: &str = "The greeting:\n\nsrc/lib.rs:2\n\nThe long file:\n\nsrc/long.rs:60-62\n\n\
                       The notes:\n\ndocs/notes.md:2\n\nAnd its end:\n\nsrc/long.rs:100";
 pub(super) const FIRST: &str = "src/lib.rs:2";
-
-/// Line `line` of the long file; the head changes line 2.
-fn long_file(head: bool) -> Vec<u8> {
-    (1..=120)
-        .fold(String::new(), |mut text, line| {
-            let word = if head && line == 2 { "Changed" } else { "Line" };
-            writeln!(text, "/// {word} {line} of the long file.").unwrap();
-            text
-        })
-        .into_bytes()
-}
 
 /// The pull request with the long file changed and the notes unchanged, its answer to the first
 /// question in the Overview's card, the mini chat on or off.
@@ -64,26 +50,13 @@ pub(super) fn answered(
     ];
     let host = GitHubHost::with_pull_request_files(scratch.path(), &files);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    let cli = FakeCli::Installed { models: models(), is_signed_in: true };
-    harness.state().services.agents.fake.set(AgentKind::Claude, cli);
+    install_claude(&harness, true);
     harness.state_mut().services.settings.assistant.mini_chat = mini_chat;
     open_pull_request(&mut harness);
-    type_into(&mut harness, PLACEHOLDER, "Where is the greeting?");
-    harness.key_press(Key::Enter);
-    harness.step();
-    let mut agent = wait_for(
-        &mut harness,
-        "a session",
-        |harness| harness.state().services.agents.fake.take_session().map(|(_, agent)| agent),
-        |_| {},
-    );
-    wait_for(
-        &mut harness,
-        "the prompt",
-        |_| Some(agent.take_prompts()).filter(|asked| !asked.is_empty()),
-        |_| {},
-    );
-    answer(&agent, ANSWER);
+    ask(&mut harness, "Where is the greeting?");
+    let (_, mut agent) = wait_for_session(&mut harness);
+    wait_for_prompts(&mut harness, &mut agent);
+    answer_text(&agent, ANSWER);
     wait_for_link(&mut harness, FIRST);
     harness.run_steps(10);
     (harness, agent, scratch)
@@ -204,12 +177,7 @@ fn drag_to_a_corner(harness: &mut Harness<'_, ReviewApp>, room: egui::Rect) {
 fn follow_up(harness: &mut Harness<'_, ReviewApp>, agent: &mut FakeAgent) {
     type_into(harness, FOLLOW_UP, "And the farewell?");
     harness.key_press(Key::Enter);
-    let asked = wait_for(
-        harness,
-        "the follow-up",
-        |_| Some(agent.take_prompts()).filter(|asked| !asked.is_empty()),
-        |_| {},
-    );
+    let asked = wait_for_prompts(harness, agent);
     assert_eq!(asked, [Some("And the farewell?".to_owned())], "the same agent's session");
     wait_until(harness, "the running turn", |harness| {
         harness.query_by(|node| node.placeholder() == Some(ANSWERING)).is_some()
@@ -217,7 +185,7 @@ fn follow_up(harness: &mut Harness<'_, ReviewApp>, agent: &mut FakeAgent) {
     });
     harness.run_steps(2);
     assert!(mini::asks_for_frames(&harness.ctx), "the working dot pulses");
-    answer(agent, "Here:\n\nsrc/lib.rs:5");
+    answer_text(agent, "Here:\n\nsrc/lib.rs:5");
     wait_until(harness, "the new answer", |harness| {
         harness.query_by_label("And the farewell?").is_some()
             && harness.query_by_label("1 reference").is_some()
@@ -288,21 +256,4 @@ fn drag(harness: &mut Harness<'_, ReviewApp>, from: Pos2, to: Pos2) {
     }
     harness.event(button(to, false));
     harness.step();
-}
-
-fn models() -> Vec<ModelInfo> {
-    vec![ModelInfo {
-        id: "claude-haiku".into(),
-        display_name: "Haiku".into(),
-        description: String::new(),
-        is_default: false,
-        efforts: Vec::new(),
-    }]
-}
-
-/// The agent's whole answer to the running question: `text`, and the turn's end.
-fn answer(agent: &FakeAgent, text: &str) {
-    agent.emit(AgentEvent::Started { session_id: "s-1".into(), model: "claude-haiku".into() });
-    agent.emit(AgentEvent::Text(text.to_owned()));
-    agent.emit(AgentEvent::TurnDone(Usage::default()));
 }

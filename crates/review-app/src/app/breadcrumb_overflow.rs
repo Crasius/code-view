@@ -1,8 +1,8 @@
 //! A breadcrumb trail far longer than the title bar, as long names and a page's own levels make
-//! it on an Azure DevOps pull request: at 1440 and 960 points the crumbs stay clear of the search box and the caption
-//! buttons, the first and last crumbs and the pull request stay shown, the levels between fold
-//! into "…" whose list leads to each of them (pointer and keyboard), and nothing moves from one
-//! frame to the next. No network, no tokens.
+//! it on an Azure DevOps pull request: at 1440 and 960 points the crumbs stay clear of the search
+//! box and the caption buttons, the first and last crumbs and the pull request stay shown, the
+//! levels between fold into "…" whose list leads to each of them (pointer and keyboard), and
+//! nothing moves from one frame to the next. No network, no tokens.
 
 use egui::{Key, Rect, Role, pos2};
 use egui_kittest::Harness;

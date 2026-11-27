@@ -548,9 +548,7 @@ fn assistant(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
     wait_until_unsettled(harness, "the assistant's card", |harness| {
         harness.query_by_label("Ask about this PR").is_some()
     });
-    super::walkthrough::type_into(harness, "Ask anything about this pull request", "Explain it.");
-    harness.key_press(egui::Key::Enter);
-    harness.step();
+    super::assistant_script::ask(harness, "Explain it.");
     let started = Instant::now();
     let (_, agent) = loop {
         if let Some(session) = harness.state().services.agents.fake.take_session() {

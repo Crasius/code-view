@@ -1,25 +1,18 @@
 //! The pull request assistant end to end: the real app against the mocked GitHub host
 //! ([`super::github_mock`]) with scripted agents ([`cv_services::agents::FakeAgents`]) in place
-//! of the Claude Code and Codex CLIs. A question streams its answer with a tool step, a cited line
-//! opens in the Files tab, Alt+A on selected diff lines quotes them, a missing or signed-out CLI
-//! shows its fix, the default model set in Settings starts the next conversation, the conversation
-//! survives a restart, the expanded panel keeps the side column and its composer at the bottom,
-//! the card fills the side column until its splitter sets the conversation's height (the window's,
-//! not what the sliding header lends), the card's
-//! conversation takes the mouse wheel only after a click into it, the assistant turned off in
-//! Settings leaves the page and starts nothing, a new conversation takes one click and can be
-//! undone, the question being written survives switching agent and model, and the mini chat on an
-//! earlier answer waits for the running one. Needs `git` on PATH, no network, no real CLI.
+//! of the Claude Code and Codex CLIs. Needs `git` on PATH, no network, no real CLI.
 
 use egui::{Key, Modifiers, PointerButton, Pos2, Role, pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_agent::{
-    AgentEvent, AgentKind, FakeAgent, ModelChoice, ModelInfo, SessionConfig, StepKind, ToolStep,
-    Usage,
+    AgentEvent, AgentKind, FakeAgent, ModelChoice, ModelInfo, StepKind, ToolStep, Usage,
 };
 
 use super::ReviewApp;
+use super::assistant_script::{
+    PLACEHOLDER, ask, install_claude, models, wait_for_prompts, wait_for_session,
+};
 use super::github_mock::{FILE, GitHubHost, TITLE, open_diff, open_pull_request};
 use super::walkthrough::{
     app, click_now, press, saved_settings, shows_file_view, type_into, wait_for, wait_until, wheel,
@@ -41,22 +34,6 @@ const ANSWER: &str = "It renames `greet` to `welcome`, here:
 src/lib.rs:1";
 const CITATION: &str = "src/lib.rs:1";
 
-fn models() -> Vec<ModelInfo> {
-    let model = |id: &str, name: &str| ModelInfo {
-        id: id.to_owned(),
-        display_name: name.to_owned(),
-        description: String::new(),
-        is_default: false,
-        efforts: Vec::new(),
-    };
-    vec![model("claude-haiku", "Haiku"), model("claude-sonnet", "Sonnet")]
-}
-
-fn set_claude(harness: &Harness<'_, ReviewApp>, is_signed_in: bool) {
-    let cli = FakeCli::Installed { models: models(), is_signed_in };
-    harness.state().services.agents.fake.set(AgentKind::Claude, cli);
-}
-
 /// A question typed into the composer (Shift+Enter for a second line, Enter to send) starts the
 /// agent in a checkout with the pull request's brief; its answer streams in with the tool step and
 /// the token counts, and the cited line opens in the Files tab.
@@ -65,7 +42,7 @@ fn assistant_answers_a_typed_question_and_a_citation_opens_the_line() {
     let scratch = ScratchDir::new("assistant-answer");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    set_claude(&harness, true);
+    install_claude(&harness, true);
     open_pull_request(&mut harness);
     wait_until(&mut harness, "the assistant's card", |harness| {
         harness.query_by_label(CARD).is_some()
@@ -113,15 +90,9 @@ fn assistant_conversation_survives_a_restart() {
     let host = GitHubHost::with_pull_request(scratch.path());
     {
         let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-        set_claude(&harness, true);
+        install_claude(&harness, true);
         open_pull_request(&mut harness);
-        ask(&mut harness, QUESTION);
-        let (_, mut agent) = wait_for_session(&mut harness);
-        wait_for_prompts(&mut harness, &mut agent);
-        answer(&agent, ANSWER);
-        wait_until(&mut harness, "the answer", |harness| {
-            harness.query_by_label_contains("12k cached").is_some()
-        });
+        let _agent = answered(&mut harness, ANSWER);
         for gone in ["Draft a comment", "Copy"] {
             let button = harness
                 .query_all_by_role(Role::Button)
@@ -145,7 +116,7 @@ fn assistant_alt_a_quotes_the_selected_lines() {
     let scratch = ScratchDir::new("assistant-quote");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    set_claude(&harness, true);
+    install_claude(&harness, true);
     open_pull_request(&mut harness);
     let diff = open_diff(&mut harness);
 
@@ -196,13 +167,13 @@ fn assistant_missing_and_signed_out_clis_show_their_fix() {
             && harness.query_by_label_contains("Check again").is_some()
     });
 
-    set_claude(&harness, false);
+    install_claude(&harness, false);
     press(&mut harness, "Check again");
     wait_until(&mut harness, "the sign-in fix", |harness| {
         harness.query_by_label_contains("Sign in in a terminal").is_some()
     });
 
-    set_claude(&harness, true);
+    install_claude(&harness, true);
     press(&mut harness, "Check again");
     let (_, mut agent) = wait_for_session(&mut harness);
     assert_eq!(wait_for_prompts(&mut harness, &mut agent), [Some(QUESTION.to_owned())]);
@@ -214,7 +185,7 @@ fn assistant_default_model_from_settings_starts_the_next_conversation() {
     let scratch = ScratchDir::new("assistant-model");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    set_claude(&harness, true);
+    install_claude(&harness, true);
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
     press(&mut harness, "Assistant");
     wait_until(&mut harness, "the models of Claude Code", |harness| {
@@ -244,7 +215,7 @@ fn assistant_terminal_button_opens_the_cli_in_the_checkout() {
     let scratch = ScratchDir::new("assistant-terminal");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    set_claude(&harness, true);
+    install_claude(&harness, true);
     open_pull_request(&mut harness);
     // The chip names the model once the CLI's models are in; the card is laid out then.
     wait_until(&mut harness, "the terminal button and the chip", |harness| {
@@ -295,16 +266,6 @@ fn press_terminal(harness: &mut Harness<'_, ReviewApp>) {
     harness.step();
 }
 
-/// The empty composer's placeholder.
-const PLACEHOLDER: &str = "Ask anything about this pull request";
-
-/// Types `question` into the empty composer and sends it with Enter.
-fn ask(harness: &mut Harness<'_, ReviewApp>, question: &str) {
-    type_into(harness, PLACEHOLDER, question);
-    harness.key_press(Key::Enter);
-    harness.step();
-}
-
 /// Expanding keeps the side column: the panel takes the card's column edges, reaches from the
 /// column's top to the window's visible bottom, and the other side cards leave until it collapses
 /// again. Its composer stays on the bottom edge, empty and under a long conversation; scrolled up,
@@ -316,7 +277,7 @@ fn assistant_panel_keeps_the_side_column_and_the_composer_at_the_bottom() {
     let host = GitHubHost::with_pull_request(scratch.path());
     let width = {
         let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-        set_claude(&harness, true);
+        install_claude(&harness, true);
         open_pull_request(&mut harness);
         wait_until(&mut harness, "the card", |harness| {
             harness.query_by_label(SIDE_SPLITTER).is_some()
@@ -343,15 +304,9 @@ fn assistant_panel_keeps_the_side_column_and_the_composer_at_the_bottom() {
         let gap = composer_gap(&harness);
         assert!(gap <= 24.0, "the composer ends {gap} above the panel's bottom");
 
-        ask(&mut harness, QUESTION);
-        let (_, mut agent) = wait_for_session(&mut harness);
-        wait_for_prompts(&mut harness, &mut agent);
         let long: Vec<String> =
             (1..=60).map(|line| format!("Point {line} of the answer.")).collect();
-        answer(&agent, &long.join("\n\n"));
-        wait_until(&mut harness, "the long answer", |harness| {
-            harness.query_by_label_contains("12k cached").is_some()
-        });
+        let _agent = answered(&mut harness, &long.join("\n\n"));
         assert_same_gap(&harness, gap, "under a long conversation");
         assert!(harness.query_by_label("Jump to latest").is_none(), "the answer is followed");
 
@@ -568,19 +523,16 @@ fn answer(agent: &FakeAgent, text: &str) {
     agent.emit(AgentEvent::TurnDone(usage));
 }
 
-fn wait_for_session(harness: &mut Harness<'_, ReviewApp>) -> (SessionConfig, FakeAgent) {
-    let take =
-        |harness: &Harness<'_, ReviewApp>| harness.state().services.agents.fake.take_session();
-    wait_for(harness, "a session", take, |_| {})
-}
-
-fn wait_for_prompts(
-    harness: &mut Harness<'_, ReviewApp>,
-    agent: &mut FakeAgent,
-) -> Vec<Option<String>> {
-    let take =
-        |_: &Harness<'_, ReviewApp>| Some(agent.take_prompts()).filter(|asked| !asked.is_empty());
-    wait_for(harness, "the prompt", take, |_| {})
+/// Asks [`QUESTION`] and waits until the agent's [`answer`] with `text` is in; returns the agent.
+fn answered(harness: &mut Harness<'_, ReviewApp>, text: &str) -> FakeAgent {
+    ask(harness, QUESTION);
+    let (_, mut agent) = wait_for_session(harness);
+    wait_for_prompts(harness, &mut agent);
+    answer(&agent, text);
+    wait_until(harness, "the answer", |harness| {
+        harness.query_by_label_contains("12k cached").is_some()
+    });
+    agent
 }
 
 /// Over the un-armed card the wheel scrolls the page and leaves the conversation where it is; a
@@ -591,19 +543,13 @@ fn assistant_card_takes_the_wheel_only_after_a_click_into_it() {
     let scratch = ScratchDir::new("assistant-wheel");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    set_claude(&harness, true);
+    install_claude(&harness, true);
     open_pull_request(&mut harness);
     // The side column is a little taller than this window: the page scrolls by about 125
     // points, and the card's conversation stays on screen.
     resize(&mut harness, 800.0);
-    ask(&mut harness, QUESTION);
-    let (_, mut agent) = wait_for_session(&mut harness);
-    wait_for_prompts(&mut harness, &mut agent);
     let long: Vec<String> = (1..=60).map(|line| format!("Point {line} of the answer.")).collect();
-    answer(&agent, &long.join("\n\n"));
-    wait_until(&mut harness, "the long answer", |harness| {
-        harness.query_by_label_contains("12k cached").is_some()
-    });
+    let _agent = answered(&mut harness, &long.join("\n\n"));
     assert!(is_armed(&harness), "typing the question armed the card");
 
     click_outside(&mut harness);
@@ -637,7 +583,7 @@ fn assistant_turned_off_in_settings_leaves_the_page_and_starts_nothing() {
     let scratch = ScratchDir::new("assistant-off");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    set_claude(&harness, true);
+    install_claude(&harness, true);
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
     press(&mut harness, "Assistant");
     switch_assistant(&mut harness);
@@ -750,15 +696,9 @@ fn assistant_new_conversation_takes_one_click_and_can_be_undone() {
     let scratch = ScratchDir::new("assistant-new");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    set_claude(&harness, true);
+    install_claude(&harness, true);
     open_pull_request(&mut harness);
-    ask(&mut harness, QUESTION);
-    let (_, mut agent) = wait_for_session(&mut harness);
-    wait_for_prompts(&mut harness, &mut agent);
-    answer(&agent, ANSWER);
-    wait_until(&mut harness, "the answer", |harness| {
-        harness.query_by_label_contains("12k cached").is_some()
-    });
+    let _agent = answered(&mut harness, ANSWER);
 
     press_new_conversation(&mut harness);
     wait_until(&mut harness, "the empty conversation", |harness| {
@@ -808,7 +748,7 @@ fn assistant_draft_survives_switching_agent_and_model() {
     let scratch = ScratchDir::new("assistant-draft");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    set_claude(&harness, true);
+    install_claude(&harness, true);
     let codex = FakeCli::Installed { models: models(), is_signed_in: true };
     harness.state().services.agents.fake.set(AgentKind::Codex, codex);
     open_pull_request(&mut harness);
@@ -860,16 +800,10 @@ fn assistant_mini_chat_on_an_earlier_answer_waits_for_the_running_one() {
     let scratch = ScratchDir::new("assistant-mini-busy");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    set_claude(&harness, true);
+    install_claude(&harness, true);
     harness.state_mut().services.settings.assistant.mini_chat = true;
     open_pull_request(&mut harness);
-    ask(&mut harness, QUESTION);
-    let (_, mut agent) = wait_for_session(&mut harness);
-    wait_for_prompts(&mut harness, &mut agent);
-    answer(&agent, ANSWER);
-    wait_until(&mut harness, "the answer", |harness| {
-        harness.query_by_label_contains("12k cached").is_some()
-    });
+    let mut agent = answered(&mut harness, ANSWER);
     type_into(&mut harness, "Follow up", "And the tests?");
     harness.key_press(Key::Enter);
     harness.step();
@@ -902,7 +836,7 @@ fn assistant_draft_survives_switching_over_kept_conversations() {
     let scratch = ScratchDir::new("assistant-draft-kept");
     let host = GitHubHost::with_pull_request(scratch.path());
     let setup = |harness: &Harness<'_, ReviewApp>| {
-        set_claude(harness, true);
+        install_claude(harness, true);
         let codex = FakeCli::Installed { models: codex_models(), is_signed_in: true };
         harness.state().services.agents.fake.set(AgentKind::Codex, codex);
     };
@@ -910,13 +844,7 @@ fn assistant_draft_survives_switching_over_kept_conversations() {
         let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
         setup(&harness);
         open_pull_request(&mut harness);
-        ask(&mut harness, QUESTION);
-        let (_, mut agent) = wait_for_session(&mut harness);
-        wait_for_prompts(&mut harness, &mut agent);
-        answer(&agent, ANSWER);
-        wait_until(&mut harness, "the answer", |harness| {
-            harness.query_by_label_contains("12k cached").is_some()
-        });
+        let _agent = answered(&mut harness, ANSWER);
         pick_in_chip(&mut harness, "Claude · ", "Codex");
         ask(&mut harness, "Run the tests");
         let (_, mut codex) = wait_for_session(&mut harness);
@@ -976,18 +904,12 @@ fn assistant_mini_chat_follow_up_survives_switching_the_agent() {
     let scratch = ScratchDir::new("assistant-mini-draft");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    set_claude(&harness, true);
+    install_claude(&harness, true);
     let codex = FakeCli::Installed { models: codex_models(), is_signed_in: true };
     harness.state().services.agents.fake.set(AgentKind::Codex, codex);
     harness.state_mut().services.settings.assistant.mini_chat = true;
     open_pull_request(&mut harness);
-    ask(&mut harness, QUESTION);
-    let (_, mut agent) = wait_for_session(&mut harness);
-    wait_for_prompts(&mut harness, &mut agent);
-    answer(&agent, ANSWER);
-    wait_until(&mut harness, "the answer", |harness| {
-        harness.query_by_label_contains("12k cached").is_some()
-    });
+    let _agent = answered(&mut harness, ANSWER);
     let center = harness.query_all_by_label(CITATION).next().expect("the citation").rect().center();
     wait_for(
         &mut harness,
