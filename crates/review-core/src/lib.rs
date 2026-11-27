@@ -1,7 +1,7 @@
 //! Platform-neutral model of pull requests, reviews and pipelines plus the [`Provider`] trait
 //! that GitHub, GitLab and Azure DevOps implement.
 
-// RS-DONT-03: no FFI here; unsafe belongs in the platform/ modules of review-store and review-app.
+// RS-DONT-03: no FFI in this crate.
 #![forbid(unsafe_code)]
 
 pub mod assistant;

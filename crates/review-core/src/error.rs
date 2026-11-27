@@ -73,7 +73,7 @@ const MAX_BODY_CHARS: usize = 300;
 /// The `message` / `error_description` / `error` field of a JSON error body, the `<Message>` of an
 /// XML one (blob storage behind a redirect), the `<title>` of an HTML page (a gateway's
 /// `502 Bad Gateway`), else the trimmed body.
-fn readable_body(body: &str) -> String {
+pub(crate) fn readable_body(body: &str) -> String {
     let parsed = serde_json::from_str::<serde_json::Value>(body).ok();
     let message = parsed.as_ref().and_then(|value| {
         ["message", "error_description", "error"]

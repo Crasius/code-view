@@ -47,15 +47,7 @@ pub(crate) struct Write;
 impl Drop for Write {
     fn drop(&mut self) {
         WRITE_EPOCH.fetch_add(1, Ordering::SeqCst);
-        #[cfg(test)]
-        WRITES_ENDED.with(|ended| ended.set(ended.get() + 1));
     }
-}
-
-#[cfg(test)]
-thread_local! {
-    /// Writes ended on this thread: what a test sees of the epoch without the other tests' writes.
-    pub(crate) static WRITES_ENDED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// One request in flight: the epoch it started in and the answer its callers wait for.

@@ -53,15 +53,6 @@ pub struct EndpointCount {
     pub count: u64,
 }
 
-/// Every connection that sent something, by connection id.
-pub fn snapshot() -> Vec<ConnectionTraffic> {
-    let now = Instant::now();
-    let mut all: Vec<ConnectionTraffic> =
-        counters().iter_mut().map(|(label, counters)| counters.view(label, now)).collect();
-    all.sort_by(|left, right| left.connection.cmp(&right.connection));
-    all
-}
-
 /// One connection's counters; `None` before its first request.
 pub fn of(connection: &str) -> Option<ConnectionTraffic> {
     let now = Instant::now();
@@ -104,7 +95,7 @@ pub(crate) fn record_limited(label: &str) {
 
 /// Replaces ids in a path so equal endpoints count together: numbers → `:id`, URL-encoded
 /// project paths → `:project`, commit SHAs → `:sha`, GUIDs → `:guid`.
-pub fn path_template(path: &str) -> String {
+fn path_template(path: &str) -> String {
     path.split('/')
         .map(|segment| {
             let is_hex = |length: usize| {

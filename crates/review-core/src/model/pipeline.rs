@@ -271,7 +271,7 @@ mod tests {
 
     #[test]
     fn timing_finds_parallel_stages_and_joins() {
-        // Azure DevOps build 1639624 (dotnet.xharness): two builds in parallel, then E2E.
+        // Two builds in parallel, then E2E, as an Azure DevOps timeline reports them.
         let mut stages = vec![
             stage(
                 "windows",
@@ -321,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn sequential_chain() {
+    fn every_stage_waits_for_the_one_listed_before_it() {
         let mut stages =
             vec![stage("a", None, None), stage("b", None, None), stage("c", None, None)];
         chain_sequentially(&mut stages);

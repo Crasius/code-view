@@ -1,7 +1,7 @@
 //! Shared HTTP plumbing. One pooled [`reqwest::Client`] serves every connection;
 //! auth headers go on each request, never on the client.
 //!
-//! Every request goes through the per-host [`budget`]: at most [`budget::MAX_IN_FLIGHT`] requests
+//! Every request goes through the per-host [`budget`]: at most six requests (`budget::MAX_IN_FLIGHT`)
 //! wait for an answer per host and API kind (REST, GraphQL), a 429 (or GitHub's rate-limit 403)
 //! pauses that host's REST or GraphQL requests until its `Retry-After` / reset time and the
 //! request is retried once, and the [`traffic`] counters record
@@ -27,14 +27,13 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use crate::error::{ProviderError, Result};
+use crate::error::Result;
 
 pub use budget::{Api, RateLimitNotice, rate_limits, resume, without_waiting};
 pub use cache::cached_bytes;
 pub use traffic::{ConnectionTraffic, EndpointCount, for_connection};
 
-pub const USER_AGENT: &str = concat!("CodeView/", env!("CARGO_PKG_VERSION"));
-const MAX_ERROR_BODY_CHARS: usize = 600;
+const USER_AGENT: &str = concat!("CodeView/", env!("CARGO_PKG_VERSION"));
 
 /// Builds the process-wide API client: gzip, HTTP/2, pooled keep-alive, sane timeouts.
 pub fn build_client() -> Client {
@@ -53,7 +52,8 @@ pub fn client_builder() -> ClientBuilder {
         .pool_max_idle_per_host(8)
 }
 
-/// Sends and turns non-success statuses into [`ProviderError::Status`] with a trimmed body.
+/// Sends and turns non-success statuses into [`ProviderError::Status`](crate::ProviderError::Status)
+/// with a trimmed body.
 /// The body stays a stream (job logs); use [`fetch`] for bodies read at once.
 pub async fn send(request: RequestBuilder) -> Result<Response> {
     let (client, request) = request.build_split();
@@ -136,14 +136,6 @@ pub async fn unit(request: RequestBuilder) -> Result<()> {
     Ok(())
 }
 
-pub async fn status_error(response: Response) -> ProviderError {
-    let status = response.status().as_u16();
-    let path = response.url().path().to_owned();
-    let body = response.text().await.unwrap_or_default();
-    let trimmed_body: String = body.chars().take(MAX_ERROR_BODY_CHARS).collect();
-    ProviderError::Status { status, path, body: trimmed_body }
-}
-
 /// Copies the body of `response` into `sink`, chunk by chunk.
 pub async fn copy_body(
     mut response: Response,
@@ -157,12 +149,12 @@ pub async fn copy_body(
 }
 
 /// Parses the `rel="next"` target out of an RFC 8288 `Link` header (GitHub, GitLab).
-pub fn next_link(response: &Response) -> Option<String> {
+fn next_link(response: &Response) -> Option<String> {
     let header = response.headers().get(reqwest::header::LINK)?.to_str().ok()?;
     parse_next_link(header)
 }
 
-pub fn parse_next_link(header: &str) -> Option<String> {
+fn parse_next_link(header: &str) -> Option<String> {
     header.split(',').find_map(|part| {
         let (target, params) = part.split_once(';')?;
         let is_next = params.split(';').any(|param| param.trim() == "rel=\"next\"");
@@ -175,7 +167,7 @@ pub fn parse_next_link(header: &str) -> Option<String> {
 }
 
 /// `scheme://host[:port]`, the unit the budget pauses and caps.
-pub fn origin(url: &Url) -> String {
+pub(crate) fn origin(url: &Url) -> String {
     url.origin().ascii_serialization()
 }
 
@@ -191,7 +183,7 @@ mod tests {
     use wiremock::matchers::method;
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::{cache, copy_body, is_write, parse_next_link, write_guard};
+    use super::{copy_body, is_write, parse_next_link, write_guard};
     use crate::ProviderError;
 
     /// A sink whose every write fails, as a full disk does.
@@ -269,12 +261,15 @@ mod tests {
         let post = |body| {
             client.request(Method::POST, "http://127.0.0.1/graphql").json(&body).build().unwrap()
         };
-        let ended = || cache::WRITES_ENDED.with(std::cell::Cell::get);
-        let before = ended();
-        drop(write_guard(&post(json!({ "query": "query { viewer { login } }" }))));
-        assert_eq!(ended(), before, "a GraphQL query is no write");
-        drop(write_guard(&post(json!({ "query": "mutation { addStar(input: {}) { id } }" }))));
-        assert_eq!(ended(), before + 1, "a mutation is one");
+        assert!(
+            write_guard(&post(json!({ "query": "query { viewer { login } }" }))).is_none(),
+            "a GraphQL query is no write"
+        );
+        assert!(
+            write_guard(&post(json!({ "query": "mutation { addStar(input: {}) { id } }" })))
+                .is_some(),
+            "a mutation is one"
+        );
     }
 
     #[test]
