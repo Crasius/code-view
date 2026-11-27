@@ -14,7 +14,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
-use super::github_mock::{ExtraFile, FILE, GitHubHost, ReplacedHead, open_pull_request};
+use super::github_mock::{FILE, GitHubHost, LONG_FILE, ReplacedHead, long_file, open_pull_request};
 use super::walkthrough::{self, wait_until};
 use cv_base::platform::{self, hit_test, shortcut};
 use cv_pr_rendered::file_header::NEXT_CHANGE_HINT;
@@ -22,7 +22,6 @@ use cv_shell::focus_mode::{self, ENTER_HINT, EXIT_HINT, Surface, strip};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
-const LONG_FILE: &str = "src/long.rs";
 const JOB: &str = "Build and test";
 const LOG_LINES: usize = 3000;
 /// The refused rerun's message, in the run header's place and in focus mode under the strip.
@@ -34,20 +33,6 @@ const MARK_VIEWED: &str = concat!("Mark as viewed (", shortcut!(alt "V"), ")");
 const UNMARK_VIEWED: &str = concat!("Viewed: click or ", shortcut!(alt "V"), " to unmark");
 const NEXT_MATCH: &str = concat!("Next match (", shortcut!(Enter), ")");
 const COPY_LOG: &str = concat!("Copy log (", shortcut!(command shift "C"), ")");
-
-/// 600 lines, every eighth one changed: 75 changes to step through.
-fn long_file() -> ExtraFile {
-    let line = |index: usize, changed: bool| {
-        if changed {
-            format!("    let value_{index} = compute({index}) + 1; // changed\n")
-        } else {
-            format!("    let value_{index} = compute({index});\n")
-        }
-    };
-    let base: String = (0..600).map(|index| line(index, false)).collect();
-    let head: String = (0..600).map(|index| line(index, index % 8 == 4)).collect();
-    ExtraFile { path: LONG_FILE, base: base.into_bytes(), head: head.into_bytes() }
-}
 
 fn long_log() -> String {
     (0..LOG_LINES).fold(String::new(), |mut text, index| {

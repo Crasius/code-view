@@ -6,9 +6,7 @@
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_store::{
-    AppPaths, AppSettings, LastPlace, PullRequestStart, PullRequestTab, ViewedFiles,
-};
+use review_store::{AppSettings, LastPlace, PullRequestStart, PullRequestTab, ViewedFiles};
 
 use super::ReviewApp;
 use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
@@ -31,10 +29,6 @@ fn files() -> Vec<ExtraFile> {
         head: b"pub fn one() -> u32 {\n    2\n}\n".to_vec(),
     };
     vec![file(FIRST), file(LAST)]
-}
-
-fn paths(scratch: &ScratchDir) -> AppPaths {
-    scratch.app_paths()
 }
 
 fn tab(harness: &Harness<'_, ReviewApp>) -> Option<PullRequestTab> {
@@ -79,7 +73,7 @@ fn open_resume_files_option_and_the_place_left_survive_a_restart() {
         "the Overview stays the default"
     );
     choose_files_in_settings(&mut harness);
-    let saved = AppSettings::load(&paths(&scratch).settings_file()).expect("settings file");
+    let saved = AppSettings::load(&scratch.app_paths().settings_file()).expect("settings file");
     assert_eq!(saved.pull_request_start, PullRequestStart::Files, "the choice is saved");
 
     open_on_file(&mut harness, FIRST);
@@ -127,7 +121,7 @@ fn open_resume_a_vanished_file_falls_back_to_the_first_file() {
     settle_background(&mut harness);
     drop(harness);
 
-    let paths = paths(&scratch);
+    let paths = scratch.app_paths();
     let mut viewed =
         ViewedFiles::load(&paths, &key.connection_id, &key.storage_key()).expect("the marks' file");
     let gone = LastPlace { tab: PullRequestTab::Files, file: Some("gone/removed.rs".to_owned()) };

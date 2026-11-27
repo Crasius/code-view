@@ -28,14 +28,13 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use review_store::{AppSettings, HeaderMode, HeaderModes};
 
 use super::ReviewApp;
-use super::github_mock::{GitHubHost, long_file, open_long_file, open_pull_request};
+use super::github_mock::{GitHubHost, LONG_FILE, long_file, open_long_file, open_pull_request};
 use super::walkthrough::{app, tab_rect, wheel};
 use cv_runtime::route::Route;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 const MERGE_OPTIONS: &str = "Merge options";
-const LONG_DIFF: &str = "Diff of src/long.rs";
 
 fn start(name: &str) -> (Harness<'static, ReviewApp>, GitHubHost, ScratchDir) {
     start_with(name, HeaderModes::default())
@@ -97,7 +96,7 @@ fn content_point(harness: &Harness<'_, ReviewApp>) -> Pos2 {
 
 /// The middle of the long diff in the Files tab.
 fn diff_point(harness: &Harness<'_, ReviewApp>) -> Pos2 {
-    harness.get_by_label(LONG_DIFF).rect().center()
+    harness.get_by_label(&format!("Diff of {LONG_FILE}")).rect().center()
 }
 
 /// One trackpad gesture at `at` that moves the content by `delta` (negative scrolls down),

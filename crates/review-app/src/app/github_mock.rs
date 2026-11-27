@@ -70,7 +70,7 @@ pub fn open_diff(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
 /// The path of [`long_file`].
 pub(super) const LONG_FILE: &str = "src/long.rs";
 
-/// 600 lines, every eighth one changed.
+/// 600 lines, every eighth one changed: 75 changes to step through.
 pub(super) fn long_file() -> ExtraFile {
     let line = |index: usize, changed: bool| {
         if changed {
