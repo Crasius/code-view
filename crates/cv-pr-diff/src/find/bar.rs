@@ -335,7 +335,7 @@ impl FindBar {
             ui.ctx().read_response(id).is_some_and(|response| rect.intersects(response.rect))
         });
         #[cfg(any(test, feature = "test-support"))]
-        note_bar(ui.ctx(), BarNote { rect, pane, side, count: self.count_text(), icons: ICONS });
+        note_bar(ui.ctx(), BarNote { rect, pane, side, count: self.count_text() });
         false
     }
 
@@ -494,13 +494,7 @@ pub struct BarNote {
     /// The version searched.
     pub side: HitSide,
     pub count: String,
-    /// The icons of its controls, in their order.
-    pub icons: [&'static str; 4],
 }
-
-/// The icons of Match case, previous, next and close.
-#[cfg(any(test, feature = "test-support"))]
-const ICONS: [&str; 4] = [icons::TEXT_AA, icons::ARROW_UP, icons::ARROW_DOWN, icons::X];
 
 #[cfg(any(test, feature = "test-support"))]
 fn note_bar(ctx: &egui::Context, note: BarNote) {

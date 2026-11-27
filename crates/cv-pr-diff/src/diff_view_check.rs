@@ -12,6 +12,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{DiffSide, ReviewThread, ThreadStatus};
 
+use crate::diff_view::DiffEvent;
 use crate::testing::{
     Fixture, NEW, OLD, PATH, fixture, fixture_of, harness, harness_sized, line_of, settle,
     thread_on_old_line, whole_file_fixture,
@@ -79,13 +80,13 @@ fn new_only_marks_removals_and_shows_them_on_demand() {
 
     // N walks the changes; removals count as changes.
     assert_eq!(
-        harness.state().view.change_position().1,
+        harness.state().view.change_position().total,
         4,
         "add, total, discount comment, is_empty"
     );
     harness.key_press(egui::Key::N);
     settle(&mut harness);
-    assert_eq!(harness.state().view.change_position().0, 1);
+    assert_eq!(harness.state().view.change_position().current, Some(0));
 
     // The other layouts show removed lines as rows, so they have no wedges.
     harness.state_mut().layout = Layout::Inline;
@@ -157,7 +158,8 @@ fn new_only_offers_another_layout_for_an_emptied_file() {
     assert!(harness.query_by_label("The new version is empty").is_some());
     harness.click_at(harness.get_by_label_contains("Show inline").rect());
     settle(&mut harness);
-    assert_eq!(harness.state().events, ["show inline"]);
+    let events = &harness.state().events;
+    assert!(matches!(events[..], [DiffEvent::SwitchLayout(Layout::Inline)]), "{events:?}");
 }
 
 /// An added or a deleted file shows its one version whole: a row for each of its lines, in order.
@@ -196,7 +198,7 @@ fn the_change_in_focus_survives_rows_rebuilt_for_late_contents_and_threads() {
         settle(&mut harness);
     }
     let position = harness.state().view.change_position();
-    assert_eq!(position.0, 2, "N twice: {position:?}");
+    assert_eq!(position.current, Some(1), "N twice: {position:?}");
 
     harness.state_mut().has_contents = true;
     settle(&mut harness);
@@ -207,13 +209,14 @@ fn the_change_in_focus_survives_rows_rebuilt_for_late_contents_and_threads() {
     assert_eq!(harness.state().view.change_position(), position, "a thread arrived");
     harness.key_press(egui::Key::N);
     settle(&mut harness);
-    assert_eq!(harness.state().view.change_position().0, 3, "N goes on from the change in focus");
+    let current = harness.state().view.change_position().current;
+    assert_eq!(current, Some(2), "N goes on from the change in focus");
 
     // A layout switch builds other changes: the count starts over.
     harness.state_mut().layout = Layout::Inline;
     harness.state_mut().view.relayout();
     settle(&mut harness);
-    assert_eq!(harness.state().view.change_position().0, 0);
+    assert_eq!(harness.state().view.change_position().current, None);
 }
 
 /// A new code size keeps the line under the pointer under it, as a browser zooms around the

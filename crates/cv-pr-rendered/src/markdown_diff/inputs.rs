@@ -30,6 +30,9 @@ pub struct RenderedInputs<'a> {
     /// "Show comments in the diff": the threads' cards show under their blocks. Off, a count in
     /// the gutter stands for them and shows them there on a click.
     pub show_threads: bool,
+    /// "Scroll past the end": the rows hold room below the last one (see
+    /// [`past_end`](cv_pr_diff::diff_overview::past_end)).
+    pub past_end: bool,
 }
 
 impl RenderedInputs<'_> {
@@ -62,12 +65,14 @@ pub enum RenderedEvent {
     WidthResized,
     /// Comment on these source lines of a block: the text diff takes over, the lines selected.
     Comment { side: DiffSide, lines: Range<u32> },
-    /// Show these source lines in the text diff.
-    ShowSource { side: DiffSide, lines: Range<u32> },
+    /// Show this source line in the text diff.
+    ShowSource { side: DiffSide, line: u32 },
     /// New only: the user clicked a removed blocks' wedge to see them all, side by side.
     ShowSideBySide,
     /// Something done on a thread's card: a reply, a status change.
     Thread(ThreadEvent),
     /// Show the thread in the text diff, where its line shows (the rendered text leaves it out).
     ShowThreadSource { thread_id: String },
+    /// The user switched "Scroll past the end" in the overview strip's menu, to this.
+    SwitchPastEnd(bool),
 }

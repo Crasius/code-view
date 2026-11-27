@@ -14,9 +14,9 @@ workspace = true
 doctest = false
 
 [features]
-# Test probes other crates' tests read (the flashed lines and their frames in diff_paint, the find
-# marks and the current hit in find_paint, with their recording sites); forwards to the cv crates
-# below. Enabled only from [dev-dependencies] and from the test-support features above.
+# Test probes other crates' tests read (the find marks and the current hit in find_paint, with
+# their recording sites); forwards to the cv crates below. Enabled only from [dev-dependencies]
+# and from the test-support features above.
 test-support = [
     "cv-base/test-support",
     "cv-runtime/test-support",

@@ -16,8 +16,8 @@ use egui_kittest::kittest::Queryable as _;
 use review_core::DiffSide;
 use review_git::FileDiff;
 
-use super::{PAST_END_LABEL, last_view_box, past_end};
-use crate::diff_view::OVERVIEW_WIDTH;
+use super::{PAST_END_LABEL, last_view_box};
+use crate::diff_view::{DiffEvent, OVERVIEW_WIDTH};
 use crate::testing::{Fixture, fixture_of, harness, settle};
 use cv_code::diff_rows::Layout;
 
@@ -47,8 +47,7 @@ fn file_fixture(lines: u32) -> Fixture {
 
 /// The harness for a file of `lines` lines, with "Scroll past the end" `on` or off, settled.
 fn shown(lines: u32, on: bool) -> Harness<'static, Fixture> {
-    let mut harness = harness(file_fixture(lines));
-    past_end::set_for_test(&harness.ctx, on);
+    let mut harness = harness(Fixture { past_end: on, ..file_fixture(lines) });
     settle(&mut harness);
     harness
 }
@@ -151,8 +150,7 @@ fn a_file_shorter_than_the_view_does_not_scroll() {
     for (name, fixture) in
         [("side by side", file_fixture(12)), ("new only", new_only_fixture(14, 2))]
     {
-        let mut harness = harness(fixture);
-        past_end::set_for_test(&harness.ctx, true);
+        let mut harness = harness(Fixture { past_end: true, ..fixture });
         settle(&mut harness);
         assert!(harness.state().view.height() < HEIGHT / 2.0, "{name}: the file fits the view");
         wheel(&mut harness, -5_000.0);
@@ -194,8 +192,12 @@ fn the_strips_menu_switches_scrolling_past_the_end() {
     assert!(harness.state().view.view_top().abs() < 0.01, "the right click leaves the view");
     harness.click_at(harness.get_by_label(PAST_END_LABEL).rect());
     settle(&mut harness);
-    assert_eq!(past_end::pending_switch(&harness.ctx), Some(true), "switched on, to be saved");
-    assert!(past_end::is_on(&harness.ctx), "the diff follows at once");
+    let events = &harness.state().events;
+    assert!(
+        matches!(events[..], [DiffEvent::SwitchPastEnd(true)]),
+        "switched on, for the tab to save: {events:?}"
+    );
+    assert!(harness.state().past_end, "the saved setting is on");
     for _ in 0..4 {
         wheel(&mut harness, -5_000.0);
     }
@@ -238,8 +240,7 @@ fn new_only_and_an_added_file_scroll_past_the_end() {
         ("added file", added_fixture(LINES), LINES),
     ];
     for (name, fixture, last_line) in cases {
-        let mut harness = harness(fixture);
-        past_end::set_for_test(&harness.ctx, true);
+        let mut harness = harness(Fixture { past_end: true, ..fixture });
         settle(&mut harness);
         assert!(end(&harness) > HEIGHT, "{name}: several screens long");
         for _ in 0..4 {

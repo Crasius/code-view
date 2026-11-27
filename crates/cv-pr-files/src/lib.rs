@@ -55,10 +55,10 @@ use self::tab::review::stepping::{self, Stepping};
 use self::tab::review::viewed::{ViewedMarks, ViewedToggle};
 use self::tab::start::{self, Start};
 use self::tab::summary_pane::SummaryPane;
-use self::tab::{layout, rendered};
+use self::tab::{choices, layout, rendered};
 use cv_code::diff_rows::Layout;
 use cv_editor::markdown_editor;
-use cv_pr_diff::diff_view::{DiffEvent, DiffInputs, DiffView, LineRequest};
+use cv_pr_diff::diff_view::{ChangePosition, DiffEvent, DiffInputs, DiffView, LineRequest};
 use cv_pr_diff::{find, whitespace_notice};
 use cv_pr_rendered::file_header::{self, HeaderAction};
 use cv_pr_rendered::preview::Preview;
@@ -591,6 +591,7 @@ impl FilesTab {
             line_spans,
             show_threads: settings.show_comments_in_diff,
             find: find::FindInputs::of(settings),
+            past_end: settings.scroll_past_end,
         };
         self.view.show(ui, &inputs, &mut env.services.settings.panes.diff_split, env.threads_ui)
     }
@@ -615,6 +616,7 @@ impl FilesTab {
                 self.switch_layout(env.services, target);
             }
             Some(DiffEvent::SplitResized) => env.services.save_settings(),
+            Some(DiffEvent::SwitchPastEnd(is_on)) => choices::switch_past_end(env.services, is_on),
             Some(DiffEvent::Create { key, thread }) => {
                 env.threads_ui.post_new_thread(&key, thread, env.session, env.services);
             }
@@ -761,11 +763,9 @@ struct FileState {
     is_previewing: bool,
     /// A text diff with changes is on screen.
     shows_diff: bool,
-    /// (change in focus, number of changes) of the text diff on screen, else of the rendered one:
-    /// a rendered Markdown diff counts and steps through its changes as the text diff does.
-    changes: Option<(usize, usize)>,
-    /// (change in focus, number of changes) of the rendered diff on screen.
-    rendered_changes: Option<(usize, usize)>,
+    /// The text diff's change position, else the rendered diff's (it steps through changes too).
+    changes: Option<ChangePosition>,
+    rendered_changes: Option<ChangePosition>,
     whole_file: Option<DiffSide>,
     /// "Ignore whitespace" left the file without changes.
     hides_whitespace: bool,

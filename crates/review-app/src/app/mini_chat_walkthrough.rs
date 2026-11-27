@@ -21,10 +21,10 @@ use super::assistant_script::{
 };
 use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
 use super::walkthrough::{app, click_now, shows_file_view, type_into, wait_for_link, wait_until};
-use cv_code::diff_paint::flashed_lines;
 use cv_pr_assistant::mini::{
     self, ANSWERING, CARD_LABEL, FOLLOW_UP, NEXT, OPEN, OPEN_AT_HEAD, PREVIOUS, SHRINK, SKIP_NEXT,
 };
+use cv_pr_diff::diff_view::flashed_lines;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 

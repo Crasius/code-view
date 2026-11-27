@@ -324,6 +324,7 @@ fn show_diff(ui: &mut egui::Ui, state: &mut DiffState) {
         line_spans: state.line_spans.as_ref(),
         show_threads: true,
         find: FindInputs::default(),
+        past_end: true,
     };
     state.view.show(ui, &inputs, &mut state.split, &mut state.threads_ui);
 }

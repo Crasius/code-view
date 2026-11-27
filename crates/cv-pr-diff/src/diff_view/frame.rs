@@ -25,7 +25,7 @@ use cv_widgets::surfaces;
 
 #[expect(
     clippy::struct_excessive_bools,
-    reason = "four independent settings of the file view (wrap, may comment, comments outside hunks, show comments), no state machine"
+    reason = "independent settings of the file view (wrap, may comment, comments outside hunks, show comments, scroll past the end), no state machine"
 )]
 pub struct DiffInputs<'a> {
     pub diff: &'a Arc<FileDiff>,
@@ -47,6 +47,9 @@ pub struct DiffInputs<'a> {
     pub show_threads: bool,
     /// Whether the selection's occurrences are marked (the app's setting).
     pub find: FindInputs,
+    /// "Scroll past the end": the rows hold room below the last one (see
+    /// [`past_end`](crate::diff_overview::past_end)).
+    pub past_end: bool,
 }
 
 impl DiffInputs<'_> {
@@ -184,10 +187,6 @@ impl Embedded {
         threads_ui: &mut ThreadsUi,
         has_keyboard: bool,
     ) -> EmbeddedOutput {
-        #[cfg(any(test, feature = "test-support"))]
-        {
-            view.composer_card = None;
-        }
         view.place.is_embedded = true;
         view.rebuild_rows(ui, inputs, threads_ui);
         view.place.viewport.0 = self.local_view();
@@ -227,7 +226,7 @@ impl Embedded {
             }
             view.track_pointer(ui, &background, &frame, inputs);
             let local = view.place.viewport.0;
-            let painted = view.paint_rows(ui, &frame, local, inputs, threads_ui);
+            let event = view.paint_rows(ui, &frame, local, inputs, threads_ui);
             if let Some(offset) = view.selecting.edge_scroll(
                 ui,
                 self.view,
@@ -249,13 +248,7 @@ impl Embedded {
             };
             #[expect(clippy::float_cmp, reason = "the splitter writes a new share only when moved")]
             let is_moved = split != self.split;
-            EmbeddedOutput {
-                event: painted.0,
-                split: is_moved.then_some(split),
-                split_committed: committed,
-                #[cfg(any(test, feature = "test-support"))]
-                rows: painted.1,
-            }
+            EmbeddedOutput { event, split: is_moved.then_some(split), split_committed: committed }
         })
         .inner
     }
@@ -276,9 +269,6 @@ pub struct EmbeddedOutput {
     pub split: Option<f32>,
     /// The user finished moving it.
     pub split_committed: bool,
-    /// Code rows painted, for the tests that hold the summary to what is on screen.
-    #[cfg(any(test, feature = "test-support"))]
-    pub rows: usize,
 }
 
 /// The visible part of the rows, as laying them out takes it.

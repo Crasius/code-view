@@ -14,7 +14,7 @@ use cv_syntax::grammar;
 use cv_syntax::highlight::{self, LineSpans};
 use egui_kittest::Harness;
 use review_core::{
-    DiffSide, NewThread, ProviderKind, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus,
+    DiffSide, ProviderKind, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus,
 };
 use review_git::FileDiff;
 use review_store::{PaneSizes, ThemePreference};
@@ -134,7 +134,7 @@ impl fmt::Display for Cart {
 
 #[expect(
     clippy::struct_excessive_bools,
-    reason = "independent inputs of the diff view a test sets one by one (contents arrived, wrap, comments outside hunks, show comments), no state machine"
+    reason = "independent inputs of the diff view a test sets one by one (contents arrived, wrap, comments outside hunks, show comments, scroll past the end), no state machine"
 )]
 pub struct Fixture {
     pub view: DiffView,
@@ -148,9 +148,8 @@ pub struct Fixture {
     pub threads_ui: ThreadsUi,
     /// The old side's share of a side-by-side diff.
     pub split: f32,
-    pub events: Vec<&'static str>,
-    /// Comments the view asked to create.
-    pub created: Vec<NewThread>,
+    /// What the view asked for, in order.
+    pub events: Vec<DiffEvent>,
     /// GitHub takes comments only on lines of the diff's hunks.
     pub can_comment_outside_hunks: bool,
     /// Long lines wrap at the pane's width.
@@ -161,6 +160,8 @@ pub struct Fixture {
     pub show_threads: bool,
     /// "Highlight other occurrences of the selection".
     pub find: FindInputs,
+    /// "Scroll past the end", which the strip's menu switches.
+    pub past_end: bool,
 }
 
 impl Fixture {
@@ -180,6 +181,7 @@ impl Fixture {
             font_size,
             show_threads,
             find,
+            past_end,
             ..
         } = self;
         let threads: Vec<&ReviewThread> = threads.iter().collect();
@@ -197,6 +199,7 @@ impl Fixture {
             line_spans: None,
             show_threads: *show_threads,
             find: *find,
+            past_end: *past_end,
         };
         view.show(ui, &inputs, split, threads_ui)
     }
@@ -240,12 +243,12 @@ pub fn fixture_of(layout: Layout, old: Option<&str>, new: Option<&str>) -> Fixtu
         threads_ui: ThreadsUi::for_tests(ProviderKind::GitHub),
         split: PaneSizes::DEFAULT.diff_split,
         events: Vec::new(),
-        created: Vec::new(),
         can_comment_outside_hunks: true,
         wrap: false,
         font_size: 13.0,
         show_threads: true,
         find: FindInputs::default(),
+        past_end: true,
     }
 }
 
@@ -283,21 +286,14 @@ pub fn harness_sized(fixture: Fixture, size: [f32; 2]) -> Harness<'static, Fixtu
         )
 }
 
-/// Shows the fixture's diff the way the files tab does and records what the view asks for.
+/// Shows the fixture's diff the way the files tab does and records what the view asks for; a
+/// switch of "Scroll past the end" sets it, as the tab saves it.
 pub fn show_diff(ui: &mut egui::Ui, state: &mut Fixture) {
     if let Some(event) = state.show(ui) {
-        state.events.push(match event {
-            DiffEvent::Thread(_) => "thread",
-            DiffEvent::Create { thread, .. } => {
-                state.created.push(thread);
-                "create"
-            }
-            DiffEvent::ColorAnyway => "color anyway",
-            DiffEvent::RetryContents => "retry",
-            DiffEvent::SwitchLayout(Layout::Inline) => "show inline",
-            DiffEvent::SwitchLayout(_) => "switch layout",
-            DiffEvent::SplitResized => "split resized",
-        });
+        if let DiffEvent::SwitchPastEnd(is_on) = event {
+            state.past_end = is_on;
+        }
+        state.events.push(event);
     }
 }
 

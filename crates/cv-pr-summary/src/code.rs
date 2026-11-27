@@ -98,6 +98,8 @@ pub fn card_inputs<'a>(
         line_spans: spans,
         show_threads: inputs.show_threads,
         find: FindInputs::default(),
+        // A card scrolls with the summary, which holds no room past its rows.
+        past_end: false,
     }
 }
 
@@ -142,7 +144,7 @@ pub fn show(
         split: output.split,
         split_committed: output.split_committed,
         #[cfg(test)]
-        rows: output.rows,
+        rows: view.painted_rows(),
         height: view.height(),
         scroll: view.take_scroll_request(),
         has_selection: view.has_selection(),

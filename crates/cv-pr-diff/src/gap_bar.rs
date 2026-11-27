@@ -32,6 +32,18 @@ pub fn background(palette: &Palette) -> Color32 {
     mix(palette.surface, palette.accent, if palette.is_dark { 0.10 } else { 0.06 })
 }
 
+/// The gap bar's band at `rect`: `fill` framed by an accent edge above and below. The rendered
+/// diff's fold bar paints the same band.
+pub fn paint_band(painter: &egui::Painter, rect: Rect, palette: &Palette, fill: Color32) {
+    painter.rect_filled(rect, 0, fill);
+    let edge = Stroke::new(
+        1.0,
+        mix(palette.surface, palette.accent, if palette.is_dark { 0.22 } else { 0.16 }),
+    );
+    painter.hline(rect.x_range(), rect.top() + 0.5, edge);
+    painter.hline(rect.x_range(), rect.bottom() - 0.5, edge);
+}
+
 /// A compact diff's unchanged lines left out: a thin band in the bar's tint, dots in both number
 /// columns.
 pub fn paint_separator(painter: &egui::Painter, rect: Rect, metrics: &Metrics, palette: &Palette) {
@@ -61,13 +73,7 @@ pub fn show(
 ) -> Option<Expand> {
     let palette = theme::palette(ui.ctx());
     let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
-    painter.rect_filled(rect, 0, background(&palette));
-    let edge = Stroke::new(
-        1.0,
-        mix(palette.surface, palette.accent, if palette.is_dark { 0.22 } else { 0.16 }),
-    );
-    painter.hline(rect.x_range(), rect.top() + 0.5, edge);
-    painter.hline(rect.x_range(), rect.bottom() - 0.5, edge);
+    paint_band(&painter, rect, &palette, background(&palette));
 
     let hidden = bar.reveal.hidden(bar.gap);
     let mut expand = None;

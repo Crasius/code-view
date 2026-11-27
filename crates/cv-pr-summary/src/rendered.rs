@@ -232,6 +232,8 @@ fn inputs<'a>(model: &'a Arc<MarkdownModel>, frame: &RenderedFrame<'a>) -> Rende
         can_comment: inputs.can_comment,
         threads: frame.threads,
         show_threads: inputs.show_threads,
+        // A card scrolls with the summary, which holds no room past its rows.
+        past_end: false,
     }
 }
 

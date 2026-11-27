@@ -25,6 +25,7 @@ use review_store::{AppSettings, DiffLayout};
 use crate::preview::Preview;
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, icons, style};
+pub use cv_pr_diff::diff_view::ChangePosition;
 use cv_pr_diff::diff_view::Direction;
 use cv_services::Services;
 use cv_widgets::elide::text_width;
@@ -35,6 +36,7 @@ use cv_widgets::{buttons, glyph};
 /// The viewed toggle's hints, in this bar and in focus mode's strip.
 pub const MARK_VIEWED_HINT: &str = concat!("Mark as viewed (", shortcut!(alt "V"), ")");
 pub const UNMARK_VIEWED_HINT: &str = concat!("Viewed: click or ", shortcut!(alt "V"), " to unmark");
+pub const NEXT_CHANGE_HINT: &str = "Next change (N or F7)";
 pub const PREVIOUS_CHANGE_HINT: &str =
     concat!("Previous change (P or ", shortcut!(shift "F7"), ")");
 /// Why the Full width switch rests over a rendered Markdown diff side by side.
@@ -53,9 +55,9 @@ pub struct HeaderAction {
 pub struct HeaderInputs<'a> {
     pub file: &'a ChangedFile,
     pub is_viewed: bool,
-    /// (1-based change in focus or 0, number of changes) of the diff on screen; `None` while there
+    /// Where the change in focus is among the changes of the diff on screen; `None` while there
     /// is none (loading, an image, a binary file), which disables the diff's controls.
-    pub changes: Option<(usize, usize)>,
+    pub changes: Option<ChangePosition>,
     /// The diff on screen is a rendered Markdown diff: layout, context and the change arrows
     /// apply (the context counts blocks), whitespace does not, and the wrap switch's slot holds
     /// the reading column's Full width switch.
@@ -433,12 +435,12 @@ fn context_width(ui: &Ui, settings: &AppSettings) -> f32 {
     widest + spacing.icon_spacing + spacing.icon_width + spacing.button_padding.x * 2.0
 }
 
-pub fn position_text((current, total): (usize, usize)) -> String {
+pub fn position_text(ChangePosition { current, total }: ChangePosition) -> String {
     match (current, total) {
         (_, 0) => "No changes".to_owned(),
-        (0, 1) => "1 change".to_owned(),
-        (0, total) => format!("{} changes", group_digits(total)),
-        (current, total) => format!("{current} of {}", group_digits(total)),
+        (None, 1) => "1 change".to_owned(),
+        (None, total) => format!("{} changes", group_digits(total)),
+        (Some(index), total) => format!("{} of {}", index + 1, group_digits(total)),
     }
 }
 
