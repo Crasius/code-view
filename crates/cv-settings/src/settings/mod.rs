@@ -40,7 +40,6 @@ use egui::{Key, KeyboardShortcut, Modifiers, RichText, Stroke, Ui, UiBuilder};
 use review_core::ProviderKind;
 
 use self::category::Category;
-pub use self::connections::take_removed as take_removed_connection;
 use self::connections::{ConnectionList, ListAction};
 use self::rows::{Placement, Row, RowId};
 use self::shortcuts::ShortcutGroup;
@@ -163,6 +162,13 @@ impl SettingsPage {
     /// A connection setup is open: leaving now would drop what was entered.
     pub fn is_editing(&self) -> bool {
         self.wizard.is_some()
+    }
+
+    /// The connection removed this frame, at most once. The app closes its pull request pages and
+    /// only then lets retention delete its data, so no last save of a page (drafts, read marks)
+    /// lands after the deletion and brings its folder back.
+    pub fn take_removed_connection(&mut self) -> Option<String> {
+        self.connections.take_removed()
     }
 
     /// The sign-in tools the setup offers: the ones on this system's `PATH`, or in test builds

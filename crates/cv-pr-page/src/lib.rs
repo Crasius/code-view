@@ -14,7 +14,6 @@ pub mod checkout;
 mod commits;
 mod header;
 mod header_reveal;
-mod hibernate;
 mod live;
 mod merge_button;
 mod overview;
@@ -129,6 +128,12 @@ impl PullRequestPage {
             session.revisit(services);
         }
         self.header_reveal.reset();
+    }
+
+    /// The page went out of sight: its Files tab drops what loads again and keeps what the user
+    /// did (`cv_pr_files`, `tab/hibernate.rs`).
+    pub fn hibernate(&mut self) {
+        self.files.hibernate();
     }
 
     /// The languages whose compiled grammars the page keeps.

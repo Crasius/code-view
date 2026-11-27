@@ -212,13 +212,6 @@ pub fn debug_weight<T: Debug + ?Sized>(value: &T) -> usize {
     counter.0 + size_of_val(value)
 }
 
-/// A page the app keeps out of sight for a quick return: it lets go of what loads again (its
-/// caches) and keeps what the user did on it. Pull request pages implement it
-/// (`files::tab::hibernate`).
-pub trait Hibernate {
-    fn hibernate(&mut self);
-}
-
 /// A cache bounded by bytes: each entry is weighed when it comes in, and the least recently used
 /// entries leave once the total is over the budget. An entry larger than half the budget is not
 /// kept: it would push out everything else.

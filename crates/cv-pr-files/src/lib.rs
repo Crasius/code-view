@@ -176,6 +176,11 @@ impl FilesTab {
         self.diffs.has_cached_diff(path)
     }
 
+    /// The page went out of sight: see [`tab::hibernate`].
+    pub fn hibernate(&mut self) {
+        tab::hibernate::hibernate(self);
+    }
+
     /// The progress line or a toast asked for the Overview since the last call.
     pub fn take_overview_request(&mut self) -> bool {
         self.stepping.take_overview_request()
@@ -626,15 +631,11 @@ impl FilesTab {
     /// The original version of a thread, while one is open (or was asked for): true when it took
     /// the place of the file view this frame.
     fn show_origin(&mut self, ui: &mut egui::Ui, env: &mut Env<'_>) -> bool {
-        match origin::show(&mut self.origin, ui, env) {
-            Shown::No => false,
-            Shown::Yes(jump) => {
-                if let Some(jump) = jump {
-                    self.jump(jump);
-                }
-                true
-            }
+        let Shown::Yes(jump) = origin::show(&mut self.origin, ui, env) else { return false };
+        if let Some(jump) = jump {
+            self.jump(jump);
         }
+        true
     }
 
     /// Closes the open file and shows the summary of `folder` (`""` for every changed file).
@@ -731,8 +732,7 @@ impl FilesTab {
 
     /// The open file's index in `files`.
     fn selected_index(&self, files: &[ChangedFile]) -> Option<usize> {
-        let path = self.selected_path.as_ref()?;
-        files.iter().position(|file| &file.path == path)
+        files.iter().position(|file| self.selected_path.as_ref() == Some(&file.path))
     }
 }
 

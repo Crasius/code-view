@@ -9,7 +9,7 @@
 pub mod choices;
 pub mod download;
 pub mod file_diffs;
-mod hibernate;
+pub(crate) mod hibernate;
 pub mod layout;
 pub mod notices;
 pub mod origin;

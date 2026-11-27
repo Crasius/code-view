@@ -11,10 +11,8 @@ use cv_lists::pull_request_list::{ListSource, PullRequestListPage};
 use cv_lists::repositories::RepositoriesPage;
 use cv_pr_page::PullRequestPage;
 use cv_pr_session::session::hand_over_row;
-use cv_runtime::cache::memory::Hibernate as _;
 use cv_runtime::history::swipe::{Swipe, SwipeFrame};
 use cv_runtime::history::{History, Place, Step, Visit};
-use cv_runtime::intents::AddRequest;
 use cv_runtime::links::pull_request_link;
 use cv_runtime::route::{
     Landing, Navigator, Origin, PullRequestKey, PullRequestTab, Request, Route,
@@ -23,7 +21,7 @@ use cv_runtime::toasts::{ToastAction, WaysOut};
 use cv_runtime::trail::Trail;
 use cv_services::Services;
 use cv_settings::onboarding;
-use cv_settings::settings::{self, SettingsPage};
+use cv_settings::settings::SettingsPage;
 use cv_shell::attention::{Attention, Cue};
 use cv_shell::browser::passes;
 use cv_shell::focus_mode;
@@ -380,24 +378,16 @@ impl ReviewApp {
     /// Opens a pull request from its web URL (a typed or pasted link, or a forwarded one that no
     /// connection serves).
     fn open_link(&mut self, url: &str) {
-        match pull_request_link::resolve(url, self.services.connections.all()) {
-            Ok(key) => self.navigator.jump(Route::PullRequest(key)),
-            Err(message) => {
-                self.services.toasts.error(message, self.unopened_link_ways_out(url));
-                self.navigator.jump(Route::Settings);
-            }
+        if let Some(key) = pull_request_link::resolve(url, self.services.connections.all()) {
+            self.navigator.jump(Route::PullRequest(key));
+            return;
         }
-    }
-
-    /// A link no connection opens: on a platform's cloud host the connection setup for it and
-    /// the page on its platform, elsewhere the page in the browser.
-    fn unopened_link_ways_out(&self, url: &str) -> WaysOut {
-        let cloud = pull_request_link::unconnected_cloud_link(url, self.services.connections.all());
-        let Some((kind, organization)) = cloud else {
-            return ToastAction::open_in_browser(url.trim()).into();
-        };
-        let add = ToastAction::add_connection(AddRequest { kind, organization });
-        WaysOut::new(add).and(ToastAction::open_on_platform(kind, url.trim()))
+        let message = format!(
+            "No saved connection can open {}. Add a connection for its host here.",
+            url.trim()
+        );
+        self.services.toasts.error(message, unopened_link_ways_out(url));
+        self.navigator.jump(Route::Settings);
     }
 
     /// A pull request link copied in another app, read when the window comes to the front, and
@@ -708,6 +698,17 @@ fn history_input(ctx: &egui::Context) -> Option<Step> {
     })
 }
 
+/// A link no connection opens: on a platform's cloud host the connection setup for it and the page
+/// on its platform, elsewhere the page in the browser.
+fn unopened_link_ways_out(url: &str) -> WaysOut {
+    let Some(request) = pull_request_link::unconnected_cloud_link(url) else {
+        return ToastAction::open_in_browser(url.trim()).into();
+    };
+    let kind = request.kind;
+    WaysOut::new(ToastAction::add_connection(request))
+        .and(ToastAction::open_on_platform(kind, url.trim()))
+}
+
 impl eframe::App for ReviewApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         // The test watchdog says whether a hung walkthrough was inside a frame or between two.
@@ -753,7 +754,7 @@ impl eframe::App for ReviewApp {
                 self.show_content(ui, is_focused);
             });
         self.autoscroll.set_content_rect(content.response.rect);
-        if let Some(connection_id) = settings::take_removed_connection(&ctx) {
+        if let Some(connection_id) = self.settings.take_removed_connection() {
             self.forget_connection(&connection_id);
         }
         // A composer's mode switch chose the editor its platform's comments open in.
