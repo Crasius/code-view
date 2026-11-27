@@ -11,6 +11,7 @@ use cv_media::image_clipboard::{self, Original};
 use cv_media::image_state::{ImageFailure, ImageState};
 use cv_media::picture::Picture;
 use cv_media::video;
+use cv_testkit::Clicks;
 use egui::accesskit::Role;
 use egui::{Context, vec2};
 use egui_kittest::Harness;
@@ -185,7 +186,7 @@ fn a_failed_image_says_why_and_offers_retry_and_the_browser() {
     harness.get_by_label("Not found (404) · x.test");
     harness.get_by_role_and_label(Role::Button, "Open in browser");
     assert!(harness.query_by_label("Fix token").is_none(), "a missing image is no token problem");
-    harness.get_by_role_and_label(Role::Button, "Retry").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Retry").rect());
     harness.run_steps(2);
     assert_eq!(*harness.state().source.retried.lock().unwrap(), ["chart.png"]);
 }
@@ -204,7 +205,7 @@ fn a_private_image_offers_the_token_fix_on_a_card_of_the_usual_size() {
     harness.run_steps(3);
     harness.get_by_label("Sign-in needed: this image is private · github.com");
     harness.get_by_role_and_label(Role::Button, "Open in browser");
-    harness.get_by_role_and_label(Role::Button, "Fix token").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Fix token").rect());
     harness.run_steps(2);
     assert_eq!(*harness.state().source.fixes.lock().unwrap(), 1);
     let card = harness
@@ -238,7 +239,7 @@ fn clicking_an_image_opens_the_lightbox_and_escape_closes_it() {
     let ctx = harness.ctx.clone();
     harness.state().source.ready(&ctx, "shot.png", vec2(300.0, 200.0));
     harness.run_steps(3);
-    harness.get_by_role_and_label(Role::Image, "Image shot").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Image, "Image shot").rect());
     harness.run_steps(3);
     harness.get_by_role_and_label(Role::Button, "Copy link");
     harness.get_by_role_and_label(Role::Button, "Close (Esc)");
@@ -302,7 +303,7 @@ fn a_video_shows_its_controls_and_plays_in_place() {
     assert_eq!(video.size(), vec2(320.0, 180.0));
     harness.get_by_role_and_label(Role::Button, "Play");
     harness.get_by_label("Position, 0:00");
-    harness.get_by_role_and_label(Role::Image, "Video demo").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Image, "Video demo").rect());
     harness.run_steps(3);
     assert!(harness.query_by_label("Close (Esc)").is_none(), "a video opens no lightbox");
 }
@@ -321,7 +322,7 @@ fn a_video_without_ffmpeg_offers_the_install_command() {
     harness.state().source.set("demo.webm", ImageState::Failed(Arc::new(failure)));
     harness.run_steps(3);
     harness.get_by_role_and_label(Role::Button, "Retry");
-    harness.get_by_role_and_label(Role::Button, "Copy install command").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Copy install command").rect());
     harness.run_steps(1);
     let copied = harness.output().platform_output.commands.iter().any(|command| {
         matches!(command, egui::OutputCommand::CopyText(text)
@@ -340,18 +341,20 @@ fn a_ready_image_copies_from_its_context_menu_and_a_loading_one_does_not() {
     harness.state().source.ready(&ctx, "shot.png", vec2(300.0, 200.0));
     harness.run_steps(3);
 
-    harness.get_by_role_and_label(Role::Image, "Loading image later").click_secondary();
+    harness.secondary_click_at(
+        harness.get_by_role_and_label(Role::Image, "Loading image later").rect(),
+    );
     harness.run_steps(2);
     assert!(harness.query_by_label("Copy image").is_none(), "nothing to copy while loading");
     harness.key_press(egui::Key::Escape);
     harness.run_steps(2);
 
-    harness.get_by_role_and_label(Role::Image, "Image shot").click_secondary();
+    harness.secondary_click_at(harness.get_by_role_and_label(Role::Image, "Image shot").rect());
     harness.run_steps(2);
     let top = |label: &str| harness.get_by_label(label).rect().top();
     assert!(top("View image") < top("Copy image"), "after View image");
     assert!(top("Copy image") < top("Copy image link"), "before the link entries");
-    harness.get_by_label("Copy image").click();
+    harness.click_at(harness.get_by_label("Copy image").rect());
     harness.run_steps(2);
     assert_eq!(image_clipboard::requested(&ctx), [Arc::from(BODY)], "the image's own body");
     assert!(harness.query_by_label("Copy image").is_none(), "the menu closed");
@@ -364,12 +367,12 @@ fn the_lightbox_copies_its_image_on_ctrl_c() {
     let ctx = harness.ctx.clone();
     harness.state().source.ready(&ctx, "shot.png", vec2(300.0, 200.0));
     harness.run_steps(3);
-    harness.get_by_role_and_label(Role::Image, "Image shot").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Image, "Image shot").rect());
     harness.run_steps(3);
     harness.event(egui::Event::Copy);
     harness.run_steps(1);
     assert_eq!(image_clipboard::requested(&ctx), [Arc::from(BODY)]);
-    harness.get_by_role_and_label(Role::Button, "Copy image").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Copy image").rect());
     harness.run_steps(1);
     assert_eq!(image_clipboard::requested(&ctx).len(), 2, "the button copies too");
 }

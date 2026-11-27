@@ -2,6 +2,7 @@
 //! accessibility tree like a user. No network, no tokens.
 
 use cv_base::theme;
+use cv_testkit::Clicks;
 use cv_widgets::focus;
 use egui::Margin;
 use egui_kittest::Harness;
@@ -157,7 +158,9 @@ fn thread_states_show_their_cues_and_the_status_menu() {
 
     // The status pill is a menu with the states every platform has.
     let resolved_before = harness.query_all_by_label("Resolved").count();
-    harness.query_all_by_label("Status: Active").next().expect("an active thread").click();
+    harness.click_at(
+        harness.query_all_by_label("Status: Active").next().expect("an active thread").rect(),
+    );
     harness.run_steps(6);
     assert_eq!(
         harness.query_all_by_label("Resolved").count(),
@@ -186,13 +189,13 @@ fn a_collapsed_thread_opens_and_jumping_to_new_replies_marks_them_read() {
             states(),
         );
     harness.run_steps(2);
-    harness.get_by_label_contains("Resolved thread: ").click();
+    harness.click_at(harness.get_by_label_contains("Resolved thread: ").rect());
     harness.run_steps(2);
     assert!(
         harness.query_by_label_contains("Resolved thread: ").is_none(),
         "Show opens the whole card"
     );
-    harness.get_by_label("Jump to first new").click();
+    harness.click_at(harness.get_by_label("Jump to first new").rect());
     harness.run_steps(2);
     let scene = harness.state();
     let new = &scene.cards[1].1;
@@ -312,7 +315,7 @@ fn the_panel_steps_through_threads_with_the_keyboard() {
     assert!(harness.query_by_label("Unread 2").is_some(), "two threads have news");
     assert!(harness.query_by_label("Mine 2").is_some(), "threads the user wrote in");
     // A click in the panel hands it the arrow keys.
-    harness.get_by_label_contains("Mara Lind, lines 107–109").click();
+    harness.click_at(harness.get_by_label_contains("Mara Lind, lines 107–109").rect());
     harness.run_steps(2);
     assert_eq!(harness.state().revealed, ["p-cart-total"]);
     harness.key_press(egui::Key::ArrowDown);
@@ -325,7 +328,7 @@ fn the_panel_steps_through_threads_with_the_keyboard() {
         "files in tree order"
     );
     // Unread only.
-    harness.get_by_label("Unread 2").click();
+    harness.click_at(harness.get_by_label("Unread 2").rect());
     harness.run_steps(2);
     assert!(harness.state().filters.unread);
     assert!(
@@ -341,7 +344,7 @@ fn general_comment_opens_its_composer() {
     let mut harness = panel_harness(scene);
     harness.run_steps(20);
 
-    harness.get_by_label("General comment").click();
+    harness.click_at(harness.get_by_label("General comment").rect());
     harness.run_steps(10);
     assert!(harness.state().ui.panel.is_writing_general, "the click opens the composer");
     assert!(

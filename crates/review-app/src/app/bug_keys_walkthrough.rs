@@ -11,8 +11,8 @@ use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread};
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 const FIRST: &str = "src/a.rs";

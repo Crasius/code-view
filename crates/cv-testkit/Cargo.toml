@@ -19,6 +19,7 @@ review-core.workspace = true
 review-store.workspace = true
 egui.workspace = true
 reqwest.workspace = true
+egui_kittest.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

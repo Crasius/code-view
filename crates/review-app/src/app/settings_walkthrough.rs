@@ -15,12 +15,12 @@ use review_store::{AppPaths, ConnectionStore, DiffLayout, TreeSide};
 
 use super::ReviewApp;
 use super::action_e2e::app;
-use super::clicks::Clicks;
 use super::github_mock::GitHubHost;
 use super::provider_icons_walkthrough::scripted_provider;
 use super::tree_side_walkthrough as tree_side;
 use cv_runtime::route::Route;
 use cv_settings::onboarding::CliTools;
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
 
 const TIMEOUT: Duration = Duration::from_secs(60);

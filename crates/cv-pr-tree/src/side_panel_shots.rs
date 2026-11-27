@@ -5,6 +5,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use cv_testkit::Clicks;
 use egui::{Rect, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -190,9 +191,9 @@ fn category_dropdown_filters_with_mouse_and_keyboard() {
     assert_eq!(dropdown.accesskit_node().value().as_deref(), Some("All files, 356 files"));
 
     // Open, then "Only" on Tests: just the tests remain.
-    dropdown.click();
+    harness.click_at(dropdown.rect());
     harness.run_steps(2);
-    harness.get_by_label("Only Tests").click();
+    harness.click_at(harness.get_by_label("Only Tests").rect());
     harness.run_steps(2);
     assert_eq!(
         harness.state().tree.filter.categories.iter().copied().collect::<Vec<_>>(),
@@ -204,7 +205,7 @@ fn category_dropdown_filters_with_mouse_and_keyboard() {
     );
 
     // Checking Code as well combines both, the dropdown stays open for more picks.
-    harness.get_by_role_and_label(Role::CheckBox, "Code, 300 files").click();
+    harness.click_at(harness.get_by_role_and_label(Role::CheckBox, "Code, 300 files").rect());
     harness.run_steps(2);
     assert_eq!(
         harness.get_by_role(Role::ComboBox).accesskit_node().value().as_deref(),
@@ -212,7 +213,7 @@ fn category_dropdown_filters_with_mouse_and_keyboard() {
     );
 
     // "All files" clears the filter.
-    harness.get_by_role_and_label(Role::CheckBox, "All files, 356 files").click();
+    harness.click_at(harness.get_by_role_and_label(Role::CheckBox, "All files, 356 files").rect());
     harness.run_steps(2);
     assert!(harness.state().tree.filter.categories.is_empty());
 
@@ -247,8 +248,7 @@ fn category_dropdown_filters_with_mouse_and_keyboard() {
     );
 
     // The hide-viewed toggle is a pressed/unpressed button.
-    let toggle = harness.get_by_label("Hide viewed files");
-    toggle.click();
+    harness.click_at(harness.get_by_label("Hide viewed files").rect());
     harness.run_steps(2);
     assert!(harness.state().tree.filter.hide_viewed);
 }

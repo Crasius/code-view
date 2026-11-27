@@ -4,6 +4,7 @@
 //! no credential reaches the screen, and that the failure keeps its way out. No network, no
 //! tokens.
 
+use cv_testkit::Clicks;
 use egui::{Rect, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -156,10 +157,10 @@ fn the_loading_log_stays_put_overwrites_progress_and_keeps_retry_on_failure() {
         harness.query_by_label_contains("ghs_").is_none(),
         "the failure message is redacted on screen"
     );
-    harness.get_by_label("Retry").click();
+    harness.click_at(harness.get_by_label("Retry").rect());
     harness.run_steps(2);
     assert!(matches!(harness.state().clicked, Some(FailureAction::Retry)));
-    harness.get_by_label("Open pull request on GitHub").click();
+    harness.click_at(harness.get_by_label("Open pull request on GitHub").rect());
     harness.run_steps(2);
     assert!(matches!(harness.state().clicked, Some(FailureAction::Open)));
     let text = copied_log(&mut harness);
@@ -174,7 +175,7 @@ fn the_loading_log_stays_put_overwrites_progress_and_keeps_retry_on_failure() {
 
 /// Clicks "Copy log" and returns what went to the clipboard.
 fn copied_log(harness: &mut Harness<'_, Scene>) -> String {
-    harness.get_by_label("Copy log").click();
+    harness.click_at(harness.get_by_label("Copy log").rect());
     harness.step();
     let copied =
         harness.output().platform_output.commands.iter().find_map(|command| match command {

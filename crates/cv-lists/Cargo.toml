@@ -42,6 +42,7 @@ cv-base = { workspace = true, features = ["test-support"] }
 cv-pr-session = { workspace = true, features = ["test-support"] }
 cv-runtime = { workspace = true, features = ["test-support"] }
 cv-services = { workspace = true, features = ["test-support"] }
+cv-testkit.workspace = true
 cv-widgets = { workspace = true, features = ["test-support"] }
 egui_kittest.workspace = true
 time.workspace = true

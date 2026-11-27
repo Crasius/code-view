@@ -4,6 +4,7 @@
 //! attempt badge, and nothing drifts between frames.
 
 use cv_base::theme;
+use cv_testkit::Clicks;
 use egui::{Event, Key, Modifiers, Pos2, Rect, Vec2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -124,7 +125,9 @@ fn canvas(harness: &Harness<'_, State>) -> Rect {
 /// Clicks the control labelled `label` (not its tooltip, which comes later in the tree).
 fn click(harness: &mut Harness<'_, State>, label: &str, times: usize) {
     for _ in 0..times {
-        harness.get_all_by_label_contains(label).next().expect("the control is shown").click();
+        harness.click_at(
+            harness.get_all_by_label_contains(label).next().expect("the control is shown").rect(),
+        );
         harness.run();
     }
 }
@@ -240,7 +243,7 @@ fn a_job_opens_on_click_at_50_and_200_percent() {
             })
             .unwrap_or_else(|| panic!("a job row is on screen at {percent} %"));
         harness.state_mut().last = None;
-        harness.get_by_label(job).click();
+        harness.click_at(harness.get_by_label(job).rect());
         harness.run();
         assert_eq!(
             harness.state().last.as_deref(),
@@ -274,14 +277,14 @@ fn an_attempt_opens_from_the_badge_popup_at_50_and_200_percent() {
             "the badge is on screen at {percent} %: {badge:?}"
         );
         harness.state_mut().last = None;
-        harness.get_by_label(&badge_label).click();
+        harness.click_at(harness.get_by_label(&badge_label).rect());
         harness.run();
         let option = harness.get_by_label_contains("Attempt 1, opens on demand").rect();
         assert!(
             option.top() >= badge.top() - 1.0 && (option.top() - badge.bottom()).abs() < 120.0,
             "the list opens at the badge at {percent} %: {option:?} below {badge:?}"
         );
-        harness.get_by_label_contains("Attempt 1, opens on demand").click();
+        harness.click_at(harness.get_by_label_contains("Attempt 1, opens on demand").rect());
         harness.run();
         assert_eq!(
             harness.state().last.as_deref(),

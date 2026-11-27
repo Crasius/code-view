@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use cv_testkit::Clicks;
 use egui::{Event, Key, Modifiers, PointerButton, Pos2, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -98,7 +99,7 @@ fn diff_label<State>(harness: &Harness<'_, State>) -> String {
 fn post_comment<State>(harness: &mut Harness<'_, State>, body: &str) {
     harness.event(Event::Text(body.to_owned()));
     harness.step();
-    harness.get_by_role_and_label(Role::Button, "Comment").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Comment").rect());
     settle(harness);
 }
 
@@ -264,11 +265,12 @@ fn line_numbers_pick_lines_to_comment_on() {
     settle(&mut harness);
     assert!(harness.query_by_label_contains("Copy selection").is_some());
     // The menu opens at the pointer; the selection's own button sits in the gutter.
-    harness
+    let entry = harness
         .query_all_by_label(&comment_label)
         .find(|node| node.rect().left() >= on_last.x - 1.0)
         .expect("the menu's comment entry")
-        .click();
+        .rect();
+    harness.click_at(entry);
     settle(&mut harness);
     assert!(harness.query_by_label(&comment_label).is_some(), "the comment card names the lines");
     assert_eq!(
@@ -524,7 +526,7 @@ fn added_files_show_their_new_content_whole() {
     let (first, last) = numbers(&harness, (None, Some(3)), (None, Some(6)));
     click(&mut harness, first, Modifiers::NONE);
     click(&mut harness, last, Modifiers::SHIFT);
-    harness.get_by_label("Comment on lines 3–6").click();
+    harness.click_at(harness.get_by_label("Comment on lines 3–6").rect());
     settle(&mut harness);
     post_comment(&mut harness, "Should the doc comment mention the currency?");
     let anchor = harness.state().fixture.created[0].anchor.clone().expect("an inline comment");

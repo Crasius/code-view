@@ -29,11 +29,11 @@ use review_store::{AppSettings, HeaderMode, HeaderModes};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request};
-use super::clicks::Clicks;
 use super::github_mock::GitHubHost;
 use super::tree_side_walkthrough::{long_file, open_long_file};
 use cv_runtime::route::Route;
 use cv_settings::onboarding::CliTools;
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 const MERGE_OPTIONS: &str = "Merge options";

@@ -11,9 +11,9 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::action_e2e::{app, open_pull_request, press, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, TOKEN};
 use cv_media::image_clipboard::COPIED;
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 const IMAGE_PATH: &str = "/assets/screenshot.png";

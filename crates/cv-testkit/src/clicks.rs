@@ -1,4 +1,5 @@
-//! Pointer clicks for the whole-app walkthroughs that background work cannot take away.
+//! Pointer clicks for every kittest test, whole-app walkthrough or component test, that
+//! background work cannot take away.
 //!
 //! `egui_kittest`'s `Node::click` reads the node's place once and queues three events that
 //! `Harness::step` runs as three frames: the pointer moves there, the button goes down, the button
@@ -17,11 +18,17 @@
 //! the pointer's, so the pointer moves there in that frame. Where the release lands does not
 //! matter: egui counts a click for the widget that took the press, wherever it moved meanwhile.
 //! A real pointer has no such gap: the frame it presses in tests against the frame on screen.
+//!
+//! The root `clippy.toml` forbids `Node::click`, `click_secondary`, `click_button`,
+//! `click_modifiers` and `click_button_modifiers` in every crate. A test that needs the pointer to
+//! rest on a widget first (a hover-only button, a tooltip) moves it there with `Node::hover` and
+//! steps before it clicks.
 
 use egui::{Event, Modifiers, PointerButton, Pos2, Rect};
 use egui_kittest::Harness;
 
-pub(super) trait Clicks {
+/// Clicks queued against the frame the caller last read; see the module doc.
+pub trait Clicks {
     /// A primary click at the centre of `rect`, read from the last frame ([`Self::click_point`]).
     fn click_at(&self, rect: Rect) {
         self.click_point(rect.center(), PointerButton::Primary);

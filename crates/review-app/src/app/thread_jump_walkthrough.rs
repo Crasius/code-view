@@ -13,8 +13,8 @@ use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread};
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
 
 const TIMEOUT: Duration = Duration::from_secs(30);

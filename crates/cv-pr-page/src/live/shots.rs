@@ -1,6 +1,7 @@
 //! The live-update cards over a pull request page: both looks overlay the page without moving it;
 //! Reload and Later are real buttons and the pending card is announced as an alert. No network.
 
+use cv_testkit::Clicks;
 use egui::{Id, Rect, Role, pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -157,10 +158,10 @@ fn pending_card_announces_itself_with_reload_and_later() {
         Some("New changes pushed: 2 new commits by Dee Okafor, 1 new comment by Dee Okafor"),
         "screen readers hear about the push, politely"
     );
-    harness.get_by_role_and_label(Role::Button, "Later").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Later").rect());
     harness.run_steps(2);
     assert_eq!(harness.state().action, Some(BannerAction::Later));
-    harness.get_by_role_and_label(Role::Button, "Reload").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Reload").rect());
     harness.run_steps(2);
     assert_eq!(harness.state().action, Some(BannerAction::Reload));
     assert!(harness.query_by_label("New").is_some(), "the comment that came in live is marked");

@@ -24,9 +24,9 @@ use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use cv_settings::onboarding::CliTools;
 use cv_testkit as test_support;
+use cv_testkit::Clicks;
 use cv_widgets::numbers::number_prefix;
 
 const ROWS: u64 = 50;

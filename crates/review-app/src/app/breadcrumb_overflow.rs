@@ -10,12 +10,12 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use review_store::AppPaths;
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use cv_base::platform;
 use cv_runtime::route::{Landing, PullRequestKey, Route};
 use cv_runtime::trail::Trail;
 use cv_shell::top_bar;
 use cv_testkit as test_support;
+use cv_testkit::Clicks;
 use cv_widgets::focus;
 
 /// No connection by this id is saved: the pull request page shows its error and leaves the trail

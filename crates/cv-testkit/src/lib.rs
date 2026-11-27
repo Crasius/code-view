@@ -22,8 +22,8 @@
 //! It also holds the few things every test that waits or builds files needs, so each has one
 //! reason written down instead of a copy per test module: [`let_threads_run`] (the one way a test
 //! gives real threads time), [`git`] (fixture repositories), [`ScratchDir`] and [`remove_dir`],
-//! and [`use_bundled_fonts`] (the same text widths on every machine). [`frame_bench`] holds the
-//! headless frame-budget benchmarks.
+//! and [`use_bundled_fonts`] (the same text widths on every machine). [`Clicks`] is the one way a
+//! kittest test clicks. [`frame_bench`] holds the headless frame-budget benchmarks.
 //!
 //! A dev-only crate: the crates above `cv-widgets` take it as a dev-dependency, `cv-services` also as an
 //! optional dependency under its `test-support` feature (for its watchdog and hermetic checks).
@@ -33,9 +33,11 @@
 // (`frame_bench.rs`).
 #![expect(clippy::cast_possible_truncation, reason = "egui takes f32 seconds from the f64 clock")]
 
+mod clicks;
 pub mod frame_bench;
 mod trace;
 
+pub use clicks::Clicks;
 pub use trace::{Step, frame_ended, frame_started, step};
 
 use std::cell::{Cell, OnceCell};

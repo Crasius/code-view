@@ -2,6 +2,7 @@
 //! both drag directions opens in its final place from its first frame, a thread shows at its line
 //! and takes a reply and a resolve, and a draft survives its card scrolling out of view and back.
 
+use cv_testkit::Clicks;
 use egui::{Event, Modifiers, PointerButton, Pos2, Rect, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -219,7 +220,7 @@ fn assert_card_placed_by_the_drag(
 fn assert_posting_gives_a_new_thread(harness: &mut Harness<'_, Scene>, case: &str) {
     harness.event(Event::Text("Round before the tax.".to_owned()));
     harness.step();
-    harness.get_by_role_and_label(Role::Button, "Comment").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Comment").rect());
     settle(harness);
     let created = harness.state().events.iter().find_map(|event| match event {
         SummaryEvent::Create { thread, .. } => Some(thread.clone()),
@@ -274,17 +275,17 @@ fn a_thread_shows_at_its_line_in_its_card() {
     let gap = line_rect(scene, 7).top() - line_rect(scene, 6).bottom();
     assert!(gap > 60.0, "the thread sits between its line and the next one ({gap} apart)");
 
-    harness.get_by_role_and_label(Role::Button, "Resolve").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Resolve").rect());
     harness.run_steps(2);
     let resolved = harness.state().events.iter().any(|event| matches!(event, SummaryEvent::Thread(ThreadEvent::SetStatus { thread_id, .. }) if thread_id == "card-thread"));
     assert!(resolved, "Resolve in the card goes to the thread");
 
-    harness.get_by_role_and_label(Role::Button, "Reply").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Reply").rect());
     settle(&mut harness);
     harness.event(Event::Text("Done.".to_owned()));
     harness.step();
     let before = harness.state().events.len();
-    harness.get_by_role_and_label(Role::Button, "Reply").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Reply").rect());
     settle(&mut harness);
     let replied = harness.state().events[before..]
         .iter()
