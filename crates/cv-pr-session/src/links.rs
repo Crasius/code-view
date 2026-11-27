@@ -407,26 +407,16 @@ mod tests {
     use cv_markdown::{InApp, LinkResolver};
     use cv_runtime::links::link_target::{Here, Target, classify};
     use cv_services::linked::Status;
+    use cv_testkit::samples;
     use review_core::{Connection, ItemKind, ItemRef, LinkedItem, LinkedState, ProviderKind};
 
     use super::{Decision, LinkedEntry, PullRequestLinks, Sources, collect, decide};
 
-    fn connection(id: &str, kind: ProviderKind, base_url: &str) -> Connection {
-        Connection {
-            id: id.to_owned(),
-            name: id.to_owned(),
-            kind,
-            base_url: base_url.to_owned(),
-            organizations: Vec::new(),
-            token: None,
-        }
-    }
-
     fn connections() -> Vec<Connection> {
         vec![
-            connection("gh", ProviderKind::GitHub, "https://github.com"),
-            connection("gl", ProviderKind::GitLab, "https://gitlab.example.com"),
-            connection("ado", ProviderKind::AzureDevOps, "https://dev.azure.com"),
+            samples::connection("gh", ProviderKind::GitHub, "https://github.com"),
+            samples::connection("gl", ProviderKind::GitLab, "https://gitlab.example.com"),
+            samples::connection("ado", ProviderKind::AzureDevOps, "https://dev.azure.com"),
         ]
     }
 

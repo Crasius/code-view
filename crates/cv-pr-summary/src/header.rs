@@ -8,11 +8,12 @@ use review_store::DiffLayout;
 
 use super::{SummaryEvent, SummaryInputs};
 use cv_base::theme::{self, fonts, icons, style};
-use cv_pr_diff::notice::{self, Action};
 use cv_pr_rendered::file_header;
 use cv_widgets::crumb_fit::{self, CrumbWidth, Spacing};
 use cv_widgets::numbers::group_digits;
-use cv_widgets::{buttons, change_breakdown, focus, glyph, row};
+use cv_widgets::states::{self, Action};
+use cv_widgets::tabs::{self, Segment};
+use cv_widgets::{buttons, change_breakdown, elide, focus, glyph, row};
 
 /// Room the header keeps for the collapse button and the gap before the title when the layout
 /// choice and Preview show their labels.
@@ -131,36 +132,31 @@ fn controls(ui: &mut Ui, inputs: &SummaryInputs<'_>, counts: &Counts<'_>) -> Opt
 
 /// The header has the room for the layout choice's and Preview's labels.
 fn has_label_room(ui: &Ui) -> bool {
-    let labels: Vec<&str> = file_header::LAYOUTS
-        .iter()
-        .filter(|(layout, ..)| *layout != DiffLayout::NewOnly)
-        .map(|(_, _, label, _)| *label)
-        .collect();
-    let labelled = cv_widgets::tabs::segmented_width(ui, &labels)
+    let labelled = tabs::segments_width(ui, &layout_segments(true))
         + file_header::preview_switch_width(ui, true)
         + ui.spacing().item_spacing.x;
     ui.available_width() >= labelled + LAYOUT_LABELS_SPARE
 }
 
-/// The file header's Inline / Side by side choice (New only is the file view's own): labelled
-/// where the header has the room, icons otherwise. Returns the layout picked.
-fn layout_choice(ui: &mut Ui, current: DiffLayout, is_labelled: bool) -> Option<DiffLayout> {
-    let options: Vec<(DiffLayout, &str, &str, &str)> = file_header::LAYOUTS
+/// The file header's layouts but New only (the file view's own), with their labels or icons.
+fn layout_segments(is_labelled: bool) -> Vec<Segment<'static, DiffLayout>> {
+    file_header::LAYOUTS
         .iter()
-        .copied()
         .filter(|(layout, ..)| *layout != DiffLayout::NewOnly)
-        .collect();
+        .map(|&(layout, icon, label, hint)| {
+            let segment = Segment::new(layout, label).with_hint(hint);
+            if is_labelled { segment } else { segment.with_icon(icon) }
+        })
+        .collect()
+}
+
+/// The file header's Inline / Side by side choice: labelled where the header has the room, icons
+/// otherwise. Returns the layout picked.
+fn layout_choice(ui: &mut Ui, current: DiffLayout, is_labelled: bool) -> Option<DiffLayout> {
     // New only shows inline here.
     let mut chosen =
         if current == DiffLayout::SideBySide { DiffLayout::SideBySide } else { DiffLayout::Inline };
-    let changed = if is_labelled {
-        let labelled: Vec<(DiffLayout, &str, &str)> =
-            options.iter().map(|(layout, _, label, hint)| (*layout, *label, *hint)).collect();
-        cv_widgets::tabs::segmented_with_hints(ui, &mut chosen, &labelled)
-    } else {
-        cv_widgets::tabs::segmented_icons(ui, &mut chosen, &options)
-    };
-    changed.then_some(chosen)
+    tabs::segments(ui, &mut chosen, &layout_segments(is_labelled)).then_some(chosen)
 }
 
 /// The trail's levels as (folder path, label): "All files" for the root, then one per folder
@@ -242,9 +238,8 @@ fn crumb_separator(ui: &mut Ui, font: &FontId) {
 fn crumb(ui: &mut Ui, path: &str, label: &str, width: f32, is_current: bool) -> bool {
     let palette = theme::palette(ui.ctx());
     let font = FontId::proportional(style::BODY_SIZE);
-    let mut job = egui::text::LayoutJob::simple_singleline(label.to_owned(), font, palette.text);
-    job.wrap = egui::text::TextWrapping::truncate_at_width(width - CRUMB_PADDING.x * 2.0);
-    let galley = ui.painter().layout_job(job);
+    let galley =
+        elide::line(ui.painter(), label, font, palette.text, width - CRUMB_PADDING.x * 2.0);
     let is_cut = galley.elided;
     let sense = if is_current { Sense::hover() } else { Sense::click() };
     let (rect, response) = ui.allocate_exact_size(galley.size() + CRUMB_PADDING * 2.0, sense);
@@ -313,9 +308,9 @@ fn hidden_levels(
 pub fn empty_state(ui: &mut Ui, inputs: &SummaryInputs<'_>) -> Option<SummaryEvent> {
     let palette = theme::palette(ui.ctx());
     if inputs.is_filtered {
-        let actions = [Action { icon: icons::X, label: "Clear filters", is_primary: false }];
+        let actions = [Action::secondary(icons::X, "Clear filters")];
         let detail = "No changed file here matches the category, search or viewed filter.";
-        return notice::show(
+        return states::notice(
             ui,
             icons::FUNNEL,
             palette.text_secondary,
@@ -325,9 +320,8 @@ pub fn empty_state(ui: &mut Ui, inputs: &SummaryInputs<'_>) -> Option<SummaryEve
         )
         .map(|_| SummaryEvent::ClearFilters);
     }
-    let actions =
-        [Action { icon: icons::FOLDER_OPEN, label: "Show all changed files", is_primary: false }];
+    let actions = [Action::secondary(icons::FOLDER_OPEN, "Show all changed files")];
     let detail = "This folder has no changed files in this comparison.";
-    notice::show(ui, icons::FOLDER, palette.text_secondary, "No changes here", detail, &actions)
+    states::notice(ui, icons::FOLDER, palette.text_secondary, "No changes here", detail, &actions)
         .map(|_| SummaryEvent::OpenFolder(String::new()))
 }

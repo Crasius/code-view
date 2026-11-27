@@ -14,7 +14,7 @@ use cv_services::writes::Answer;
 use review_core::PullRequestState;
 use review_core::{
     Capabilities, PipelineJob, PipelineRun, Provider, ProviderError, ProviderKind,
-    PullRequestDetail, PullRequestSummary, ReviewThread, RunStatus, Timestamp,
+    PullRequestDetail, PullRequestSummary, ReviewThread, RunStatus, Timestamp, short_sha,
 };
 use review_git::{ChangedFile, CommitInfo, GitMirror};
 use review_store::retention::{Lease, MirrorUse};
@@ -675,10 +675,6 @@ struct StageLoad {
     loaded_for: (RunStatus, Option<Timestamp>),
 }
 
-fn short_sha(sha: &str) -> &str {
-    sha.get(..7).unwrap_or(sha)
-}
-
 /// The fetch found the pull request's source branch deleted on the remote (only platforms whose
 /// fetch refs include the branch itself can tell; the others report it through the state).
 fn is_source_gone(gone: &[String], source_branch: &str) -> bool {
@@ -711,13 +707,9 @@ mod tests {
             id: id.to_owned(),
             name: format!("Pipeline #{id}"),
             status: review_core::RunStatus::Running,
-            description: None,
-            web_url: None,
-            started_at: None,
-            finished_at: None,
             has_jobs: true,
             is_head: true,
-            reruns: Vec::new(),
+            ..review_core::PipelineRun::default()
         };
         let mut stages: HashMap<String, u8> =
             ["1001", "1002", "1003"].map(|id| (id.to_owned(), 0)).into();

@@ -4,7 +4,7 @@
 //! the button's measures live in `cv-pr-session`, below both.
 
 use cv_base::theme::{self, icons, motion, style};
-use cv_widgets::{focus, merge_strategy_icon, row};
+use cv_widgets::{focus, merge_strategy_icon, row, states};
 use egui::epaint::CornerRadius;
 use egui::{Align2, Color32, Rect, Response, Sense, Stroke, Ui, pos2, vec2};
 use review_core::{MergeStrategy, ProviderKind};
@@ -153,7 +153,7 @@ fn paint_label(
     );
     match look.strategy {
         _ if look.is_busy => {
-            egui::Spinner::new().size(icons::SIZE - 2.0).color(foreground).paint_at(ui, slot);
+            states::spinner(ui, slot, foreground);
         }
         _ if tone != Tone::Normal => {
             let icon = if tone == Tone::Failed { icons::WARNING_CIRCLE } else { icons::CLOCK };

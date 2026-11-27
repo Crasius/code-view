@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use egui::{Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
-use review_core::{FileCategory, ProviderKind, ReviewThread, ThreadAnchor};
+use review_core::{ProviderKind, ReviewThread, ThreadAnchor};
 use review_git::{ChangeKind, ChangedFile, DiffOptions, FileDiff};
 use review_store::{AppSettings, DiffLayout, ThemePreference};
 
@@ -29,18 +29,12 @@ use cv_widgets::{focus, surfaces};
 /// The window most walkthroughs show the summary in.
 pub(super) const SIZE: [f32; 2] = [1180.0, 860.0];
 
+/// `path` changed as `kind` with `counts` (added, deleted) lines, or not counted yet.
 pub(super) fn file(path: &str, kind: ChangeKind, counts: Option<(u32, u32)>) -> ChangedFile {
     ChangedFile {
-        path: path.into(),
-        old_path: None,
-        kind,
-        old_oid: "1".repeat(40),
-        new_oid: "2".repeat(40),
         additions: counts.map(|(added, _)| added),
         deletions: counts.map(|(_, deleted)| deleted),
-        is_binary: false,
-        category: FileCategory::Code,
-        whitespace_only: false,
+        ..ChangedFile::sample(path, kind)
     }
 }
 

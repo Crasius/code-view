@@ -289,7 +289,7 @@ impl PullRequestImages {
             }
             Resolved::Repository { commit, path } => {
                 let key = egui::epaint::util::hash(("git", self.scope, &commit, &path, video));
-                let place = format!("{path} at {}", commit.get(..8).unwrap_or(&commit));
+                let place = format!("{path} at {}", review_core::short_sha(&commit));
                 let git = self.git.clone()?;
                 let video = video_file(key);
                 Target { key, fetch: Fetch::Git { git, commit, path }, place, video }

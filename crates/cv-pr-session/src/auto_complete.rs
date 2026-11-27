@@ -206,10 +206,10 @@ fn lower_first(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use cv_testkit::samples;
     use review_core::{
-        AutoComplete, DiffStat, MergeStatus, MergeStrategy, PipelineRun, ProviderKind,
-        PullRequestDetail, PullRequestState, PullRequestSummary, ReviewVote, Reviewer, RunStatus,
-        UserIdentity,
+        AutoComplete, MergeStatus, MergeStrategy, PipelineRun, ProviderKind, PullRequestDetail,
+        ReviewVote, Reviewer, RunStatus, UserIdentity,
     };
 
     use super::{Mode, mode, state_text};
@@ -219,35 +219,7 @@ mod tests {
     }
 
     fn detail(merge_status: MergeStatus) -> PullRequestDetail {
-        PullRequestDetail {
-            summary: PullRequestSummary {
-                repository_key: "o/p/r".into(),
-                repository_name: "r".into(),
-                number: 7,
-                title: "T".into(),
-                author: person("author"),
-                state: PullRequestState::Open,
-                is_draft: false,
-                source_branch: "feature".into(),
-                target_branch: "main".into(),
-                created_at: time::OffsetDateTime::UNIX_EPOCH,
-                updated_at: None,
-                web_url: String::new(),
-                labels: Vec::new(),
-                reviewers: Vec::new(),
-                checks: None,
-                diff_stat: DiffStat::default(),
-                head_sha: None,
-                target_sha: None,
-            },
-            description: String::new(),
-            target_sha: "base".into(),
-            head_sha: "head".into(),
-            merge_status,
-            git_fetch_refs: Vec::new(),
-            closed_at: None,
-            auto_complete: None,
-        }
+        PullRequestDetail { merge_status, ..samples::detail("o/p/r", 7) }
     }
 
     fn run(status: RunStatus, is_head: bool) -> PipelineRun {
@@ -255,13 +227,9 @@ mod tests {
             id: "1".into(),
             name: "CI".into(),
             status,
-            description: None,
-            web_url: None,
-            started_at: None,
-            finished_at: None,
             has_jobs: true,
             is_head,
-            reruns: Vec::new(),
+            ..PipelineRun::default()
         }
     }
 

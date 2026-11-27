@@ -19,7 +19,7 @@ use super::testing::{
     SIZE, Scene, card_of, cards_shown, file, harness, key, settle, shop_files, ten_thousand_files,
 };
 use cv_runtime::background::Background;
-use cv_testkit::frame_bench::{Bench, PATTERNS, SCALES};
+use cv_testkit::frame_bench::{self, Bench, SCALES};
 
 #[test]
 fn folder_summary_walkthrough() {
@@ -290,13 +290,8 @@ fn frame_budget_summary() {
                 Bench::new(pixels_per_point, scene, |ui, scene: &mut Scene| scene.show(ui));
             let pointer = bench.ctx.content_rect().center();
             bench.warm_up(pointer);
-            for (pattern, speed) in PATTERNS {
-                let name = format!(
-                    "summary 10k files {layout_name} @{:.0}% {pattern}",
-                    pixels_per_point * 100.0
-                );
-                reports.push(bench.scroll_best(&name, pointer, vec2(0.0, -speed)));
-            }
+            let view = format!("summary 10k files {layout_name}");
+            reports.extend(bench.scroll_patterns(&view, pointer, vec2(0.0, -1.0)));
             println!(
                 "loads {layout_name} at {:.0}%: {}",
                 pixels_per_point * 100.0,
@@ -304,10 +299,5 @@ fn frame_budget_summary() {
             );
         }
     }
-    for report in &reports {
-        report.print();
-    }
-    for report in &reports {
-        report.assert_within_budget();
-    }
+    frame_bench::finish(&reports);
 }

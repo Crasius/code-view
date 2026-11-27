@@ -8,11 +8,8 @@ use std::time::{Duration, Instant};
 
 use cv_base::theme::{self, icons, style};
 use cv_widgets::progress_log::{self, LineKind, ProgressLog, format_duration, redact};
-use cv_widgets::{buttons, glyph};
-use egui::text::{LayoutJob, TextWrapping};
-use egui::{
-    Align, Color32, FontId, Galley, Layout, Margin, Rect, Sense, Ui, UiBuilder, pos2, vec2,
-};
+use cv_widgets::{buttons, elide, glyph, states};
+use egui::{Align, FontId, Layout, Margin, Rect, Sense, Ui, UiBuilder, pos2, vec2};
 use review_git::GitEvent;
 
 /// How often the elapsed time and the log refresh while loading.
@@ -244,7 +241,7 @@ fn header(ui: &mut Ui, progress: &PrepareProgress, now: Instant) {
             palette.error,
         );
     } else {
-        egui::Spinner::new().size(icons::SIZE - 2.0).color(palette.accent).paint_at(ui, slot);
+        states::spinner(ui, slot, palette.accent);
     }
     let step = progress.step;
     let title =
@@ -257,16 +254,16 @@ fn header(ui: &mut Ui, progress: &PrepareProgress, now: Instant) {
     );
     let text_left = slot.right() + style::SPACE_S;
     let text_width = (copy.rect.left() - style::SPACE_M - text_left).max(0.0);
-    let meta_galley = one_line(
-        ui,
+    let meta_galley = elide::line(
+        ui.painter(),
         &meta,
         FontId::proportional(style::SMALL_SIZE),
         palette.text_secondary,
         text_width,
     );
     let title_width = (text_width - meta_galley.size().x - style::SPACE_S).max(0.0);
-    let title_galley = one_line(
-        ui,
+    let title_galley = elide::line(
+        ui.painter(),
         &title,
         theme::fonts::semibold_font(style::BODY_SIZE),
         palette.text,
@@ -334,12 +331,6 @@ fn failure_block(ui: &mut Ui, failure: &Failure<'_>) -> Option<FailureAction> {
         }
     });
     action
-}
-
-fn one_line(ui: &Ui, text: &str, font: FontId, color: Color32, max_width: f32) -> Arc<Galley> {
-    let mut job = LayoutJob::simple_singleline(text.to_owned(), font, color);
-    job.wrap = TextWrapping::truncate_at_width(max_width);
-    ui.painter().layout_job(job)
 }
 
 #[cfg(test)]
