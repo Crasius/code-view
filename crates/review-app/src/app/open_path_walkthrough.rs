@@ -11,8 +11,8 @@ use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::action_e2e::{app, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost, NUMBER, TITLE};
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
 
 /// True once a mirror's bare repository exists in the app's cache.

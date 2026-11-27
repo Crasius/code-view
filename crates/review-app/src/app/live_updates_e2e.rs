@@ -8,8 +8,8 @@ use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_diff, open_pull_request, press, type_into, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{FILE, GitHubHost, THREAD_TEXT};
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 mod held;

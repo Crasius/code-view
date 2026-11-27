@@ -35,4 +35,12 @@ disallowed-methods = [
     { path = "tokio::runtime::Handle::block_on", reason = "blocks the thread on async work; spawn on cv_runtime::background (RS-DONT-06)" },
     { path = "std::process::Command::output", reason = "waits for the child; run it as tokio::process on the background runtime (RS-DONT-06)" },
     { path = "std::process::Command::status", reason = "waits for the child; run it as tokio::process on the background runtime (RS-DONT-06)" },
+    # Pointer clicks in tests: kittest's Node clicks move the pointer in a frame of their own and
+    # egui hit-tests the press against that frame, which the test never read; background work it
+    # takes in moves the widget away (crates/cv-testkit/src/clicks.rs). No call site is exempt.
+    { path = "egui_kittest::Node::click", reason = "the press hits a frame the test never read; use cv_testkit::Clicks::click_at(node.rect())" },
+    { path = "egui_kittest::Node::click_secondary", reason = "the press hits a frame the test never read; use cv_testkit::Clicks::secondary_click_at(node.rect())" },
+    { path = "egui_kittest::Node::click_button", reason = "the press hits a frame the test never read; use cv_testkit::Clicks::click_point(node.rect().center(), button)" },
+    { path = "egui_kittest::Node::click_modifiers", reason = "the press hits a frame the test never read; add a modifier click to cv_testkit::Clicks" },
+    { path = "egui_kittest::Node::click_button_modifiers", reason = "the press hits a frame the test never read; add a modifier click to cv_testkit::Clicks" },
 ]

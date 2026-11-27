@@ -7,6 +7,7 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use cv_testkit::Clicks;
 use egui::accesskit::Role;
 use egui::epaint::text::ByteRangeExt as _;
 use egui::{
@@ -553,7 +554,9 @@ fn hovering_a_block_moves_nothing() {
     assert_eq!(rects(&harness), resting, "over the copy button");
     harness.hover_at(button.center());
     harness.run_steps(2);
-    harness.get_by_role_and_label(Role::Button, "Comment on lines 3\u{2013}5").click();
+    harness.click_at(
+        harness.get_by_role_and_label(Role::Button, "Comment on lines 3\u{2013}5").rect(),
+    );
     harness.run();
     assert_eq!(
         harness.state().events,
@@ -623,7 +626,7 @@ fn a_removal_wedge_opens_side_by_side() {
         harness(Scene::new(&old, &new, DiffLayout::NewOnly, FULL_FILE_CONTEXT), [1100.0, 900.0]);
     harness.run();
     assert!(tops(&harness, REMOVED).is_empty(), "New only leaves the removed block out");
-    harness.get_by_label("Show the 1 removed block side by side").click();
+    harness.click_at(harness.get_by_label("Show the 1 removed block side by side").rect());
     harness.run();
     assert_eq!(harness.state().events, [RenderedEvent::ShowSideBySide]);
     harness.state_mut().layout = DiffLayout::SideBySide;
@@ -716,11 +719,12 @@ fn a_changed_diagram_shows_old_and_new_side_by_side() {
         harness.query_all_by_role_and_label(Role::Button, "Show source").count() >= 2
     });
     for _ in 0..2 {
-        harness
+        let switch = harness
             .get_all_by_role_and_label(Role::Button, "Show source")
             .next()
             .expect("a diagram to switch")
-            .click();
+            .rect();
+        harness.click_at(switch);
         harness.run_steps(4);
     }
     assert_eq!(
@@ -758,11 +762,12 @@ fn a_changed_azure_devops_diagram_container_diffs_like_a_fence() {
     harness.run_steps(4);
     assert_eq!(harness.query_all_by_label_contains(":::").count(), 0, "the markers are not text");
     for _ in 0..2 {
-        harness
+        let switch = harness
             .get_all_by_role_and_label(Role::Button, "Show source")
             .next()
             .expect("a diagram to switch")
-            .click();
+            .rect();
+        harness.click_at(switch);
         harness.run_steps(4);
     }
     assert_eq!(
@@ -974,11 +979,12 @@ fn a_comment_on_an_unshown_line_says_so_and_opens_the_text_diff() {
         card(&harness, body).is_some_and(|card| note.bottom() <= card.top()),
         "the note heads the card"
     );
-    harness
+    let note_button = harness
         .query_all_by_label_contains("Show in text diff")
         .find(|node| node.accesskit_node().role() == Role::Button)
         .expect("the note's button")
-        .click();
+        .rect();
+    harness.click_at(note_button);
     harness.run();
     assert_eq!(
         harness.state().events,
@@ -1044,15 +1050,18 @@ fn hidden_comments_show_one_by_one_from_their_count() {
         2,
         "a count on each commented block"
     );
-    harness
+    let after_count = harness
         .query_all_by_role_and_label(Role::Button, hidden)
         .max_by(|a, b| a.rect().left().total_cmp(&b.rect().left()))
         .expect("the After column's count")
-        .click();
+        .rect();
+    harness.click_at(after_count);
     harness.run();
     assert!(card(&harness, ON_NEW).is_some(), "the clicked block's card shows");
     assert!(card(&harness, ON_OLD).is_none(), "the other stays hidden");
-    harness.get_by_role_and_label(Role::Button, "1 comment shown here, click to hide").click();
+    harness.click_at(
+        harness.get_by_role_and_label(Role::Button, "1 comment shown here, click to hide").rect(),
+    );
     harness.run();
     assert!(card(&harness, ON_NEW).is_none(), "a second click hides it again");
 

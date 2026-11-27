@@ -25,8 +25,8 @@ use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 const CONNECTION_ID: &str = "crumb-trail";

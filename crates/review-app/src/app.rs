@@ -82,8 +82,6 @@ mod diff_find_walkthrough;
 #[cfg(test)]
 mod bug_actions_walkthrough;
 #[cfg(test)]
-mod clicks;
-#[cfg(test)]
 #[cfg(debug_assertions)]
 mod clip_audit;
 #[cfg(test)]

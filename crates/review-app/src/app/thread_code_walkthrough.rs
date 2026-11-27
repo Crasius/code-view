@@ -11,8 +11,8 @@ use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, press, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{CURRENT_LINE, GitHubHost};
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 /// The new head: forty lines of documentation over the renamed greeting, so the current thread on

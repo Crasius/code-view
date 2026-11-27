@@ -2,6 +2,7 @@
 //! their accent bar, the gutter markers, the card with a suggested change and an open reply, a
 //! resolved thread collapsed to one line, and the new-thread composer with its kept draft.
 
+use cv_testkit::Clicks;
 use egui::{Event, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -108,7 +109,8 @@ fn threads_inline_in_the_diff() {
     );
 
     // A click on the marker collapses the card, another opens it again.
-    harness.get_by_label_contains("Thread by Jonas Weber, click to collapse").click();
+    harness
+        .click_at(harness.get_by_label_contains("Thread by Jonas Weber, click to collapse").rect());
     harness.run_steps(4);
     assert!(harness.query_by_label_contains("Thread by Jonas Weber, click to show").is_some());
 }
@@ -129,7 +131,7 @@ fn a_new_thread_on_picked_lines_keeps_its_draft() {
     let last_number = harness.state().view.gutter_point(Pane::Right, last_row);
     click(&mut harness, first_number, Modifiers::NONE);
     click(&mut harness, last_number, Modifiers::SHIFT);
-    harness.get_by_label(&format!("Comment on lines {first}–{last}")).click();
+    harness.click_at(harness.get_by_label(&format!("Comment on lines {first}–{last}")).rect());
     settle(&mut harness);
     harness
         .event(Event::Text("Lowercasing here and in `apply` twice? One place is enough.".into()));

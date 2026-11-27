@@ -10,11 +10,11 @@ use review_core::{Connection, ProviderKind};
 use review_store::{AppPaths, AppSettings, ConnectionStore, FrameRateLimit};
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use super::provider_icons_walkthrough::scripted_provider;
 use cv_runtime::route::Route;
 use cv_settings::onboarding::CliTools;
 use cv_testkit as test_support;
+use cv_testkit::Clicks;
 
 const ROW: &str = "Frame rate limit";
 /// The row below the control: it must not move when the choice changes.

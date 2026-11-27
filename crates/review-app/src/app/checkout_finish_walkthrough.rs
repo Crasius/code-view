@@ -17,8 +17,8 @@ use super::action_e2e::{app, wait_until};
 use super::checkout_walkthrough::{
     Setup, click_last, open_form, shows, start, tap, wait_ready, worktree_of,
 };
-use super::clicks::Clicks;
 use cv_runtime::route::Route;
+use cv_testkit::Clicks;
 
 const REMOVE_LINK: &str = "Remove worktree…";
 

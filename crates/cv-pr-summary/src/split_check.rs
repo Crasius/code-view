@@ -4,6 +4,7 @@
 //! line at the top of the view stays put and no diff loads twice, and a 10,000-file pull request
 //! still costs only what is on screen.
 
+use cv_testkit::Clicks;
 use egui::Rect;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -152,7 +153,8 @@ fn threads_sit_under_their_side_in_a_split_card() {
         "the card counts both threads: {height}"
     );
 
-    harness.query_all_by_label("Resolve").next().expect("a thread's Resolve").click();
+    harness
+        .click_at(harness.query_all_by_label("Resolve").next().expect("a thread's Resolve").rect());
     harness.run_steps(2);
     assert!(
         harness.state().events.iter().any(|event| matches!(event, SummaryEvent::Thread(_))),
@@ -180,7 +182,7 @@ fn toggling_the_layout_keeps_the_line_at_the_top_and_loads_each_diff_once() {
     let loads = harness.state().source.started.len();
     let offset_before = harness.state().summary.viewport.top();
 
-    harness.get_by_label("Side by side").click();
+    harness.click_at(harness.get_by_label("Side by side").rect());
     harness.run_steps(1);
     assert!(
         matches!(
@@ -202,7 +204,7 @@ fn toggling_the_layout_keeps_the_line_at_the_top_and_loads_each_diff_once() {
     assert_loaded_once(harness.state(), loads);
 
     let loads = harness.state().source.started.len();
-    harness.get_by_label("Inline").click();
+    harness.click_at(harness.get_by_label("Inline").rect());
     settle(&mut harness);
     let back = head_line(harness.state(), 125, Pane::Inline).top();
     assert!(
@@ -336,7 +338,7 @@ fn ten_thousand_files_side_by_side_cost_what_is_on_screen() {
 
     let loads = harness.state().source.started.len();
     let started = std::time::Instant::now();
-    harness.get_by_label("Inline").click();
+    harness.click_at(harness.get_by_label("Inline").rect());
     harness.run_steps(1);
     let switch = started.elapsed();
     check(&harness);

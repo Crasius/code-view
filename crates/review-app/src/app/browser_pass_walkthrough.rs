@@ -17,8 +17,8 @@ use review_store::AppPaths;
 use serde_json::{Value, json};
 
 use super::action_e2e::{app, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, HIDDEN_NUMBER, READABLE_NUMBER, REPOSITORY};
+use cv_testkit::Clicks;
 
 const CONNECTION_ID: &str = "gh";
 

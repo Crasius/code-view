@@ -7,6 +7,7 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 
+use cv_testkit::Clicks;
 use egui::{
     Event, Modifiers, MouseWheelSource, MouseWheelUnit, PointerButton, Pos2, Rect, pos2, vec2,
 };
@@ -182,7 +183,7 @@ fn the_strips_menu_switches_scrolling_past_the_end() {
     }
     settle(&mut harness);
     assert!(harness.state().view.view_top().abs() < 0.01, "the right click leaves the view");
-    harness.get_by_label(PAST_END_LABEL).click();
+    harness.click_at(harness.get_by_label(PAST_END_LABEL).rect());
     settle(&mut harness);
     assert_eq!(past_end::pending_switch(&harness.ctx), Some(true), "switched on, to be saved");
     assert!(past_end::is_on(&harness.ctx), "the diff follows at once");

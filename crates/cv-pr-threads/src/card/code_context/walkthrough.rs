@@ -8,6 +8,7 @@
 use std::fmt::Write as _;
 
 use cv_base::theme;
+use cv_testkit::Clicks;
 use cv_widgets::focus;
 use egui::{Margin, Rect};
 use egui_kittest::Harness;
@@ -121,7 +122,7 @@ fn the_excerpt_starts_in_new_only_switches_to_diff_and_grows() {
     );
     assert!(harness.query_by_label("Lines 17–23").is_some(), "three lines on each side");
 
-    harness.get_by_label("Diff").click();
+    harness.click_at(harness.get_by_label("Diff").rect());
     harness.run_steps(3);
     assert!(
         harness.query_by_label_contains("Removed line 20: ").is_some(),
@@ -129,14 +130,14 @@ fn the_excerpt_starts_in_new_only_switches_to_diff_and_grows() {
     );
     assert!(harness.query_by_label_contains("Added line 21: ").is_some());
 
-    harness.get_by_label("Show 10 more lines above").click();
+    harness.click_at(harness.get_by_label("Show 10 more lines above").rect());
     harness.run_steps(3);
     assert!(harness.query_by_label_contains("Line 7: ").is_some(), "ten more lines above");
-    harness.get_by_label("Collapse").click();
+    harness.click_at(harness.get_by_label("Collapse").rect());
     harness.run_steps(3);
     assert!(harness.query_by_label_contains("Line 7: ").is_none(), "Collapse goes back");
 
-    harness.get_by_label("Show line 20 in the file").click();
+    harness.click_at(harness.get_by_label("Show line 20 in the file").rect());
     harness.run_steps(2);
     assert_eq!(
         harness.state().events,
@@ -158,7 +159,9 @@ fn a_thread_on_a_removed_line_starts_in_diff_and_the_last_pick_carries_over() {
         "the other card stays in New only"
     );
     // Picking Diff on one card makes it the mode of every card the user has not switched.
-    harness.get_all_by_label("Diff").nth(1).expect("the second card's switch").click();
+    harness.click_at(
+        harness.get_all_by_label("Diff").nth(1).expect("the second card's switch").rect(),
+    );
     harness.run_steps(3);
     assert!(harness.query_by_label_contains("Changed line 20").is_none());
     assert_eq!(harness.query_all_by_label_contains("Removed line 20").count(), 2);
@@ -185,7 +188,7 @@ fn line_rect(harness: &Harness<'_, Scene>, label: &str) -> Rect {
 fn split_shows_the_removed_line_left_and_the_added_line_right() {
     let mut harness = harness_at(scene(vec![on_head_line()]), WIDE);
     harness.run_steps(3);
-    harness.get_by_label("Split").click();
+    harness.click_at(harness.get_by_label("Split").rect());
     harness.run_steps(3);
     let removed = line_rect(&harness, "Removed line 20: ");
     let added = line_rect(&harness, "Added line 20, commented: ");
@@ -200,9 +203,11 @@ fn split_shows_the_removed_line_left_and_the_added_line_right() {
     assert!(harness.query_by_label("Too narrow for side by side").is_none());
 
     // Both gutters lead to the file.
-    harness.get_by_label("Show the commented line in the file, from the old side").click();
+    harness.click_at(
+        harness.get_by_label("Show the commented line in the file, from the old side").rect(),
+    );
     harness.run_steps(2);
-    harness.get_by_label("Show line 20 in the file").click();
+    harness.click_at(harness.get_by_label("Show line 20 in the file").rect());
     harness.run_steps(2);
     let reveal = ThreadEvent::Reveal { thread_id: "t-head".into() };
     assert_eq!(harness.state().events, [reveal.clone(), reveal]);
@@ -213,7 +218,9 @@ fn an_old_side_thread_follows_a_split_pick_and_is_marked_on_the_left() {
     let mut harness = harness_at(scene(vec![on_removed_line(), on_head_line()]), WIDE);
     harness.run_steps(3);
     // Split picked on the other card is the last pick: the old-side thread follows it, not Diff.
-    harness.get_all_by_label("Split").nth(1).expect("the second card's switch").click();
+    harness.click_at(
+        harness.get_all_by_label("Split").nth(1).expect("the second card's switch").rect(),
+    );
     harness.run_steps(3);
     let removed = line_rect(&harness, "Removed line 20, commented: ");
     let added = harness
@@ -233,7 +240,7 @@ fn an_old_side_thread_follows_a_split_pick_and_is_marked_on_the_left() {
 fn split_on_a_narrow_card_falls_back_to_diff_until_it_is_wide_enough() {
     let mut harness = harness_at(scene(vec![on_head_line()]), NARROW);
     harness.run_steps(3);
-    harness.get_by_label("Split").click();
+    harness.click_at(harness.get_by_label("Split").rect());
     harness.run_steps(3);
     assert!(harness.query_by_label("Too narrow for side by side").is_some(), "says why");
     let removed = line_rect(&harness, "Removed line 20: ");
@@ -350,19 +357,19 @@ fn a_card_that_loads_again_keeps_the_height_its_code_had() {
 fn show_more_grows_both_sides_of_split() {
     let mut harness = harness_at(scene(vec![on_head_line()]), WIDE);
     harness.run_steps(3);
-    harness.get_by_label("Split").click();
+    harness.click_at(harness.get_by_label("Split").rect());
     harness.run_steps(3);
     assert!(harness.query_by_label_contains("Line 7: ").is_none());
-    harness.get_by_label("Show 10 more lines above").click();
+    harness.click_at(harness.get_by_label("Show 10 more lines above").rect());
     harness.run_steps(3);
     let added = line_rect(&harness, "Added line 20, commented: ");
     let grown = line_rect(&harness, "Line 7: ");
     assert!(grown.right() > added.left(), "line 7 is on both sides");
     assert!(grown.left() < added.left() - added.width() / 2.0);
-    harness.get_by_label("Show 10 more lines below").click();
+    harness.click_at(harness.get_by_label("Show 10 more lines below").rect());
     harness.run_steps(3);
     assert!(harness.query_by_label_contains("Line 33: ").is_some(), "and below");
-    harness.get_by_label("Collapse").click();
+    harness.click_at(harness.get_by_label("Collapse").rect());
     harness.run_steps(3);
     assert!(harness.query_by_label_contains("Line 7: ").is_none(), "Collapse goes back");
     assert!(harness.query_by_label_contains("Removed line 20: ").is_some(), "still in Split");

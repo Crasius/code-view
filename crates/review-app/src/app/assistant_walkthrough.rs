@@ -24,12 +24,12 @@ use super::ReviewApp;
 use super::action_e2e::{
     app, open_diff, open_pull_request, press, type_into, wait_for, wait_until,
 };
-use super::clicks::Clicks;
 use super::github_mock::{FILE, GitHubHost, TITLE};
 use cv_pr_assistant::CARD_LABEL;
 use cv_pr_assistant::mini::{self, ANSWERING, FOLLOW_UP};
 use cv_runtime::route::Route;
 use cv_services::agents::{FakeCli, FakeTerminal};
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 use cv_widgets::row;
 

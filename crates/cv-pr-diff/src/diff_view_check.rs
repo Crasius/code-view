@@ -10,6 +10,7 @@ use cv_code::contents::{Coloring, FileContents};
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
 use cv_pr_threads::samples;
+use cv_testkit::Clicks;
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -102,7 +103,7 @@ fn new_only_marks_removals_and_shows_them_on_demand() {
 /// A click pins the popover of the wedge `loop_label` (base lines from `loop_start`): it stays
 /// open without the pointer, Copy puts the plain removed text on the clipboard, Esc closes it.
 fn check_pinned_popover(harness: &mut Harness<'_, Fixture>, loop_label: &str, loop_start: u32) {
-    harness.get_by_label(loop_label).click();
+    harness.click_at(harness.get_by_label(loop_label).rect());
     settle(harness);
     harness.hover_at(AWAY);
     settle(harness);
@@ -110,7 +111,7 @@ fn check_pinned_popover(harness: &mut Harness<'_, Fixture>, loop_label: &str, lo
         harness.query_by_label_contains("Removed lines:").is_some(),
         "a pinned popover stays open"
     );
-    harness.get_by_label("Copy the removed lines").click();
+    harness.click_at(harness.get_by_label("Copy the removed lines").rect());
     harness.step();
     let copied =
         harness.output().platform_output.commands.iter().find_map(|command| match command {
@@ -162,7 +163,7 @@ fn new_only_offers_another_layout_for_an_emptied_file() {
     let mut harness = harness(fixture);
     settle(&mut harness);
     assert!(harness.query_by_label("The new version is empty").is_some());
-    harness.get_by_label_contains("Show inline").click();
+    harness.click_at(harness.get_by_label_contains("Show inline").rect());
     settle(&mut harness);
     assert_eq!(harness.state().events, ["show inline"]);
 }
@@ -345,18 +346,20 @@ fn hidden_comments_show_one_by_one_from_their_count() {
     );
     let hidden = counts(&harness, "1 comment hidden here, click to show");
     assert_eq!(hidden.len(), 2, "a count on each commented line");
-    hidden
+    let head_count = hidden
         .into_iter()
         .max_by(|a, b| a.rect().left().total_cmp(&b.rect().left()))
         .expect("the head pane's count")
-        .click();
+        .rect();
+    harness.click_at(head_count);
     settle(&mut harness);
     assert!(shows(&harness, NEW_LINE_BODY), "the clicked line's card shows");
     assert!(!shows(&harness, OLD_LINE_BODY), "the other stays hidden");
-    counts(&harness, "1 comment shown here, click to hide")
+    let shown_count = counts(&harness, "1 comment shown here, click to hide")
         .first()
         .expect("the shown count")
-        .click();
+        .rect();
+    harness.click_at(shown_count);
     settle(&mut harness);
     assert!(!shows(&harness, NEW_LINE_BODY), "a second click hides it again");
 

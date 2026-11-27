@@ -10,9 +10,9 @@ use review_store::{AppPaths, AppSettings, LastPlace, LastTab, PullRequestStart, 
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_runtime::route::{PullRequestTab, Route};
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 /// First in the tree's order, before the mock's own `src/lib.rs`.

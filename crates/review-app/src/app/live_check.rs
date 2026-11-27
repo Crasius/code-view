@@ -24,9 +24,9 @@ use review_core::{Connection, ProviderKind};
 use review_store::{AppPaths, ConnectionStore, DiffLayout, FilesStart};
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit as test_support;
+use cv_testkit::Clicks;
 
 const CONNECTION_ID: &str = "live";
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(600);

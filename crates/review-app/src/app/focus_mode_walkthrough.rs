@@ -16,10 +16,10 @@ use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
 use super::action_e2e::{self, open_pull_request, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, FILE, GitHubHost};
 use cv_base::platform::{self, hit_test, shortcut};
 use cv_shell::focus_mode::{self, ENTER_HINT, EXIT_HINT, Surface, strip};
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 const LONG_FILE: &str = "src/long.rs";

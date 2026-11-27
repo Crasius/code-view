@@ -38,7 +38,6 @@ use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use super::request_budget::{
     Text, diff_stats_summaries, harness_builder, harness_from, has, loading_harness_from, pump,
     user, wait_idle, wait_until,
@@ -52,6 +51,7 @@ use cv_services::agents::FakeCli;
 use cv_syntax::code_colors;
 #[cfg(any(windows, feature = "measurements"))]
 use cv_syntax::{grammar, highlight};
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, git_in};
 
 const PROJECT: &str = "group/app";

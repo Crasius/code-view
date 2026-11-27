@@ -408,6 +408,7 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::sync::Arc;
 
+    use cv_testkit::Clicks;
     use egui::Role;
     use egui_kittest::Harness;
     use egui_kittest::kittest::{NodeT, Queryable};
@@ -655,16 +656,16 @@ mod tests {
         assert!(harness.query_by_label("docs/engineering/build-sources.md").is_some());
         assert!(harness.query_by_label("Viewed README.md").is_some());
 
-        harness.get_by_label("Viewed README.md").click();
+        harness.click_at(harness.get_by_label("Viewed README.md").rect());
         harness.run_steps(2);
         assert_eq!(harness.state().last_event.as_deref(), Some("viewed README.md"));
 
-        harness.get_by_label("Cargo.lock").click();
+        harness.click_at(harness.get_by_label("Cargo.lock").rect());
         harness.run_steps(2);
         assert_eq!(harness.state().last_event.as_deref(), Some("select Cargo.lock"));
 
         assert!(harness.query_by_label("scripts/deploy.sh").is_some());
-        harness.get_by_label("scripts").click();
+        harness.click_at(harness.get_by_label("scripts").rect());
         harness.run_steps(2);
         assert_eq!(
             harness.state().last_event.as_deref(),
@@ -672,7 +673,7 @@ mod tests {
             "a folder's row opens its summary"
         );
         assert!(harness.query_by_label("scripts/deploy.sh").is_some(), "and keeps the folder open");
-        harness.get_by_label("Collapse scripts").click();
+        harness.click_at(harness.get_by_label("Collapse scripts").rect());
         harness.run_steps(4);
         assert!(harness.query_by_label("scripts/deploy.sh").is_none());
         assert!(harness.query_by_label("scripts").is_some());
@@ -698,7 +699,7 @@ mod tests {
     fn the_side_switch_flips_the_pane() {
         let mut harness = harness(ThemePreference::Light);
         harness.run_steps(4);
-        harness.get_by_label("Move the file tree to the right").click();
+        harness.click_at(harness.get_by_label("Move the file tree to the right").rect());
         harness.run_steps(2);
         assert_eq!(harness.state().last_event.as_deref(), Some("flip side"));
         assert!(harness.query_by_label("Move the file tree to the left").is_some());
@@ -739,7 +740,7 @@ mod tests {
         assert_eq!(toggled(&harness, "Viewed folder src/app"), Some(Toggled::Mixed));
         assert_eq!(toggled(&harness, "Viewed folder scripts"), Some(Toggled::False));
 
-        harness.get_by_label("Viewed folder docs").click();
+        harness.click_at(harness.get_by_label("Viewed folder docs").rect());
         harness.run_steps(3);
         assert_eq!(harness.state().last_event.as_deref(), Some("viewed folder docs"));
         assert_eq!(toggled(&harness, "Viewed folder docs"), Some(Toggled::True));
@@ -751,13 +752,13 @@ mod tests {
         assert!(file_viewed(&harness, "docs/engineering/billing-invoicing.md"));
         assert!(!file_viewed(&harness, "README.md"), "files outside stay as they were");
 
-        harness.get_by_label("Viewed folder docs").click();
+        harness.click_at(harness.get_by_label("Viewed folder docs").rect());
         harness.run_steps(3);
         assert_eq!(toggled(&harness, "Viewed folder docs"), Some(Toggled::False));
         assert!(!file_viewed(&harness, "docs/engineering/build-sources.md"), "all unmarked");
 
         // Hide viewed hides a folder once all its files are viewed.
-        harness.get_by_label("Viewed folder scripts").click();
+        harness.click_at(harness.get_by_label("Viewed folder scripts").rect());
         harness.run_steps(2);
         harness.state_mut().tree.filter.hide_viewed = true;
         harness.run_steps(3);

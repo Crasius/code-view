@@ -1,6 +1,7 @@
 //! The bar above the diff at many widths: whatever the path and the room, no two of its widgets
 //! overlap and none leaves the bar.
 
+use cv_testkit::Clicks;
 use egui::{Rect, Role, UiBuilder, pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -329,7 +330,9 @@ fn the_comments_switch_is_saved() {
     settle(&mut harness);
     assert!(harness.state().services.settings.show_comments_in_diff, "comments show by default");
     for expected in [false, true] {
-        harness.get_by_role_and_label(Role::Switch, "Show comments in the diff").click();
+        harness.click_at(
+            harness.get_by_role_and_label(Role::Switch, "Show comments in the diff").rect(),
+        );
         settle(&mut harness);
         assert_eq!(harness.state().services.settings.show_comments_in_diff, expected);
         let restarted =
@@ -374,7 +377,7 @@ fn the_width_switch_takes_the_wrap_slot_and_is_saved() {
         !harness.state().services.settings.rendered_width.full,
         "the reading column by default"
     );
-    harness.get_by_role_and_label(Role::Switch, "Full width").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Switch, "Full width").rect());
     settle(&mut harness);
     assert!(harness.state().services.settings.rendered_width.full);
     let restarted = Services::new(egui::Context::default(), paths, cv_providers::create_provider);

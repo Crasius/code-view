@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use cv_base::theme;
+use cv_testkit::Clicks;
 use egui::accesskit::{Role, Toggled};
 use egui::{Event, Id, Key, Modifiers};
 use egui_kittest::Harness;
@@ -202,7 +203,7 @@ fn suggestion_button_inserts_the_commented_line() {
     let mut probe = Probe::new();
     probe.suggestion = Some("    sum".into());
     let mut harness = composer(probe, 720.0);
-    harness.get_by_label("Insert suggestion").click();
+    harness.click_at(harness.get_by_label("Insert suggestion").rect());
     harness.run_steps(2);
     assert_eq!(harness.state().text, "```suggestion\n    sum\n```\n");
     // The caret sits on the suggested line, ready to edit it.
@@ -277,7 +278,7 @@ fn escape_cancels_empty_drafts_and_guards_written_ones() {
     press(&mut harness, Modifiers::NONE, Key::Escape);
     assert_eq!(harness.state().cancelled, 1, "a draft with text asks first");
     assert!(harness.query_by_label("Discard draft?").is_some());
-    harness.get_by_label("Keep editing").click();
+    harness.click_at(harness.get_by_label("Keep editing").rect());
     harness.run_steps(2);
     assert_eq!(harness.state().text, "half a thought");
     assert!(harness.query_by_label("Discard draft?").is_none());
@@ -287,9 +288,9 @@ fn escape_cancels_empty_drafts_and_guards_written_ones() {
     assert!(harness.query_by_label("Discard draft?").is_none(), "Esc again keeps editing");
     assert_eq!(harness.state().cancelled, 1);
 
-    harness.get_by_label("Cancel").click();
+    harness.click_at(harness.get_by_label("Cancel").rect());
     harness.run_steps(2);
-    harness.get_by_label("Discard").click();
+    harness.click_at(harness.get_by_label("Discard").rect());
     harness.run_steps(2);
     assert_eq!(harness.state().cancelled, 2);
 }
@@ -330,23 +331,23 @@ fn thread_composer_cancel_asks_like_escape() {
     let mut probe = Probe::new();
     probe.leading_buttons = true;
     let mut harness = composer(probe, 720.0);
-    harness.get_by_label("Cancel").click();
+    harness.click_at(harness.get_by_label("Cancel").rect());
     harness.run_steps(2);
     assert_eq!(harness.state().cancelled, 1, "an empty draft closes at once");
 
     type_text(&mut harness, "half a thought");
-    harness.get_by_label("Cancel").click();
+    harness.click_at(harness.get_by_label("Cancel").rect());
     harness.run_steps(2);
     assert_eq!(harness.state().cancelled, 1, "a draft with text is never dropped silently");
     assert!(harness.query_by_label("Discard draft?").is_some());
-    harness.get_by_label("Keep editing").click();
+    harness.click_at(harness.get_by_label("Keep editing").rect());
     harness.run_steps(2);
     assert_eq!(harness.state().text, "half a thought");
     assert!(harness.query_by_label("Discard draft?").is_none());
 
-    harness.get_by_label("Cancel").click();
+    harness.click_at(harness.get_by_label("Cancel").rect());
     harness.run_steps(2);
-    harness.get_by_label("Discard").click();
+    harness.click_at(harness.get_by_label("Discard").rect());
     harness.run_steps(2);
     assert_eq!(harness.state().cancelled, 2);
 }
@@ -360,9 +361,9 @@ fn markdown_round_trips_unchanged() {
     harness.run_steps(5);
     assert_eq!(harness.state().text, source);
     // Switching to the preview and back changes nothing either.
-    harness.get_by_label("Preview").click();
+    harness.click_at(harness.get_by_label("Preview").rect());
     harness.run_steps(3);
-    harness.get_by_label("Markdown").click();
+    harness.click_at(harness.get_by_label("Markdown").rect());
     harness.run_steps(3);
     assert_eq!(harness.state().text, source);
 }
@@ -423,13 +424,13 @@ fn area_value(harness: &Harness<'_, Probe>) -> Option<String> {
 fn rich_text_and_markdown_edit_the_same_comment() {
     let mut harness = composer(platform_probe(ProviderKind::GitHub), 720.0);
     assert!(is_mode_selected(&harness, "Rich text"), "GitHub comments open as rich text");
-    harness.get_by_label("Bold").click();
+    harness.click_at(harness.get_by_label("Bold").rect());
     harness.run_steps(2);
     type_text(&mut harness, "x");
     assert_eq!(harness.state().text, "**x**");
     assert_eq!(area_value(&harness).as_deref(), Some("x"), "the rich text area shows no markers");
 
-    harness.get_by_role_and_label(Role::Tab, "Markdown").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Markdown").rect());
     harness.run_steps(2);
     assert_eq!(area_value(&harness).as_deref(), Some("**x**"), "Markdown shows the source");
     assert_eq!(harness.state().text, "**x**", "switching rewrites nothing");
@@ -441,7 +442,7 @@ fn rich_text_and_markdown_edit_the_same_comment() {
         "other platforms keep theirs"
     );
 
-    harness.get_by_role_and_label(Role::Tab, "Rich text").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Rich text").rect());
     harness.run_steps(2);
     assert_eq!(harness.state().text, "**x**");
     assert_eq!(area_value(&harness).as_deref(), Some("x"));
@@ -460,11 +461,11 @@ fn rich_text_reads_a_markdown_edit_of_the_same_length() {
     let mut probe = platform_probe(ProviderKind::GitHub);
     probe.text = "one two".into();
     let mut harness = composer(probe, 720.0);
-    harness.get_by_role_and_label(Role::Tab, "Markdown").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Markdown").rect());
     harness.run_steps(2);
     harness.state_mut().text = "one TWO".into();
     harness.run_steps(1);
-    harness.get_by_role_and_label(Role::Tab, "Rich text").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Rich text").rect());
     harness.run_steps(2);
     assert_eq!(area_value(&harness).as_deref(), Some("one TWO"));
 }

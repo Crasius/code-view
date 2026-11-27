@@ -175,6 +175,7 @@ mod tests {
     use std::sync::Arc;
 
     use cv_base::theme;
+    use cv_testkit::Clicks;
     use egui::accesskit::Role;
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
@@ -243,9 +244,9 @@ mod tests {
         let mut harness = harness();
         harness.run_steps(3);
         assert_eq!(harness.query_all_by_label(super::MENU).count(), 1, "only my comment");
-        harness.get_by_label(super::MENU).click();
+        harness.click_at(harness.get_by_label(super::MENU).rect());
         harness.run_steps(2);
-        harness.get_by_role_and_label(Role::MenuItem, "Edit").click();
+        harness.click_at(harness.get_by_role_and_label(Role::MenuItem, "Edit").rect());
         harness.run_steps(3);
         harness
             .get_by(|node| {
@@ -254,7 +255,7 @@ mod tests {
             })
             .type_text(" And it is reused.");
         harness.run_steps(2);
-        harness.get_by_role_and_label(Role::Button, "Save").click();
+        harness.click_at(harness.get_by_role_and_label(Role::Button, "Save").rect());
         harness.run_steps(2);
         assert_eq!(
             harness.state().events,
@@ -270,20 +271,20 @@ mod tests {
     fn delete_asks_inside_the_card_and_cancel_keeps_the_comment() {
         let mut harness = harness();
         harness.run_steps(3);
-        harness.get_by_label(super::MENU).click();
+        harness.click_at(harness.get_by_label(super::MENU).rect());
         harness.run_steps(2);
-        harness.get_by_role_and_label(Role::MenuItem, "Delete").click();
+        harness.click_at(harness.get_by_role_and_label(Role::MenuItem, "Delete").rect());
         harness.run_steps(3);
         assert!(harness.query_by_label("Delete this comment? This cannot be undone.").is_some());
-        harness.get_by_role_and_label(Role::Button, "Cancel").click();
+        harness.click_at(harness.get_by_role_and_label(Role::Button, "Cancel").rect());
         harness.run_steps(2);
         assert!(harness.query_by_label("Delete this comment? This cannot be undone.").is_none());
         assert!(harness.state().events.is_empty(), "nothing is deleted");
-        harness.get_by_label(super::MENU).click();
+        harness.click_at(harness.get_by_label(super::MENU).rect());
         harness.run_steps(2);
-        harness.get_by_role_and_label(Role::MenuItem, "Delete").click();
+        harness.click_at(harness.get_by_role_and_label(Role::MenuItem, "Delete").rect());
         harness.run_steps(3);
-        harness.get_by_role_and_label(Role::Button, "Delete").click();
+        harness.click_at(harness.get_by_role_and_label(Role::Button, "Delete").rect());
         harness.run_steps(2);
         assert_eq!(
             harness.state().events,

@@ -11,8 +11,8 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use serde_json::json;
 
 use super::action_e2e::{app, open_pull_request, press, press_button, type_into, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, TITLE};
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 const REQUEST_CHANGES: &str = "Request changes";

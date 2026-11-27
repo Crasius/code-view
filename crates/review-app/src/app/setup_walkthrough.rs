@@ -19,9 +19,9 @@ use review_store::{AppPaths, ConnectionStore, LINUX_HELP_URL, TokenVault, VaultP
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use cv_settings::onboarding::CliTools;
 use cv_testkit as test_support;
+use cv_testkit::Clicks;
 
 /// Scripted tokens; they only ever reach the fake provider below.
 const LIMITED_TOKEN: &str = "glpat-walkthrough-fine-grained";
