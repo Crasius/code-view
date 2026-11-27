@@ -110,7 +110,7 @@ enum Change {
 
 /// One write in the log.
 #[derive(Debug, Clone)]
-pub struct Written {
+struct Written {
     key: PullRequestKey,
     change: Change,
     /// Input time the write succeeded.

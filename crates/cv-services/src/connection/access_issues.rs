@@ -379,12 +379,26 @@ impl Provider for WatchedProvider {
 
 #[cfg(test)]
 mod tests {
+    use cv_testkit::samples;
     use provider_github::GitHubProvider;
     use review_core::{Connection, ProviderKind, RerunKind};
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
+
+    /// A GitHub provider on `server`, signed in with `token`, for the connection id "watched".
+    fn github(server: &MockServer, token: &str, organizations: &[&str]) -> Arc<dyn Provider> {
+        let connection = Connection {
+            organizations: organizations
+                .iter()
+                .map(|&organization| organization.to_owned())
+                .collect(),
+            token: Some(token.to_owned()),
+            ..samples::connection("watched", ProviderKind::GitHub, &server.uri())
+        };
+        Arc::new(GitHubProvider::new(connection, reqwest::Client::new()))
+    }
 
     /// Methods with a default body compile even when the wrapper forgets them, and then silently
     /// answer with the default instead of the platform: a rerun has to reach the provider.
@@ -397,17 +411,11 @@ mod tests {
             .expect(1)
             .mount(&server)
             .await;
-        let connection = Connection {
-            id: "watched".to_owned(),
-            name: "mock".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: server.uri(),
-            organizations: Vec::new(),
-            token: Some("test-token".to_owned()),
-        };
-        let inner: Arc<dyn Provider> =
-            Arc::new(GitHubProvider::new(connection, reqwest::Client::new()));
-        let watched = WatchedProvider::new(inner, "watched".to_owned(), AccessIssues::default());
+        let watched = WatchedProvider::new(
+            github(&server, "test-token", &[]),
+            "watched".to_owned(),
+            AccessIssues::default(),
+        );
         let action = RerunAction::new(RerunKind::Job, "501");
         watched.rerun("cli/cli", 7, "run:11", &action).await.expect("the rerun reaches GitHub");
     }
@@ -443,17 +451,8 @@ mod tests {
             )
             .mount(&server)
             .await;
-        let connection = Connection {
-            id: "watched".to_owned(),
-            name: "mock".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: server.uri(),
-            organizations: vec!["acme".to_owned()],
-            token: Some("ghp_test-token".to_owned()),
-        };
-        let inner: Arc<dyn Provider> =
-            Arc::new(GitHubProvider::new(connection, reqwest::Client::new()));
         let issues = AccessIssues::default();
+        let inner = github(&server, "ghp_test-token", &["acme"]);
         let watched = WatchedProvider::new(inner, "watched".to_owned(), issues.clone());
         let query = PullRequestQuery {
             scope: review_core::PullRequestScope::Visible,
@@ -468,37 +467,21 @@ mod tests {
         assert_eq!(problem.actions[0].url, format!("{}/settings/tokens", server.uri()));
     }
 
-    fn github(server: &MockServer, token: &str) -> Arc<dyn Provider> {
-        let connection = Connection {
-            id: "watched".to_owned(),
-            name: "mock".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: server.uri(),
-            organizations: Vec::new(),
-            token: Some(token.to_owned()),
-        };
-        Arc::new(GitHubProvider::new(connection, reqwest::Client::new()))
-    }
-
     /// A request sent with the old token that is refused after the connection was saved with a new
     /// one says nothing about the new token: the banner stays away. Without the save it shows.
     #[tokio::test]
     async fn a_denial_of_the_replaced_token_is_not_recorded() {
         let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .respond_with(
-                ResponseTemplate::new(401).set_delay(std::time::Duration::from_millis(200)),
-            )
-            .mount(&server)
-            .await;
+        Mock::given(method("GET")).respond_with(ResponseTemplate::new(401)).mount(&server).await;
         let issues = AccessIssues::default();
         let watched = WatchedProvider::new(
-            github(&server, "old-token"),
+            github(&server, "old-token", &[]),
             "watched".to_owned(),
             issues.clone(),
         );
-        let (refused, ()) = tokio::join!(watched.current_user(), async {
-            watched.replace(github(&server, "new-token"));
+        // The first branch takes the old provider before the second replaces it.
+        let (refused, ()) = tokio::join!(biased; watched.current_user(), async {
+            watched.replace(github(&server, "new-token", &[]));
         });
         assert!(refused.is_err(), "the old token's request was refused");
         assert!(issues.get("watched").is_none(), "{:?}", issues.get("watched"));
@@ -535,17 +518,11 @@ mod tests {
             .expect(0)
             .mount(&server)
             .await;
-        let connection = Connection {
-            id: "watched".to_owned(),
-            name: "mock".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: server.uri(),
-            organizations: Vec::new(),
-            token: Some("test-token".to_owned()),
-        };
-        let inner: Arc<dyn Provider> =
-            Arc::new(GitHubProvider::new(connection, reqwest::Client::new()));
-        let watched = WatchedProvider::new(inner, "watched".to_owned(), AccessIssues::default());
+        let watched = WatchedProvider::new(
+            github(&server, "test-token", &[]),
+            "watched".to_owned(),
+            AccessIssues::default(),
+        );
         let revision = watched.revision("cli/cli", 7).await.expect("the probe reaches GitHub");
         assert_eq!(revision.head_sha, "head1");
     }

@@ -95,7 +95,7 @@ impl Clones {
         let number = key.number;
         let mut load = Load::Idle;
         load.start(background, async move {
-            let found = find(query.pinned, query.folders, query.clone_url.clone()).await;
+            let found = find(query.pinned, query.folders, query.clone_url).await;
             match found {
                 None => Ok(Found::NoClone),
                 Some(clone) => checkout::survey(&clone, &query.source_branch, number)
@@ -230,38 +230,32 @@ async fn find(
 /// `projects`, `repos` and the like in the home folder and, on Windows, at the root of each drive.
 #[cfg(not(any(test, feature = "test-support")))]
 fn default_folders() -> Vec<PathBuf> {
-    {
-        const NAMES: [&str; 12] = [
-            "source",
-            "src",
-            "dev",
-            "Development",
-            "code",
-            "Code",
-            "projects",
-            "Projects",
-            "repos",
-            "git",
-            "GitHub",
-            "workspace",
-        ];
-        let mut roots: Vec<PathBuf> =
-            std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
-                .map(PathBuf::from)
-                .into_iter()
-                .collect();
-        if cfg!(windows) {
-            roots.extend((b'C'..=b'Z').map(|drive| PathBuf::from(format!("{}:\\", drive as char))));
-        }
-        let mut folders: Vec<PathBuf> = roots
-            .iter()
-            .flat_map(|root| NAMES.iter().map(move |name| root.join(name)))
-            .filter(|folder| folder.is_dir())
-            .collect();
-        // Case-insensitive file systems list `Code` and `code` twice.
-        folders.dedup_by(|first, second| checkout::same_folder(first, second));
-        folders
+    const NAMES: [&str; 12] = [
+        "source",
+        "src",
+        "dev",
+        "Development",
+        "code",
+        "Code",
+        "projects",
+        "Projects",
+        "repos",
+        "git",
+        "GitHub",
+        "workspace",
+    ];
+    let mut roots: Vec<PathBuf> = std::env::home_dir().into_iter().collect();
+    if cfg!(windows) {
+        roots.extend((b'C'..=b'Z').map(|drive| PathBuf::from(format!("{}:\\", drive as char))));
     }
+    let mut folders: Vec<PathBuf> = roots
+        .iter()
+        .flat_map(|root| NAMES.iter().map(move |name| root.join(name)))
+        .filter(|folder| folder.is_dir())
+        .collect();
+    // Case-insensitive file systems list `Code` and `code` twice.
+    folders.dedup_by(|first, second| checkout::same_folder(first, second));
+    folders
 }
 
 /// Test builds have no default search folders: they never search the real disk.

@@ -40,7 +40,7 @@ pub const TOOLTIP: &str = concat!(
 );
 const MENU_TOOLTIP: &str =
     "Adds you to the reviewers without a vote, so your feedback shows as pending.";
-pub const PENDING_TOOLTIP: &str = "You are a reviewer of this pull request and have not voted yet.";
+const PENDING_TOOLTIP: &str = "You are a reviewer of this pull request and have not voted yet.";
 pub const NO_TOKEN_TOOLTIP: &str = "This connection has no token, so it cannot change reviewers. Add one with write access in \
      Settings, under the connection.";
 
@@ -362,40 +362,14 @@ fn retry_id(key: &PullRequestKey) -> Id {
 
 #[cfg(test)]
 mod tests {
-    use review_core::{PullRequestState, PullRequestSummary, ReviewVote, Reviewer, UserIdentity};
+    use cv_testkit::samples;
+    use review_core::{PullRequestSummary, ReviewVote, Reviewer, UserIdentity};
 
     use super::{Standing, standing};
-
-    fn person(id: &str, login: &str) -> UserIdentity {
-        UserIdentity {
-            id: id.into(),
-            display_name: login.into(),
-            login: Some(login.into()),
-            avatar_url: None,
-        }
-    }
+    use crate::person;
 
     fn summary(author: UserIdentity, reviewers: Vec<Reviewer>) -> PullRequestSummary {
-        PullRequestSummary {
-            repository_key: "cli/cli".into(),
-            repository_name: "cli".into(),
-            number: 7,
-            title: "Change".into(),
-            author,
-            state: PullRequestState::Open,
-            is_draft: false,
-            source_branch: "feature".into(),
-            target_branch: "main".into(),
-            created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
-            updated_at: None,
-            web_url: String::new(),
-            labels: Vec::new(),
-            reviewers,
-            checks: None,
-            diff_stat: review_core::DiffStat::default(),
-            head_sha: None,
-            target_sha: None,
-        }
+        PullRequestSummary { author, reviewers, ..samples::summary("cli/cli", 7) }
     }
 
     fn reviewer(identity: UserIdentity, vote: ReviewVote, is_group: bool) -> Reviewer {

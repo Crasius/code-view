@@ -33,7 +33,7 @@ use cv_runtime::load::Load;
 use cv_runtime::route::PullRequestKey;
 use cv_runtime::toasts::ToastAction;
 
-use crate::Services;
+use crate::{Services, agent_names};
 
 pub struct Checkouts {
     records: CheckoutRecords,
@@ -189,7 +189,7 @@ impl Checkouts {
             kind: CheckoutKind::Adopted,
             branch: adopted.branch,
             is_own_branch: false,
-            pull_ref: format!("refs/codeview/pull/{}/head", key.number),
+            pull_ref: pull_ref(key.number),
             head: adopted.head,
             last_opened: OpenWith::Nothing,
             took_ms: 0,
@@ -265,15 +265,18 @@ pub fn tool_name(with: OpenWith, settings: &CheckoutSettings) -> String {
     match with {
         OpenWith::Nothing => "Nothing".to_owned(),
         OpenWith::Terminal => terminal_name(settings),
-        OpenWith::Agent(kind) => agent_name(kind).to_owned(),
+        OpenWith::Agent(kind) => agent_names::cli_name(kind).to_owned(),
     }
 }
 
+/// The product name of `kind`'s CLI, as [`agent_names::cli_name`] gives it.
 pub fn agent_name(kind: AgentKind) -> &'static str {
-    match kind {
-        AgentKind::Claude => "Claude Code",
-        AgentKind::Codex => "Codex",
-    }
+    agent_names::cli_name(kind)
+}
+
+/// Where the clone keeps the pull request's head.
+fn pull_ref(number: u64) -> String {
+    format!("refs/codeview/pull/{number}/head")
 }
 
 /// The name of the terminal Settings chose, as the platform calls it.
@@ -316,7 +319,7 @@ pub fn poll(services: &mut Services) {
     let mut opened = Vec::new();
     let checkouts = &mut services.checkouts;
     for (key, job) in &mut checkouts.jobs {
-        if let Some(job::Outcome::Done { done, took, log }) = job.poll() {
+        if let Some(job::Finished { done, took, log }) = job.poll() {
             let plan = &job.plan;
             let record = CheckoutRecord {
                 connection_id: key.connection_id.clone(),
@@ -373,7 +376,7 @@ pub fn finished(services: &mut Services, key: &PullRequestKey) {
     checkouts.finish.handled(key);
     match finish::decide(services.settings.checkouts.when_finished, &record) {
         finish::Decision::Remove => checkouts.finish.remove(&record, key, &services.background),
-        finish::Decision::Ask(reason) => checkouts.finish.ask(key, reason),
+        finish::Decision::Ask => checkouts.finish.ask(key),
         finish::Decision::Keep => {}
         finish::Decision::Forget => {
             checkouts.upkeep.forget(key);
@@ -459,7 +462,7 @@ pub fn open_with(services: &mut Services, key: &PullRequestKey, with: OpenWith) 
                 .agents
                 .open_terminal(&path, &cli.program.to_string_lossy(), &[])
                 .map_err(|error| error.to_string()),
-            None => Err(format!("{} is not installed", agent_name(kind))),
+            None => Err(format!("{} is not installed", agent_names::cli_name(kind))),
         },
     };
     if let Err(error) = opened {
