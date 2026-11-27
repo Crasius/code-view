@@ -12,7 +12,7 @@ use review_core::{ProviderKind, ReviewThread, ThreadAnchor};
 use review_git::{ChangeKind, ChangedFile, DiffOptions, FileDiff};
 use review_store::{AppSettings, DiffLayout, ThemePreference};
 
-use super::{DiffSource, FolderSummary, MARGIN, SummaryEvent, SummaryInputs};
+use super::{Compare, DiffSource, FolderSummary, MARGIN, SummaryEvent, SummaryInputs};
 use cv_base::theme;
 use cv_pr_diff::diff_view::DiffView;
 use cv_pr_diff::testing::thread_on_old_line;
@@ -137,6 +137,8 @@ pub(super) struct FakeSource {
     pub rendered: Vec<String>,
     /// The Markdown versions a rendered card loads, forty sections every third edited unless set.
     pub versions: Option<(String, String)>,
+    /// Set: a rendered card's versions arrive without their model.
+    pub without_model: bool,
     /// Set: every diff load starts on this runtime and never finishes.
     pub hangs_on: Option<Background>,
     cache: HashMap<String, Arc<FileDiff>>,
@@ -167,7 +169,11 @@ impl DiffSource for FakeSource {
     fn start_rendered(&mut self, file: &ChangedFile) -> Option<Load<Arc<Loaded>>> {
         self.rendered.push(file.path.clone());
         let (old, new) = self.versions.clone().unwrap_or_else(|| markdown_versions(40));
-        Some(Load::Ready(Arc::new(Loaded::markdown(Some(&old), Some(&new)))))
+        let mut loaded = Loaded::markdown(file, Some(&old), Some(&new), ProviderKind::GitHub);
+        if self.without_model {
+            loaded.model = None;
+        }
+        Some(Load::Ready(Arc::new(loaded)))
     }
 
     fn spans(&mut self, _: &ChangedFile) -> Option<Arc<LineSpans>> {
@@ -250,7 +256,11 @@ impl Scene {
             order: &self.order,
             order_version: self.order_version,
             folder: &self.folder,
-            compare: ("base", "head", DiffOptions::context(self.context)),
+            compare: Compare {
+                base: "base",
+                head: "head",
+                options: DiffOptions::context(self.context),
+            },
             font_size: self.settings.code_font_size,
             thread_counts: &self.thread_counts,
             threads: &threads,

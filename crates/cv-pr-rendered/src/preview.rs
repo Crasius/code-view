@@ -13,7 +13,7 @@ use review_core::{DiffSide, ReviewThread};
 use review_git::ChangedFile;
 use review_store::{AppSettings, ImageCompare, PaneSizes, RenderedWidth};
 
-use crate::markdown_diff::{MarkdownDiff, RenderedEvent, RenderedImages, RenderedInputs};
+use crate::markdown_diff::{MarkdownDiff, MarkdownModel, RenderedEvent, RenderedInputs};
 use cv_base::theme::{self, icons, style};
 use cv_media::images::{self as image_store, Decoded};
 use cv_media::picture::Picture;
@@ -72,32 +72,43 @@ enum Side {
     Text(String),
 }
 
-/// A file's preview, loaded: its versions and, for Markdown, their images.
+/// A file's preview, loaded: its versions and, for Markdown, the rendered diff of them.
 #[derive(Clone)]
 pub struct Loaded {
     old: Option<Side>,
     new: Option<Side>,
-    /// Markdown: where each version's images point and which of them changed.
-    images: RenderedImages,
-    /// Identifies what `images` show: the file's paths and the blobs of its repository images, not
-    /// the commits they resolve in, so a comparison that moved leaves the rendered diff as it is.
+    /// Markdown: identifies the images the versions show: the file's paths and the blobs of its
+    /// repository images, not the commits they resolve in, so a comparison that moved leaves the
+    /// rendered diff as it is.
     images_key: u64,
+    /// Markdown: both versions parsed and lined up, with their images, by the load.
+    pub model: Option<Arc<MarkdownModel>>,
 }
 
-/// The file a preview was loaded for: its path (its kind, and the folder its relative images
-/// resolve in), its old and new blob and the compared (base, head) commits.
-type LoadedFor = (String, String, String, Option<(String, String)>);
-
-/// The preview for `next` shows the same versions of the same file as the one for `shown`: only
-/// the commits its images resolve in moved (an update of the pull request).
-fn is_same_versions(shown: &LoadedFor, next: &LoadedFor) -> bool {
-    (&shown.0, &shown.1, &shown.2) == (&next.0, &next.1, &next.2)
+/// The file a preview was loaded for: two files with the same blobs in other folders (a copied
+/// README) show their own images.
+#[derive(Debug, PartialEq, Eq)]
+struct LoadedFor {
+    /// Its kind, and the folder its relative images resolve in.
+    path: String,
+    old_oid: String,
+    new_oid: String,
+    /// The compared (base, head) commits its images resolve in.
+    commits: Option<(String, String)>,
 }
 
-/// What a preview of `file` comparing `commits` loads: two files with the same blobs in other
-/// folders (a copied README) show their own images.
-fn loaded_for(file: &ChangedFile, commits: Option<(String, String)>) -> LoadedFor {
-    (file.path.clone(), file.old_oid.clone(), file.new_oid.clone(), commits)
+impl LoadedFor {
+    fn new(file: &ChangedFile, commits: Option<(String, String)>) -> Self {
+        let (path, old_oid, new_oid) =
+            (file.path.clone(), file.old_oid.clone(), file.new_oid.clone());
+        Self { path, old_oid, new_oid, commits }
+    }
+
+    /// The preview for `other` shows the same versions of the same file: only the commits its
+    /// images resolve in moved (an update of the pull request).
+    fn same_versions(&self, other: &Self) -> bool {
+        (&self.path, &self.old_oid, &self.new_oid) == (&other.path, &other.old_oid, &other.new_oid)
+    }
 }
 
 pub struct Preview {
@@ -134,16 +145,17 @@ impl Default for Preview {
     }
 }
 
-/// Identifies the rendered diff of a Markdown file: its two versions and their images. Both the
-/// diff's inputs and every lookup of its state use it, so they cannot drift apart.
-fn rendered_key(file: &ChangedFile, loaded: &Loaded) -> u64 {
+/// Identifies the rendered diff of a Markdown file: its two versions and their images
+/// ([`Loaded::images_key`]). Both the model the load builds and every lookup of the diff's state
+/// use it, so they cannot drift apart.
+fn rendered_key(file: &ChangedFile, images_key: u64) -> u64 {
     egui::epaint::util::hash((
         &file.path,
         &file.old_oid,
         &file.new_oid,
         file.has_old_blob(),
         file.has_new_blob(),
-        loaded.images_key,
+        images_key,
     ))
 }
 
@@ -223,7 +235,7 @@ impl Preview {
         let Load::Ready(loaded) = &self.content else {
             return None;
         };
-        self.markdown.change_position(rendered_key(file, loaded))
+        self.markdown.change_position(rendered_key(file, loaded.images_key))
     }
 
     /// Steps to the next or previous change of the rendered Markdown diff.
@@ -301,17 +313,18 @@ impl Preview {
         };
         let settings = &mut services.settings;
         if kind == PreviewKind::Markdown {
+            let Some(model) = &loaded.model else {
+                show_skeleton(ui, kind, skeleton::reveal(ui.ctx(), self.started));
+                return None;
+            };
             let inputs = RenderedInputs {
-                key: rendered_key(file, &loaded),
-                old: text_of(loaded.old.as_ref()),
-                new: text_of(loaded.new.as_ref()),
+                model,
                 platform: session.kind,
                 layout: settings.diff_layout,
                 context: settings.context_lines,
                 // The rendered file follows the code zoom, like the diff of the same file.
                 scale: settings.code_font_size / AppSettings::DEFAULT_CODE_FONT_SIZE,
                 can_comment: session.has_token,
-                images: &loaded.images,
                 threads,
                 show_threads: settings.show_comments_in_diff,
             };
@@ -394,17 +407,18 @@ impl Preview {
         kind: PreviewKind,
     ) {
         let commits = if kind == PreviewKind::Markdown { session.compared_commits() } else { None };
-        let key = loaded_for(file, commits);
+        let key = LoadedFor::new(file, commits);
         if self.loaded_for.as_ref() == Some(&key) {
             return;
         }
         let Some(mirror) = session.mirror.ready() else {
             return;
         };
-        let job = LoadJob::new(ctx, mirror.git.clone(), key.3.clone(), session.kind, file, kind);
+        let commits = key.commits.clone();
+        let job = LoadJob::new(ctx, mirror.git.clone(), commits, session.kind, file, kind);
         // The same versions for moved commits load behind the shown preview: no placeholder.
         let is_reload = self.content.ready().is_some()
-            && self.loaded_for.as_ref().is_some_and(|shown| is_same_versions(shown, &key));
+            && self.loaded_for.as_ref().is_some_and(|shown| shown.same_versions(&key));
         self.loaded_for = Some(key);
         if !is_reload {
             self.reloading = Load::Idle;
@@ -461,7 +475,7 @@ impl Preview {
     #[cfg(any(test, feature = "test-support"))]
     /// The rendered diff on screen for `file`, by its key; `None` while the placeholder shows.
     pub fn shown(&self, file: &ChangedFile) -> Option<u64> {
-        self.content.ready().map(|loaded| rendered_key(file, loaded))
+        self.content.ready().map(|loaded| rendered_key(file, loaded.images_key))
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -540,8 +554,7 @@ mod tests {
     use review_store::ImageCompare;
 
     use super::load::{changed_images, decode};
-    use super::{Loaded, Preview, PreviewKind, Side, upload};
-    use crate::markdown_diff::RenderedImages;
+    use super::{Loaded, LoadedFor, Preview, PreviewKind, Side, upload};
     use cv_media::images::{Decoded, MAX_TEXTURE_EDGE, Natural};
     use cv_runtime::load::Load;
 
@@ -552,7 +565,7 @@ mod tests {
     }
 
     fn loaded(old: Option<Side>, new: Option<Side>) -> Loaded {
-        Loaded { old, new, images: RenderedImages::default(), images_key: 0 }
+        Loaded { old, new, images_key: 0, model: None }
     }
 
     fn png(kind: ChangeKind) -> ChangedFile {
@@ -588,8 +601,8 @@ mod tests {
         let readme = |path: &str| ChangedFile::sample(path, ChangeKind::Added);
         let commits = || Some(("base".to_owned(), "head".to_owned()));
         assert_ne!(
-            super::loaded_for(&readme("docs/a/README.md"), commits()),
-            super::loaded_for(&readme("docs/b/README.md"), commits())
+            LoadedFor::new(&readme("docs/a/README.md"), commits()),
+            LoadedFor::new(&readme("docs/b/README.md"), commits())
         );
     }
 
@@ -599,11 +612,10 @@ mod tests {
     #[test]
     fn moved_commits_keep_the_versions_of_the_file() {
         let readme = ChangedFile::sample("README.md", ChangeKind::Modified);
-        let at =
-            |head: &str| super::loaded_for(&readme, Some(("base".to_owned(), head.to_owned())));
-        assert!(super::is_same_versions(&at("head"), &at("pushed")));
+        let at = |head: &str| LoadedFor::new(&readme, Some(("base".to_owned(), head.to_owned())));
+        assert!(at("head").same_versions(&at("pushed")));
         let edited = ChangedFile { new_oid: "3".repeat(40), ..readme.clone() };
-        assert!(!super::is_same_versions(&at("head"), &super::loaded_for(&edited, None)));
+        assert!(!at("head").same_versions(&LoadedFor::new(&edited, None)));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! Which cards get their diff, and when: the diffs that arrived go into their cards, the cards on
 //! screen and one screen around it are wanted, and their diffs (or a rendered card's versions)
-//! start loading as the budget allows; loaded cards near the view get their syntax colors.
+//! start loading as the budget allows; loaded cards near the view get their syntax colors. A new
+//! comparison drops every diff loaded for the old one.
 
 use std::sync::Arc;
 
@@ -9,8 +10,26 @@ use review_git::{ChangedFile, FileDiff};
 use super::bodies::CardBody;
 use super::card::{self, Body};
 use super::rendered;
-use super::{DiffSource, FolderSummary, MAX_BUILDS_PER_FRAME, SummaryInputs};
+use super::{Compare, DiffSource, FolderSummary, MAX_BUILDS_PER_FRAME, SummaryInputs};
 use cv_syntax::highlight::LineSpans;
+
+/// A new comparison (live update, another range, other context) makes every diff stale.
+pub fn follow_compare(summary: &mut FolderSummary, compare: Compare<'_>) {
+    let is_same = summary.compare.as_ref().is_some_and(|(base, head, options)| {
+        Compare { base: base.as_str(), head: head.as_str(), options: *options } == compare
+    });
+    if is_same {
+        return;
+    }
+    summary.compare = Some((compare.base.to_owned(), compare.head.to_owned(), compare.options));
+    summary.loads.start_over();
+    summary.bodies.clear();
+    summary.rendered.clear();
+    summary.shapes.clear();
+    summary.heights.clear();
+    summary.selected = None;
+    summary.rebuild();
+}
 
 /// Takes in the diffs that arrived: kept for the file view, and shown in their cards.
 pub fn finish_loads(

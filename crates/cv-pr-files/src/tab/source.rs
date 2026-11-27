@@ -26,11 +26,6 @@ pub fn summary_diff_options(settings: &AppSettings) -> DiffOptions {
     DiffOptions { context, ..options }
 }
 
-/// `path` lies below `folder` (every path lies below the root, `""`).
-pub fn is_below(path: &str, folder: &str) -> bool {
-    folder.is_empty() || path.strip_prefix(folder).is_some_and(|rest| rest.starts_with('/'))
-}
-
 /// The summary's diffs: the file view's cache first, then the mirror, as the file view loads them,
 /// with their colors by diff line.
 pub struct MirrorSource<'a> {
@@ -83,19 +78,5 @@ impl DiffSource for MirrorSource<'_> {
         let git = self.git.clone()?;
         let commits = Some(self.commits.clone()?);
         Some(preview::load_markdown(&self.ctx, git, commits, self.platform, self.background, file))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::is_below;
-
-    #[test]
-    fn a_folder_holds_only_the_paths_below_it() {
-        assert!(is_below("src/app/cart.rs", ""), "the root holds every path");
-        assert!(is_below("src/app/cart.rs", "src/app"));
-        assert!(is_below("src/app/cart.rs", "src"));
-        assert!(!is_below("src/application.rs", "src/app"), "a name that only starts the same");
-        assert!(!is_below("src/app", "src/app"), "the folder itself is no file below it");
     }
 }
