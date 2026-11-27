@@ -296,16 +296,15 @@ pub(super) fn log(ui: &mut Ui, record: &CheckoutRecord) -> Option<Act> {
         .inner_margin(egui::Margin::symmetric(10, 8));
     frame.show(ui, |ui| {
         ui.set_width(ui.available_width());
+        let font = theme::fonts::code_font(style::SMALL_SIZE);
+        let row_height = ui.fonts_mut(|fonts| fonts.row_height(&font));
         egui::ScrollArea::both()
             .id_salt("checkout_saved_log")
             .max_height(LOG_HEIGHT)
             .stick_to_bottom(true)
-            .show(ui, |ui| {
-                for line in &record.log {
-                    ui.label(
-                        RichText::new(progress_log::redact(line))
-                            .font(theme::fonts::code_font(style::SMALL_SIZE)),
-                    );
+            .show_rows(ui, row_height, record.log.len(), |ui, range| {
+                for line in &record.log[range] {
+                    ui.label(RichText::new(line).font(font.clone()));
                 }
             });
     });
