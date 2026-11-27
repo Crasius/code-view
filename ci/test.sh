@@ -24,7 +24,8 @@ if [ "$filter" = "none()" ]; then
 fi
 # The build first: once it passed, `target` matches this tree, whatever the tests say, and the cache
 # (saved also when a test fails, ci/checks.yml) stays warm for the next run.
-# Uploading its two archives on GitLab took 120 to 137 s [observed 2026-11-26, pipelines 4905, 4906].
+# Uploading its two archives on GitLab took 120 to 137 s
+# [observed 2026-11-26, pipelines 4905, 4906].
 start="$(date +%s)"
 cargo test --locked --workspace --no-run
 sh ci/target-stamp.sh save "$(($(date +%s) - start))" 130
