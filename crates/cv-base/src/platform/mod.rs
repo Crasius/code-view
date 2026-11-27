@@ -70,6 +70,9 @@ pub use system::{
 #[cfg(any(test, feature = "test-support"))]
 pub use window_drag::LONG_PRESS;
 pub use window_drag::{is_drag_area as is_window_drag_area, long_press_moves_window};
+/// The Windows title bar's state for the tests of the integrated bar.
+#[cfg(all(windows, any(test, feature = "test-support")))]
+pub use windows::{hit_test, published_caption};
 
 /// Drops the markers of a coding agent session the app was started from ([`session`]), then
 /// prepares what the system needs. Call first in `main`, before any other thread runs.
@@ -77,9 +80,6 @@ pub fn prepare_environment() {
     session::forget_parent_session();
     system::prepare_environment();
 }
-/// The Windows title bar's state for the tests of the integrated bar.
-#[cfg(all(windows, any(test, feature = "test-support")))]
-pub use windows::{hit_test, published_caption};
 
 /// The window is focused, not minimized and not covered. Unknown counts as active (integrations
 /// without the info). Automatic refreshes and animations pause while it is not.
