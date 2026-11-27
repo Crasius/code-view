@@ -6,7 +6,7 @@ This page is the maintainer's runbook. Building on your own machine is on the pl
 
 ## Cut a release
 
-1. In a worktree, set `version` in `[workspace.package]` of the root `Cargo.toml`, run `cargo check` so that `Cargo.lock` follows, merge into `main` and push `main`.
+1. In a worktree, set `version` in `[workspace.package]` of the root `Cargo.toml`, run `cargo update --workspace` so that `Cargo.lock` follows, merge into `main` and push `main`.
 2. When that commit's pipeline is green, tag it and push the tag: `git tag vX.Y.Z <commit>`, `git push origin vX.Y.Z`.
 3. The tag's pipeline runs the checks and builds again, then job `creative-downloads` publishes. Its artifacts `publish.json` and `release-notes.md` show what went out.
 
@@ -18,15 +18,17 @@ The instance has one shared runner, so a pipeline runs only what verifies someth
 
 | Pipeline | Jobs |
 |---|---|
-| Merge request that changes a cargo input | `lint`, `test` (the tests the change needs), `secret-scan` side by side; `build-linux-x64` after them when a release input changed; `measurements` and every other build wait for a manual start |
+| Merge request that changes a cargo input | `lint`, `test` (the tests the change needs), `secret-scan` side by side, `supply-chain` when the dependency set changed; `build-linux-x64` after them when a release input changed; `measurements` and every other build wait for a manual start |
 | Merge request that changes no cargo input (docs, `.agents/rules`, `AGENTS.md`) | `secret-scan` |
-| Push to `main` | `lint`, `test` (every test), `measurements` and `secret-scan`, for every push, docs only included; they write the build caches |
-| Protected tag `vX.Y.Z` | `lint`, `test` (every test), `secret-scan`, the five builds, `creative-downloads`; every cache only restored |
-| Run by hand (web, API) | `lint`, `test` (every test), `secret-scan`, the five builds; on `main` also `measurements`, and it writes the build caches |
+| Push to `main` | `lint`, `test` (every test), `measurements`, `supply-chain` and `secret-scan`, for every push, docs only included; they write the build caches |
+| Protected tag `vX.Y.Z` | `lint`, `test` (every test), `supply-chain`, `secret-scan`, the five builds, `creative-downloads`; every cache only restored |
+| Run by hand (web, API) | `lint`, `test` (every test), `supply-chain`, `secret-scan`, the five builds; on `main` also `measurements`, and it writes the build caches |
+| Schedule | `supply-chain` alone; writes no cache |
 
-- `lint` runs format, `repo-check.sh`, repo-lint, both clippy passes and the clippy pass of `review-app`'s feature `measurements`; `test` runs the tests (Tests). Each has its own build cache (Build cache).
+- `lint` runs `ci/lint.sh`, the same script as GitHub's `lint`: the default steps of `scripts/check.sh` (format, `repo-check.sh`, repo-lint, the three clippy passes, the dependency bans and sources with cargo-deny) and its step `shear` (unused dependencies, cargo-shear); `test` runs the tests (Tests). Each has its own build cache (Build cache).
+- `supply-chain` runs `sh scripts/check.sh advisories licenses` and compiles nothing: the RustSec advisories of the locked crates (`deny.toml`), and the licences of the crates that link on each of the six shipped targets (`ci/notices.sh`, the release build's cargo-about call), so a licence outside `ci/about.toml` fails before the release tag. In a merge request it runs when `Cargo.lock`, a manifest, `deny.toml`, `ci/about.*` or the scripts it runs changed. Advisories appear without a commit, so a pipeline schedule on `main` (CI/CD, Pipeline schedules; the owner sets it up) runs it alone. cargo-deny, cargo-shear and cargo-about are pinned by version and checksum in `ci/install-build-deps.sh`.
 - `measurements` runs `review-app`'s heap measurements, which compile only with the feature `measurements` (rule `testing`, Running), from `test`'s cache, which it reads and never writes: on a warm cache only `review-app` compiles again, so the job should end before `test` [untested until the first push to `main`]. GitHub does not run it.
-- Every cargo job has a timeout of 1 h (`.rust` in `ci/checks.yml`); the one `check` job before them had 2 h. The slowest, a cold `test`, took 13 minutes (below).
+- Every cargo job has a timeout of 1 h (`.rust` in `ci/checks.yml`). The slowest, a cold `test`, took 13 minutes (below).
 - The cargo inputs are `.rust-inputs` in `ci/checks.yml`. `.gitlab-ci.yml` and `ci/` are on the list, so a CI change runs the jobs it defines.
 - The release inputs are `.release-inputs` in `.gitlab-ci.yml`: the manifests, the lockfile, the build scripts, the toolchain and the release scripts. Only they can break a release build that `lint` and `test` passed, chiefly through a dependency whose license `ci/about.toml` does not accept.
 - A push to `main` runs every check, also after a merge request whose pipeline passed and also for a docs-only push: a merge request checks only its own selection, and a rule's `changes` on a push compares with the commit before it. Either would let `main` turn green over what an earlier red or cancelled push changed.
@@ -44,7 +46,7 @@ Measured on 2026-11-26 in merge request !7 [observed]. Before, one job `check` r
 | Docs only (4607) | skipped | skipped | 12 s, `secret-scan` alone |
 | Every test, a merge request restoring caches without build ids (4909, job 25100) | 282 s, cold: the key now hashes `clippy.toml` | 230 s: restore 55, build 62 (every test executable linked again, Build cache), tests 97, no upload | 230 s; `measurements` 202 s beside it |
 
-Merge request pipelines upload no cache since 4909 ("Not uploading cache … due to policy"); the one-crate row's upload of 137 s is gone from them.
+Merge request pipelines upload no cache ("Not uploading cache … due to policy").
 
 The floor of `test` is the cache restore and `review-app`'s tests (about 110 s in one process); a change to a crate below `review-app` adds the rebuild of `review-app` (about 65 s cold).
 
@@ -60,7 +62,7 @@ The instance's only runner is Linux amd64, so everything but Linux x64 is a cros
 | `linux:arm64` | `aarch64-unknown-linux-gnu.2.31` | `cargo zigbuild` (`cargo-zigbuild`) | glibc 2.31 or newer, with the libraries of `docs/linux.md` |
 | `mac` | `universal2-apple-darwin` | `cargo zigbuild` (`cargo-zigbuild`) | macOS 12 or newer, Apple silicon and Intel |
 
-All images are pinned by digest in `.gitlab-ci.yml`. `ci/install-build-deps.sh` unpacks `cargo-about` on top of a build job's image.
+All images are pinned by digest in `ci/checks.yml`. `ci/install-build-deps.sh` unpacks `cargo-about` on top of a build job's image.
 
 Every system needs `git` at run time; the app runs it for its mirrors and diffs.
 
@@ -75,7 +77,7 @@ Every system needs `git` at run time; the app runs it for its mirrors and diffs.
 
 ### macOS
 - Creative Downloads takes one macOS depot without an architecture, so one universal binary serves both architectures.
-- The depot holds `Code View.app`; `ci/build-release.sh` writes its `Info.plist` with the values of `[package.metadata.bundle]` in `crates/review-app/Cargo.toml`. `scripts/package-macos.sh` stays the way to build on a Mac, with a disk image and a full ad-hoc signature of the bundle.
+- The depot holds `Code View.app`; `scripts/bundle-macos.sh` writes it and is the one place of its `Info.plist` values and of `MACOSX_DEPLOYMENT_TARGET`. `ci/build-release.sh` and `scripts/package-macos.sh` both call it, so the bundle built on a Mac carries the released `Info.plist`; `scripts/package-macos.sh` stays the way to build on a Mac, with a disk image and a full ad-hoc signature of the bundle.
 - The minimum system is `MACOSX_DEPLOYMENT_TARGET`, the SDK comes with the image.
 - The arm64 slice carries the linker's ad-hoc signature, without which Apple silicon refuses to run a binary. The x86_64 slice is unsigned [observed in the load commands, 2026-11-05]. The login Keychain ties saved tokens to a signature, so a new build may ask once per token (`docs/macos.md`).
 
@@ -85,7 +87,7 @@ The jobs run on the GitLab instance's shared runner, as pods of the Kubernetes e
 
 - Every capability is dropped: a job's root cannot switch users, change owners or write to another user's files. So `ci/install-build-deps.sh` unpacks a tool into `.build-deps` instead of installing it. `docker run --cap-drop=ALL --security-opt no-new-privileges` behaves the same way on a local machine.
 - A job has 4 CPUs and 8 GiB of memory.
-- A cache archive passes through the helper's `/cache` of 2 GiB, and the runner uploads none above 1 GiB: a larger one stays on the pod and is lost [observed 2026-11-26, pipeline 4900: "Cache archive size (1158212488) is too big (Limit is set to 1073741824)"]. The release builds cache only what cargo and xwin downloaded; `lint` and `test` each cache their `target`, `test` in two archives (Build cache).
+- A cache archive passes through the helper's `/cache` of 2 GiB, and the runner uploads none above 1 GiB: a larger one stays on the pod and is lost [observed 2026-11-26, pipeline 4900: "Cache archive size (1158212488) is too big (Limit is set to 1073741824)"]. The release builds restore the downloads `lint` and `test` cache, and the Windows builds cache xwin's download; `lint` and `test` each cache their `target`, `test` in two archives (Build cache).
 - A build container may use 8 GiB of disk and the helper 4 GiB, and the job's folder counts towards them. So jobs build without incremental data and without debug info, and each prints what its folders take at its end.
 - Jobs of one pipeline run in pods of their own, side by side [observed 2026-11-26: `lint` and `test` of pipeline 4900 started together].
 
@@ -110,7 +112,7 @@ The jobs run on the GitLab instance's shared runner, as pods of the Kubernetes e
 
 - The build stays `--workspace`: `cargo test -p` resolves features for the selected packages only and rebuilt 124 dependencies for `-p review-app` [observed 2026-11-26, local], which a warm cache would lose. Only the run is filtered.
 - Only a merge request runs a selection, compared with its diff base. A push to `main`, a tag and a run by hand run every test: a selection against the commit before a push would leave untested what an earlier push changed whose pipeline was cancelled, failed or skipped, and on a warm cache every test took 232 s, about as long as a selection (pipeline 4908) [observed 2026-11-26].
-- nextest runs each test in a process of its own. It is no faster here (`review-app`'s walkthroughs pay their start-up per test), but it filters the run without changing the build. So nextest runs every test binary but `review-app`'s: that one runs as `cargo test` runs it, all its tests in one process with one thread per CPU, when the selection holds any of them (`ci/test.sh`), because under nextest four walkthroughs at once timed out twice in three runs. nextest runs no doctests; `cargo test --doc` follows it. Each of the three groups runs also when another failed, and the job fails at the end.
+- nextest runs each test in a process of its own. It is no faster here (`review-app`'s walkthroughs pay their start-up per test), but it filters the run without changing the build. So nextest runs every test binary but `review-app`'s: that one runs as `cargo test` runs it, all its tests in one process with one thread per CPU, when the selection holds any of them (`ci/test.sh`), because under nextest four walkthroughs at once timed out twice in three runs. Each of the two groups runs also when another failed, and the job fails at the end.
 
 ## Secret scan
 
@@ -127,7 +129,7 @@ The public repository is <https://github.com/Crasius/code-view>. It is written o
 
 ## Third-party notices
 
-Every depot holds `THIRD-PARTY-NOTICES.txt` next to the program (macOS: in the bundle's `Contents/Resources`), as the licenses of the shipped crates ask. `ci/build-release.sh` writes it with `cargo-about`, pinned by version and checksum in `ci/install-build-deps.sh`; the config and the template are `ci/about.toml` and `ci/about.hbs`.
+Every depot holds `THIRD-PARTY-NOTICES.txt` next to the program (macOS: in the bundle's `Contents/Resources`), as the licenses of the shipped crates ask. `ci/build-release.sh` writes it with `cargo-about` (`ci/notices.sh`), pinned by version and checksum in `ci/install-build-deps.sh`; the config and the template are `ci/about.toml` and `ci/about.hbs`.
 
 - It lists only what links on that target, and a crate under a license outside `accepted` stops the build. MPL-2.0 asks to say where the source is: each entry names its repository.
 - The build appends the license of the Phosphor icon fonts and those of the syntax grammars. `crates/review-grammars/build.rs` bakes bat's grammars into the program through a build dependency, which the crate list leaves out, so `crates/review-grammars/examples/grammar_notices.rs` prints them.
@@ -178,7 +180,7 @@ The pages crop the images with `object-fit: cover`, centred, so each image is dr
 - The builds are neither signed nor notarized. Windows SmartScreen and macOS Gatekeeper warn on a file that came through a browser.
 - Nobody reviewed the legal side of the public release: the name, the terms of the Microsoft C runtime that `cargo xwin` links statically, the license (`LICENSE`) and the contributor license agreement (`CLA.md`).
 - No checksums are published next to the builds.
-- CI runs the tests on Linux only. Windows and macOS code is compiled in the release builds, not tested.
+- Windows code is compiled in the release builds, not tested; the macOS crates' tests run only in GitHub's pull request workflow.
 - Nothing starts the macOS or the Windows arm64 build before it ships; no runner has those systems.
 - The site shows the server's package number and the size of the largest build. The tag appears only in the release notes, and `cdl publish` has no option to set that number [observed 2026-11-05 on the YT Music release, `cdl` 0.3.0].
 - A release's download page lists every build under the name `CodeView`, with the system on a second line [observed 2026-11-05 on the YT Music release, which names its depots the same way]. The cause is on the platform's side, so the depot names stay as they are until the platform labels builds by their system.
