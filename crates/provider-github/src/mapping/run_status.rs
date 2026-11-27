@@ -33,9 +33,20 @@ pub(crate) fn from_commit_state(state: &str) -> RunStatus {
     }
 }
 
+/// GraphQL `StatusState` of a `StatusCheckRollup`: SUCCESS, FAILURE, ERROR, PENDING, EXPECTED.
+pub(crate) fn from_rollup_state(state: &str) -> RunStatus {
+    match state {
+        "SUCCESS" => RunStatus::Succeeded,
+        "FAILURE" | "ERROR" => RunStatus::Failed,
+        "PENDING" => RunStatus::Running,
+        "EXPECTED" => RunStatus::Queued,
+        _ => RunStatus::Neutral,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{from_check, from_commit_state};
+    use super::{from_check, from_commit_state, from_rollup_state};
     use review_core::RunStatus::{Canceled, Failed, Neutral, Queued, Running, Skipped, Succeeded};
 
     #[test]
@@ -72,5 +83,20 @@ mod tests {
         assert_eq!(from_commit_state("failure"), Failed);
         assert_eq!(from_commit_state("error"), Failed);
         assert_eq!(from_commit_state("pending"), Running);
+    }
+
+    #[test]
+    fn rollup_states() {
+        let cases = [
+            ("SUCCESS", Succeeded),
+            ("FAILURE", Failed),
+            ("ERROR", Failed),
+            ("PENDING", Running),
+            ("EXPECTED", Queued),
+            ("SOMETHING_NEW", Neutral),
+        ];
+        for (state, expected) in cases {
+            assert_eq!(from_rollup_state(state), expected, "{state}");
+        }
     }
 }

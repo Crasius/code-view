@@ -2,7 +2,9 @@
 //! one GraphQL request for every reference with a token, `GET /repos/{o}/{r}/issues/{n}` without.
 
 use provider_github::GitHubProvider;
-use review_core::{Connection, ItemKind, ItemRef, LinkedState, Provider, ProviderKind, RunStatus};
+use review_core::{
+    Connection, ItemKind, ItemRef, LinkedState, Provider, ProviderError, ProviderKind, RunStatus,
+};
 use serde_json::json;
 use wiremock::matchers::{body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -63,6 +65,28 @@ async fn one_graphql_request_resolves_every_reference() {
     assert_eq!(
         (items[1].kind, items[1].state, items[1].title.as_str()),
         (ItemKind::Issue, LinkedState::Done, "Login is slow")
+    );
+}
+
+/// The lookup ignored GraphQL errors, so a rate-limited answer listed no linked items at all.
+#[tokio::test]
+async fn a_rate_limited_lookup_fails_instead_of_listing_nothing() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/graphql"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": null,
+            "errors": [{ "type": "RATE_LIMITED", "message": "API rate limit exceeded" }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let asked = [reference(ItemKind::PullRequest, "acme/app", 59)];
+    let result = provider(&server, Some("test-token")).linked_items(&asked).await;
+    assert!(
+        matches!(result, Err(ProviderError::Status { status: 429, .. })),
+        "the error surfaces: {result:?}"
     );
 }
 
