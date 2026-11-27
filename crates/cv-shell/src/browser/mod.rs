@@ -22,6 +22,7 @@ use review_store::AppPaths;
 pub const HOST_NAME: &str = "de.crasius.codeview";
 /// The extension's id, fixed by the public key in `browser-extension/manifest.json`.
 pub const EXTENSION_ID: &str = "bjnmgiogdmaelabjgocfnplmmlbpfpog";
+const _: () = assert!(EXTENSION_ID.len() == 32);
 
 /// The origin the browser passes the host, the one `allowed_origins` lets in.
 pub fn extension_origin() -> String {
