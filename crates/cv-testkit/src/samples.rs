@@ -62,7 +62,8 @@ pub fn connection(id: &str, kind: ProviderKind, base_url: &str) -> Connection {
     }
 }
 
-/// Ada Lovelace (id "1", login "ada"): the author of every sample, and the user a `Script` signs in.
+/// Ada Lovelace (id "1", login "ada"): the author of every sample, and the user a
+/// [`Script`](crate::provider::Script) signs in.
 pub fn author() -> UserIdentity {
     UserIdentity {
         id: "1".to_owned(),

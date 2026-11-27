@@ -24,8 +24,9 @@
 //! gives real threads time), [`poll_until`] and [`poll_for`] (the one way a unit test waits for
 //! another thread, bounded by [`WAIT_LIMIT`]), [`git`], [`fast_import`] and [`file_url`] (fixture
 //! repositories), [`ScratchDir`] and [`remove_dir`], [`samples`] (model values a test fills in by
-//! struct update) and [`use_bundled_fonts`] (the same text widths on every machine). [`Clicks`]
-//! is the one way a kittest test clicks. [`frame_bench`] holds the headless frame-budget
+//! struct update), [`provider`] (the scripted provider of a test that is not about HTTP) and
+//! [`use_bundled_fonts`] (the same text widths on every machine). [`Clicks`] is the one way a
+//! kittest test clicks. [`frame_bench`] holds the headless frame-budget
 //! benchmarks.
 //!
 //! A dev-only crate: the crates above `cv-widgets` take it as a dev-dependency, `cv-services` also as an
@@ -38,6 +39,7 @@
 
 mod clicks;
 pub mod frame_bench;
+pub mod provider;
 pub mod samples;
 mod trace;
 
