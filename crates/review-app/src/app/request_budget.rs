@@ -26,8 +26,9 @@ use super::mock_host::MockHost;
 use super::recording::{Recorder, iids, template};
 use super::startup;
 use super::walkthrough::{
-    self, LIMIT, NeighbourWrites, SharingWindow, click_first, has, long_session_builder, pump,
-    saved_paths, scroll_list, set_focus, wait_idle, wait_until_unsettled,
+    self, LIMIT, NeighbourWrites, SharingWindow, click_first, filter_checks, has,
+    long_session_builder, pump, saved_paths, scroll_list, set_focus, wait_idle,
+    wait_until_unsettled,
 };
 use cv_lists::pull_request_list::LIST_INTERVAL;
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
@@ -907,16 +908,6 @@ fn uncounted_rows(harness: &Harness<'_, ReviewApp>) -> BTreeSet<u64> {
         .collect()
 }
 
-/// Replaces the checks table's filter text.
-fn filter_checks(harness: &mut Harness<'_, ReviewApp>, text: &str) {
-    harness.get_by_label("Filter checks").focus();
-    harness.step();
-    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
-    harness.get_by_label("Filter checks").type_text(text);
-    harness.step();
-    harness.step();
-}
-
 /// The git fetches of [`drive_scenario`]'s page steps.
 struct ScenarioFetches {
     /// The objects of each fetch until the Files tab listed the files.
@@ -1002,10 +993,7 @@ fn drive_scenario(file_count: usize) -> (Fixture, ScenarioFetches, NeighbourWrit
 
     enter_phase(&fixture.recorder, &harness, "Job log (10 s)");
     // 40 job rows: the filter brings the job into view, its row opens the log.
-    harness.get_by_label("Filter checks").focus();
-    harness.step();
-    harness.get_by_label("Filter checks").type_text("test-3-2");
-    harness.step();
+    filter_checks(&mut harness, "test-3-2");
     click_first(&mut harness, "test-3-2 in");
     pump(&mut harness, 10.0);
     phases.push(("Job log (10 s)", 10.0));

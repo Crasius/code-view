@@ -399,6 +399,16 @@ pub(super) fn click_first(harness: &mut Harness<'_, ReviewApp>, text: &str) {
     harness.step();
 }
 
+/// Replaces the checks table's filter text.
+pub(super) fn filter_checks(harness: &mut Harness<'_, ReviewApp>, text: &str) {
+    harness.get_by_label("Filter checks").focus();
+    harness.step();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Filter checks").type_text(text);
+    harness.step();
+    harness.step();
+}
+
 /// Types into the text field whose hint starts with `placeholder` and returns once the field holds
 /// the text: a field takes typed text only while it has the focus, so a step that follows (a
 /// submit button that is enabled only with text) never runs on a field that missed it.

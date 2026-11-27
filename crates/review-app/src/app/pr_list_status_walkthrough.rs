@@ -25,7 +25,9 @@ use wiremock::{Request, Respond, ResponseTemplate};
 use super::ReviewApp;
 use super::mock_host::MockHost;
 use super::recording::{Recorder, iids, template};
-use super::walkthrough::{app_with, opened_urls, saved_paths, wait_idle, wait_until_unsettled};
+use super::walkthrough::{
+    app_with, opened_urls, saved_paths, wait_idle, wait_until_still, wait_until_unsettled,
+};
 use cv_testkit::{Clicks, ScratchDir, samples};
 use cv_widgets::numbers::number_prefix;
 
@@ -307,10 +309,9 @@ fn indicators_fit_a_narrow_window() {
     wait_idle(&mut harness);
     let wide = row.checks_width(&harness);
     harness.set_size(egui::vec2(720.0, 900.0));
-    for _ in 0..20 {
-        harness.step();
-    }
-    let narrow = row.checks_width(&harness);
+    let narrow = wait_until_still(&mut harness, "the narrow checks indicator", |harness| {
+        Some(row.checks_width(harness))
+    });
     assert!(wide > 50.0 && narrow < 30.0, "with its count {wide}, icon only {narrow}");
     assert!(row.approvals(&harness).is_some(), "the approvals stay on a narrow card");
     // The rows' own problems; the cards and header above them are not this walkthrough's.

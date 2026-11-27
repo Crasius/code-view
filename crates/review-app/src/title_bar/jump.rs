@@ -839,10 +839,12 @@ mod tests {
             "the results end at {} in a window {height} tall",
             popup.bottom()
         );
-        let room = ((height - style::SPACE_S - popup.top() - popup_chrome()) / ROW_HEIGHT).floor()
-            as usize;
-        assert!(room < MAX_VISIBLE_RESULTS);
-        assert_height(&harness, room);
-        assert_eq!(visible(&harness).len(), room);
+        let shown = visible(&harness).len();
+        assert!(shown < MAX_VISIBLE_RESULTS);
+        assert!(
+            popup.bottom() + ROW_HEIGHT > height - style::SPACE_S,
+            "one more row would not have fit"
+        );
+        assert_height(&harness, shown);
     }
 }

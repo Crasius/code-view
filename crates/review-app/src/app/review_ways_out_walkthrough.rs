@@ -11,7 +11,7 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use serde_json::json;
 
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, TITLE, open_pull_request};
-use super::walkthrough::{app, press, press_button, type_into, wait_until};
+use super::walkthrough::{app, press, press_button, settle_background, type_into, wait_until};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -115,7 +115,7 @@ fn failed_merge_keeps_its_way_out_and_retries_once() {
     wait_until(&mut harness, "the second failure", |harness| {
         harness.query_by_role_and_label(Role::Button, "Retry").is_some()
     });
-    harness.run_steps(20);
+    settle_background(&mut harness);
     assert_eq!(merges(&host), 2, "Retry ran the merge once");
 }
 
