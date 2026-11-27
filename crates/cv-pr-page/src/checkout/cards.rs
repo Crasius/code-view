@@ -209,7 +209,7 @@ fn git_failed(ui: &mut Ui, view: &View<'_>, job: &Job, title: &str, message: &st
     head(ui, "FAILED", title, palette.error);
     let progress = job.progress();
     progress::steps(ui, &progress, std::time::Instant::now());
-    listing(ui, &message.lines().map(str::to_owned).collect::<Vec<_>>());
+    listing(ui, &message.lines().collect::<Vec<_>>());
     body(
         ui,
         &format!(
@@ -275,7 +275,7 @@ pub(super) fn remove(
         }
         Some(RemovalState::Failed(message)) => {
             head(ui, "NOT REMOVED", "The worktree could not be removed", palette.error);
-            listing(ui, &message.lines().map(str::to_owned).collect::<Vec<_>>());
+            listing(ui, &message.lines().collect::<Vec<_>>());
             danger_or_keep(ui, "Try again", Act::Remove(Changes::Keep))
         }
     }

@@ -282,3 +282,38 @@ pub fn reason(blocked: &Blocked, behind: usize) -> String {
 pub fn plural(count: usize, word: &str) -> String {
     if count == 1 { word.to_owned() } else { format!("{word}s") }
 }
+
+#[cfg(test)]
+mod tests {
+    use review_git::checkout::{Blocked, UpdateOutcome};
+
+    use super::{Change, UpdateResult, Upkeep};
+    use cv_runtime::route::PullRequestKey;
+
+    /// Regression: the "Not updated" line carries git's message, and the Log panel no longer hides
+    /// a token in it on screen, so it has to reach the log redacted.
+    #[test]
+    fn a_refused_update_is_stored_redacted() {
+        let key = PullRequestKey {
+            connection_id: "gh".into(),
+            repository_key: "acme/app".into(),
+            number: 7,
+        };
+        let refused = "fatal: unable to access https://ci:ghp_secret123@github.com/acme/app";
+        let result = UpdateResult {
+            outcome: Ok(UpdateOutcome::Blocked(Blocked::Refused(refused.into()))),
+            head: "def".into(),
+            behind: 2,
+            log: Vec::new(),
+        };
+        let change = Upkeep::default().updated(key, Some(result));
+        let Change::Stayed { log, .. } = change else {
+            panic!("the checkout stays when git refuses");
+        };
+        let [line] = log.as_slice() else {
+            panic!("one line for the refusal: {log:?}");
+        };
+        assert!(line.contains("Not updated: git refused"), "{line}");
+        assert!(!line.contains("ghp_secret123"), "{line}");
+    }
+}

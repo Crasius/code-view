@@ -25,10 +25,11 @@ pub enum Changes {
     Discard,
 }
 
-/// The checkout's own branch, and the commit it made it at.
+/// The branch the checkout made for itself.
 #[derive(Debug, Clone, Copy)]
 pub struct OwnBranch<'a> {
     pub name: &'a str,
+    /// The commit the checkout made the branch at; the branch goes only while it still points here.
     pub tip: &'a str,
 }
 
