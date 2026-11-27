@@ -339,8 +339,13 @@ impl ThreadsUi {
 
     /// The signed-in user, once known. Asking starts the one request that finds out.
     pub fn me(&mut self) -> Option<&UserIdentity> {
-        self.wants_me = true;
+        self.request_me();
         self.me.ready()
+    }
+
+    /// Asks for the signed-in user: the next frame starts the one request that finds out.
+    pub(crate) fn request_me(&mut self) {
+        self.wants_me = true;
     }
 
     fn known_me(&self) -> Option<&UserIdentity> {

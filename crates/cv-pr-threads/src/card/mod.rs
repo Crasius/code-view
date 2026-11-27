@@ -504,11 +504,44 @@ const ORIGIN_HINT: &str =
 
 #[cfg(test)]
 mod tests {
-    use review_core::ProviderKind;
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+    use review_core::{ProviderKind, ThreadStatus};
 
     use super::super::samples::{self, comment, jonas, minutes_ago};
-    use super::super::{CardOptions, ThreadsUi};
+    use super::super::{CardOptions, ThreadsUi, links};
     use super::show;
+
+    #[test]
+    fn offers_the_thread_link_once_the_provider_is_known() {
+        let thread = samples::thread(
+            "issue-comment:5",
+            ThreadStatus::Active,
+            None,
+            vec![comment("5", &jonas(), 3, "Ship it.")],
+        );
+        for has_provider in [false, true] {
+            let mut threads = ThreadsUi::for_tests(ProviderKind::GitHub);
+            threads.context.web_url = Some("https://code.example/acme/shop/pull/12".into());
+            if has_provider {
+                threads.edits.set_provider(&links::tests::github());
+            }
+            let shown = thread.clone();
+            let mut harness = Harness::builder()
+                .with_size([900.0, 600.0])
+                .with_context_setup(cv_base::theme::fonts::install)
+                .build_ui_state(
+                    move |ui, threads: &mut ThreadsUi| {
+                        cv_base::theme::activate(ui.ctx(), review_store::ThemePreference::Light);
+                        show(ui, &shown, threads, &CardOptions { show_location: false });
+                    },
+                    threads,
+                );
+            harness.run_steps(2);
+            let offered = harness.query_by_label("Copy link to thread").is_some();
+            assert_eq!(offered, has_provider, "with a provider: {has_provider}");
+        }
+    }
 
     /// Frames at `times`, each started as the page starts it (read tracking first), then showing
     /// `thread`'s card or nothing.

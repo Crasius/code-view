@@ -19,7 +19,9 @@ pub fn thread_url(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    use std::sync::Arc;
+
     use cv_testkit::provider::{Script, Scripted};
     use review_core::{Connection, ProviderKind, ThreadStatus, UserIdentity};
 
@@ -27,7 +29,7 @@ mod tests {
     use crate::samples;
 
     /// A GitHub provider that never sends: only its thread anchors are asked.
-    fn github() -> provider_github::GitHubProvider {
+    pub(crate) fn github() -> Arc<dyn Provider> {
         let connection = Connection {
             id: "test".into(),
             name: "test".into(),
@@ -36,7 +38,7 @@ mod tests {
             organizations: Vec::new(),
             token: None,
         };
-        provider_github::GitHubProvider::new(connection, reqwest::Client::new())
+        Arc::new(provider_github::GitHubProvider::new(connection, reqwest::Client::new()))
     }
 
     /// A platform without links to threads: the trait's default.
@@ -74,7 +76,7 @@ mod tests {
         let provider = github();
         for (page, expected) in cases {
             assert_eq!(
-                thread_url(&provider, page, &general_comment()).as_deref(),
+                thread_url(&*provider, page, &general_comment()).as_deref(),
                 expected,
                 "{page}"
             );

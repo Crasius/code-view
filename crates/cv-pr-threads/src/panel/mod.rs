@@ -122,8 +122,8 @@ pub fn show(
 ) -> (Vec<PanelEvent>, Rect) {
     let palette = theme::palette(ui.ctx());
     let mut events = Vec::new();
-    // Loads the user for the Mine chip and filter.
-    threads.me();
+    // The Mine chip and filter need the user.
+    threads.request_me();
     // New threads on their way are listed where they will land, marked "Posting…".
     let pending: Vec<ReviewThread> =
         threads.pending_threads().into_iter().map(|(_, thread)| thread).collect();
@@ -247,14 +247,18 @@ pub struct ToggleCounts {
 /// Per toggle, how many of the threads the panel lists it would add.
 pub fn toggle_counts(all: &[ReviewThread], threads: &ThreadsUi) -> ToggleCounts {
     let me = threads.known_me().map(|me| me.id.as_str());
-    let listed = || all.iter().filter(|thread| is_listed(thread, ThreadFilters::ALL, threads));
-    let active = listed().filter(|thread| thread.status == ThreadStatus::Active).count();
-    ToggleCounts {
-        active,
-        resolved: listed().count() - active,
-        unread: listed().filter(|thread| threads.is_unread(thread)).count(),
-        mine: me.map(|me| listed().filter(|thread| is_mine(thread, Some(me))).count()),
+    let mut counts = ToggleCounts { active: 0, resolved: 0, unread: 0, mine: me.map(|_| 0) };
+    for thread in all.iter().filter(|thread| is_listed(thread, ThreadFilters::ALL, threads)) {
+        match thread.status {
+            ThreadStatus::Active => counts.active += 1,
+            ThreadStatus::Resolved => counts.resolved += 1,
+        }
+        counts.unread += usize::from(threads.is_unread(thread));
+        if let Some(mine) = counts.mine.as_mut() {
+            *mine += usize::from(is_mine(thread, me));
+        }
     }
+    counts
 }
 
 /// The threads the filters let through, grouped by file in tree order, General last; `pending`
