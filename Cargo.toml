@@ -10,7 +10,6 @@ rust-version = "1.95"
 # license (LICENSE), SPDX identifier FSL-1.1-ALv2.
 license = "FSL-1.1-ALv2"
 repository = "https://github.com/Crasius/code-view"
-homepage = "https://codeview.northbyte.sh"
 # Nothing here goes to a registry. A crate takes it with `publish.workspace = true`, which also
 # keeps it out of the release's third-party notices (ci/about.toml).
 publish = false
@@ -108,7 +107,6 @@ eframe = { version = "0.37", default-features = false, features = ["glow", "acce
 # The monochrome Noto Emoji and emoji-icon-font close the fallback chains on systems whose own
 # fonts have no symbols or emoji (Linux without DejaVu or Noto, the tests' bundled-only setup).
 egui = { version = "0.37", features = ["monochrome_emoji_fonts"] }
-egui_extras = { version = "0.37", default-features = false }
 egui_kittest = "0.37"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
 # Mermaid diagrams in rendered Markdown, to SVG in pure Rust (no browser, no network); resvg draws
@@ -146,7 +144,7 @@ urlencoding = "2"
 wiremock = "0.6"
 # Windows: the icon and version resource of CodeView.exe (review-app build script).
 winresource = "0.1"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Memory"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
 # GitHub workflow files, for the `needs` graph between jobs.
 yaml-rust2 = { version = "0.13", default-features = false }
 
