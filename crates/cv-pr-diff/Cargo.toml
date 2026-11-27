@@ -27,7 +27,6 @@ test-support = [
     "cv-pr-session/test-support",
     "cv-pr-threads/test-support",
     "cv-runtime/test-support",
-    "cv-services/test-support",
     "cv-shell/test-support",
     "cv-syntax/test-support",
     "cv-widgets/test-support",
@@ -40,7 +39,6 @@ cv-editor.workspace = true
 cv-pr-session.workspace = true
 cv-pr-threads.workspace = true
 cv-runtime.workspace = true
-cv-services.workspace = true
 cv-shell = { workspace = true, optional = true }
 cv-syntax.workspace = true
 cv-widgets.workspace = true
@@ -60,7 +58,6 @@ cv-editor = { workspace = true, features = ["test-support"] }
 cv-pr-session = { workspace = true, features = ["test-support"] }
 cv-pr-threads = { workspace = true, features = ["test-support"] }
 cv-runtime = { workspace = true, features = ["test-support"] }
-cv-services = { workspace = true, features = ["test-support"] }
 cv-shell = { workspace = true, features = ["test-support"] }
 cv-syntax = { workspace = true, features = ["test-support"] }
 cv-testkit.workspace = true

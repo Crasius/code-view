@@ -658,16 +658,6 @@ pub fn paint_divider(painter: &Painter, x: f32, rect: Rect, palette: &Palette) {
     painter.vline(x, rect.y_range(), Stroke::new(1.0, palette.border));
 }
 
-pub fn mix(from: Color32, to: Color32, amount: f32) -> Color32 {
-    let channel =
-        |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
-    Color32::from_rgb(
-        channel(from.r(), to.r()),
-        channel(from.g(), to.g()),
-        channel(from.b(), to.b()),
-    )
-}
-
 /// Pixel-aligned text keeps monospace glyphs crisp.
 fn snap(position: Pos2) -> Pos2 {
     pos2(position.x.round(), position.y.round())

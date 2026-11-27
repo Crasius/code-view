@@ -64,11 +64,6 @@ pub fn rate_limited(connections: &ConnectionStore) -> Vec<RateLimited> {
         .collect()
 }
 
-/// "Retry now": ends the host's pauses so queued requests go out at once.
-pub fn retry_now(origin: &str) {
-    http::resume(origin);
-}
-
 /// The platform's documentation of its rate limits, for the banner's help link. Self-managed GitLab
 /// sets its limits in the admin area; gitlab.com publishes its own.
 pub fn rate_limit_docs(connection: &Connection) -> &'static str {

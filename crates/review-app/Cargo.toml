@@ -15,18 +15,6 @@ workspace = true
 name = "CodeView"
 path = "src/main.rs"
 
-# The macOS app bundle, built with scripts/package-macos.sh (see docs/macos.md).
-[package.metadata.bundle]
-name = "Code View"
-identifier = "de.crasius.codeview"
-icon = ["assets/icon/codeview.icns"]
-category = "public.app-category.developer-tools"
-short_description = "Native pull request reviews for Azure DevOps, GitHub and GitLab."
-copyright = "Copyright 2026 Northbyte. Functional Source License 1.1 (FSL-1.1-ALv2)."
-
-[package.metadata.bundle.osx]
-minimum_system_version = "12.0"
-
 [features]
 # wgpu as a second renderer, picked at run time with CODEVIEW_RENDERER=wgpu (docs/linux.md). Off by
 # default: the app ships glow only.

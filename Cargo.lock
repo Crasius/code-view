@@ -1101,7 +1101,6 @@ dependencies = [
  "cv-pr-session",
  "cv-pr-threads",
  "cv-runtime",
- "cv-services",
  "cv-shell",
  "cv-syntax",
  "cv-testkit",

@@ -264,11 +264,6 @@ pub fn sub_line(run: &PipelineRun, stages: Option<&[PipelineJob]>) -> String {
     parts.join(" · ")
 }
 
-/// "1 reviewer", "3 reviewers": [`counted`] with the plural an added "s".
-pub fn plural(count: usize, noun: &str) -> String {
-    counted(count, noun, &format!("{noun}s"))
-}
-
 /// "14m 25s", counting up while running; `None` before it started.
 pub fn duration(run: &PipelineRun) -> Option<String> {
     super::duration(run.started_at, run.finished_at)

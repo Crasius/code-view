@@ -18,7 +18,6 @@ mod upkeep;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use review_core::AgentKind;
 use review_git::GitMirror;
 use review_git::checkout::Changes;
 use review_store::AppPaths;
@@ -29,7 +28,7 @@ use review_store::checkouts::{
 pub use self::clones::{FolderPurpose, Found, KnownRepository, Query};
 pub use self::finish::Offer;
 pub use self::job::{Failure, Job, JobPhase, JobProgress, Place, Plan, StepState};
-pub use self::upkeep::{RemovalState, Status, plural, reason};
+pub use self::upkeep::{RemovalState, Status, reason};
 use cv_base::platform;
 use cv_runtime::background::Background;
 use cv_runtime::load::Load;
@@ -270,11 +269,6 @@ pub fn tool_name(with: OpenWith, settings: &CheckoutSettings) -> String {
         OpenWith::Terminal => terminal_name(settings),
         OpenWith::Agent(kind) => agent_names::cli_name(kind).to_owned(),
     }
-}
-
-/// The product name of `kind`'s CLI, as [`agent_names::cli_name`] gives it.
-pub fn agent_name(kind: AgentKind) -> &'static str {
-    agent_names::cli_name(kind)
 }
 
 /// Where the clone keeps the pull request's head.

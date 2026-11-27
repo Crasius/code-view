@@ -44,7 +44,6 @@ mod h_scroll;
 mod instant_colors_check;
 mod intraline;
 mod line_anchor;
-pub mod notice;
 pub mod patch_colors;
 #[cfg(test)]
 mod placed_scroll_check;

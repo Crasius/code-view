@@ -205,57 +205,6 @@ pub fn segments_width<T>(ui: &Ui, options: &[Segment<'_, T>]) -> f32 {
     options.iter().map(|segment| segment_width(ui, segment.label, segment.icon)).sum()
 }
 
-/// Segmented control for small sets of mutually exclusive options.
-pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, &str)]) -> bool {
-    let segments: Vec<Segment<'_, T>> =
-        options.iter().map(|(option, label)| Segment::new(*option, label)).collect();
-    self::segments(ui, value, &segments)
-}
-
-/// [`segmented`] with a tooltip per option (`(value, label, tooltip)`, an empty tooltip shows none),
-/// for options whose label alone does not say enough, or that have a shortcut.
-pub fn segmented_with_hints<T: PartialEq + Copy>(
-    ui: &mut Ui,
-    value: &mut T,
-    options: &[(T, &str, &str)],
-) -> bool {
-    let segments: Vec<Segment<'_, T>> = options
-        .iter()
-        .map(|(option, label, hint)| Segment::new(*option, label).with_hint(hint))
-        .collect();
-    self::segments(ui, value, &segments)
-}
-
-/// [`segmented_with_hints`] showing an icon per option (`(value, icon, label, tooltip)`), for where
-/// the labels don't fit. Each label stays the option's accessible name and leads its tooltip.
-pub fn segmented_icons<T: PartialEq + Copy>(
-    ui: &mut Ui,
-    value: &mut T,
-    options: &[(T, &str, &str, &str)],
-) -> bool {
-    let segments: Vec<Segment<'_, T>> = options
-        .iter()
-        .map(|(option, icon, label, hint)| {
-            Segment::new(*option, label).with_hint(hint).with_icon(icon)
-        })
-        .collect();
-    self::segments(ui, value, &segments)
-}
-
-/// The width [`segmented_with_hints`] takes for these labels.
-pub fn segmented_width(ui: &Ui, labels: &[&str]) -> f32 {
-    let segments: Vec<Segment<'_, ()>> =
-        labels.iter().map(|label| Segment::new((), label)).collect();
-    segments_width(ui, &segments)
-}
-
-/// The width [`segmented_icons`] takes for these icons.
-pub fn segmented_icons_width(ui: &Ui, icons: &[&str]) -> f32 {
-    let segments: Vec<Segment<'_, ()>> =
-        icons.iter().map(|icon| Segment::new((), "").with_icon(icon)).collect();
-    segments_width(ui, &segments)
-}
-
 /// Width of one segment. An icon segment is a fixed icon slot. A label segment is sized for its
 /// semibold (selected) face with every count widened to two digits, so neither selecting a segment
 /// nor a count ticking from 9 to 10 resizes the control.

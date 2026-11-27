@@ -51,7 +51,6 @@ use review_core::{PipelineJob, PipelineRun, Timestamp, short_sha};
 use self::attempts::Known;
 use self::checks::{Check, CheckKey};
 use self::checks_table::{ChecksTable, TableAction, TableInput};
-pub use self::graph::stage_card::ellipsized;
 use self::job_tree::LogTarget;
 use self::log::viewer::LogViewer;
 use self::log_page::{

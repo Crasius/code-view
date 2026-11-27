@@ -1,12 +1,10 @@
 //! One stage card of the graph: status, name, "N jobs completed" and duration; expanded it lists
 //! the stage's jobs and offers the stage's reruns, as Azure DevOps does.
 
-use std::sync::Arc;
-
 use cv_base::theme::{self, icons, motion, style};
 use cv_widgets::{badges, elide, row};
 use egui::{
-    Align2, Color32, FontId, Galley, Id, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder, pos2, vec2,
+    Align2, Color32, FontId, Id, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder, pos2, vec2,
 };
 use review_core::{PipelineJob, ProviderKind, RunStatus};
 
@@ -467,19 +465,6 @@ pub fn summary(stage: &PipelineJob, platform: ProviderKind) -> String {
         RunStatus::Canceled => format!("Canceled, {finished} {} completed", jobs(finished)),
         _ => format!("{total} {} completed", jobs(total)),
     }
-}
-
-/// One line of text cut to `max_width` with an ellipsis ([`elide::line`]); true when it was cut.
-pub fn ellipsized(
-    ui: &Ui,
-    text: &str,
-    font: FontId,
-    color: Color32,
-    max_width: f32,
-) -> (Arc<Galley>, bool) {
-    let galley = elide::line(ui.painter(), text, font, color, max_width);
-    let is_cut = galley.elided;
-    (galley, is_cut)
 }
 
 #[cfg(test)]
