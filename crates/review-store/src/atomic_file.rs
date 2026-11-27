@@ -6,7 +6,7 @@ use std::time::SystemTime;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-const TEMP_EXTENSION: &str = "tmp";
+pub(crate) const TEMP_EXTENSION: &str = "tmp";
 
 /// Gives every write its own temporary file within the process.
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
@@ -47,10 +47,10 @@ pub(crate) fn read_json<T: DeserializeOwned>(path: &Path) -> io::Result<Option<T
     Ok(Some(value))
 }
 
-/// Opening a pull request counts as use: its local state ages from the last visit, not the last write.
+/// Reading counts as use: the file ages from its last use, not its last write.
 pub(crate) fn mark_used(path: &Path) {
     if let Ok(handle) = std::fs::File::options().write(true).open(path) {
-        // A file that cannot take the time ages from its last write, which retention allows for.
+        // A file that cannot take the time ages from its last write, a little early.
         let _ages_from_last_write = handle.set_modified(SystemTime::now());
     }
 }

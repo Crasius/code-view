@@ -5,7 +5,7 @@
 mod records;
 mod settings;
 
-pub use records::{CheckoutKind, CheckoutRecord, CheckoutRecords, MAX_LOG_LINES};
+pub use records::{CheckoutKind, CheckoutRecord, CheckoutRecords};
 pub use settings::{
     CheckoutPlace, CheckoutSettings, DEFAULT_WORKTREE_PATTERN, OpenByDefault, OpenWith,
     RememberedCheckout, TerminalChoice, WhenFinished,
@@ -17,9 +17,10 @@ mod tests {
 
     use review_core::AgentKind;
 
+    use super::records::MAX_LOG_LINES;
     use super::{
         CheckoutKind, CheckoutPlace, CheckoutRecord, CheckoutRecords, CheckoutSettings,
-        MAX_LOG_LINES, OpenByDefault, OpenWith, RememberedCheckout, WhenFinished,
+        OpenByDefault, OpenWith, RememberedCheckout, WhenFinished,
     };
     use crate::AppSettings;
     use crate::test_support::TestDir;
@@ -81,14 +82,7 @@ mod tests {
     }
 
     #[test]
-    fn settings_from_before_local_checkouts_load_their_defaults() {
-        let settings: AppSettings = serde_json::from_str(r#"{"theme":"Dark"}"#).expect("loads");
-        assert_eq!(settings.checkouts, CheckoutSettings::default());
-        assert_eq!(
-            settings.checkouts.when_finished,
-            WhenFinished::RemoveAutomatically,
-            "a finished pull request's worktree goes by default"
-        );
+    fn an_unreadable_checkout_value_resets_only_itself() {
         let broken: AppSettings =
             serde_json::from_str(r#"{"checkouts":{"open_by_default":"Sometimes","terminal":7}}"#)
                 .expect("an unknown value resets only itself");

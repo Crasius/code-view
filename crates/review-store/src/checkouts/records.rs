@@ -93,10 +93,6 @@ impl CheckoutRecords {
         Self { file, records: Vec::new() }
     }
 
-    pub fn file(&self) -> &Path {
-        &self.file
-    }
-
     pub fn all(&self) -> &[CheckoutRecord] {
         &self.records
     }
