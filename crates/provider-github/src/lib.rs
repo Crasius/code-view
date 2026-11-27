@@ -140,11 +140,11 @@ impl Provider for GitHubProvider {
     }
 
     async fn close(&self, repo: &str, number: u64) -> Result<()> {
-        lifecycle::set_state(&self.client, repo, number, "closed").await
+        lifecycle::close(&self.client, repo, number).await
     }
 
     async fn reopen(&self, repo: &str, number: u64) -> Result<()> {
-        lifecycle::set_state(&self.client, repo, number, "open").await
+        lifecycle::reopen(&self.client, repo, number).await
     }
 
     async fn set_draft(&self, repo: &str, number: u64, is_draft: bool) -> Result<()> {

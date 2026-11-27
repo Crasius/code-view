@@ -37,19 +37,13 @@ pub fn token_guide(base_url: &str, owner: Option<&str>) -> TokenGuide {
     }
 }
 
-/// The classic token page, pre-filled with the recommended scopes.
-pub fn classic_token_url(base_url: &str) -> String {
-    format!(
-        "{}/settings/tokens/new?scopes={CLASSIC_SCOPES}&description={}",
-        base_url.trim_end_matches('/'),
-        urlencoding::encode(TOKEN_NAME)
-    )
-}
-
 fn classic_recipe(base: &str) -> TokenRecipe {
     TokenRecipe {
         title: "Classic personal access token".to_owned(),
-        create_url: classic_token_url(base),
+        create_url: format!(
+            "{base}/settings/tokens/new?scopes={CLASSIC_SCOPES}&description={}",
+            urlencoding::encode(TOKEN_NAME)
+        ),
         is_prefilled: true,
         summary: "One token for every repository and organization you can access. It covers \
                   reviews, comments, labels, merging, Actions logs and checks from other apps."
@@ -128,11 +122,10 @@ pub(crate) async fn inspect(client: &GitHubClient) -> Result<AccessReport> {
     let expires_at = header(&response, "github-authentication-token-expiration")
         .map(|value| value.chars().take(10).collect());
     let user: UserDto = decode(response).await?;
-    let token = client.connection().token().unwrap_or_default();
     let report = if let Some(scopes) = scopes {
         AccessReport {
             user: identity::user(user),
-            token_kind: scoped_token_kind(token).to_owned(),
+            token_kind: scoped_token_kind(client.connection()).to_owned(),
             checks: scoped_checks(&scopes),
             notes: scoped_notes(&scopes),
             scopes,
@@ -153,8 +146,8 @@ pub(crate) async fn inspect(client: &GitHubClient) -> Result<AccessReport> {
     Ok(report)
 }
 
-fn scoped_token_kind(token: &str) -> &'static str {
-    if token.starts_with("gho_") {
+fn scoped_token_kind(connection: &Connection) -> &'static str {
+    if sso::is_oauth_token(connection) {
         "GitHub CLI or OAuth app token"
     } else {
         "Classic personal access token"
@@ -218,9 +211,7 @@ async fn probe(client: &GitHubClient, path: String) -> Result<Probe> {
     match http::send(client.rest(Method::GET, &path).query(&[("per_page", "1")])).await {
         Ok(_) => Ok(Probe::Allowed),
         Err(ProviderError::Status { status: 403, .. }) => Ok(Probe::Denied),
-        Err(ProviderError::Status { status: 401, path, body }) => {
-            Err(ProviderError::Status { status: 401, path, body })
-        }
+        Err(error @ ProviderError::Status { status: 401, .. }) => Err(error),
         Err(ProviderError::Status { .. }) => Ok(Probe::Inconclusive),
         Err(error) => Err(error),
     }

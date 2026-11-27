@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use crate::client::GitHubClient;
 use crate::graphql;
-use crate::mapping::pull_request::{head_is_in_base_repository, merge_method_to_github};
+use crate::mapping::pull_request::{github_method, head_is_in_base_repository};
 use crate::pull_requests;
 use crate::repo_key::{RepoKey, encode_branch};
 
@@ -27,11 +27,7 @@ pub(crate) async fn merge(
 ) -> Result<()> {
     client.require_token("Merging")?;
     let repo = RepoKey::parse(key)?;
-    let method = merge_method_to_github(options.strategy).ok_or_else(|| {
-        ProviderError::Unsupported(
-            "GitHub has no semi-linear merge; pick a merge commit, squash or rebase.".to_owned(),
-        )
-    })?;
+    let method = github_method(options.strategy)?;
     // Only the branch name and the fork check come from here; the guard is the reviewed head.
     let pull = if options.delete_source_branch {
         Some(pull_requests::fetch(client, &repo, number).await?)
@@ -75,32 +71,25 @@ async fn delete_branch(client: &GitHubClient, repo: &RepoKey<'_>, branch: &str) 
     }
 }
 
-/// The first line of the message becomes the commit title; rebase merges take no message.
 fn merge_body(options: &MergeOptions, method: &str) -> Value {
     let mut body = json!({ "merge_method": method, "sha": options.head_sha });
-    let message =
-        options.commit_message.as_deref().map(str::trim).filter(|message| !message.is_empty());
-    if let Some(message) = message
-        && options.strategy.takes_message()
-    {
-        let (title, rest) = message.split_once('\n').unwrap_or((message, ""));
-        body["commit_title"] = Value::from(title.trim());
-        let rest = rest.trim();
-        if !rest.is_empty() {
-            body["commit_message"] = Value::from(rest);
+    if let Some((title, message)) = pull_requests::commit_message(options) {
+        body["commit_title"] = Value::from(title);
+        if !message.is_empty() {
+            body["commit_message"] = Value::from(message);
         }
     }
     body
 }
 
-pub(crate) async fn set_state(
-    client: &GitHubClient,
-    key: &str,
-    number: u64,
-    state: &str,
-) -> Result<()> {
+pub(crate) async fn close(client: &GitHubClient, key: &str, number: u64) -> Result<()> {
     client.require_token("Changing the pull request state")?;
-    patch(client, key, number, json!({ "state": state })).await
+    patch(client, key, number, json!({ "state": "closed" })).await
+}
+
+pub(crate) async fn reopen(client: &GitHubClient, key: &str, number: u64) -> Result<()> {
+    client.require_token("Changing the pull request state")?;
+    patch(client, key, number, json!({ "state": "open" })).await
 }
 
 pub(crate) async fn update_title_description(
@@ -146,7 +135,6 @@ pub(crate) async fn set_draft(
 #[cfg(test)]
 mod tests {
     use super::merge_body;
-    use crate::mapping::pull_request::merge_method_to_github;
     use review_core::{MergeOptions, MergeStrategy};
     use serde_json::json;
 
@@ -160,30 +148,19 @@ mod tests {
     }
 
     #[test]
-    fn squash_splits_title_and_message() {
+    fn merge_body_sends_title_and_message_only_when_given() {
         let body =
             merge_body(&options(MergeStrategy::Squash, Some("Title\n\nBody line")), "squash");
         assert_eq!(
             body,
             json!({ "merge_method": "squash", "sha": "abc", "commit_title": "Title", "commit_message": "Body line" })
         );
-    }
-
-    #[test]
-    fn merge_without_message_lets_github_choose() {
-        let body = merge_body(&options(MergeStrategy::Merge, Some("  ")), "merge");
-        assert_eq!(body, json!({ "merge_method": "merge", "sha": "abc" }));
-    }
-
-    #[test]
-    fn rebase_ignores_message() {
-        let body = merge_body(&options(MergeStrategy::Rebase, Some("Title")), "rebase");
-        assert_eq!(body, json!({ "merge_method": "rebase", "sha": "abc" }));
-    }
-
-    #[test]
-    fn semi_linear_has_no_github_method() {
-        assert_eq!(merge_method_to_github(MergeStrategy::SemiLinear), None);
-        assert_eq!(merge_method_to_github(MergeStrategy::Squash), Some("squash"));
+        let title_only = merge_body(&options(MergeStrategy::Merge, Some("Title")), "merge");
+        assert_eq!(
+            title_only,
+            json!({ "merge_method": "merge", "sha": "abc", "commit_title": "Title" })
+        );
+        let none = merge_body(&options(MergeStrategy::Merge, None), "merge");
+        assert_eq!(none, json!({ "merge_method": "merge", "sha": "abc" }));
     }
 }

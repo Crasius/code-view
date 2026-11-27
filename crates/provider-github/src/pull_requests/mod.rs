@@ -13,7 +13,7 @@ pub(crate) mod statuses;
 use std::collections::{HashMap, HashSet};
 
 use review_core::{
-    DiffStat, ProviderError, PullRequestDetail, PullRequestQuery, PullRequestScope,
+    DiffStat, MergeOptions, ProviderError, PullRequestDetail, PullRequestQuery, PullRequestScope,
     PullRequestSummary, Result, StateFilter,
 };
 use serde_json::json;
@@ -325,6 +325,19 @@ pub(crate) async fn fetch(
     client.get_json(&repo.pull_path(number)).await
 }
 
+/// The commit title and body of a merge or an auto-merge: the first line of the message is the
+/// title, the rest its body. Rebasing writes no commit of its own, and a blank message lets
+/// GitHub choose.
+pub(super) fn commit_message(options: &MergeOptions) -> Option<(&str, &str)> {
+    let message =
+        options.commit_message.as_deref().map(str::trim).filter(|message| !message.is_empty())?;
+    if !options.strategy.takes_message() {
+        return None;
+    }
+    let (title, body) = message.split_once('\n').unwrap_or((message, ""));
+    Some((title.trim(), body.trim()))
+}
+
 /// Line and file counts of rows the REST listing brought, which leaves them out: one
 /// `GET /repos/{o}/{r}/pulls/{n}` each. Search rows carry them already.
 pub(crate) async fn diff_stats(
@@ -350,4 +363,30 @@ pub(crate) async fn detail(
     let (dto, reviews) =
         tokio::try_join!(fetch(client, &repo, number), reviews::list(client, &repo, number))?;
     Ok(pull_request::detail(dto, &reviews, key))
+}
+
+#[cfg(test)]
+mod tests {
+    use review_core::{MergeOptions, MergeStrategy};
+
+    use super::commit_message;
+
+    fn options(strategy: MergeStrategy, message: &str) -> MergeOptions {
+        MergeOptions {
+            strategy,
+            delete_source_branch: false,
+            commit_message: Some(message.to_owned()),
+            head_sha: "abc".to_owned(),
+        }
+    }
+
+    #[test]
+    fn the_message_splits_into_title_and_body_except_for_rebase() {
+        assert_eq!(
+            commit_message(&options(MergeStrategy::Squash, "Title\n\nBody")),
+            Some(("Title", "Body"))
+        );
+        assert_eq!(commit_message(&options(MergeStrategy::Merge, "  ")), None);
+        assert_eq!(commit_message(&options(MergeStrategy::Rebase, "Title")), None);
+    }
 }

@@ -74,7 +74,7 @@ async fn look_up_login(client: &GitHubClient, id: u64) -> Result<String> {
 
 /// GitHub CLI and other OAuth app tokens are authorized by signing in to the organization's
 /// single sign-on; personal access tokens through "Configure SSO" on the token page.
-fn is_oauth_token(connection: &Connection) -> bool {
+pub(crate) fn is_oauth_token(connection: &Connection) -> bool {
     connection.token().is_some_and(|token| token.starts_with("gho_"))
 }
 

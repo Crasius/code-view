@@ -1,8 +1,8 @@
 //! REST pull request → summary and detail.
 
 use review_core::{
-    AutoComplete, DiffStat, LineCounts, MergeStatus, MergeStrategy, PullRequestDetail,
-    PullRequestState, PullRequestSummary,
+    AutoComplete, DiffStat, LineCounts, MergeStatus, MergeStrategy, ProviderError,
+    PullRequestDetail, PullRequestState, PullRequestSummary, Result,
 };
 
 use crate::dto::pull_request::PullRequestDto;
@@ -96,6 +96,16 @@ pub(crate) fn merge_method_to_github(strategy: MergeStrategy) -> Option<&'static
         MergeStrategy::Rebase => Some("rebase"),
         MergeStrategy::SemiLinear => None,
     }
+}
+
+/// The `merge_method` a merge or an auto-merge sends; a semi-linear merge is refused before any
+/// request.
+pub(crate) fn github_method(strategy: MergeStrategy) -> Result<&'static str> {
+    merge_method_to_github(strategy).ok_or_else(|| {
+        ProviderError::Unsupported(
+            "GitHub has no semi-linear merge; pick a merge commit, squash or rebase.".to_owned(),
+        )
+    })
 }
 
 pub(crate) fn merge_method_from_github(method: &str) -> Option<MergeStrategy> {
