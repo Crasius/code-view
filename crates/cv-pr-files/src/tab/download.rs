@@ -74,18 +74,15 @@ impl Download {
         {
             self.save(services, blob);
         }
-        if !self.load.poll() {
-            return;
-        }
-        match std::mem::take(&mut self.load) {
-            Load::Ready(path) => services.toasts.success(format!("Saved to {}", path.display())),
-            Load::Failed(message) => {
+        match self.load.take_finished() {
+            Some(Ok(path)) => services.toasts.success(format!("Saved to {}", path.display())),
+            Some(Err(message)) => {
                 let retry = ToastAction::retry(egui::Id::unique(RETRY_ID));
                 let folder = platform::downloads_dir().map(ToastAction::open_folder);
                 let ways_out = WaysOut::new(retry).and_some(folder);
                 services.toasts.error(format!("Download failed: {message}"), ways_out);
             }
-            Load::Idle | Load::Loading(_) => {}
+            None => {}
         }
     }
 }

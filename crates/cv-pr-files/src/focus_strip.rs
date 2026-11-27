@@ -18,12 +18,12 @@ use review_store::{DiffLayout, TreeSide};
 
 use super::origin_view::{self, Face};
 use cv_base::platform::shortcut;
-use cv_base::theme::{self, icons, motion, style};
+use cv_base::theme::{self, icons, style};
 use cv_pr_diff::diff_view::Direction;
 use cv_pr_rendered::file_header::{self, HeaderAction};
 use cv_services::Services;
 use cv_shell::focus_mode::strip;
-use cv_widgets::{buttons, glyph};
+use cv_widgets::{buttons, glyph, row};
 
 /// The widest change counter the slot is sized for, so counting never moves the arrows.
 const COUNTER_WIDTH: f32 = 64.0;
@@ -299,12 +299,7 @@ fn tree_toggle(ui: &mut Ui, wants_tree: bool, services: &mut Services) -> bool {
 /// right.
 fn paint_turned(ui: &Ui, toggle: &egui::Response, icon: &str, is_on: bool, turn: f32) {
     let palette = theme::palette(ui.ctx());
-    let color = if toggle.enabled() {
-        let on = motion::toggle(ui.ctx(), toggle.id.with("strip_on"), is_on, motion::FAST);
-        motion::mix(palette.text, palette.accent_text, on)
-    } else {
-        palette.text_disabled
-    };
+    let color = row::toggle_color(&palette, toggle, row::toggle_on(ui, toggle, is_on));
     let font = icons::state_font(&palette, icons::SIZE, is_on);
     let galley = ui.painter().layout_no_wrap(icon.to_owned(), font, color);
     // A text shape turns about its top-left corner: place that corner so the center stays put.

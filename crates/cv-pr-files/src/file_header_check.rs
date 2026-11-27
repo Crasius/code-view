@@ -45,16 +45,11 @@ fn file(
     (additions, deletions): (u32, u32),
 ) -> ChangedFile {
     ChangedFile {
-        path: path.into(),
         old_path: old_path.map(Into::into),
-        kind,
-        old_oid: if kind == ChangeKind::Added { "0".repeat(40) } else { "1".repeat(40) },
-        new_oid: if kind == ChangeKind::Deleted { "0".repeat(40) } else { "2".repeat(40) },
         additions: Some(additions),
         deletions: Some(deletions),
-        is_binary: false,
         category: FileCategory::Code,
-        whitespace_only: false,
+        ..ChangedFile::sample(path, kind)
     }
 }
 

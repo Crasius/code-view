@@ -26,7 +26,7 @@ use cv_pr_threads::ThreadsUi;
 use cv_syntax::color_worker::observe_repaints;
 use cv_syntax::grammar;
 use cv_syntax::pool::Priority;
-use cv_testkit::WAIT_LIMIT;
+use cv_testkit::{WAIT_LIMIT, poll_until};
 
 /// Frames the rows show before the held file versions arrive.
 const FRAMES_BEFORE_CONTENTS: usize = 3;
@@ -185,10 +185,9 @@ fn run_until_contents(
         syntax::color(TokenKind::Keyword, &Palette::LIGHT),
         syntax::color(TokenKind::String, &Palette::LIGHT),
     );
-    let deadline = Instant::now() + WAIT_LIMIT;
     let mut frames: Vec<(bool, bool)> = Vec::new();
     let mut after_contents = 0;
-    while after_contents < 3 && Instant::now() < deadline {
+    poll_until("three frames after the file versions arrived", || {
         harness.step();
         let colors = glyph_colors(harness);
         let has_code = harness.state().diff.is_some() && !colors.is_empty();
@@ -201,12 +200,8 @@ fn run_until_contents(
         if harness.state().contents.is_some() {
             after_contents += 1;
         }
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "paces the frames like a display while the loads run on their own threads"
-        )]
-        std::thread::sleep(Duration::from_millis(4));
-    }
+        after_contents == 3
+    });
     frames
 }
 
@@ -215,7 +210,6 @@ fn assert_colored_from_the_first_frame(layout: Layout) {
     let frames = run_until_contents(&mut harness, &contents_sender);
     let shown: Vec<bool> =
         frames.iter().filter(|(has_code, _)| *has_code).map(|(_, colored)| *colored).collect();
-    assert!(harness.state().contents.is_some(), "the file versions arrived: {frames:?}");
     assert!(
         shown.len() > FRAMES_BEFORE_CONTENTS,
         "the rows showed before the file versions arrived: {frames:?}"
@@ -329,16 +323,9 @@ export class Cart<T extends { price: number }> {
 
 fn changed_file(path: &str) -> review_git::ChangedFile {
     review_git::ChangedFile {
-        path: path.to_owned(),
-        old_path: None,
-        kind: review_git::ChangeKind::Modified,
-        old_oid: "1".repeat(40),
-        new_oid: "2".repeat(40),
         additions: Some(8),
         deletions: Some(5),
-        is_binary: false,
-        category: review_core::FileCategory::Code,
-        whitespace_only: false,
+        ..review_git::ChangedFile::sample(path, review_git::ChangeKind::Modified)
     }
 }
 
@@ -384,21 +371,15 @@ fn a_file_opened_right_after_the_pull_request_is_colored_in_its_first_frame() {
         syntax::color(TokenKind::Keyword, &Palette::LIGHT),
         syntax::color(TokenKind::String, &Palette::LIGHT),
     );
-    let deadline = Instant::now() + WAIT_LIMIT;
     let mut shown = Vec::new();
-    while shown.len() < 5 && Instant::now() < deadline {
+    poll_until("five frames with the diff's rows", || {
         harness.step();
         let colors = glyph_colors(&harness);
         if harness.state().diff.is_some() && !colors.is_empty() {
             shown.push(colors.contains(&keyword) && colors.contains(&string));
         }
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "paces the frames like a display while the diff loads on its own thread"
-        )]
-        std::thread::sleep(Duration::from_millis(4));
-    }
-    assert_eq!(shown.len(), 5, "the diff did not show five frames within {WAIT_LIMIT:?}");
+        shown.len() == 5
+    });
     assert!(
         shown.iter().all(|colored| *colored),
         "every frame with rows on screen is colored, the first one too: {shown:?}"

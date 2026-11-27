@@ -331,16 +331,10 @@ mod tests {
 
     fn file(path: &str, changed_lines: Option<u32>) -> ChangedFile {
         ChangedFile {
-            path: path.into(),
-            old_path: None,
-            kind: ChangeKind::Modified,
-            old_oid: "1".repeat(40),
-            new_oid: "2".repeat(40),
             additions: changed_lines,
             deletions: changed_lines.map(|_| 0),
-            is_binary: false,
             category: FileCategory::Code,
-            whitespace_only: false,
+            ..ChangedFile::sample(path, ChangeKind::Modified)
         }
     }
 

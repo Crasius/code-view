@@ -890,16 +890,10 @@ mod tests {
 
     fn markdown_file(path: &str) -> ChangedFile {
         ChangedFile {
-            path: path.into(),
-            old_path: None,
-            kind: ChangeKind::Modified,
-            old_oid: "1".repeat(40),
-            new_oid: "2".repeat(40),
             additions: Some(2),
             deletions: Some(1),
-            is_binary: false,
             category: FileCategory::Docs,
-            whitespace_only: false,
+            ..ChangedFile::sample(path, ChangeKind::Modified)
         }
     }
 

@@ -429,16 +429,10 @@ fn page(kind: ChangeKind, chosen: DiffLayout, scratch: &ScratchDir) -> Page {
     let mut services = services_in(scratch);
     services.settings.diff_layout = chosen;
     let file = ChangedFile {
-        path: PATH.into(),
-        old_path: None,
-        kind,
-        old_oid: if kind == ChangeKind::Added { "0".repeat(40) } else { "1".repeat(40) },
-        new_oid: if kind == ChangeKind::Added { "2".repeat(40) } else { "0".repeat(40) },
         additions: Some(new.lines().count() as u32),
         deletions: Some(old.lines().count() as u32),
-        is_binary: false,
         category: FileCategory::Code,
-        whitespace_only: false,
+        ..ChangedFile::sample(PATH, kind)
     };
     Page { fixture: check::whole_file_fixture(whole), services, preview: Preview::default(), file }
 }

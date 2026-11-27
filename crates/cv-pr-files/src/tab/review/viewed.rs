@@ -115,9 +115,7 @@ impl ViewedMarks {
 
 #[cfg(test)]
 mod tests {
-    use review_core::FileCategory;
     use review_git::{ChangeKind, ChangedFile};
-    use review_store::AppPaths;
 
     use super::{ViewedMarks, ViewedToggle};
     use cv_runtime::route::PullRequestKey;
@@ -126,16 +124,9 @@ mod tests {
 
     fn file(path: &str) -> ChangedFile {
         ChangedFile {
-            path: path.into(),
-            old_path: None,
-            kind: ChangeKind::Modified,
-            old_oid: "1".repeat(40),
-            new_oid: "2".repeat(40),
             additions: Some(1),
             deletions: Some(1),
-            is_binary: false,
-            category: FileCategory::Code,
-            whitespace_only: false,
+            ..ChangedFile::sample(path, ChangeKind::Modified)
         }
     }
 
@@ -144,9 +135,11 @@ mod tests {
     #[test]
     fn a_folder_marks_all_its_files_then_unmarks_them() {
         let scratch = ScratchDir::new("viewed-folder");
-        let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-        let mut services =
-            Services::new(egui::Context::default(), paths, cv_providers::create_provider);
+        let mut services = Services::new(
+            egui::Context::default(),
+            scratch.app_paths(),
+            cv_providers::create_provider,
+        );
         let key = PullRequestKey {
             connection_id: "ado".into(),
             repository_key: "Shop/web".into(),

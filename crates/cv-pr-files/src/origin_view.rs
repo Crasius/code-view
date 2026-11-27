@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use egui::{Label, RichText, Sense, Ui, vec2};
-use review_core::{ProviderError, ProviderKind, ReviewThread, ThreadOrigin};
+use review_core::{ProviderError, ProviderKind, ReviewThread, ThreadOrigin, short_sha};
 use review_git::{ChangedFile, DiffOptions, FileDiff, GitMirror};
 use review_store::DiffLayout;
 
@@ -15,11 +15,11 @@ use cv_code::contents::ContentsLoader;
 use cv_pr_diff::diff_skeleton;
 use cv_pr_diff::diff_view::{DiffEvent, DiffInputs, DiffView};
 use cv_pr_diff::find::FindInputs;
-use cv_pr_diff::notice::{self, Action};
 use cv_pr_threads::{ThreadEvent, ThreadsUi};
 use cv_runtime::load::Load;
 use cv_services::Services;
 use cv_shell::focus_mode;
+use cv_widgets::states::{self, Action};
 use cv_widgets::{buttons, glyph, provider_icon, skeleton, time_text};
 
 const BANNER_HEIGHT: f32 = 36.0;
@@ -411,7 +411,7 @@ impl OriginView {
         }
         actions.push(Action { icon: icons::ARROW_LEFT, label: BACK_LABEL, is_primary: false });
         let back = actions.len() - 1;
-        match notice::show(ui, icons::WARNING, palette.warning, title, detail, &actions)? {
+        match states::notice(ui, icons::WARNING, palette.warning, title, detail, &actions)? {
             0 => {
                 self.retry();
                 None
@@ -468,8 +468,4 @@ async fn load(
     let diff = git.file_diff(&base, head, &file, options).await?;
     let authored_at = git.commit(head).await?.authored_at;
     Ok(Version::Diff { file, diff: Arc::new(diff), authored_at })
-}
-
-fn short_sha(sha: &str) -> &str {
-    sha.get(..7).unwrap_or(sha)
 }

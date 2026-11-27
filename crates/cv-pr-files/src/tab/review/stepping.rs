@@ -13,6 +13,7 @@ use review_git::ChangedFile;
 use super::super::super::{Env, FilesTab};
 use super::keys::{self, Unviewed};
 use super::viewed::ViewedToggle;
+use cv_base::mailbox;
 use cv_base::theme::icons;
 use cv_pr_diff::diff_view::{Direction, LineRequest};
 use cv_pr_session::lifecycle::{LifecycleAction, author_refusal};
@@ -129,7 +130,7 @@ fn next_unviewed(
     let found = keys::next_unviewed(tab.tree.full_order(), selected, direction, is_viewed, left);
     let id = tab.stepping.requests;
     let action = move |icon, label: &str, step| {
-        ToastAction::new(icon, label, move |ctx| request(ctx, id, step))
+        ToastAction::new(icon, label, move |ctx| mailbox::post(ctx, id, step))
     };
     let toasts = &mut env.services.toasts;
     match found {
@@ -156,15 +157,9 @@ fn next_unviewed(
     None
 }
 
-/// A toast's button asks for `step` in the tab of the pull request that showed it.
-fn request(ctx: &Context, id: egui::Id, step: ReviewStep) {
-    ctx.data_mut(|data| data.insert_temp(id, Some(step)));
-}
-
 /// Carries out what a toast's button asked for since the last frame.
 pub fn take_requests(tab: &mut FilesTab, ctx: &Context, env: &mut Env<'_>, files: &[ChangedFile]) {
-    let id = tab.stepping.requests;
-    if let Some(step) = ctx.data_mut(|data| data.remove_temp::<Option<ReviewStep>>(id)).flatten() {
+    if let Some(step) = mailbox::take::<ReviewStep>(ctx, tab.stepping.requests) {
         run(tab, ctx, env, files, step);
     }
 }

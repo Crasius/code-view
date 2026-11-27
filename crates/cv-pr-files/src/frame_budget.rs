@@ -19,7 +19,7 @@ use cv_pr_threads::{ThreadsUi, samples};
 use cv_pr_tree::{FileTree, TreeInputs, side_panel};
 use cv_syntax::blob_text::BlobText;
 use cv_syntax::highlight::{LineSpans, Span};
-use cv_testkit::frame_bench::{Bench, PATTERNS, Report, SCALES};
+use cv_testkit::frame_bench::{Bench, Report, SCALES, finish};
 
 const DIFF_LINES: usize = 100_000;
 const TREE_FILES: usize = 10_000;
@@ -248,10 +248,8 @@ fn bench_diff(
     };
     let layout_name =
         if selected { format!("{layout_name}, selected") } else { layout_name.to_owned() };
-    for (pattern, speed) in PATTERNS {
-        let name = format!("diff 100k {layout_name} @{:.0}% {pattern}", pixels_per_point * 100.0);
-        reports.push(bench.scroll_best(&name, pointer, vec2(0.0, -speed)));
-    }
+    let view = format!("diff 100k {layout_name}");
+    reports.extend(bench.scroll_patterns(&view, pointer, vec2(0.0, -1.0)));
 }
 
 /// Ctrl+Plus zooms from 100 % to 200 % (or the window moves between monitors of different
@@ -306,13 +304,8 @@ fn bench_patch_colors(pixels_per_point: f32, layout: Layout, reports: &mut Vec<R
     let pointer = center_of(&bench);
     bench.warm_up(pointer);
     let layout_name = if layout == Layout::Inline { "inline" } else { "side by side" };
-    for (pattern, speed) in PATTERNS {
-        let name = format!(
-            "diff 100k colored by diff line {layout_name} @{:.0}% {pattern}",
-            pixels_per_point * 100.0
-        );
-        reports.push(bench.scroll_best(&name, pointer, vec2(0.0, -speed)));
-    }
+    let view = format!("diff 100k colored by diff line {layout_name}");
+    reports.extend(bench.scroll_patterns(&view, pointer, vec2(0.0, -1.0)));
 }
 
 fn show_diff(ui: &mut egui::Ui, state: &mut DiffState) {
@@ -363,16 +356,13 @@ fn many_files() -> Vec<ChangedFile> {
                 index / 91 % 11
             );
             ChangedFile {
-                path,
                 old_path: (index % 5 == 4).then(|| format!("src/old/place_{index}.rs")),
-                kind: kinds[index % kinds.len()],
                 old_oid: format!("{index:040x}"),
                 new_oid: format!("{:040x}", index + 1),
                 additions: Some((index * 7 % 400) as u32),
                 deletions: Some((index * 3 % 200) as u32),
-                is_binary: false,
                 category: categories[index % categories.len()],
-                whitespace_only: false,
+                ..ChangedFile::sample(&path, kinds[index % kinds.len()])
             }
         })
         .collect()
@@ -407,19 +397,7 @@ fn bench_tree(pixels_per_point: f32, reports: &mut Vec<Report>) {
     let rect = bench.ctx.content_rect();
     let pointer = pos2(rect.left() + 150.0, rect.center().y);
     bench.warm_up(pointer);
-    for (pattern, speed) in PATTERNS {
-        let name = format!("tree 10k files @{:.0}% {pattern}", pixels_per_point * 100.0);
-        reports.push(bench.scroll_best(&name, pointer, vec2(0.0, -speed)));
-    }
-}
-
-fn finish(reports: &[Report]) {
-    for report in reports {
-        report.print();
-    }
-    for report in reports {
-        report.assert_within_budget();
-    }
+    reports.extend(bench.scroll_patterns("tree 10k files", pointer, vec2(0.0, -1.0)));
 }
 
 #[test]

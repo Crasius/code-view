@@ -4,9 +4,9 @@
 use review_git::{ChangeKind, ChangedFile};
 
 use cv_base::theme::{self, icons};
-use cv_pr_diff::notice::{self, Action};
 use cv_pr_diff::whitespace_notice;
 use cv_pr_session::web_link;
+use cv_widgets::states::{self, Action};
 
 /// What the user picked on the notice of a diff without changed lines.
 pub enum NoChanges {
@@ -83,7 +83,7 @@ fn show_with_link(
     if let Some(link) = link {
         actions.push(Action { icon: link.icon, label: &link.label, is_primary: false });
     }
-    match notice::show(ui, icon, color, title, detail, &actions) {
+    match states::notice(ui, icon, color, title, detail, &actions) {
         Some(0) if has_primary => true,
         Some(_) => {
             open_link(ui, link);
@@ -111,7 +111,7 @@ pub fn binary(
         is_primary: web_link.is_none(),
     });
     let detail = "Its content is not text, so there are no lines to compare.";
-    match notice::show(ui, icons::FILE, palette.text_secondary, "Binary file", detail, &actions) {
+    match states::notice(ui, icons::FILE, palette.text_secondary, "Binary file", detail, &actions) {
         Some(index) if index + 1 == actions.len() => true,
         Some(_) => {
             open_link(ui, web_link);
