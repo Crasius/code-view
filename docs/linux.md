@@ -52,6 +52,7 @@ front):
 docker run --rm --cpus 6 -v "$PWD:/src:ro" -v codeview-linux-target:/target   -v codeview-linux-cargo:/usr/local/cargo/registry "$(sed -n 's/^ *RUST_IMAGE: //p' ci/checks.yml)" bash -c '
   cd /src && export CARGO_TARGET_DIR=/target RUSTC_WRAPPER= CARGO_BUILD_RUSTC_WRAPPER=
   cargo clippy -j 6 --workspace --all-targets -- -D warnings &&
+  RUSTDOCFLAGS="-D warnings" cargo doc -j 6 --workspace --no-deps --document-private-items &&
   cargo test -j 6 --workspace --no-fail-fast'
 ```
 

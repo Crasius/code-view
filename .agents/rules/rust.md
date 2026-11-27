@@ -97,7 +97,7 @@ The contract lives in two files; never loosen either without the owner (RS-AGENT
 
 ## Rules for agents
 
-**RS-AGENT-01** Never report done after `cargo check` or `cargo build`. Done is: `sh scripts/check.sh` clean (format, hygiene, repo-lint, the clippy passes of Lints, the dependency bans), the tests of the changed crates pass, and the release build was shipped and started (Ship). Mark what you could not check (Linux, macOS) NOT-VERIFIED.
+**RS-AGENT-01** Never report done after `cargo check` or `cargo build`. Done is: `sh scripts/check.sh` clean (format, hygiene, repo-lint, the clippy passes of Lints, the dependency bans, rustdoc), the tests of the changed crates pass, and the release build was shipped and started (Ship). Mark what you could not check (Linux, macOS) NOT-VERIFIED.
 - Why: LLM-written Rust has the most compile and runtime failures of four measured languages (arXiv 2608.00661); runtime failures survive compilation.
 - Enforced by: `.agents/hooks/rust-stop-gate.sh` (the Stop hook of the main session, over `sh scripts/check.sh --changed`, which lanes run by hand, rule `lanes`), CI, AGENTS.md (Done).
 
