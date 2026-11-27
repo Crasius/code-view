@@ -6,7 +6,7 @@ use cv_base::theme::{self, icons, style};
 use egui::{Context, Id, Key, Order, Rect, RichText, Ui, vec2};
 use review_core::ProviderKind;
 
-use super::input::{self, Command, Frame, link_at};
+use super::input::{self, Command, CommandContext, link_at};
 use super::model::{Link, Pos};
 use super::{Popup, State};
 use crate::markdown_editor::{Person, PullRequestContext};
@@ -22,13 +22,13 @@ pub fn show(
     id: Id,
     state: &mut State,
     caret_rect: Rect,
-    frame: &Frame<'_>,
+    context: &CommandContext<'_>,
 ) -> Option<Command> {
     let ctx = ui.ctx();
     let anchor = caret_rect.left_bottom() + vec2(0.0, style::SPACE_XS);
     match state.popup.clone() {
         Popup::Mention { start, selected } => {
-            mention(ctx, id, state, frame, start, selected, anchor);
+            mention(ctx, id, state, context, start, selected, anchor);
             None
         }
         Popup::Link { url, is_new } => link_popover(ctx, id, state, url, is_new, anchor),
@@ -69,7 +69,7 @@ fn mention(
     ctx: &Context,
     id: Id,
     state: &mut State,
-    frame: &Frame<'_>,
+    context: &CommandContext<'_>,
     start: Pos,
     selected: usize,
     anchor: egui::Pos2,
@@ -110,7 +110,7 @@ fn mention(
     state.popup = Popup::Mention { start, selected };
     if take {
         match matches.get(selected) {
-            Some((key, _)) => input::choose_mention(state, frame, start, key.clone()),
+            Some((key, _)) => input::choose_mention(state, context, start, key.clone()),
             None => state.popup = Popup::None,
         }
         return;
@@ -148,7 +148,7 @@ fn mention(
         },
     );
     if let Some(key) = chosen {
-        input::choose_mention(state, frame, start, key);
+        input::choose_mention(state, context, start, key);
         ctx.memory_mut(|memory| memory.request_focus(super::text_id(id)));
     }
 }

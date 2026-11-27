@@ -3,7 +3,7 @@
 
 use review_core::ProviderKind;
 
-use super::inline::{Context, atom_source};
+use super::inline::{Context, run_source};
 use crate::rich_editor::model::{ATOM_CHAR, Atom, HARD_BREAK, Inline, Mark, Marks, Run};
 use crate::rich_editor::parse;
 
@@ -20,11 +20,7 @@ pub fn reads_back(written: &str, runs: &[Run], platform: ProviderKind) -> bool {
 fn flatten(runs: &[Run], platform: ProviderKind) -> Vec<(char, Marks)> {
     let mut chars = Vec::new();
     for run in runs {
-        let source = match &run.atom {
-            Some(atom) => atom_source(atom, platform),
-            None => run.text.clone(),
-        };
-        chars.extend(source.chars().map(|ch| (ch, run.marks.clone())));
+        chars.extend(run_source(run, platform).chars().map(|ch| (ch, run.marks.clone())));
     }
     chars
 }
@@ -80,7 +76,7 @@ pub fn prepared(inline: &Inline, platform: ProviderKind, context: Context) -> Ve
     out.runs().to_vec()
 }
 
-pub fn is_space(ch: char) -> bool {
+fn is_space(ch: char) -> bool {
     ch == ' ' || ch == '\t' || ch == '\n' || ch == HARD_BREAK
 }
 
