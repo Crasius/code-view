@@ -26,5 +26,5 @@ This project runs on Windows with two shells: PowerShell and a POSIX shell (Git 
 - Run Python scripts with `python -X utf8` when they print non-ASCII text. Why: the default code page can abort the output midway.
 
 ## Processes and file locks
-- A running `CodeView.exe` locks its file. A release build or a copy to `dist/` fails while it runs. Stop it with `taskkill /IM CodeView.exe /F` (from Git Bash: `taskkill //IM CodeView.exe //F`), then retry the copy a few times; the lock lingers briefly.
+- A running `CodeView.exe` locks its file: a release build fails while `target/release/CodeView.exe` runs, and a copy to `dist/` fails while `dist/CodeView.exe` runs. `pwsh -NoProfile -File scripts/ship.ps1` stops every instance, waits for each to exit, then copies and starts the copy (rule `rust`, Ship); copy by hand after a kill only when you wait for the process to exit first.
 - A test binary that hangs keeps `target/` locked for the next build. Stop it by process ID, not by name: another worktree may run its own tests.

@@ -1,7 +1,9 @@
 # Code View on macOS
 
 Every release has a universal macOS app, cross-built on Linux (`docs/release.md`). The packaging
-command below builds one on a Mac and was verified on an Apple-silicon Mac on 2026-10-19. The pull
+command below builds one on a Mac. It was last verified on an Apple-silicon Mac on 2026-10-19, with
+an earlier script that used cargo-bundle instead of `scripts/bundle-macos.sh` (Packaging
+verification). The pull
 request workflow tests the crates with macOS code on a Mac and packages the universal app on a
 manual run. The **NOT-VERIFIED** list tracks remaining checks.
 
@@ -99,8 +101,6 @@ application icon at startup, so this matching PNG is used for the Dock and Comma
 instead of the transparent 64px Windows icon. After updating, replace the installed app
 and fully quit/relaunch it to load the new runtime icon.
 
-Check the macOS tile with `cargo test -p review-app --example render_icon`.
-
 ## What is implemented
 
 Everything that differs per system lives behind one `platform` module per crate; feature code
@@ -181,7 +181,7 @@ read each token ("Always Allow").
 
 ## Packaging verification (2026-10-19)
 
-On Apple silicon with Rust 1.99.1 and cargo-bundle 0.12.0:
+On Apple silicon with Rust 1.99.1, with the earlier script that used cargo-bundle 0.12.0:
 
 - Native and universal release packaging completed; disk-image checksums passed.
 - Bundle metadata, embedded `.icns` and ad-hoc signature were checked.
@@ -210,6 +210,7 @@ Remaining behavior and compatibility checks:
 - The browser extension: registering the host manifests, Chrome or Edge starting the host inside
   the app bundle, and a second start handing its link over the socket.
 - The bundle: Intel/macOS 12 runtime compatibility and icon appearance in the Dock and Finder.
+- `scripts/package-macos.sh` with `scripts/bundle-macos.sh`, native and `--universal`, on a Mac.
 
 ## Traffic-light alignment regression check
 

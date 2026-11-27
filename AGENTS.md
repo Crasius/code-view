@@ -15,7 +15,7 @@ A native, low-footprint pull request review desktop app for Azure DevOps, GitHub
 - Never print, store or reuse auth tokens. Never read cookies. Never call an API with a browser session. The owner does every interactive login.
 
 ## Done
-- `sh scripts/check.sh` passes (format, hygiene, repo-lint, the clippy passes, the dependency bans, rustdoc; `--list` names the commands): zero errors, zero warnings, zero findings (rule `rust`, RS-AGENT-01). The Stop hook checks the changed files before the main session's turn ends; a lane runs the same gate itself (rule `lanes`).
+- `sh scripts/check.sh` passes (`--list` names its steps and commands): zero errors, zero warnings, zero findings (rule `rust`, RS-AGENT-01). The Stop hook checks the changed files before the main session's turn ends; a lane runs the same gate itself (rule `lanes`).
 - Read the full error first. Fix the root cause. Add no special-case patch and no catch-all that hides a broken path.
 - Rebuild the release binary, stop running instances, start the new one and tell the owner what changed ("Ship" in rule `rust`). "It compiles" is not "done". UI is proven by kittest assertions; agents never take or read screenshots, the owner gives the UI feedback (rule `ui`).
 - Name the evidence for each claim. Mark everything you did not check as NOT-VERIFIED.
@@ -31,7 +31,7 @@ A native, low-footprint pull request review desktop app for Azure DevOps, GitHub
 - Never rewrite history unless the owner asks: no amend, rebase, reset to another commit or force push. The history guard (`.agents/hooks/history-guard.sh`) denies these commands.
 - Write the subject in the imperative mood. Put the evidence in the body: the checks you ran and their results.
 - Remotes: GitLab (`origin`, the source of truth) and GitHub (`github`, the public mirror that takes pull requests), each carrying `main`. Push only when the owner asks (rule `git-flow`, step 7). A GitHub pull request lands through `scripts/land-pr.sh` and a merge commit, never on GitHub (rule `git-flow`, Pull requests from GitHub).
-- The local checks are the gate. A push to GitLab also runs `.gitlab-ci.yml`, and a protected tag `vX.Y.Z` publishes a release to Creative Downloads (`docs/release.md`). GitHub runs nothing on a push: `.github/workflows/pull-request.yml` checks pull requests there (format, repo-lint, clippy and the affected tests on Linux, the macOS crates' tests on a Mac), and a manual run also writes its build caches and builds the app bundle; nothing runs on a schedule. Add no other GitHub workflow without the owner's yes; the main work is on GitLab.
+- The local checks are the gate. A push to GitLab also runs `.gitlab-ci.yml`, and a protected tag `vX.Y.Z` publishes a release to Creative Downloads (`docs/release.md`). GitHub runs nothing on a push: `.github/workflows/pull-request.yml` checks pull requests there (`docs/release.md`), and a manual run also writes its build caches and builds the app bundle; nothing runs on a schedule. Add no other GitHub workflow without the owner's yes; the main work is on GitLab.
 
 ## Work
 - Write each sub-agent brief as a file in `tmp/briefs/`, made from `.agents/templates/lane-brief.md`. Pass the path, not the text.
@@ -81,14 +81,14 @@ The app talks to the owner's real accounts on GitHub, GitLab and Azure DevOps.
 | `scripts/` | `check.sh` (the one gate), `affected-tests.sh` (the tests a change needs), `worktree.sh`, `land-pr.sh` (a GitHub pull request into its worktree), `bundle-macos.sh` and `package-macos.sh` (the macOS app), `start-background.ps1` and `ship.ps1` (rule `rust`, Ship) |
 | `.config/` | The nextest profiles (`docs/release.md`, Tests) |
 | `ci/` | The scripts of the CI jobs in `.gitlab-ci.yml` (`docs/release.md`) |
-| `marketing/` | Marketing material, not part of the build |
+| `marketing/` | Only in the owner's main checkout, not in the repository (excluded through `.git/info/exclude`): marketing material, not part of the build |
 | `crates/review-grammars/grammars/` | Our syntax grammars and the license text of the one we took (`docs/release.md`, Third-party notices) |
 | `browser-extension/` | The Chrome and Edge extension that opens pull request links in the app; `CodeView.exe` embeds and unpacks it (`docs/browser-extension.md`) |
 | `dist/` | The shipped `CodeView.exe`, git-ignored |
 | `tmp/` | Scratch, git-ignored. Nothing durable lives only here |
 
 ## Commands
-- Check: `sh scripts/check.sh` (`--list` names the steps and their commands), then the tests of the changed crates (rule `testing`, Running).
+- Check: `sh scripts/check.sh` (`--list` names the steps and their commands), then `sh scripts/check.sh test` (rule `testing`, Running).
 - Format: `rustfmt --edition 2024 <changed files>` (rule `rust`, Format).
 - Start: `cargo run -p review-app --bin CodeView` (debug) or `target/release/CodeView.exe` after a release build.
 
