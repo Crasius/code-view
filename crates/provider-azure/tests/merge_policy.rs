@@ -5,11 +5,11 @@
 
 use provider_azure::AzureDevOpsProvider;
 use review_core::{
-    Connection, MergeOptions, MergeStrategy, PolicySource, Provider, ProviderError, ProviderKind,
-    Unreported, http,
+    Connection, MergeStrategy, PolicySource, Provider, ProviderError, ProviderKind, Unreported,
+    http,
 };
 use serde_json::{Value, json};
-use wiremock::matchers::{body_partial_json, method, path, query_param};
+use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const COLLECTION: &str = "coll";
@@ -136,53 +136,4 @@ async fn other_failures_are_errors() {
     mount_policies(&server, "main", ResponseTemplate::new(500)).await;
     let result = provider(&server, Some("pat")).merge_policy(REPO, "main").await;
     assert!(matches!(result, Err(ProviderError::Status { status: 500, .. })), "{result:?}");
-}
-
-#[tokio::test]
-async fn semi_linear_completes_with_rebase_merge_and_auto_complete_is_the_detail_default() {
-    let server = MockServer::start().await;
-    let pr = json!({
-        "pullRequestId": 7, "status": "active",
-        "repository": { "id": REPO_ID, "name": "web", "project": { "name": "My Project" } },
-        "createdBy": { "id": "author", "displayName": "Author" },
-        "creationDate": "2026-10-01T08:00:00Z", "title": "T",
-        "sourceRefName": "refs/heads/feature", "targetRefName": "refs/heads/main",
-        "lastMergeSourceCommit": { "commitId": "head-sha" }, "lastMergeTargetCommit": { "commitId": "target-sha" },
-        "autoCompleteSetBy": { "id": "author", "displayName": "Author" },
-        "completionOptions": { "mergeStrategy": "rebaseMerge", "deleteSourceBranch": true }
-    });
-    let pr_path = format!("/{COLLECTION}/My%20Project/_apis/git/repositories/web/pullrequests/7");
-    Mock::given(method("GET"))
-        .and(path(&pr_path))
-        .respond_with(ResponseTemplate::new(200).set_body_json(&pr))
-        .mount(&server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path(format!("/{COLLECTION}/My%20Project/_apis/git/repositories/web/refs")))
-        .and(query_param("filter", "heads/feature"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(
-            json!({ "value": [{ "name": "refs/heads/feature", "objectId": "head-sha" }] }),
-        ))
-        .mount(&server)
-        .await;
-    Mock::given(method("PATCH"))
-        .and(path(&pr_path))
-        .and(body_partial_json(json!({ "completionOptions": { "mergeStrategy": "rebaseMerge" } })))
-        .respond_with(ResponseTemplate::new(200).set_body_json(&pr))
-        .expect(1)
-        .mount(&server)
-        .await;
-    let provider = provider(&server, Some("pat"));
-    let detail = provider.pull_request(REPO, 7).await.unwrap();
-    assert_eq!(
-        detail.auto_complete.and_then(|auto| auto.strategy),
-        Some(MergeStrategy::SemiLinear)
-    );
-    let options = MergeOptions {
-        strategy: MergeStrategy::SemiLinear,
-        delete_source_branch: false,
-        commit_message: None,
-        head_sha: detail.head_sha,
-    };
-    provider.merge(REPO, 7, &options).await.unwrap();
 }

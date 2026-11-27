@@ -14,35 +14,46 @@
 //! Reading policies needs sign-in even on public projects, so anonymous connections ask nothing.
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use reqwest::Method;
-use review_core::{Check, CheckState, Result, RowStatus};
+use review_core::{Check, CheckState, ProviderError, Result, RowStatus};
 use serde::Deserialize;
 use serde_json::Value;
-use tokio::sync::Mutex;
+use tokio::sync::OnceCell;
 
 use crate::client::{Client, RepoKey};
-use crate::dto::ValueList;
 use crate::dto::repository::Repository;
+use crate::dto::{ValueList, default_true};
 
 const EVALUATIONS_API_VERSION: &str = "7.1-preview.1";
 
-/// Project GUIDs by `organization/project`.
+/// Project GUIDs by `organization/project`, one cell per project as in
+/// [`crate::identity::CurrentUsers`]: the map's lock is held only to find the cell, never across
+/// the request, so lookups of different projects do not wait on each other. A failed request
+/// leaves the cell empty for the next caller to try again.
 #[derive(Default)]
 pub(crate) struct ProjectIds {
-    by_project: Mutex<HashMap<String, String>>,
+    by_project: Mutex<HashMap<String, Arc<OnceCell<String>>>>,
 }
 
 impl ProjectIds {
     async fn get(&self, client: &Client, key: RepoKey<'_>) -> Result<String> {
-        let name = format!("{}/{}", key.organization, key.project);
-        let mut cache = self.by_project.lock().await;
-        if let Some(id) = cache.get(&name) {
-            return Ok(id.clone());
-        }
-        let repository: Repository = client.get(&client.repository_resource_api(key), &[]).await?;
-        cache.insert(name, repository.project.id.clone());
-        Ok(repository.project.id)
+        let cell = Arc::clone(
+            self.by_project
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .entry(format!("{}/{}", key.organization, key.project))
+                .or_default(),
+        );
+        let id = cell
+            .get_or_try_init(|| async {
+                let repository: Repository =
+                    client.get(&client.repository_resource_api(key), &[]).await?;
+                Ok::<_, ProviderError>(repository.project.id)
+            })
+            .await?;
+        Ok(id.clone())
     }
 }
 
@@ -54,7 +65,6 @@ struct Evaluation {
     status: String,
     #[serde(default)]
     configuration: Configuration,
-    #[serde(default)]
     context: Option<Value>,
 }
 
@@ -63,13 +73,12 @@ struct Evaluation {
 struct Configuration {
     #[serde(default)]
     is_blocking: bool,
-    #[serde(default = "enabled_by_default")]
+    #[serde(default = "default_true")]
     is_enabled: bool,
     #[serde(default)]
     is_deleted: bool,
-    #[serde(rename = "type", default)]
+    #[serde(rename = "type")]
     policy_type: Option<PolicyType>,
-    #[serde(default)]
     settings: Option<Value>,
 }
 
@@ -83,10 +92,6 @@ impl Default for Configuration {
             settings: None,
         }
     }
-}
-
-fn enabled_by_default() -> bool {
-    true
 }
 
 #[derive(Debug, Deserialize)]

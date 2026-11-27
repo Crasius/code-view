@@ -149,9 +149,11 @@ async fn current_users_of_organizations_are_read_at_the_same_time() {
 #[tokio::test]
 async fn callers_at_the_same_time_share_one_user_lookup() {
     let server = MockServer::start().await;
-    let users = Arrivals::default();
     Mock::given(wiremock::matchers::path("/north/_apis/connectionData"))
-        .respond_with(ConnectionDatas { arrived: Arc::clone(&users) })
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "authenticatedUser": { "id": "me-north", "providerDisplayName": "Grace" }
+        })))
+        .expect(1)
         .mount(&server)
         .await;
     let provider = provider(&server);
@@ -160,5 +162,4 @@ async fn callers_at_the_same_time_share_one_user_lookup() {
 
     assert_eq!(first.expect("the user answers").id, "me-north");
     assert_eq!(second.expect("the shared answer").id, "me-north");
-    assert_eq!(arrivals(&users).len(), 1, "both callers shared one connectionData request");
 }

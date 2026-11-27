@@ -141,8 +141,8 @@ pub(crate) struct Build {
 impl Build {
     /// Whether the build ran for an Azure Repos repository. A project's pipelines can build GitHub
     /// repositories too, whose pull request builds use the same `refs/pull/{number}/merge` names:
-    /// on dnceng-public every dotnet repository's pull request #N lands there. Those are never the
-    /// builds of an Azure Repos pull request. Builds that name no repository type count as ours.
+    /// in a public project that also builds GitHub repositories, each one's pull request #N lands
+    /// there. Those are never the builds of an Azure Repos pull request. Builds that name no repository type count as ours.
     pub fn is_azure_repos(&self) -> bool {
         self.repository.kind.as_deref().is_none_or(|kind| kind.eq_ignore_ascii_case("TfsGit"))
     }
@@ -284,7 +284,7 @@ mod tests {
         assert_eq!(runs[1].status, RunStatus::Neutral);
     }
 
-    /// dnceng-public build list shape (`triggerInfo` of a pull request build, 2026-10-19).
+    /// The build list shape of a public project (`triggerInfo` of a pull request build, 2026-10-19).
     #[test]
     fn head_runs_validate_the_newest_builds_commit() {
         let builds: super::super::ValueList<Build> = serde_json::from_str(
@@ -312,15 +312,15 @@ mod tests {
         );
     }
 
-    /// dnceng-public builds GitHub repositories too: `branchName=refs/pull/5/merge` there also
-    /// lists the builds of every dotnet repository's pull request #5. An Azure Repos pull request
+    /// A public project that also builds GitHub repositories: `branchName=refs/pull/5/merge` there
+    /// also lists the builds of each GitHub repository's pull request #5. An Azure Repos pull request
     /// #5 must not show them, nor take its head commit from them.
     #[test]
     fn leaves_out_builds_of_other_repository_types() {
         let builds: super::super::ValueList<Build> = serde_json::from_str(
             r#"{"value":[
               {"id":50,"status":"inProgress","definition":{"id":129,"name":"runtime"},"sourceVersion":"gh-merge",
-               "triggerInfo":{"pr.sourceSha":"gh-head"},"repository":{"id":"dotnet/runtime","type":"GitHub"}},
+               "triggerInfo":{"pr.sourceSha":"gh-head"},"repository":{"id":"contoso/api","type":"GitHub"}},
               {"id":41,"status":"completed","result":"succeeded","definition":{"id":7,"name":"wiki"},"sourceVersion":"merge2",
                "triggerInfo":{"pr.sourceSha":"head2"},"repository":{"id":"5f9b6a1e-0000-4000-8000-000000000001","type":"TfsGit"}},
               {"id":40,"status":"completed","result":"failed","definition":{"id":8,"name":"lint"},"sourceVersion":"merge1",

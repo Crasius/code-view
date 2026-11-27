@@ -213,3 +213,44 @@ async fn diff_stats_count_the_latest_iterations_changed_files() {
     let stats = provider.diff_stats("north/Web/site", &[11]).await.expect("diff stats");
     assert_eq!(stats, [(11, review_core::DiffStat { lines: None, files: Some(4) })]);
 }
+
+/// The policy evaluations name a pull request by its project's GUID: one repository lookup per
+/// project finds it, shared by row requests at the same time and kept for later ones.
+#[tokio::test]
+async fn row_statuses_look_up_the_project_once() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/north/Web/_apis/git/repositories/site"))
+        .and(header("authorization", AUTHORIZATION))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({ "id": "repo-guid", "name": "site", "project": { "id": "web-guid", "name": "Web" } }),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    for number in [11, 12, 13] {
+        Mock::given(method("GET"))
+            .and(path("/north/Web/_apis/policy/evaluations"))
+            .and(query_param(
+                "artifactId",
+                format!("vstfs:///CodeReview/CodeReviewId/web-guid/{number}"),
+            ))
+            .respond_with(page(&[]))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    let provider = provider(&server, &["north"]);
+
+    let (first, second) = tokio::join!(
+        provider.row_statuses("north/Web/site", &[11]),
+        provider.row_statuses("north/Web/site", &[12]),
+    );
+    let later = provider.row_statuses("north/Web/site", &[13]).await;
+
+    for (statuses, number) in [(first, 11), (second, 12), (later, 13)] {
+        let numbers: Vec<u64> =
+            statuses.expect("row statuses").iter().map(|(number, _)| *number).collect();
+        assert_eq!(numbers, [number]);
+    }
+}

@@ -38,7 +38,6 @@ pub(crate) struct TimelineRecord {
     pub attempt: Option<u32>,
     /// The records of the earlier attempts, each in the timeline of that attempt
     /// (`GET build/builds/{id}/timeline/{timelineId}`). `[]` or `null` when there were none.
-    #[serde(default)]
     pub previous_attempts: Option<Vec<PreviousAttempt>>,
 }
 
@@ -376,8 +375,8 @@ mod tests {
         assert_eq!(parse_stage_target("7:"), None);
     }
 
-    /// Trimmed from the public timeline of dnceng-public/public build 1639760 (dotnet-android,
-    /// fetched anonymously on 2026-10-19 while it ran): a running job has no log of its own yet
+    /// Trimmed from the timeline of a public build, 1639760 (fetched anonymously on 2026-10-19
+    /// while it ran): a running job has no log of its own yet
     /// (`log: null`) while its finished tasks have theirs; the running task and the pending ones
     /// have none. Its phase carries a log of its own. A phase whose condition skipped it has no
     /// Job records at all.
@@ -450,8 +449,7 @@ mod tests {
         assert!(tree.iter().all(|stage| stage.reruns.is_empty()));
     }
 
-    /// dnceng-public/public build 1639558 (aspnetcore-ci), fetched anonymously on 2026-10-19 and
-    /// trimmed: stage "Build" was retried; its job "Source-Build (Managed)" failed in both attempts,
+    /// A public build, 1639558, fetched anonymously on 2026-10-19 and trimmed: stage "Build" was retried; its job "Source-Build (Managed)" failed in both attempts,
     /// "Code check" ran once and stays in attempt 1. "Platform tests" passed on its retry.
     const RETRIED_FIXTURE: &str = include_str!("../../tests/fixtures/timeline_1639558.json");
     /// `GET build/builds/1639558/timeline/6884a131-…`: the first attempt of stage "Build".
@@ -515,8 +513,7 @@ mod tests {
     #[test]
     fn an_earlier_attempt_comes_from_its_own_timeline_without_reruns() {
         let timeline: Timeline = serde_json::from_str(ATTEMPT_1_FIXTURE).unwrap();
-        let web_url =
-            Some("https://dev.azure.com/dnceng-public/public/_build/results?buildId=1639558");
+        let web_url = Some("https://dev.azure.com/contoso/public/_build/results?buildId=1639558");
         let job = attempt_node(1_639_558, &timeline.records, SOURCE_BUILD_ATTEMPT_1, web_url)
             .expect("the job's first attempt");
         assert_eq!(

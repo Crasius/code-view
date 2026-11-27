@@ -7,12 +7,11 @@ use serde_json::json;
 
 use crate::client::{Client, RepoKey};
 use crate::dto::ValueList;
-use crate::dto::iteration::{
-    CHANGES_PAGE_SIZE, Iteration, IterationChanges, IterationCommits, find_change_tracking_id,
-};
+use crate::dto::iteration::{IterationCommits, find_change_tracking_id};
 use crate::dto::thread::{
     Comment, IterationAnchor, Thread, comment_body, new_thread_body, status_to_ado,
 };
+use crate::iterations;
 
 /// The threads; when any was tracked away from where it was created, one more request reads the
 /// iterations' commits for the version it was written on. Iterations need sign-in even on public
@@ -23,10 +22,7 @@ pub(crate) async fn list(client: &Client, repo: &str, number: u64) -> Result<Vec
         client.get(&client.pull_request_api(key, number, "threads"), &[]).await?;
     let has_tracked = threads.value.iter().any(|thread| !thread.is_deleted && thread.is_tracked());
     let iterations = if has_tracked && client.has_token() {
-        let params = [("includeCommits", "false".to_owned())];
-        let iterations: ValueList<Iteration> =
-            client.get(&client.pull_request_api(key, number, "iterations"), &params).await?;
-        IterationCommits::new(&iterations.value)
+        IterationCommits::new(&iterations::list(client, key, number).await?)
     } else {
         IterationCommits::default()
     };
@@ -66,29 +62,14 @@ async fn iteration_anchor(
     number: u64,
     anchor: &ThreadAnchor,
 ) -> Result<IterationAnchor> {
-    let iterations: ValueList<Iteration> =
-        client.get(&client.pull_request_api(repo, number, "iterations"), &[]).await?;
-    let latest_iteration =
-        iterations.value.iter().map(|iteration| iteration.id).max().ok_or_else(|| {
-            ProviderError::Decode(format!("pull request {number} has no iterations"))
-        })?;
-    let url =
-        client.pull_request_api(repo, number, &format!("iterations/{latest_iteration}/changes"));
-    let mut skip = 0;
-    loop {
-        let params = [("$top", CHANGES_PAGE_SIZE.to_string()), ("$skip", skip.to_string())];
-        let changes: IterationChanges = client.get(&url, &params).await?;
-        if let Some(change_tracking_id) = find_change_tracking_id(&changes.change_entries, anchor) {
-            return Ok(IterationAnchor {
-                latest_iteration,
-                change_tracking_id: Some(change_tracking_id),
-            });
-        }
-        match changes.next_skip {
-            Some(next) if next > skip && !changes.change_entries.is_empty() => skip = next,
-            _ => return Ok(IterationAnchor { latest_iteration, change_tracking_id: None }),
-        }
-    }
+    let latest_iteration = iterations::latest(&iterations::list(client, repo, number).await?)
+        .ok_or_else(|| ProviderError::Decode(format!("pull request {number} has no iterations")))?;
+    let change_tracking_id =
+        iterations::changes_until(client, repo, number, latest_iteration, |entries| {
+            find_change_tracking_id(entries, anchor)
+        })
+        .await?;
+    Ok(IterationAnchor { latest_iteration, change_tracking_id })
 }
 
 pub(crate) async fn reply(

@@ -1,18 +1,12 @@
 //! Pull request tags. Azure DevOps tags are free text, so there is no catalog to offer.
 
 use reqwest::Method;
-use review_core::{Label, Result};
+use review_core::Result;
 use serde_json::json;
 
 use crate::client::{Client, RepoKey};
 use crate::dto::ValueList;
 use crate::dto::pull_request::Tag;
-
-/// Always empty: tags are free text and the API has no cheap per-repository tag list
-/// (`Capabilities::has_label_catalog` is false).
-pub(crate) fn available() -> Vec<Label> {
-    Vec::new()
-}
 
 pub(crate) async fn set(client: &Client, repo: &str, number: u64, wanted: &[String]) -> Result<()> {
     client.require_token("Changing tags")?;

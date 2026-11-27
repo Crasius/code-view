@@ -125,11 +125,11 @@ async fn work_item_batch(
         .into_iter()
         .flatten()
         .flat_map(|item| {
+            let id = item.id;
             references
                 .iter()
-                .filter(|reference| reference.number == item.id)
-                .map(|reference| work_item(client, organization, (*reference).clone(), &item))
-                .collect::<Vec<_>>()
+                .filter(move |reference| reference.number == id)
+                .map(move |reference| work_item(client, organization, (*reference).clone(), &item))
         })
         .collect())
 }

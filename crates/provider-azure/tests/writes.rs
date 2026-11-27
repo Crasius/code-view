@@ -149,6 +149,7 @@ async fn create_thread_on_pull_request() {
 
 async fn mount_iterations(server: &MockServer) {
     api("GET", &pr_path("/iterations"))
+        .and(query_param("includeCommits", "false"))
         .respond_with(ok(json!({ "count": 2, "value": [{ "id": 1 }, { "id": 3 }, { "id": 2 }] })))
         .expect(1)
         .mount(server)
@@ -472,12 +473,13 @@ async fn mount_source_tip(server: &MockServer, tip: &str, times: u64) {
 #[tokio::test]
 async fn merge_completes_with_each_strategy_against_the_reviewed_source_commit() {
     let server = MockServer::start().await;
-    api("GET", &pr_path("")).respond_with(ok(pull_request_json())).expect(3).mount(&server).await;
-    mount_source_tip(&server, "reviewed-sha", 3).await;
+    api("GET", &pr_path("")).respond_with(ok(pull_request_json())).expect(4).mount(&server).await;
+    mount_source_tip(&server, "reviewed-sha", 4).await;
     let strategies = [
         (MergeStrategy::Merge, "noFastForward"),
         (MergeStrategy::Squash, "squash"),
         (MergeStrategy::Rebase, "rebase"),
+        (MergeStrategy::SemiLinear, "rebaseMerge"),
     ];
     for (_, ado) in strategies {
         api("PATCH", &pr_path(""))
@@ -631,6 +633,10 @@ async fn writes_without_token_send_nothing() {
         provider.add_reviewer(REPO, PR, "jo").await.err(),
         provider.remove_reviewer(REPO, PR, "jo-id").await.err(),
         provider.merge(REPO, PR, &options).await.err(),
+        provider.set_auto_complete(REPO, PR, &options).await.err(),
+        provider.cancel_auto_complete(REPO, PR).await.err(),
+        provider.edit_comment(REPO, PR, "9", "1", "x").await.err(),
+        provider.delete_comment(REPO, PR, "9", "1").await.err(),
         provider.close(REPO, PR).await.err(),
         provider.reopen(REPO, PR).await.err(),
         provider.set_draft(REPO, PR, true).await.err(),
