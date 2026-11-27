@@ -344,8 +344,7 @@ impl ChecksTable {
         shown: &[(usize, Check<'_>)],
         action: &mut Option<TableAction>,
     ) {
-        let focused = ui.memory(egui::Memory::focused);
-        if focused.is_some_and(|id| TextEdit::load_state(ui.ctx(), id).is_some()) {
+        if ui.ctx().text_edit_focused() {
             return;
         }
         let position =

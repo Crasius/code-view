@@ -1,47 +1,49 @@
 //! The run view against a fixed, Azure DevOps-like pipeline: parallel stages, a failed stage and
 //! skipped ones, and a GitLab pipeline whose jobs use `needs`. Checks what the user can do. No
-//! network, no tokens.
+//! network, no tokens. Also the harness and the sample pipeline the pan and zoom checks share.
 
 use cv_base::theme;
 use cv_testkit::Clicks;
 use egui::Role;
-use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
+use egui_kittest::{Harness, HarnessBuilder};
 use review_core::{PipelineJob, ProviderKind, RerunAction, RerunKind, RunStatus, Timestamp};
 use review_store::ThemePreference;
 use time::macros::datetime;
 
 use super::run_view::{RunView, RunViewAction, RunViewInput};
 
-struct State {
-    view: RunView,
-    stages: Vec<PipelineJob>,
-    platform: ProviderKind,
-    theme: ThemePreference,
-    has_token: bool,
-    last: Option<String>,
+pub(super) struct State {
+    pub(super) view: RunView,
+    pub(super) stages: Vec<PipelineJob>,
+    pub(super) platform: ProviderKind,
+    pub(super) theme: ThemePreference,
+    pub(super) has_token: bool,
+    /// What the view's last action was, in [`describe`]'s words.
+    pub(super) last: Option<String>,
 }
 
-fn harness(
-    stages: Vec<PipelineJob>,
-    theme: ThemePreference,
-    has_token: bool,
-) -> Harness<'static, State> {
-    harness_for(ProviderKind::AzureDevOps, stages, theme, has_token)
+impl State {
+    /// `stages` on Azure DevOps, in the light theme, with a token.
+    pub(super) fn new(stages: Vec<PipelineJob>) -> Self {
+        Self {
+            view: RunView::default(),
+            stages,
+            platform: ProviderKind::AzureDevOps,
+            theme: ThemePreference::Light,
+            has_token: true,
+            last: None,
+        }
+    }
 }
 
-fn harness_for(
-    platform: ProviderKind,
-    stages: Vec<PipelineJob>,
-    theme: ThemePreference,
-    has_token: bool,
-) -> Harness<'static, State> {
-    let state = State { view: RunView::default(), stages, platform, theme, has_token, last: None };
-    Harness::builder()
-        .with_size([1440.0, 820.0])
+/// The run view over `state`, from `builder` with its size and frame timing. Motion is on,
+/// whatever the machine says (a macOS runner may have Reduce Motion on), so every host draws the
+/// same frames and a fling or a zoom step glides.
+pub(super) fn build(builder: HarnessBuilder<State>, state: State) -> Harness<'static, State> {
+    builder
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
-            // Motion on, whatever the machine says, so every host draws the same frames.
             theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(
@@ -64,6 +66,10 @@ fn harness_for(
         )
 }
 
+fn harness(state: State) -> Harness<'static, State> {
+    build(Harness::builder().with_size([1440.0, 820.0]), state)
+}
+
 pub(super) fn describe(action: RunViewAction) -> String {
     match action {
         RunViewAction::Log(target) => {
@@ -75,13 +81,10 @@ pub(super) fn describe(action: RunViewAction) -> String {
     }
 }
 
-#[expect(clippy::unnecessary_wraps, reason = "fills the optional start and finish of a job")]
-fn at(minute: i64, second: i64) -> Option<Timestamp> {
-    Some(
-        datetime!(2026-10-18 10:00 UTC)
-            + time::Duration::minutes(minute)
-            + time::Duration::seconds(second),
-    )
+fn at(minute: i64, second: i64) -> Timestamp {
+    datetime!(2026-10-18 10:00 UTC)
+        + time::Duration::minutes(minute)
+        + time::Duration::seconds(second)
 }
 
 fn job(
@@ -96,8 +99,8 @@ fn job(
         id: format!("job-{name}"),
         name: name.to_owned(),
         status,
-        started_at: if ran { at(start.0, start.1) } else { None },
-        finished_at: if ran { at(end.0, end.1) } else { None },
+        started_at: ran.then(|| at(start.0, start.1)),
+        finished_at: ran.then(|| at(end.0, end.1)),
         log_id: ran.then(|| format!("1:{log}")),
         web_url: Some(format!(
             "https://dev.azure.com/org/project/_build/results?buildId=1&view=logs&j={name}"
@@ -204,7 +207,7 @@ pub(super) fn sample_pipeline() -> Vec<PipelineJob> {
 
 #[test]
 fn stage_view_lists_every_stage_with_its_jobs() {
-    let mut harness = harness(sample_pipeline(), ThemePreference::Light, true);
+    let mut harness = harness(State::new(sample_pipeline()));
     harness.run();
     assert!(harness.query_by_label("Stage Infra Apps (integration environment)").is_some());
     // Every card lists its jobs from the start, as the platform's run page does.
@@ -215,7 +218,7 @@ fn stage_view_lists_every_stage_with_its_jobs() {
 
 #[test]
 fn stage_view_without_token_offers_add_a_token() {
-    let mut harness = harness(sample_pipeline(), ThemePreference::Light, false);
+    let mut harness = harness(State { has_token: false, ..State::new(sample_pipeline()) });
     harness.run();
     let reruns: Vec<_> = harness.query_all_by_role_and_label(Role::Button, "Retry stage").collect();
     assert!(!reruns.is_empty());
@@ -236,7 +239,7 @@ fn stage_view_without_token_offers_add_a_token() {
 
 #[test]
 fn stage_view_opens_logs_toggles_cards_and_reruns() {
-    let mut harness = harness(sample_pipeline(), ThemePreference::Light, true);
+    let mut harness = harness(State::new(sample_pipeline()));
     harness.run();
     // The failed stage opens expanded; its failed job opens the log.
     harness.click_at(harness.get_by_label("Apply infrastructure in Azure").rect());
@@ -269,7 +272,7 @@ fn stage_view_opens_logs_toggles_cards_and_reruns() {
     assert!(harness.query_by_label("Job keycloak").is_some());
 }
 
-/// Shaped like gitlab-org/cli: every job declares `needs`, most of them `needs: []`, so the stages
+/// Shaped like a Go CLI's pipeline: every job declares `needs`, most of them `needs: []`, so the stages
 /// are lanes. As the GitLab provider maps it, the stages are chained in their configured order
 /// and the jobs carry their needs.
 fn gitlab_pipeline() -> Vec<PipelineJob> {
@@ -281,7 +284,7 @@ fn gitlab_pipeline() -> Vec<PipelineJob> {
             PipelineJob {
                 id: format!("job:{number}"),
                 log_id: Some(format!("7:{number}")),
-                web_url: Some(format!("https://gitlab.com/gitlab-org/cli/-/jobs/{number}")),
+                web_url: Some(format!("https://gitlab.example.com/acme/cli/-/jobs/{number}")),
                 depends_on: needs.iter().map(|id| (*id).to_owned()).collect(),
                 ..job(name, status, start, end, "")
             }
@@ -324,7 +327,7 @@ fn gitlab_pipeline() -> Vec<PipelineJob> {
 #[test]
 fn gitlab_stages_stand_in_columns_even_when_jobs_use_needs() {
     let mut harness =
-        harness_for(ProviderKind::GitLab, gitlab_pipeline(), ThemePreference::Light, true);
+        harness(State { platform: ProviderKind::GitLab, ..State::new(gitlab_pipeline()) });
     harness.run();
     let lefts: Vec<f32> = ["test", "build", "release", "documentation"]
         .iter()
@@ -363,11 +366,7 @@ fn large_pipelines_only_build_what_is_visible() {
             stage
         })
         .collect();
-    let mut harness = harness(stages, ThemePreference::Dark, true);
-    harness.run();
-    for index in 0..60 {
-        harness.state_mut().view.expand(&format!("s{index}"));
-    }
+    let mut harness = harness(State { theme: ThemePreference::Dark, ..State::new(stages) });
     harness.run();
     let cards = harness.query_all_by_label_contains("Stage Stage number").count();
     let rows = harness.query_all_by_label_contains("job ").count();

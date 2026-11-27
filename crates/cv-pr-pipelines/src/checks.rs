@@ -338,11 +338,13 @@ pub fn summary(runs: &[PipelineRun]) -> Summary {
     Summary { status, headline, detail: detail.join(" · ") }
 }
 
+/// Runs and jobs named by their id, for the tests of the checks and the run header.
 #[cfg(test)]
-mod tests {
-    use super::*;
+pub(crate) mod fixtures {
+    use review_core::{PipelineJob, PipelineRun, RunStatus};
 
-    fn run(name: &str, status: RunStatus, has_jobs: bool) -> PipelineRun {
+    /// A run of the head commit.
+    pub fn run(name: &str, status: RunStatus, has_jobs: bool) -> PipelineRun {
         PipelineRun {
             id: name.to_owned(),
             name: name.to_owned(),
@@ -356,6 +358,16 @@ mod tests {
             reruns: Vec::new(),
         }
     }
+
+    pub fn job(name: &str, status: RunStatus) -> PipelineJob {
+        PipelineJob { id: name.to_owned(), name: name.to_owned(), status, ..PipelineJob::default() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fixtures::{job, run};
+    use super::*;
 
     #[test]
     fn failed_then_running_then_platform_order() {
@@ -386,12 +398,6 @@ mod tests {
 
     #[test]
     fn jobs_follow_their_run_and_sort_with_everything_else() {
-        let job = |id: &str, status: RunStatus| PipelineJob {
-            id: id.to_owned(),
-            name: id.to_owned(),
-            status,
-            ..PipelineJob::default()
-        };
         let stage = |id: &str, children: Vec<PipelineJob>| PipelineJob {
             id: id.to_owned(),
             name: id.to_owned(),

@@ -72,7 +72,7 @@ impl LogSearch {
         self.find(needle, log, background);
     }
 
-    /// "3 / 12", "No matches" or "Searching…" beside the search box.
+    /// "3 / 12", "No matches", "Searching…" or "Search failed" beside the search box.
     pub fn status(&self) -> String {
         match &self.matches {
             Load::Loading(_) => "Searching…".to_owned(),
@@ -80,7 +80,15 @@ impl LogSearch {
             Load::Ready(matches) => {
                 format!("{} / {}", self.current + 1, group_digits(matches.len()))
             }
-            Load::Idle | Load::Failed(_) => String::new(),
+            Load::Failed(_) => "Search failed".to_owned(),
+            Load::Idle => String::new(),
+        }
+    }
+
+    /// Why the search failed and how to try again, on hover over `status` (its [`Self::status`]).
+    pub fn explain_failure(&self, status: egui::Response) {
+        if let Load::Failed(message) = &self.matches {
+            status.on_hover_text(format!("{message}\nPress Enter in the search box to try again."));
         }
     }
 
@@ -110,13 +118,18 @@ impl LogSearch {
         };
         glyph::hint_as(&field.response, "Search log");
         let step = field.submitted?;
-        if self.text != self.searched_for {
+        if self.should_search() {
             self.searched_for.clone_from(&self.text);
             self.current = 0;
             self.find(self.text.clone(), log.clone(), background);
             return None;
         }
         Some(step)
+    }
+
+    /// Enter searches for new text, and again for the same text after the search failed.
+    fn should_search(&self) -> bool {
+        self.text != self.searched_for || matches!(self.matches, Load::Failed(_))
     }
 
     /// Moves to the next or previous match, wrapping around; returns its line to scroll to.
@@ -173,5 +186,19 @@ mod tests {
         let mut reset = found(&[3], 0);
         reset.reset();
         assert_eq!(reset.current_line(), None, "a new log forgets the old matches");
+        let failed = LogSearch { matches: Load::Failed("disk".into()), ..LogSearch::default() };
+        assert_eq!(failed.status(), "Search failed");
+    }
+
+    #[test]
+    fn enter_retries_a_failed_search() {
+        let mut search = found(&[3], 0);
+        search.text = "error".to_owned();
+        assert!(!search.should_search(), "Enter on the searched text steps through its matches");
+        search.matches = Load::Failed("disk".into());
+        assert!(search.should_search(), "Enter on the same text searches again after a failure");
+        search.matches = Load::Idle;
+        search.text = "warning".to_owned();
+        assert!(search.should_search(), "new text searches");
     }
 }

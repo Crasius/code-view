@@ -120,13 +120,12 @@ impl LogFetch {
             }
             Load::Loading(_) | Load::Failed(_) => return,
             Load::Ready(Fetched::Failed(_)) => {
-                if matches!(missing, Some(Missing::NotYet | Missing::Publishing))
-                    && self.is_due(ctx, &key, services)
-                {
+                let asks_again = matches!(missing, Some(Missing::NotYet | Missing::Publishing));
+                if !asks_again {
+                    self.stop_polling(services);
+                } else if self.is_due(ctx, &key, services) {
                     self.missing = missing;
                     self.start_fetch(log_id, is_live, session, services);
-                } else if !matches!(missing, Some(Missing::NotYet | Missing::Publishing)) {
-                    self.stop_polling(services);
                 }
                 return;
             }

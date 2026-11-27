@@ -43,6 +43,8 @@ const FIRST_ERROR: &str = "First error";
 /// than [`TITLE_MIN_WIDTH`] left.
 const SEARCH_WIDTH: f32 = 220.0;
 const SEARCH_MIN_WIDTH: f32 = 120.0;
+/// The focus strip's search field.
+const STRIP_SEARCH_WIDTH: f32 = 200.0;
 const TITLE_MIN_WIDTH: f32 = 180.0;
 
 /// What the lines of a downloaded log showed this frame.
@@ -109,7 +111,7 @@ impl LogViewer {
         services: &mut Services,
     ) {
         self.poll_loads(&services.background);
-        let Some(target) = self.target.clone() else {
+        let Some(target) = self.target.take() else {
             states::message(
                 ui,
                 icons::FILE_TEXT,
@@ -118,6 +120,24 @@ impl LogViewer {
             );
             return;
         };
+        if self.show_target(ui, &target, shown, owner, session, services) {
+            self.open(target, services);
+        } else {
+            self.target = Some(target);
+        }
+    }
+
+    /// [`Self::show`] for the target, held apart meanwhile; true when the user asked to download
+    /// its log again.
+    fn show_target(
+        &mut self,
+        ui: &mut Ui,
+        target: &LogTarget,
+        shown: Option<&PipelineJob>,
+        owner: Option<&PipelineJob>,
+        session: &PullRequestSession,
+        services: &mut Services,
+    ) -> bool {
         let owner = owner.or(shown);
         let status = owner.map_or(RunStatus::Neutral, |job| job.status);
         let running_logs = session.capabilities.running_logs;
@@ -141,36 +161,33 @@ impl LogViewer {
                 &target.title,
                 session.kind,
             )),
-            Availability::AfterFinish => Some(NoLog::after_finish(&target, owner, session.kind)),
+            Availability::AfterFinish => Some(NoLog::after_finish(target, owner, session.kind)),
             Availability::Fetch { .. } => {
                 match missing.or(self.fetch.missing.filter(|_| self.fetch.log.is_loading())) {
                     Some(Missing::AfterFinish) => {
-                        Some(NoLog::after_finish(&target, owner, session.kind))
+                        Some(NoLog::after_finish(target, owner, session.kind))
                     }
                     Some(Missing::NotYet) => {
                         Some(NoLog::of(RunStatus::Running, &target.title, session.kind))
                     }
                     Some(Missing::Publishing) => {
                         panes::publishing(ui, &target.title, session.kind);
-                        return;
+                        return false;
                     }
                     Some(Missing::Failed) | None => None,
                 }
             }
         };
         if let Some(pane) = pane {
-            pane.show(ui, &target, session.kind);
-            return;
+            pane.show(ui, target, session.kind);
+            return false;
         }
         let (cause, details) = match &self.fetch.log {
             Load::Ready(Fetched::Log(log)) => {
                 let log = log.clone();
                 let font_size = services.settings.code_font_size;
                 let (background, toasts) = (&services.background, &mut services.toasts);
-                if self.show_log(ui, &target, &log, background, toasts, font_size) {
-                    self.open(target, services);
-                }
-                return;
+                return self.show_log(ui, target, &log, background, toasts, font_size);
             }
             Load::Ready(Fetched::Failed(error)) => {
                 panes::failure(error, &target.title, session.kind)
@@ -178,12 +195,10 @@ impl LogViewer {
             Load::Failed(message) => (message.clone(), None),
             Load::Idle | Load::Loading(_) => {
                 panes::downloading(ui, &target.title, self.fetch.received());
-                return;
+                return false;
             }
         };
-        if panes::failed(ui, &cause, details.as_deref(), &target, session) {
-            self.open(target, services);
-        }
+        panes::failed(ui, &cause, details.as_deref(), target, session)
     }
 
     /// The log grew (or was rewritten): the lines on screen are read again, a search runs again
@@ -417,11 +432,8 @@ impl LogViewer {
         }
         ui.add_space(theme::style::SPACE_M);
         let step = find_bar::step_buttons(ui, NEXT_MATCH_HINT, PREVIOUS_MATCH_HINT);
-        ui.label(
-            RichText::new(self.search.status())
-                .size(theme::style::SMALL_SIZE)
-                .color(palette.text_secondary),
-        );
+        let status = RichText::new(self.search.status()).size(theme::style::SMALL_SIZE);
+        self.search.explain_failure(ui.label(status.color(palette.text_secondary)));
         let search_width =
             (ui.available_width() - TITLE_MIN_WIDTH).clamp(SEARCH_MIN_WIDTH, SEARCH_WIDTH);
         let step = self.search.field(ui, log, background, search_width).or(step);
@@ -487,7 +499,6 @@ impl LogViewer {
         strip::separator(ui);
         if platform::HAS_SAVE_DIALOG
             && strip::button(ui, icons::DOWNLOAD_SIMPLE, DOWNLOAD_HINT).clicked()
-            && self.target.is_some()
         {
             self.exports.start_download(title, log, background);
         }
@@ -508,8 +519,9 @@ impl LogViewer {
         if strip::button(ui, icons::ARROW_UP, PREVIOUS_MATCH_HINT).clicked() {
             step = Some(Step::Previous);
         }
-        strip::note(ui, &self.search.status(), 0.0);
-        let step = self.search.field(ui, log, background, 200.0).or(step);
+        let note = ui.scope(|ui| strip::note(ui, &self.search.status(), 0.0)).response;
+        self.search.explain_failure(note);
+        let step = self.search.field(ui, log, background, STRIP_SEARCH_WIDTH).or(step);
         self.step(step);
         if let Some(line) = log.first_error
             && strip::button(ui, icons::WARNING_CIRCLE, "Jump to the first error").clicked()
@@ -689,7 +701,7 @@ fn text_id(ui: &Ui) -> Id {
 mod exports;
 mod fetch;
 mod paint;
-mod panes;
+pub(crate) mod panes;
 mod raw_log;
 mod search;
 mod selecting;
@@ -702,3 +714,6 @@ mod frame_budget;
 
 #[cfg(test)]
 mod selection_tests;
+
+#[cfg(test)]
+mod test_harness;

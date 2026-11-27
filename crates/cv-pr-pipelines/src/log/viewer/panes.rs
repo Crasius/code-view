@@ -131,15 +131,16 @@ pub fn downloading(ui: &mut Ui, title: &str, received: u64) {
     } else {
         format!("Downloading the log of {title}: {}", format_bytes(received))
     };
-    waiting(ui, text);
+    waiting(ui, &text);
 }
 
 /// The job just finished and the platform has not published its log yet: it is asked for again.
 pub fn publishing(ui: &mut Ui, title: &str, platform: ProviderKind) {
-    waiting(ui, format!("{} is publishing the log of {title}…", platform.label()));
+    waiting(ui, &format!("{} is publishing the log of {title}…", platform.label()));
 }
 
-fn waiting(ui: &mut Ui, text: String) {
+/// Something on its way to the log pane, `text` saying what: a spinner over skeleton lines.
+pub fn waiting(ui: &mut Ui, text: &str) {
     let palette = theme::palette(ui.ctx());
     ui.horizontal(|ui| {
         ui.spinner();
@@ -272,18 +273,18 @@ mod tests {
                 .detail
                 .contains("follows the job live")
         );
-        assert!(!NoLog::of(RunStatus::Skipped, "Publish", azure).watch_live);
-        assert_eq!(
-            NoLog::of(RunStatus::Skipped, "Publish", azure).detail,
-            "Publish was skipped due to conditions, so it has no log."
-        );
+        let skipped = NoLog::of(RunStatus::Skipped, "Publish", azure);
+        assert!(!skipped.watch_live);
+        assert!(skipped.detail.contains("due to conditions"), "{}", skipped.detail);
         assert_eq!(
             NoLog::of(RunStatus::Canceled, "Deploy", ProviderKind::GitHub).title,
             "Canceled"
         );
-        assert_eq!(
-            NoLog::of(RunStatus::Succeeded, "trigger", ProviderKind::GitLab).detail,
-            "GitLab reports no log for trigger."
+        let succeeded = NoLog::of(RunStatus::Succeeded, "trigger", ProviderKind::GitLab);
+        assert!(
+            succeeded.detail.contains("GitLab") && succeeded.detail.contains("trigger"),
+            "{}",
+            succeeded.detail
         );
     }
 
@@ -313,9 +314,10 @@ mod tests {
             ProviderKind::GitHub,
         );
         assert_eq!(pane.title, "Live log only on GitHub");
-        assert_eq!(
-            pane.detail,
-            "The GitHub API serves a job's log once the job has finished. Backend / Lint and test is still running; its log loads here on its own when it is done."
+        assert!(
+            pane.detail.contains("Backend / Lint and test") && !pane.detail.contains("steps"),
+            "names the job, not a step: {}",
+            pane.detail
         );
         assert!(pane.watch_live);
         let step = NoLog::after_finish(

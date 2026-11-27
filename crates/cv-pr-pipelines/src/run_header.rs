@@ -21,6 +21,9 @@ const GROUP_HEIGHT: f32 = 28.0;
 /// The switcher shows this much of the check's name, and cuts it to no less than the minimum.
 const SWITCHER_NAME_MAX: f32 = 360.0;
 const SWITCHER_NAME_MIN: f32 = 80.0;
+/// The switcher's status icon and caret, as its width reserves and its face paints them.
+const STATUS_ICON: f32 = 18.0;
+const CARET_SIZE: f32 = 14.0;
 /// Rows narrower than this show "Open on …" as the platform mark alone.
 const COMPACT_ROW: f32 = 1000.0;
 
@@ -112,12 +115,12 @@ impl RunHeader {
         let name = ui.painter().layout_no_wrap(check.name().to_owned(), name_font, palette.text);
         let place_width = ui.painter().layout_no_wrap(place.clone(), small, palette.text).size().x;
         let chrome = style::SPACE_M * 2.0
-            + 18.0
+            + STATUS_ICON
             + style::SPACE_S
             + style::SPACE_S
             + place_width
             + style::SPACE_S
-            + 14.0;
+            + CARET_SIZE;
         let name_width =
             name.size().x.min(SWITCHER_NAME_MAX).min((max_width - chrome).max(SWITCHER_NAME_MIN));
         let width = chrome + name_width;
@@ -333,13 +336,13 @@ impl SwitcherFace<'_, '_> {
         let (icon, color) = badges::run_status_icon(check.status(), &palette);
         let mut x = rect.left() + style::SPACE_M;
         painter.text(
-            pos2(x + 9.0, rect.center().y),
+            pos2(x + STATUS_ICON / 2.0, rect.center().y),
             Align2::CENTER_CENTER,
             icon,
-            FontId::proportional(18.0),
+            FontId::proportional(STATUS_ICON),
             color,
         );
-        x += 18.0 + style::SPACE_S;
+        x += STATUS_ICON + style::SPACE_S;
         let (name, is_cut) = ellipsized(
             ui,
             check.name(),
@@ -361,7 +364,7 @@ impl SwitcherFace<'_, '_> {
             pos2(rect.right() - style::SPACE_M, rect.center().y),
             Align2::RIGHT_CENTER,
             caret,
-            FontId::proportional(14.0),
+            FontId::proportional(CARET_SIZE),
             palette.text,
         );
         cv_widgets::focus::ring(ui, button, rect);
@@ -559,9 +562,8 @@ fn grouped<'a>(order: &[Check<'a>], search: &str) -> Vec<(String, Vec<Check<'a>>
 
 /// True when `key` was pressed and no text field takes the keys; consumes it.
 pub fn is_free_key(ui: &Ui, key: egui::Key) -> bool {
-    let focused = ui.memory(egui::Memory::focused);
-    let is_typing = focused.is_some_and(|id| egui::TextEdit::load_state(ui.ctx(), id).is_some());
-    !is_typing && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, key))
+    !ui.ctx().text_edit_focused()
+        && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, key))
 }
 
 /// J/K step through the checks, as in the switcher; not while typing or with a menu open.
@@ -584,30 +586,10 @@ mod tests {
     use review_core::{PipelineJob, PipelineRun, RunStatus};
 
     use super::*;
-
-    fn run(name: &str, status: RunStatus, has_jobs: bool) -> PipelineRun {
-        PipelineRun {
-            id: name.to_owned(),
-            name: name.to_owned(),
-            status,
-            description: None,
-            web_url: None,
-            started_at: None,
-            finished_at: None,
-            has_jobs,
-            is_head: true,
-            reruns: Vec::new(),
-        }
-    }
+    use crate::checks::fixtures::{job, run};
 
     #[test]
     fn pipelines_come_first_then_status_checks_then_jobs_by_status() {
-        let job = |name: &str, status: RunStatus| PipelineJob {
-            id: name.to_owned(),
-            name: name.to_owned(),
-            status,
-            ..PipelineJob::default()
-        };
         let stages = vec![PipelineJob {
             id: "Analyze".to_owned(),
             children: vec![
@@ -634,12 +616,6 @@ mod tests {
 
     #[test]
     fn older_runs_and_their_jobs_group_apart() {
-        let job = |name: &str, status: RunStatus| PipelineJob {
-            id: name.to_owned(),
-            name: name.to_owned(),
-            status,
-            ..PipelineJob::default()
-        };
         let stages = vec![PipelineJob {
             id: "Test".to_owned(),
             children: vec![job("unit", RunStatus::Failed)],

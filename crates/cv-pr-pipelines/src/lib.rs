@@ -24,17 +24,15 @@ mod panes;
 mod rerun;
 mod run_header;
 mod run_view;
+#[cfg(test)]
+mod run_view_check;
 pub mod stage_bars;
 #[cfg(test)]
 mod stage_pan_check;
 #[cfg(test)]
-mod stage_view_shots;
-#[cfg(test)]
 mod stage_zoom_check;
 mod tree;
 mod waiting;
-
-use std::borrow::Cow;
 
 use cv_base::theme::{icons, style};
 use cv_pr_session::session::PullRequestSession;
@@ -46,7 +44,7 @@ use cv_shell::focus_mode::{self, Surface};
 use cv_widgets::states::{self, Action};
 use cv_widgets::time_text;
 use egui::Ui;
-use review_core::{AttemptSource, PipelineJob, PipelineRun, Timestamp};
+use review_core::{PipelineJob, PipelineRun, Timestamp};
 
 use self::attempts::Known;
 use self::checks::{Check, CheckKey};
@@ -55,14 +53,15 @@ pub use self::graph::stage_card::ellipsized;
 use self::job_tree::LogTarget;
 use self::log::viewer::LogViewer;
 use self::log_page::{
-    AttemptNode, JobList, LogPane, Switch, attempt_pending, focused_log, jobs_beside_log, log_bar,
+    AttemptWayOut, JobList, LogPane, RunStages, ShownAttempt, Switch, attempt_pending, focused_log,
+    jobs_beside_log, log_bar,
 };
 use self::rerun::Picked;
 use self::rerun::requests::RerunRequests;
 use self::run_header::{HeaderAction, HeaderInput, RunHeader, is_free_key, step_keys};
 use self::run_view::{RunView, RunViewAction, RunViewInput};
 use self::stage_bars::Stages;
-use self::tree::{find, first_log, log_owner, owning_job, replace_node, retried_ancestor};
+use self::tree::{find, first_log, log_owner, owning_job, retried_ancestor};
 
 /// The page's side inset, without one above or below.
 const GUTTER: egui::Margin = egui::Margin::symmetric(style::PAGE_MARGIN_X, 0);
@@ -86,12 +85,12 @@ enum PendingLog {
     Attempt,
 }
 
-/// An earlier attempt on screen in place of the latest: the retried stage or job (by its id in
-/// the run's stages) and the attempt's number.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ShownAttempt {
-    node_id: String,
-    number: u32,
+/// What a run page asks of the session once it is drawn, when the stages it read are let go.
+enum SessionAsk {
+    /// Retry or Refresh on the run's stages.
+    ReloadStages,
+    /// The target of an earlier attempt the platform lists by id only.
+    Attempt(String),
 }
 
 #[derive(Default)]
@@ -179,8 +178,17 @@ impl PipelinesTab {
         self.log.release_unless(self.page == Page::Log, services);
         self.reruns.poll(session, services);
         follow_running(ui.ctx(), session, services);
+        // What the page asks of the session goes first, so the runs and stages read below stay
+        // borrowed from it for the rest of the frame.
+        let shown_run = self.selected(session).filter(|_| self.page != Page::Checks).cloned();
+        match &shown_run {
+            Some(run) => session.want_stages(run, services),
+            // Jobs are rows too: the table waits for the head runs' jobs, so rows never shift in
+            // later. An older run's jobs load when it is opened and are rows from then on.
+            None => session.want_head_stages(services),
+        }
         let runs = match (session.runs.ready(), session.runs.error()) {
-            (Some(runs), _) => runs.clone(),
+            (Some(runs), _) => runs,
             (None, Some(message)) => {
                 let message = message.to_owned();
                 // Anonymous requests run into rate limits first; a token is the lasting fix.
@@ -217,17 +225,16 @@ impl PipelinesTab {
             }
             return;
         }
-        let selected = self
-            .selected_run
-            .as_ref()
-            .and_then(|id| runs.iter().find(|run| &run.id == id))
-            .cloned();
-        if let (Page::Run | Page::Log, Some(run)) = (self.page, selected) {
-            self.show_run(ui, &run, &runs, session, services);
-        } else {
-            // The run is gone (a new commit brought other runs): back to the table.
+        let Some(run) = shown_run else {
+            // The table, also when the run is gone (a new commit brought other runs).
             self.page = Page::Checks;
-            self.checks_page(ui, &runs, session, services);
+            self.checks_page(ui, runs, session, services);
+            return;
+        };
+        match self.show_run(ui, &run, runs, session, services) {
+            Some(SessionAsk::ReloadStages) => session.reload_stages(&run.id, services),
+            Some(SessionAsk::Attempt(target)) => session.want_attempt(&run.id, &target, services),
+            None => {}
         }
     }
 
@@ -235,12 +242,9 @@ impl PipelinesTab {
         &mut self,
         ui: &mut Ui,
         runs: &[PipelineRun],
-        session: &mut PullRequestSession,
+        session: &PullRequestSession,
         services: &mut Services,
     ) {
-        // Jobs are rows too: the table waits for the head runs' jobs, so rows never shift in later.
-        // An older run's jobs load when it is opened and are rows from then on.
-        session.want_head_stages(services);
         if !session.are_head_stages_settled() {
             waiting::placeholder(ui, session, services, waiting::checks_skeleton);
             return;
@@ -293,22 +297,27 @@ impl PipelinesTab {
         ui: &mut Ui,
         run: &PipelineRun,
         runs: &[PipelineRun],
-        session: &mut PullRequestSession,
+        session: &PullRequestSession,
         services: &mut Services,
-    ) {
-        session.want_stages(run, services);
-        self.sync_shown_log(run, session, services);
+    ) -> Option<SessionAsk> {
+        let loaded = session
+            .stages(&run.id)
+            .and_then(Live::ready)
+            .map(|stages| RunStages::new(stages, &mut self.attempt, &run.id, session));
+        if let Some(loaded) = &loaded {
+            self.sync_shown_log(loaded, services);
+        }
         // A job's log can take over the window; the run header then gives way to the log's strip.
         let is_focused = self.page == Page::Log && focus_mode::offer(ui.ctx(), Surface::Log);
         let open_label = states::open_on_platform(session.kind);
         match self.run_header(ui, run, runs, session, is_focused, &open_label) {
             Some(HeaderAction::Back) => {
                 self.page = Page::Checks;
-                return;
+                return None;
             }
             Some(HeaderAction::Select(key)) => {
                 self.open_check(key);
-                return;
+                return None;
             }
             Some(HeaderAction::Rerun(picked)) => {
                 self.on_rerun_pick(ui, picked, run, session, services);
@@ -325,7 +334,7 @@ impl PipelinesTab {
             && is_free_key(ui, egui::Key::Escape)
         {
             self.page = Page::Checks;
-            return;
+            return None;
         }
         if is_focused {
             self.reruns.show_focus_failure(ui, run, web_url.as_deref(), session, services);
@@ -336,53 +345,38 @@ impl PipelinesTab {
         }
         if !run.has_jobs {
             waiting::status_only(ui, session.kind, web_url.as_deref(), &open_label);
-            return;
+            return None;
         }
-        let Some(stages) = waiting::loaded_stages(ui, run, session, services) else {
-            return;
+        let Some(loaded) = loaded.filter(|loaded| !loaded.stages.is_empty()) else {
+            let is_reloaded = waiting::no_stages(ui, &run.id, session, services);
+            return is_reloaded.then_some(SessionAsk::ReloadStages);
         };
-        let is_resized = if self.page == Page::Log {
-            self.log_page(ui, &stages, &run.id, session, services, is_focused)
+        let target = if self.page == Page::Log {
+            let (is_resized, target) =
+                self.log_page(ui, &loaded, &run.id, session, services, is_focused);
+            if is_resized {
+                services.save_settings();
+            }
+            target
         } else {
-            self.run_page(ui, run, &stages, session, services);
-            false
+            self.run_page(ui, run, loaded.stages, session, services)
         };
-        if is_resized {
-            services.save_settings();
-        }
+        target.map(SessionAsk::Attempt)
     }
 
-    /// Once the run's stages are known: drops an earlier attempt the run no longer lists, opens
-    /// the log picked before, follows an item that got a log, and names the open log's job.
-    fn sync_shown_log(
-        &mut self,
-        run: &PipelineRun,
-        session: &PullRequestSession,
-        services: &Services,
-    ) {
-        let Some(stages) = session.stages(&run.id).and_then(Live::ready) else {
-            return;
-        };
-        if self.attempt.is_some()
-            && matches!(self.attempt_node(stages, &run.id, session), Some(AttemptNode::Gone))
-        {
-            self.attempt = None;
-        }
-        let attempt = match self.attempt_node(stages, &run.id, session) {
-            Some(AttemptNode::Ready(job)) => Some(*job),
-            _ => None,
-        };
-        let view = self.view_stages(stages, attempt.clone());
-        let attempt_root = attempt.as_ref().map(|job| job.id.as_str());
-        self.open_pending_log(&view, attempt_root, services);
-        self.follow_new_log(&view, services);
+    /// Once the run's stages are known: opens the log picked before, follows an item that got a
+    /// log, and names the open log's job.
+    fn sync_shown_log(&mut self, loaded: &RunStages<'_>, services: &Services) {
+        let attempt_root = loaded.attempt_job().map(|job| job.id.as_str());
+        self.open_pending_log(&loaded.view, attempt_root, services);
+        self.follow_new_log(&loaded.view, services);
         if self.page == Page::Log
             && let Some(target) = self.log.target()
         {
             // The header names the check, which is the latest attempt's job.
             let job = match &self.attempt {
-                Some(attempt) => owning_job(stages, &attempt.node_id),
-                None => owning_job(&view, &target.job_id),
+                Some(attempt) => owning_job(loaded.stages, &attempt.node_id),
+                None => owning_job(&loaded.view, &target.job_id),
             };
             self.selected_job = job.map(|job| job.id.clone());
         }
@@ -478,14 +472,15 @@ impl PipelinesTab {
         }
     }
 
+    /// The stage view or the Jobs pivot; returns an earlier attempt's target to load.
     fn run_page(
         &mut self,
         ui: &mut Ui,
         run: &PipelineRun,
         stages: &[PipelineJob],
-        session: &mut PullRequestSession,
+        session: &PullRequestSession,
         services: &mut Services,
-    ) {
+    ) -> Option<String> {
         let action = {
             let loaded = session.loaded_attempts(&run.id);
             let input = RunViewInput {
@@ -507,117 +502,60 @@ impl PipelinesTab {
                 intents::request_fix(ui.ctx(), &session.key.connection_id);
             }
             Some(RunViewAction::Attempt { node_id, number }) => {
-                self.pick_attempt(&node_id, number, stages, &run.id, session, services);
+                return self.pick_attempt(&node_id, number, stages, services);
             }
             None => {}
         }
+        None
     }
 
     /// Shows attempt `number` of the node `node_id`: the latest goes back to the node's own log,
-    /// an earlier one opens its first failed log (loading it first where the platform lists it
-    /// by id only).
+    /// an earlier one opens its first failed log. Returns the attempt's target to load where the
+    /// platform lists it by id only.
     fn pick_attempt(
         &mut self,
         node_id: &str,
         number: u32,
         stages: &[PipelineJob],
-        run_id: &str,
-        session: &mut PullRequestSession,
         services: &Services,
-    ) {
-        let Some(node) = find(stages, node_id) else {
-            return;
-        };
+    ) -> Option<String> {
+        let node = find(stages, node_id)?;
         if number == node.attempt_number() {
             self.attempt = None;
             if let Some(target) = job_tree::resolve(stages, node_id) {
                 self.open_log(target, services);
             }
-            return;
+            return None;
         }
-        let Some(attempt) = node.previous_attempts.iter().find(|attempt| attempt.number == number)
-        else {
-            return;
-        };
-        if let Some(target) = attempt.lazy_target() {
-            session.want_attempt(run_id, target, services);
-        }
+        let attempt = node.previous_attempts.iter().find(|attempt| attempt.number == number)?;
         self.attempt = Some(ShownAttempt { node_id: node_id.to_owned(), number });
         self.page = Page::Log;
         self.pending_log = Some(PendingLog::Attempt);
-    }
-
-    /// The earlier attempt on screen, as far as known; `None` when the latest is shown.
-    fn attempt_node(
-        &self,
-        stages: &[PipelineJob],
-        run_id: &str,
-        session: &PullRequestSession,
-    ) -> Option<AttemptNode> {
-        let shown = self.attempt.as_ref()?;
-        let Some(attempt) = find(stages, &shown.node_id).and_then(|node| {
-            node.previous_attempts.iter().find(|attempt| attempt.number == shown.number)
-        }) else {
-            return Some(AttemptNode::Gone);
-        };
-        Some(match &attempt.source {
-            AttemptSource::Loaded(job) => AttemptNode::Ready(job.clone()),
-            AttemptSource::Lazy(target) => match session.attempt(run_id, target) {
-                Some(live) => match (live.ready(), live.error()) {
-                    (Some(job), _) => AttemptNode::Ready(Box::new(job.clone())),
-                    (None, Some(message)) => AttemptNode::Failed(message.to_owned()),
-                    (None, None) => AttemptNode::Loading,
-                },
-                None => AttemptNode::Loading,
-            },
-        })
-    }
-
-    /// The run's stages as the log page shows them: the earlier attempt on screen in place of
-    /// its latest.
-    fn view_stages<'a>(
-        &self,
-        stages: &'a [PipelineJob],
-        attempt: Option<PipelineJob>,
-    ) -> Cow<'a, [PipelineJob]> {
-        match (&self.attempt, attempt) {
-            (Some(shown), Some(job)) => {
-                let mut view = stages.to_vec();
-                replace_node(&mut view, &shown.node_id, job);
-                Cow::Owned(view)
-            }
-            _ => Cow::Borrowed(stages),
-        }
+        attempt.lazy_target().map(str::to_owned)
     }
 
     /// The run's jobs beside the open log, with a way back to the stages; the header above names
     /// the job and offers its reruns. Returns true when the job list was resized and the width
-    /// should be saved.
-    /// `stages` are the run's stages (latest attempts); an earlier attempt on screen takes its
-    /// latest's place in the job list, and the switcher above the log moves between attempts. In
-    /// focus mode the log (or the attempt on its way) is all there is: its strip takes the
-    /// switcher, and J/K still step through the jobs.
+    /// should be saved, and an earlier attempt's target to load.
+    /// An earlier attempt on screen takes its latest's place in the job list, and the switcher
+    /// above the log moves between attempts. In focus mode the log (or the attempt on its way) is
+    /// all there is: its strip takes the switcher, and J/K still step through the jobs.
     fn log_page(
         &mut self,
         ui: &mut Ui,
-        stages: &[PipelineJob],
+        loaded: &RunStages<'_>,
         run_id: &str,
-        session: &mut PullRequestSession,
+        session: &PullRequestSession,
         services: &mut Services,
         is_focused: bool,
-    ) -> bool {
-        let attempt_state = self.attempt_node(stages, run_id, session);
-        let attempt_job = match &attempt_state {
-            Some(AttemptNode::Ready(job)) => Some((**job).clone()),
-            _ => None,
-        };
-        let view = self.view_stages(stages, attempt_job.clone());
-        let view: &[PipelineJob] = &view;
+    ) -> (bool, Option<String>) {
+        let (stages, view) = (loaded.stages, &*loaded.view);
+        let attempt_job = loaded.attempt_job();
         let selected_job = self.log.target().map(|target| target.job_id.clone());
         let switch = self.switch(stages, selected_job.as_deref());
         let (is_resized, mut picks) = {
-            let loaded = session.loaded_attempts(run_id);
-            let known = Known { loaded: &loaded };
+            let attempts = session.loaded_attempts(run_id);
+            let known = Known { loaded: &attempts };
             let shown = selected_job.as_deref().and_then(|id| find(view, id));
             // Whether the platform serves the log yet depends on the job it belongs to (a GitHub
             // step's log is its job's).
@@ -626,7 +564,7 @@ impl PipelinesTab {
                 .target()
                 .and_then(|target| target.log_id.as_deref())
                 .and_then(|log_id| log_owner(view, log_id));
-            let pending = attempt_pending(attempt_state.as_ref(), switch);
+            let pending = attempt_pending(loaded.attempt.as_ref(), switch);
             let pane = LogPane { pending, shown, owner };
             if is_focused {
                 let picks = focused_log(ui, &mut self.log, &pane, switch, known, session, services);
@@ -635,7 +573,7 @@ impl PipelinesTab {
                 // A step's log (Azure DevOps) is named here; a job's own log is named by the header.
                 let step = shown.filter(|node| {
                     self.selected_job.as_deref() != Some(node.id.as_str())
-                        && attempt_job.as_ref().is_none_or(|job| job.id != node.id)
+                        && attempt_job.is_none_or(|job| job.id != node.id)
                 });
                 let bar = log_bar(ui, step, switch, known, self.selected_job.as_deref());
                 if bar.back {
@@ -645,7 +583,6 @@ impl PipelinesTab {
                     stages: view,
                     selected: selected_job.as_deref(),
                     attempt: attempt_job
-                        .as_ref()
                         .zip(self.attempt.as_ref())
                         .map(|(job, shown)| (job.id.as_str(), shown.number)),
                     known,
@@ -656,25 +593,26 @@ impl PipelinesTab {
                 (is_resized, picks)
             }
         };
-        if let (Some(index), Some((node, number))) = (picks.pane, switch) {
-            // Retry loads the attempt again; the other way out is the latest attempt.
-            let latest = node.attempt_number();
-            picks.attempt = Some((node.id.clone(), if index == 0 { number } else { latest }));
+        if let (Some(way_out), Some((node, number))) = (picks.pane, switch) {
+            let number = match way_out {
+                AttemptWayOut::Retry => number,
+                AttemptWayOut::Latest => node.attempt_number(),
+            };
+            picks.attempt = Some((node.id.clone(), number));
         }
-        if let Some((node_id, number)) = picks.attempt {
-            self.pick_attempt(&node_id, number, stages, run_id, session, services);
-        }
+        let to_load = picks
+            .attempt
+            .and_then(|(node_id, number)| self.pick_attempt(&node_id, number, stages, services));
         if let Some(target) = picks.job {
             // A row outside the earlier attempt leaves it for the latest.
             let is_in_attempt = attempt_job
-                .as_ref()
                 .is_some_and(|job| find(std::slice::from_ref(job), &target.job_id).is_some());
             if !is_in_attempt {
                 self.attempt = None;
             }
             self.open_log(target, services);
         }
-        is_resized
+        (is_resized, to_load)
     }
 
     /// The node whose attempts the switcher lists: the one shown in an earlier attempt, else the
@@ -766,7 +704,10 @@ fn short_sha(sha: &str) -> &str {
 }
 
 /// Elapsed time; still-running items count up to now.
-pub fn duration(started_at: Option<Timestamp>, finished_at: Option<Timestamp>) -> Option<String> {
+pub(crate) fn duration(
+    started_at: Option<Timestamp>,
+    finished_at: Option<Timestamp>,
+) -> Option<String> {
     let start = started_at?;
     let end = finished_at.unwrap_or_else(time::OffsetDateTime::now_utc);
     Some(time_text::duration(start, end))

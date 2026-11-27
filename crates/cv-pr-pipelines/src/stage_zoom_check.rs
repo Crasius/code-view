@@ -3,22 +3,14 @@
 //! still opens on click at 50 % and 200 %, as does an attempt picked from the popup of a job's
 //! attempt badge, and nothing drifts between frames.
 
-use cv_base::theme;
 use cv_testkit::Clicks;
 use egui::{Event, Key, Modifiers, Pos2, Rect, Vec2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_core::{AttemptSource, PipelineAttempt, PipelineJob, ProviderKind};
-use review_store::ThemePreference;
+use review_core::{AttemptSource, PipelineAttempt, PipelineJob};
 
-use super::run_view::{RunView, RunViewInput};
-use super::stage_view_shots::{describe, sample_pipeline};
-
-struct State {
-    view: RunView,
-    stages: Vec<PipelineJob>,
-    last: Option<String>,
-}
+use super::graph::layout::CARD_WIDTH;
+use super::run_view_check::{State, build, sample_pipeline};
 
 const STAGES: [&str; 7] = [
     "Analyze",
@@ -57,35 +49,9 @@ fn with_retried_job(mut stages: Vec<PipelineJob>) -> Vec<PipelineJob> {
 
 /// Smaller than the graph, so it overflows.
 fn harness() -> Harness<'static, State> {
-    let state =
-        State { view: RunView::default(), stages: with_retried_job(sample_pipeline()), last: None };
-    Harness::builder()
-        .with_size([1100.0, 620.0])
-        .with_step_dt(1.0 / 60.0)
-        .with_max_steps(240)
-        .with_context_setup(|ctx| {
-            theme::fonts::install(ctx);
-            // Motion on, whatever the machine says: the zoom steps glide.
-            theme::motion::set_reduced(ctx, false);
-        })
-        .build_ui_state(
-            |ui, state: &mut State| {
-                let palette = theme::activate(ui.ctx(), ThemePreference::Light);
-                ui.painter().rect_filled(ui.max_rect(), 0, palette.ground);
-                let input = RunViewInput {
-                    run_id: "build:1",
-                    stages: &state.stages,
-                    platform: ProviderKind::AzureDevOps,
-                    has_token: true,
-                    is_busy: false,
-                    known: super::attempts::Known::default(),
-                };
-                if let Some(action) = state.view.show(ui, input) {
-                    state.last = Some(describe(action));
-                }
-            },
-            state,
-        )
+    let builder =
+        Harness::builder().with_size([1100.0, 620.0]).with_step_dt(1.0 / 60.0).with_max_steps(240);
+    build(builder, State::new(with_retried_job(sample_pipeline())))
 }
 
 fn header(harness: &Harness<'_, State>, stage: &str) -> Rect {
@@ -167,12 +133,14 @@ fn zoom_stops_at_25_and_200_percent() {
         ctrl_wheel(&mut harness, at, 4.0);
     }
     assert!(level(&harness, 200), "the level reads 200 %");
-    assert!((header(&harness, "Build").width() - 480.0).abs() < 0.5, "cards are twice as wide");
+    let width = header(&harness, "Build").width();
+    assert!((width - CARD_WIDTH * 2.0).abs() < 0.5, "cards are twice as wide");
     for _ in 0..12 {
         ctrl_wheel(&mut harness, at, -4.0);
     }
     assert!(level(&harness, 25), "the level reads 25 %");
-    assert!((header(&harness, "Build").width() - 60.0).abs() < 0.5, "cards are a quarter as wide");
+    let width = header(&harness, "Build").width();
+    assert!((width - CARD_WIDTH * 0.25).abs() < 0.5, "cards are a quarter as wide");
     // Panned and zoomed out, some of the graph is still on screen.
     let view = canvas(&harness);
     assert!(STAGES.iter().any(|stage| view.intersects(header(&harness, stage))));
@@ -189,7 +157,10 @@ fn the_control_and_shortcuts_step_and_reset() {
     assert!(level(&harness, 90));
     click(&mut harness, "reset to 100 %", 1);
     assert!(level(&harness, 100));
-    assert!((header(&harness, "Build").width() - 240.0).abs() < 0.01, "back to the exact size");
+    assert!(
+        (header(&harness, "Build").width() - CARD_WIDTH).abs() < 0.01,
+        "back to the exact size"
+    );
 
     harness.event(Event::PointerMoved(header(&harness, "Build").center()));
     harness.step();

@@ -23,8 +23,11 @@ use super::raw_log;
 /// How long "Copied" replaces "Copy log".
 const COPIED_SECONDS: f64 = 1.5;
 /// The copy button's icon and label: idle, while the text is built, after it reached the clipboard.
-const COPY_STATES: [(&str, &str); 3] =
-    [(icons::COPY, "Copy log"), (icons::COPY, "Copying…"), (icons::CHECK, "Copied")];
+const COPY_IDLE: (&str, &str) = (icons::COPY, "Copy log");
+const COPY_BUSY: (&str, &str) = (icons::COPY, "Copying…");
+const COPY_DONE: (&str, &str) = (icons::CHECK, "Copied");
+/// Every face of the copy button, for the one width its slot keeps.
+const COPY_STATES: [(&str, &str); 3] = [COPY_IDLE, COPY_BUSY, COPY_DONE];
 const COPY_HINT: &str = concat!(
     "Copy the whole log as plain text, without colors (",
     shortcut!(command shift "C"),
@@ -252,9 +255,9 @@ impl LogExports {
             ui.ctx().request_repaint_after(Duration::from_secs_f64(COPIED_SECONDS - elapsed));
         }
         match (self.copy.is_loading(), shown_for.is_some()) {
-            (true, _) => COPY_STATES[1],
-            (false, true) => COPY_STATES[2],
-            (false, false) => COPY_STATES[0],
+            (true, _) => COPY_BUSY,
+            (false, true) => COPY_DONE,
+            (false, false) => COPY_IDLE,
         }
     }
 

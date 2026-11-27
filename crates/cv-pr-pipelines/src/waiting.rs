@@ -13,8 +13,8 @@ use cv_widgets::provider_icon;
 use cv_widgets::skeleton;
 use cv_widgets::states::{self, Action};
 use egui::Ui;
+use review_core::ProviderKind;
 use review_core::http::Api;
-use review_core::{PipelineJob, PipelineRun, ProviderKind};
 
 use super::graph::layout as graph_layout;
 use super::graph::stage_card;
@@ -146,46 +146,32 @@ pub fn status_only(ui: &mut Ui, platform: ProviderKind, web_url: Option<&str>, o
     }
 }
 
-/// The run's stages once loaded; until then, or when they did not load or the run has no jobs
-/// yet, what the page shows instead.
-pub fn loaded_stages(
+/// What the run page shows in place of stages still on their way, stages that did not load, or a
+/// run with no jobs yet. True when the user asked for the stages again (Retry, Refresh).
+pub fn no_stages(
     ui: &mut Ui,
-    run: &PipelineRun,
-    session: &mut PullRequestSession,
+    run_id: &str,
+    session: &PullRequestSession,
     services: &Services,
-) -> Option<Vec<PipelineJob>> {
-    let load = session.stages(&run.id);
-    let stages = match (load.and_then(Live::ready), load.and_then(Live::error)) {
-        (Some(stages), _) => stages.clone(),
-        (None, Some(message)) => {
-            let message = message.to_owned();
-            let picked = egui::Frame::new()
-                .inner_margin(egui::Margin::symmetric(style::PAGE_MARGIN_X, 8))
-                .show(ui, |ui| {
-                    states::error_with_actions(
-                        ui,
-                        &message,
-                        &[Action::secondary(icons::ARROW_CLOCKWISE, "Retry")],
-                    )
-                })
-                .inner;
-            if picked.is_some() {
-                session.reload_stages(&run.id, services);
-            }
-            return None;
+) -> bool {
+    let load = session.stages(run_id);
+    match (load.and_then(Live::ready), load.and_then(Live::error)) {
+        (Some(_), _) => {
+            let refresh = [Action::secondary(icons::ARROW_CLOCKWISE, "Refresh")];
+            let no_jobs = "The run has no jobs yet.";
+            states::message_with_actions(ui, icons::INFO, "No jobs", no_jobs, &refresh).is_some()
         }
+        (None, Some(message)) => egui::Frame::new()
+            .inner_margin(egui::Margin::symmetric(style::PAGE_MARGIN_X, 8))
+            .show(ui, |ui| {
+                let retry = [Action::secondary(icons::ARROW_CLOCKWISE, "Retry")];
+                states::error_with_actions(ui, message, &retry)
+            })
+            .inner
+            .is_some(),
         (None, None) => {
             placeholder(ui, session, services, stage_skeleton);
-            return None;
+            false
         }
-    };
-    if stages.is_empty() {
-        let refresh = [Action::secondary(icons::ARROW_CLOCKWISE, "Refresh")];
-        let no_jobs = "The run has no jobs yet.";
-        if states::message_with_actions(ui, icons::INFO, "No jobs", no_jobs, &refresh).is_some() {
-            session.reload_stages(&run.id, services);
-        }
-        return None;
     }
-    Some(stages)
 }

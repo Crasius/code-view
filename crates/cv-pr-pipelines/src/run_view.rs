@@ -64,11 +64,6 @@ impl RunView {
         self.pivot = Pivot::Stages;
     }
 
-    #[cfg(test)]
-    pub fn expand(&mut self, stage_id: &str) {
-        self.expanded.insert(stage_id.to_owned());
-    }
-
     pub fn show(&mut self, ui: &mut Ui, input: RunViewInput<'_>) -> Option<RunViewAction> {
         if self.expanded_for.as_deref() != Some(input.run_id) {
             self.expanded = stage_graph::initially_expanded(input.stages);
