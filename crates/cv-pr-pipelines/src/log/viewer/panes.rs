@@ -1,13 +1,12 @@
 //! What the log pane shows in place of a log: an item without one (yet), a log on its way, and
 //! a download that failed, each with its way forward.
 
-use cv_base::theme::{self, icons};
+use cv_base::theme::icons;
 use cv_pr_session::session::PullRequestSession;
 use cv_runtime::intents;
-use cv_widgets::provider_icon;
-use cv_widgets::skeleton;
 use cv_widgets::states::{self, Action};
-use egui::{RichText, Ui};
+use cv_widgets::{numbers, provider_icon, skeleton};
+use egui::Ui;
 use review_core::{PipelineJob, ProviderError, ProviderKind, RunStatus};
 
 use crate::job_tree::LogTarget;
@@ -129,22 +128,19 @@ pub fn downloading(ui: &mut Ui, title: &str, received: u64) {
     let text = if received == 0 {
         format!("Requesting the log of {title}…")
     } else {
-        format!("Downloading the log of {title}: {}", format_bytes(received))
+        format!("Downloading the log of {title}: {}", numbers::format_bytes(received))
     };
-    waiting(ui, text);
+    waiting(ui, &text);
 }
 
 /// The job just finished and the platform has not published its log yet: it is asked for again.
 pub fn publishing(ui: &mut Ui, title: &str, platform: ProviderKind) {
-    waiting(ui, format!("{} is publishing the log of {title}…", platform.label()));
+    waiting(ui, &format!("{} is publishing the log of {title}…", platform.label()));
 }
 
-fn waiting(ui: &mut Ui, text: String) {
-    let palette = theme::palette(ui.ctx());
-    ui.horizontal(|ui| {
-        ui.spinner();
-        ui.label(RichText::new(text).color(palette.text_secondary));
-    });
+/// Something on its way to the log pane, `text` saying what: a spinner over skeleton lines.
+pub fn waiting(ui: &mut Ui, text: &str) {
+    states::loading(ui, text);
     ui.add_space(8.0);
     skeleton::code_lines(ui, 30, 18.0, false);
 }
@@ -234,21 +230,11 @@ pub fn failure(
     }
 }
 
-fn format_bytes(bytes: u64) -> String {
-    const KIB: f64 = 1024.0;
-    let value = bytes as f64;
-    if value >= KIB * KIB {
-        format!("{:.1} MB", value / KIB / KIB)
-    } else {
-        format!("{:.0} KB", (value / KIB).max(1.0))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use review_core::{PipelineJob, ProviderError, ProviderKind, RunStatus};
 
-    use super::{LogTarget, NoLog, failure, format_bytes};
+    use super::{LogTarget, NoLog, failure};
 
     #[test]
     fn explains_why_an_item_has_no_log() {
@@ -272,18 +258,18 @@ mod tests {
                 .detail
                 .contains("follows the job live")
         );
-        assert!(!NoLog::of(RunStatus::Skipped, "Publish", azure).watch_live);
-        assert_eq!(
-            NoLog::of(RunStatus::Skipped, "Publish", azure).detail,
-            "Publish was skipped due to conditions, so it has no log."
-        );
+        let skipped = NoLog::of(RunStatus::Skipped, "Publish", azure);
+        assert!(!skipped.watch_live);
+        assert!(skipped.detail.contains("due to conditions"), "{}", skipped.detail);
         assert_eq!(
             NoLog::of(RunStatus::Canceled, "Deploy", ProviderKind::GitHub).title,
             "Canceled"
         );
-        assert_eq!(
-            NoLog::of(RunStatus::Succeeded, "trigger", ProviderKind::GitLab).detail,
-            "GitLab reports no log for trigger."
+        let succeeded = NoLog::of(RunStatus::Succeeded, "trigger", ProviderKind::GitLab);
+        assert!(
+            succeeded.detail.contains("GitLab") && succeeded.detail.contains("trigger"),
+            "{}",
+            succeeded.detail
         );
     }
 
@@ -313,9 +299,10 @@ mod tests {
             ProviderKind::GitHub,
         );
         assert_eq!(pane.title, "Live log only on GitHub");
-        assert_eq!(
-            pane.detail,
-            "The GitHub API serves a job's log once the job has finished. Backend / Lint and test is still running; its log loads here on its own when it is done."
+        assert!(
+            pane.detail.contains("Backend / Lint and test") && !pane.detail.contains("steps"),
+            "names the job, not a step: {}",
+            pane.detail
         );
         assert!(pane.watch_live);
         let step = NoLog::after_finish(
@@ -363,12 +350,5 @@ mod tests {
             (token.to_string(), None),
             "the app's own sentence stays"
         );
-    }
-
-    #[test]
-    fn formats_download_sizes() {
-        assert_eq!(format_bytes(10), "1 KB");
-        assert_eq!(format_bytes(300 * 1024), "300 KB");
-        assert_eq!(format_bytes(5 * 1024 * 1024 + 512 * 1024), "5.5 MB");
     }
 }

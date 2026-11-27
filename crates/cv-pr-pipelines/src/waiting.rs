@@ -7,14 +7,14 @@ use cv_pr_session::session::PullRequestSession;
 use cv_runtime::intents;
 use cv_runtime::load::Live;
 use cv_services::Services;
-use cv_services::connection::traffic::retry_now;
-use cv_shell::rate_limit_banner::{countdown, until_next_tick};
+use cv_shell::rate_limit_banner::until_next_tick;
 use cv_widgets::provider_icon;
 use cv_widgets::skeleton;
 use cv_widgets::states::{self, Action};
+use cv_widgets::time_text::countdown;
 use egui::Ui;
-use review_core::http::Api;
-use review_core::{PipelineJob, PipelineRun, ProviderKind};
+use review_core::ProviderKind;
+use review_core::http::{self, Api};
 
 use super::graph::layout as graph_layout;
 use super::graph::stage_card;
@@ -66,12 +66,12 @@ fn rate_limit_wait(ui: &mut Ui, session: &PullRequestSession, services: &Service
     let actions: Vec<Action<'_>> = choices.iter().map(|(action, _)| *action).collect();
     let title = format!("Waiting for {platform}");
     let picked = egui::Frame::new()
-        .inner_margin(egui::Margin::same(24))
+        .inner_margin(egui::Margin::same(style::PAGE_MARGIN_X))
         .show(ui, |ui| states::message_with_actions(ui, icons::CLOCK, &title, &detail, &actions))
         .inner;
     match picked.map(|index| &choices[index].1) {
         Some(WaitChoice::AddToken) => intents::request_fix(ui.ctx(), &session.key.connection_id),
-        Some(WaitChoice::RetryNow) => retry_now(&limit.origin),
+        Some(WaitChoice::RetryNow) => http::resume(&limit.origin),
         Some(WaitChoice::Open(url)) => ui.ctx().open_url(egui::OpenUrl::new_tab(*url)),
         None => {}
     }
@@ -80,7 +80,8 @@ fn rate_limit_wait(ui: &mut Ui, session: &PullRequestSession, services: &Service
 
 /// Placeholder in the shape of the checks table: toolbar, header and rows.
 pub fn checks_skeleton(ui: &mut Ui) {
-    egui::Frame::new().inner_margin(egui::Margin::symmetric(24, 20)).show(ui, |ui| {
+    let margin = egui::Margin::symmetric(style::PAGE_MARGIN_X, 20);
+    egui::Frame::new().inner_margin(margin).show(ui, |ui| {
         ui.horizontal(|ui| {
             skeleton::bar(ui, 160.0, 20.0);
             for width in [56.0, 72.0, 80.0, 96.0, 80.0] {
@@ -102,7 +103,8 @@ pub fn checks_skeleton(ui: &mut Ui) {
 
 /// Placeholder in the shape of the stage view: pivot and a row of cards.
 pub fn stage_skeleton(ui: &mut Ui) {
-    egui::Frame::new().inner_margin(egui::Margin::symmetric(24, 12)).show(ui, |ui| {
+    let margin = egui::Margin::symmetric(style::PAGE_MARGIN_X, 12);
+    egui::Frame::new().inner_margin(margin).show(ui, |ui| {
         ui.horizontal(|ui| {
             skeleton::bar(ui, 56.0, 18.0);
             skeleton::bar(ui, 40.0, 18.0);
@@ -144,46 +146,32 @@ pub fn status_only(ui: &mut Ui, platform: ProviderKind, web_url: Option<&str>, o
     }
 }
 
-/// The run's stages once loaded; until then, or when they did not load or the run has no jobs
-/// yet, what the page shows instead.
-pub fn loaded_stages(
+/// What the run page shows in place of stages still on their way, stages that did not load, or a
+/// run with no jobs yet. True when the user asked for the stages again (Retry, Refresh).
+pub fn no_stages(
     ui: &mut Ui,
-    run: &PipelineRun,
-    session: &mut PullRequestSession,
+    run_id: &str,
+    session: &PullRequestSession,
     services: &Services,
-) -> Option<Vec<PipelineJob>> {
-    let load = session.stages(&run.id);
-    let stages = match (load.and_then(Live::ready), load.and_then(Live::error)) {
-        (Some(stages), _) => stages.clone(),
-        (None, Some(message)) => {
-            let message = message.to_owned();
-            let picked = egui::Frame::new()
-                .inner_margin(egui::Margin::symmetric(24, 8))
-                .show(ui, |ui| {
-                    states::error_with_actions(
-                        ui,
-                        &message,
-                        &[Action::secondary(icons::ARROW_CLOCKWISE, "Retry")],
-                    )
-                })
-                .inner;
-            if picked.is_some() {
-                session.reload_stages(&run.id, services);
-            }
-            return None;
+) -> bool {
+    let load = session.stages(run_id);
+    match (load.and_then(Live::ready), load.and_then(Live::error)) {
+        (Some(_), _) => {
+            let refresh = [Action::secondary(icons::ARROW_CLOCKWISE, "Refresh")];
+            let no_jobs = "The run has no jobs yet.";
+            states::message_with_actions(ui, icons::INFO, "No jobs", no_jobs, &refresh).is_some()
         }
+        (None, Some(message)) => egui::Frame::new()
+            .inner_margin(egui::Margin::symmetric(style::PAGE_MARGIN_X, 8))
+            .show(ui, |ui| {
+                let retry = [Action::secondary(icons::ARROW_CLOCKWISE, "Retry")];
+                states::error_with_actions(ui, message, &retry)
+            })
+            .inner
+            .is_some(),
         (None, None) => {
             placeholder(ui, session, services, stage_skeleton);
-            return None;
+            false
         }
-    };
-    if stages.is_empty() {
-        let refresh = [Action::secondary(icons::ARROW_CLOCKWISE, "Refresh")];
-        let no_jobs = "The run has no jobs yet.";
-        if states::message_with_actions(ui, icons::INFO, "No jobs", no_jobs, &refresh).is_some() {
-            session.reload_stages(&run.id, services);
-        }
-        return None;
     }
-    Some(stages)
 }

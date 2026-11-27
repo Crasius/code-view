@@ -5,17 +5,16 @@
 use std::collections::BTreeSet;
 
 use cv_base::theme::{self, icons, motion, style};
+use cv_widgets::numbers::counted;
 use cv_widgets::states::{self, Action};
-use cv_widgets::{badges, buttons, glyph, row};
+use cv_widgets::{badges, buttons, elide, glyph, row};
 use egui::{
-    Align2, Color32, FontId, Key, Rect, Sense, Stroke, StrokeKind, TextEdit, Ui, UiBuilder, pos2,
-    vec2,
+    Align2, FontId, Key, Rect, Sense, Stroke, StrokeKind, TextEdit, Ui, UiBuilder, pos2, vec2,
 };
 use review_core::{PipelineRun, ProviderKind, RerunAction};
 use review_store::CheckFilter;
 
 use super::checks::{self, Check, CheckKey, FILTERS};
-use super::graph::stage_card::ellipsized;
 use super::rerun;
 use super::stage_bars::{self, Stages};
 
@@ -44,7 +43,7 @@ pub enum TableAction {
 
 pub struct TableInput<'a> {
     pub runs: &'a [PipelineRun],
-    /// Every run and job, in the platform's order.
+    /// Every run and job, in [`checks::order`].
     pub checks: &'a [Check<'a>],
     /// The stage bars of each check, in `checks` order.
     pub bars: &'a [Stages<'a>],
@@ -78,13 +77,13 @@ struct Columns {
 impl ChecksTable {
     pub fn show(&mut self, ui: &mut Ui, mut input: TableInput<'_>) -> Option<TableAction> {
         let mut action = None;
-        egui::Frame::new().inner_margin(egui::Margin::symmetric(24, 20)).show(ui, |ui| {
+        let margin = egui::Margin::symmetric(style::PAGE_MARGIN_X, 20);
+        egui::Frame::new().inner_margin(margin).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             action = self.toolbar(ui, &mut input);
             ui.add_space(style::SPACE_M + 2.0);
             let mut shown: Vec<(usize, Check<'_>)> =
                 input.checks.iter().copied().enumerate().collect();
-            shown.sort_by_key(|(_, check)| checks::order(check));
             shown.retain(|(_, check)| {
                 checks::matches(check, input.filter, &self.search, input.platform)
             });
@@ -270,7 +269,7 @@ impl ChecksTable {
             columns.status.center(),
             Align2::CENTER_CENTER,
             icon,
-            FontId::proportional(18.0),
+            icons::rest_font(&palette, icons::SIZE),
             color,
         );
 
@@ -280,11 +279,11 @@ impl ChecksTable {
         };
         let body = FontId::proportional(style::BODY_SIZE);
         let small = FontId::proportional(style::SMALL_SIZE);
-        let (name, is_name_cut) =
-            ellipsized(ui, check.name(), body, palette.text, columns.name.width());
+        let width = columns.name.width();
+        let name = elide::line(&painter, check.name(), body, palette.text, width);
         let sub_text = checks::check_sub_line(check, known);
-        let (sub, is_sub_cut) =
-            ellipsized(ui, &sub_text, small.clone(), palette.text_secondary, columns.name.width());
+        let sub = elide::line(&painter, &sub_text, small.clone(), palette.text_secondary, width);
+        let is_cut = name.elided || sub.elided;
         let block = name.size().y + style::SPACE_LINE + sub.size().y;
         let name_top = rect.center().y - block / 2.0;
         let sub_top = name_top + name.size().y + style::SPACE_LINE;
@@ -320,7 +319,7 @@ impl ChecksTable {
         }
         let status = badges::run_status_label(check.status());
         let mut tooltip = vec![format!("{} ({status})", check.name())];
-        if is_name_cut || is_sub_cut {
+        if is_cut {
             tooltip.push(sub_text);
         }
         let click = match (check.job, has_log) {
@@ -344,8 +343,7 @@ impl ChecksTable {
         shown: &[(usize, Check<'_>)],
         action: &mut Option<TableAction>,
     ) {
-        let focused = ui.memory(egui::Memory::focused);
-        if focused.is_some_and(|id| TextEdit::load_state(ui.ctx(), id).is_some()) {
+        if ui.ctx().text_edit_focused() {
             return;
         }
         let position =
@@ -482,15 +480,11 @@ fn chip(ui: &mut Ui, label: &str, count: usize, is_on: bool) -> egui::Response {
     let palette = theme::palette(ui.ctx());
     let font = FontId::proportional(style::SMALL_SIZE);
     let count_text = count.to_string();
-    let label_width = ui.fonts_mut(|fonts| {
-        fonts.layout_no_wrap(label.to_owned(), font.clone(), Color32::WHITE).size().x
-    });
-    let count_width = ui.fonts_mut(|fonts| {
-        fonts.layout_no_wrap(count_text.clone(), font.clone(), Color32::WHITE).size().x
-    });
+    let label_width = elide::text_width(ui, label, &font);
+    let count_width = elide::text_width(ui, &count_text, &font);
     let width = style::SPACE_M * 2.0 + label_width + style::SPACE_XS + 2.0 + count_width;
     let (rect, response) = ui.allocate_exact_size(vec2(width, CHIP_HEIGHT), Sense::click());
-    let name = format!("{label}, {}", checks::plural(count, "check"));
+    let name = format!("{label}, {}", counted(count, "check", "checks"));
     response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, is_on, &name));
     let on = motion::toggle(ui.ctx(), response.id.with("chip_on"), is_on, motion::FAST);
     let hover = row::hover_amount(ui, &response);

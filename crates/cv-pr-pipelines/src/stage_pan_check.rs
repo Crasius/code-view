@@ -7,49 +7,18 @@ use cv_testkit::Clicks;
 use egui::{CursorIcon, Event, Modifiers, PointerButton, Pos2, Vec2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use review_core::{PipelineJob, ProviderKind};
-use review_store::ThemePreference;
 
-use super::run_view::{RunView, RunViewInput};
-use super::stage_view_shots::{describe, sample_pipeline};
-
-struct State {
-    view: RunView,
-    stages: Vec<PipelineJob>,
-    last: Option<String>,
-}
+use super::run_view_check::{State, build, sample_pipeline};
 
 /// Smaller than the graph, so it overflows sideways; no offscreen rendering, so no GPU turn.
+/// The fling below exists only with motion, which [`build`] turns on.
 fn harness() -> Harness<'static, State> {
-    let state = State { view: RunView::default(), stages: sample_pipeline(), last: None };
-    Harness::builder()
+    let builder = Harness::builder()
         .with_size([900.0, 520.0])
         // Real frame times, so the pointer has a velocity to fling with.
         .with_step_dt(1.0 / 60.0)
-        .with_max_steps(240)
-        .with_context_setup(|ctx| {
-            theme::fonts::install(ctx);
-            // Motion on, whatever the machine says: the fling below exists only with motion, and
-            // a macOS runner may have Reduce Motion on (`motion::install` reads the OS).
-            theme::motion::set_reduced(ctx, false);
-        })
-        .build_ui_state(
-            |ui, state: &mut State| {
-                theme::activate(ui.ctx(), ThemePreference::Light);
-                let input = RunViewInput {
-                    run_id: "build:1",
-                    stages: &state.stages,
-                    platform: ProviderKind::AzureDevOps,
-                    has_token: true,
-                    is_busy: false,
-                    known: super::attempts::Known::default(),
-                };
-                if let Some(action) = state.view.show(ui, input) {
-                    state.last = Some(describe(action));
-                }
-            },
-            state,
-        )
+        .with_max_steps(240);
+    build(builder, State::new(sample_pipeline()))
 }
 
 fn card(harness: &Harness<'_, State>, name: &str) -> Pos2 {

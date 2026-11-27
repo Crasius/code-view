@@ -12,10 +12,13 @@
 
 use std::collections::BTreeSet;
 
+use cv_widgets::numbers::counted;
 use review_core::{
     PipelineJob, PipelineRun, ProviderKind, RerunAction, RerunKind, RunStatus, Timestamp,
 };
 use review_store::CheckFilter;
+
+use super::tree::jobs_of;
 
 pub const FILTERS: [(CheckFilter, &str); 4] = [
     (CheckFilter::Failed, "Failed"),
@@ -122,10 +125,7 @@ pub fn list<'a>(
     for run in runs {
         checks.push(Check { run, job: None });
         for stage in stages(run).unwrap_or_default() {
-            if stage.children.is_empty() {
-                checks.push(Check { run, job: Some((stage, stage)) });
-            }
-            for job in &stage.children {
+            for job in jobs_of(stage) {
                 checks.push(Check { run, job: Some((stage, job)) });
             }
         }
@@ -174,12 +174,28 @@ pub fn rank(status: RunStatus) -> u8 {
 pub fn counts<'a>(checks: impl Iterator<Item = &'a Check<'a>>) -> [usize; 4] {
     let mut counts = [0; 4];
     for check in checks.filter(|check| check.run.is_head) {
-        let index =
-            FILTERS.iter().position(|(filter, _)| *filter == group(check.status())).unwrap_or(0);
-        counts[index] += 1;
+        counts[filter_index(group(check.status()))] += 1;
     }
     counts
 }
+
+/// Where `filter` sits in [`FILTERS`].
+const fn filter_index(filter: CheckFilter) -> usize {
+    match filter {
+        CheckFilter::Failed => 0,
+        CheckFilter::Running => 1,
+        CheckFilter::Succeeded => 2,
+        CheckFilter::Neutral => 3,
+    }
+}
+
+const _: () = {
+    let mut index = 0;
+    while index < FILTERS.len() {
+        assert!(filter_index(FILTERS[index].0) == index, "FILTERS and filter_index disagree");
+        index += 1;
+    }
+};
 
 /// True when `check` passes the status chips and the text filter, which matches the name, the
 /// line under it and the source. No chip selected shows everything; a chip shows the head
@@ -236,29 +252,21 @@ pub fn sub_line(run: &PipelineRun, stages: Option<&[PipelineJob]>) -> String {
         parts.push("older run".to_owned());
     }
     if let Some(stages) = stages.filter(|stages| !stages.is_empty()) {
-        let jobs: usize = stages.iter().map(|stage| stage.children.len().max(1)).sum();
-        parts.push(plural(stages.len(), "stage"));
-        parts.push(plural(jobs, "job"));
-        let retried = stages
-            .iter()
-            .flat_map(|stage| {
-                if stage.children.is_empty() {
-                    std::slice::from_ref(stage)
-                } else {
-                    stage.children.as_slice()
-                }
-            })
-            .filter(|job| !job.previous_attempts.is_empty())
-            .count();
+        let jobs: usize = stages.iter().map(|stage| jobs_of(stage).len()).sum();
+        parts.push(counted(stages.len(), "stage", "stages"));
+        parts.push(counted(jobs, "job", "jobs"));
+        let retried =
+            stages.iter().flat_map(jobs_of).filter(|job| !job.previous_attempts.is_empty()).count();
         if retried > 0 {
-            parts.push(format!("{} retried", plural(retried, "job")));
+            parts.push(format!("{} retried", counted(retried, "job", "jobs")));
         }
     }
     parts.join(" · ")
 }
 
+/// "1 reviewer", "3 reviewers": [`counted`] with the plural an added "s".
 pub fn plural(count: usize, noun: &str) -> String {
-    if count == 1 { format!("1 {noun}") } else { format!("{count} {noun}s") }
+    counted(count, noun, &format!("{noun}s"))
 }
 
 /// "14m 25s", counting up while running; `None` before it started.
@@ -272,7 +280,7 @@ pub fn check_duration(check: &Check<'_>) -> Option<String> {
 }
 
 /// The head commit's failed runs that offer rerunning their failed jobs, for "Rerun failed".
-pub fn failed_reruns(runs: &[PipelineRun]) -> Vec<(String, review_core::RerunAction)> {
+pub fn failed_reruns(runs: &[PipelineRun]) -> Vec<(String, RerunAction)> {
     runs.iter()
         .filter(|run| run.is_head && group(run.status) == CheckFilter::Failed)
         .filter_map(|run| {
@@ -303,11 +311,14 @@ pub fn summary(runs: &[PipelineRun]) -> Summary {
     let (status, headline) = if pipelines.is_empty() {
         (RunStatus::Neutral, "No pipelines for this commit".to_owned())
     } else if failed > 0 {
-        (RunStatus::Failed, format!("{} failed", plural(failed, "pipeline")))
+        (RunStatus::Failed, format!("{} failed", counted(failed, "pipeline", "pipelines")))
     } else if failed_checks > 0 {
-        (RunStatus::Failed, format!("{} failed", plural(failed_checks, "status check")))
+        (
+            RunStatus::Failed,
+            format!("{} failed", counted(failed_checks, "status check", "status checks")),
+        )
     } else if running > 0 {
-        (RunStatus::Running, format!("{} running", plural(running, "pipeline")))
+        (RunStatus::Running, format!("{} running", counted(running, "pipeline", "pipelines")))
     } else if succeeded > 0 && neutral == 0 {
         (RunStatus::Succeeded, "All pipelines succeeded".to_owned())
     } else if succeeded > 0 {
@@ -317,7 +328,7 @@ pub fn summary(runs: &[PipelineRun]) -> Summary {
     };
     let mut detail = Vec::new();
     if !pipelines.is_empty() {
-        detail.push(plural(pipelines.len(), "pipeline"));
+        detail.push(counted(pipelines.len(), "pipeline", "pipelines"));
     }
     for (count, word) in
         [(failed, "failed"), (running, "running"), (succeeded, "succeeded"), (neutral, "neutral")]
@@ -327,29 +338,37 @@ pub fn summary(runs: &[PipelineRun]) -> Summary {
         }
     }
     if failed_checks > 0 {
-        detail.push(format!("{} failed", plural(failed_checks, "status check")));
+        detail.push(format!("{} failed", counted(failed_checks, "status check", "status checks")));
     }
     Summary { status, headline, detail: detail.join(" · ") }
 }
 
+/// Runs and jobs named by their id, for the tests of the checks and the run header.
 #[cfg(test)]
-mod tests {
-    use super::*;
+pub(crate) mod fixtures {
+    use review_core::{PipelineJob, PipelineRun, RunStatus};
 
-    fn run(name: &str, status: RunStatus, has_jobs: bool) -> PipelineRun {
+    /// A run of the head commit.
+    pub fn run(name: &str, status: RunStatus, has_jobs: bool) -> PipelineRun {
         PipelineRun {
             id: name.to_owned(),
             name: name.to_owned(),
             status,
-            description: None,
-            web_url: None,
-            started_at: None,
-            finished_at: None,
             has_jobs,
             is_head: true,
-            reruns: Vec::new(),
+            ..PipelineRun::default()
         }
     }
+
+    pub fn job(name: &str, status: RunStatus) -> PipelineJob {
+        PipelineJob { id: name.to_owned(), name: name.to_owned(), status, ..PipelineJob::default() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fixtures::{job, run};
+    use super::*;
 
     #[test]
     fn failed_then_running_then_platform_order() {
@@ -380,12 +399,6 @@ mod tests {
 
     #[test]
     fn jobs_follow_their_run_and_sort_with_everything_else() {
-        let job = |id: &str, status: RunStatus| PipelineJob {
-            id: id.to_owned(),
-            name: id.to_owned(),
-            status,
-            ..PipelineJob::default()
-        };
         let stage = |id: &str, children: Vec<PipelineJob>| PipelineJob {
             id: id.to_owned(),
             name: id.to_owned(),

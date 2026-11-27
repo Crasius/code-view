@@ -83,8 +83,9 @@ fn apply_sgr(parameters: &str, current: Option<AnsiColor>) -> Option<AnsiColor> 
             0 | 39 => color = None,
             30..=37 => color = Some(standard(code - 30)),
             90..=97 => color = Some(standard(code - 90)),
-            // 256-color and true-color foregrounds: skip their arguments, keep the current color.
-            38 => index += if codes.get(index + 1) == Some(&5) { 2 } else { 4 },
+            // 256-color and true-color foregrounds, backgrounds and underlines: skip their
+            // arguments, keep the current color.
+            38 | 48 | 58 => index += if codes.get(index + 1) == Some(&5) { 2 } else { 4 },
             _ => {}
         }
         index += 1;
@@ -193,6 +194,12 @@ mod tests {
     fn skips_extended_color_arguments() {
         let spans = parse("\u{1b}[38;5;196;32mgreen");
         assert_eq!(spans, [Span { text: "green".into(), color: Some(AnsiColor::Green) }]);
+        let spans = parse("\u{1b}[48;2;32;32;32mtext");
+        assert_eq!(spans, [Span { text: "text".into(), color: None }]);
+        let spans = parse("\u{1b}[48;5;31;33mx");
+        assert_eq!(spans, [Span { text: "x".into(), color: Some(AnsiColor::Yellow) }]);
+        let spans = parse("\u{1b}[58;5;32mline");
+        assert_eq!(spans, [Span { text: "line".into(), color: None }]);
     }
 
     #[test]

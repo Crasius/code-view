@@ -21,13 +21,15 @@ pub fn log_owner<'a>(nodes: &'a [PipelineJob], log_id: &str) -> Option<&'a Pipel
     })
 }
 
+/// A stage's jobs; a stage without jobs of its own is its own job.
+pub fn jobs_of(stage: &PipelineJob) -> &[PipelineJob] {
+    if stage.children.is_empty() { std::slice::from_ref(stage) } else { &stage.children }
+}
+
 /// The job (a stage's child, or a stage without children) that holds the node with `id`.
 pub fn owning_job<'a>(stages: &'a [PipelineJob], id: &str) -> Option<&'a PipelineJob> {
     stages.iter().find_map(|stage| {
-        if stage.children.is_empty() {
-            return (stage.id == id).then_some(stage);
-        }
-        stage.children.iter().find(|job| find(std::slice::from_ref(*job), id).is_some())
+        jobs_of(stage).iter().find(|job| find(std::slice::from_ref(*job), id).is_some())
     })
 }
 

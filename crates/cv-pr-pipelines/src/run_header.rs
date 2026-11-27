@@ -3,7 +3,7 @@
 //! stage and duration, "Open on …" and its reruns.
 
 use cv_base::theme::{self, icons, motion, style};
-use cv_widgets::{badges, buttons, glyph, row};
+use cv_widgets::{badges, buttons, elide, glyph, row};
 use egui::{
     Align2, FontId, Key, Modifiers, PopupCloseBehavior, Rect, Sense, Stroke, StrokeKind, TextEdit,
     Ui, UiBuilder, pos2, vec2,
@@ -11,7 +11,6 @@ use egui::{
 use review_core::ProviderKind;
 
 use super::checks::{self, Check, CheckKey};
-use super::graph::stage_card::ellipsized;
 use super::rerun::{Picked, RerunButton};
 
 const HEIGHT: f32 = 36.0;
@@ -21,6 +20,9 @@ const GROUP_HEIGHT: f32 = 28.0;
 /// The switcher shows this much of the check's name, and cuts it to no less than the minimum.
 const SWITCHER_NAME_MAX: f32 = 360.0;
 const SWITCHER_NAME_MIN: f32 = 80.0;
+/// The switcher's status icon and caret, as its width reserves and its face paints them.
+const STATUS_ICON: f32 = 18.0;
+const CARET_SIZE: f32 = 14.0;
 /// Rows narrower than this show "Open on …" as the platform mark alone.
 const COMPACT_ROW: f32 = 1000.0;
 
@@ -80,7 +82,7 @@ impl RunHeader {
             action = Some(HeaderAction::Back);
         }
         // The switcher leaves room for the previous/next steps after it.
-        let steps = 2.0 * buttons::SUBTLE_HEIGHT + 2.0 + style::SPACE_S;
+        let steps = 2.0 * buttons::icon_width() + 2.0 + style::SPACE_S;
         let switcher_room = (left.available_width() - steps).max(0.0);
         if let Some(picked) = self.switcher(&mut left, input, switcher_room) {
             action = Some(picked);
@@ -110,14 +112,14 @@ impl RunHeader {
         let name_font = theme::fonts::semibold_font(style::SECTION_SIZE);
         let small = FontId::proportional(style::SMALL_SIZE);
         let name = ui.painter().layout_no_wrap(check.name().to_owned(), name_font, palette.text);
-        let place_width = ui.painter().layout_no_wrap(place.clone(), small, palette.text).size().x;
+        let place_width = elide::text_width(ui, &place, &small);
         let chrome = style::SPACE_M * 2.0
-            + 18.0
+            + STATUS_ICON
             + style::SPACE_S
             + style::SPACE_S
             + place_width
             + style::SPACE_S
-            + 14.0;
+            + CARET_SIZE;
         let name_width =
             name.size().x.min(SWITCHER_NAME_MAX).min((max_width - chrome).max(SWITCHER_NAME_MIN));
         let width = chrome + name_width;
@@ -333,20 +335,21 @@ impl SwitcherFace<'_, '_> {
         let (icon, color) = badges::run_status_icon(check.status(), &palette);
         let mut x = rect.left() + style::SPACE_M;
         painter.text(
-            pos2(x + 9.0, rect.center().y),
+            pos2(x + STATUS_ICON / 2.0, rect.center().y),
             Align2::CENTER_CENTER,
             icon,
-            FontId::proportional(18.0),
+            FontId::proportional(STATUS_ICON),
             color,
         );
-        x += 18.0 + style::SPACE_S;
-        let (name, is_cut) = ellipsized(
-            ui,
+        x += STATUS_ICON + style::SPACE_S;
+        let name = elide::line(
+            ui.painter(),
             check.name(),
             theme::fonts::semibold_font(style::SECTION_SIZE),
             palette.text,
             self.name_width,
         );
+        let is_cut = name.elided;
         painter.galley(pos2(x, rect.center().y - name.size().y / 2.0), name, palette.text);
         x += self.name_width + style::SPACE_S;
         painter.text(
@@ -361,7 +364,7 @@ impl SwitcherFace<'_, '_> {
             pos2(rect.right() - style::SPACE_M, rect.center().y),
             Align2::RIGHT_CENTER,
             caret,
-            FontId::proportional(14.0),
+            FontId::proportional(CARET_SIZE),
             palette.text,
         );
         cv_widgets::focus::ring(ui, button, rect);
@@ -450,13 +453,14 @@ fn paint_meta(left: &mut Ui, meta: &str) {
         return;
     }
     let palette = theme::palette(left.ctx());
-    let (galley, is_cut) = ellipsized(
-        left,
+    let galley = elide::line(
+        left.painter(),
         meta,
         FontId::proportional(style::SMALL_SIZE + 1.0),
         palette.text_secondary,
         width,
     );
+    let is_cut = galley.elided;
     let (rect, response) = left.allocate_exact_size(galley.size(), Sense::hover());
     left.painter().galley(rect.min, galley, palette.text_secondary);
     if is_cut {
@@ -490,7 +494,7 @@ fn option(
         pos2(rect.left() + style::SPACE_S + 8.0, rect.center().y),
         Align2::CENTER_CENTER,
         icon,
-        FontId::proportional(16.0),
+        icons::rest_font(&palette, icons::SIZE),
         color,
     );
     let small = FontId::proportional(style::SMALL_SIZE);
@@ -499,15 +503,26 @@ fn option(
     let duration_width = if duration.is_some() { 72.0 } else { 0.0 };
     let left = rect.left() + style::SPACE_S + 16.0 + style::SPACE_S;
     let room = rect.right() - style::SPACE_S - duration_width - left;
-    let (name, is_cut) =
-        ellipsized(ui, check.name(), FontId::proportional(style::BODY_SIZE), palette.text, room);
+    let name = elide::line(
+        ui.painter(),
+        check.name(),
+        FontId::proportional(style::BODY_SIZE),
+        palette.text,
+        room,
+    );
+    let is_cut = name.elided;
     let name_width = name.size().x;
     ui.painter().galley(pos2(left, rect.center().y - name.size().y / 2.0), name, palette.text);
     // Job names repeat across runs; the run tells them apart.
     let run_room = room - name_width - style::SPACE_S;
     if check.job.is_some() && run_room > 40.0 {
-        let (run, _) =
-            ellipsized(ui, &check.run.name, small.clone(), palette.text_secondary, run_room);
+        let run = elide::line(
+            ui.painter(),
+            &check.run.name,
+            small.clone(),
+            palette.text_secondary,
+            run_room,
+        );
         ui.painter().galley(
             pos2(left + name_width + style::SPACE_S, rect.center().y - run.size().y / 2.0),
             run,
@@ -559,9 +574,8 @@ fn grouped<'a>(order: &[Check<'a>], search: &str) -> Vec<(String, Vec<Check<'a>>
 
 /// True when `key` was pressed and no text field takes the keys; consumes it.
 pub fn is_free_key(ui: &Ui, key: egui::Key) -> bool {
-    let focused = ui.memory(egui::Memory::focused);
-    let is_typing = focused.is_some_and(|id| egui::TextEdit::load_state(ui.ctx(), id).is_some());
-    !is_typing && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, key))
+    !ui.ctx().text_edit_focused()
+        && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, key))
 }
 
 /// J/K step through the checks, as in the switcher; not while typing or with a menu open.
@@ -584,30 +598,10 @@ mod tests {
     use review_core::{PipelineJob, PipelineRun, RunStatus};
 
     use super::*;
-
-    fn run(name: &str, status: RunStatus, has_jobs: bool) -> PipelineRun {
-        PipelineRun {
-            id: name.to_owned(),
-            name: name.to_owned(),
-            status,
-            description: None,
-            web_url: None,
-            started_at: None,
-            finished_at: None,
-            has_jobs,
-            is_head: true,
-            reruns: Vec::new(),
-        }
-    }
+    use crate::checks::fixtures::{job, run};
 
     #[test]
     fn pipelines_come_first_then_status_checks_then_jobs_by_status() {
-        let job = |name: &str, status: RunStatus| PipelineJob {
-            id: name.to_owned(),
-            name: name.to_owned(),
-            status,
-            ..PipelineJob::default()
-        };
         let stages = vec![PipelineJob {
             id: "Analyze".to_owned(),
             children: vec![
@@ -634,12 +628,6 @@ mod tests {
 
     #[test]
     fn older_runs_and_their_jobs_group_apart() {
-        let job = |name: &str, status: RunStatus| PipelineJob {
-            id: name.to_owned(),
-            name: name.to_owned(),
-            status,
-            ..PipelineJob::default()
-        };
         let stages = vec![PipelineJob {
             id: "Test".to_owned(),
             children: vec![job("unit", RunStatus::Failed)],
