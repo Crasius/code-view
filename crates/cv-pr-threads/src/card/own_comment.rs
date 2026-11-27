@@ -112,7 +112,7 @@ pub(super) fn delete_question(
     let palette = theme::palette(ui.ctx());
     let grab_focus = threads.edits.take_focus(&thread.id, &comment.id);
     let (mut confirmed, mut cancelled, mut fix_token) = (false, false, false);
-    ui.add_space(8.0);
+    ui.add_space(style::SPACE_S);
     failure_frame(ui, palette.error, |ui| {
         ui.horizontal(|ui| {
             glyph::decorative(

@@ -25,9 +25,13 @@ const MARGIN: Margin = Margin { left: 16, right: 16, top: 12, bottom: 12 };
 const TOOLBAR_HEIGHT: f32 = 26.0;
 /// A "Show more" row, and the one-line message in place of the code.
 const BAND_HEIGHT: f32 = 30.0;
-const NEW_ONLY: &str = "New only";
-const DIFF: &str = "Diff";
-const SPLIT: &str = "Split";
+const MODES: [tabs::Segment<'static, Mode>; 3] = [
+    tabs::Segment::new(Mode::NewOnly, "New only")
+        .with_hint("The new version of the code, its changed lines marked"),
+    tabs::Segment::new(Mode::Diff, "Diff").with_hint("Removed and added lines"),
+    tabs::Segment::new(Mode::Split, "Split")
+        .with_hint("The old version on the left, the new one on the right"),
+];
 /// Inner margin of the code block, which the rows' width leaves out.
 const BLOCK_MARGIN: i8 = 1;
 
@@ -221,18 +225,13 @@ fn toolbar(
         |ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
             let mut picked = mode;
-            let options = [
-                (Mode::NewOnly, NEW_ONLY, "The new version of the code, its changed lines marked"),
-                (Mode::Diff, DIFF, "Removed and added lines"),
-                (Mode::Split, SPLIT, "The old version on the left, the new one on the right"),
-            ];
             // Its own left-to-right strip, so the options keep their order in this right-to-left row.
-            let width = tabs::segmented_width(ui, &[NEW_ONLY, DIFF, SPLIT]);
+            let width = tabs::segments_width(ui, &MODES);
             let switched = ui
                 .allocate_ui_with_layout(
                     vec2(width, TOOLBAR_HEIGHT),
                     Layout::left_to_right(Align::Center),
-                    |ui| tabs::segmented_with_hints(ui, &mut picked, &options),
+                    |ui| tabs::segments(ui, &mut picked, &MODES),
                 )
                 .inner;
             if switched && picked != mode {
@@ -249,7 +248,7 @@ fn toolbar(
             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                 let (prefix, hint) = match (&thread.origin, thread.is_outdated) {
                     (Some(origin), true) => (
-                        format!("Version {} · ", short_sha(&origin.head_sha)),
+                        format!("Version {} · ", review_core::short_sha(&origin.head_sha)),
                         "The code as it was when the comment was written",
                     ),
                     (None, true) => (
@@ -450,8 +449,4 @@ fn show_more(ui: &mut Ui, hidden: usize, edge: Edge) -> bool {
     );
     focus::ring(ui, &response, rect);
     response.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
-}
-
-fn short_sha(sha: &str) -> &str {
-    sha.get(..7).unwrap_or(sha)
 }

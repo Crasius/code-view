@@ -477,7 +477,7 @@ fn list(
             }
             index += count;
         }
-        ui.add_space(8.0);
+        ui.add_space(style::SPACE_S);
     });
     threads.panel.heights = heights;
     threads.panel.group_heights = group_heights;
@@ -500,8 +500,7 @@ fn empty_list(ui: &mut Ui, inputs: &mut PanelInputs<'_>, events: &mut Vec<PanelE
         if has_any {
             ui.label(RichText::new(NO_MATCH).color(palette.text_secondary));
             if ui.link(SHOW_ALL).clicked() {
-                *inputs.filters =
-                    ThreadFilters { active: false, resolved: false, unread: false, mine: false };
+                *inputs.filters = ThreadFilters::ALL;
                 events.push(PanelEvent::FiltersChanged);
             }
         } else {
@@ -622,7 +621,7 @@ fn general_composer(ui: &mut Ui, threads: &mut ThreadsUi, events: &mut Vec<Panel
         threads.panel.is_writing_general = false;
     }
     if let Some(PostState::Failed { message, needs_token }) = &state {
-        ui.add_space(8.0);
+        ui.add_space(style::SPACE_S);
         threads.failure_actions(ui, GENERAL_KEY, message, *needs_token);
     }
 }

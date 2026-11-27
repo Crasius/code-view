@@ -171,20 +171,17 @@ impl Posts {
     ) -> bool {
         let mut delivered = false;
         for (key, post) in &mut self.by_key {
-            if !post.load.poll() {
-                continue;
-            }
-            match std::mem::take(&mut post.load) {
-                Load::Ready(delivery) => {
+            match post.load.take_finished() {
+                Some(Ok(delivery)) => {
                     deliver(key, post, delivery, version, news);
                     store.remove_draft(key);
                     texts.remove(key);
                     delivered = true;
                 }
-                Load::Failed(message) => {
+                Some(Err(message)) => {
                     fail(key, post, message, issues.get(connection_id).is_some(), news);
                 }
-                Load::Idle | Load::Loading(_) => {}
+                None => {}
             }
         }
         delivered

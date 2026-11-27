@@ -184,7 +184,7 @@ fn harness() -> Harness<'static, Scene> {
         ui: samples::review_ui(&threads),
         threads,
         files: (0..samples::REVIEW_FILES).map(samples::review_path).collect(),
-        filters: ThreadFilters { active: false, resolved: false, unread: false, mine: false },
+        filters: ThreadFilters::ALL,
         revealed: Vec::new(),
     };
     Harness::builder()

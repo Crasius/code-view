@@ -260,7 +260,7 @@ fn body(
 /// suggestion, so the panel offers the code to copy instead of an "Apply" button that cannot work.
 fn suggested_change(ui: &mut Ui, salt: impl std::hash::Hash + std::fmt::Debug, code: &str) {
     let palette = theme::palette(ui.ctx());
-    ui.add_space(4.0);
+    ui.add_space(style::SPACE_XS);
     egui::Frame::new()
         .fill(palette.ground)
         .stroke(Stroke::new(1.0, palette.border))

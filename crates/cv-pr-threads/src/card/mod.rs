@@ -244,7 +244,7 @@ fn header(
                     {
                         ui.ctx().copy_text(url.clone());
                     }
-                    ui.add_space(8.0);
+                    ui.add_space(style::SPACE_S);
                     ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                         // The icon buttons' 2 points would run the path into its meta.
                         ui.spacing_mut().item_spacing.x = 8.0;
@@ -519,14 +519,14 @@ mod tests {
         cv_base::theme::fonts::install(&ctx);
         for &(time, is_shown) in times {
             let input = egui::RawInput { time: Some(time), ..egui::RawInput::default() };
-            let mut output = ctx.run_ui(input, |ui| {
+            ctx.run_ui(input, |ui| {
                 cv_base::theme::activate(ui.ctx(), review_store::ThemePreference::Light);
                 threads.begin_frame_for_tests(ui.ctx(), std::slice::from_ref(thread), 1);
                 if is_shown {
                     show(ui, thread, threads, &CardOptions { show_location: false });
                 }
-            });
-            output.textures_delta.clear();
+            })
+            .drop_without_applying_deltas();
         }
     }
 
