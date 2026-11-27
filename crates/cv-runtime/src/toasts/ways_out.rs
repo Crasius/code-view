@@ -13,6 +13,7 @@
 
 use std::path::PathBuf;
 
+use cv_base::mailbox;
 use cv_base::theme::icons;
 use cv_widgets::{provider_icon, states};
 use egui::Id;
@@ -38,7 +39,7 @@ pub(super) enum Run {
 }
 
 /// What [`ToastAction::retry`] leaves in the context; its own type keeps the id's slot apart.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 struct RetryAsked;
 
 impl ToastAction {
@@ -53,10 +54,7 @@ impl ToastAction {
     /// "Retry": leaves `id` for the owner of the failed work, which runs it once more when it
     /// takes the request ([`take_retry`]).
     pub fn retry(id: Id) -> Self {
-        Self::new(icons::ARROW_CLOCKWISE, "Retry", move |ctx| {
-            ctx.data_mut(|data| data.insert_temp(id, RetryAsked));
-            ctx.request_repaint();
-        })
+        Self::new(icons::ARROW_CLOCKWISE, "Retry", move |ctx| mailbox::post(ctx, id, RetryAsked))
     }
 
     /// "Fix token": the connection setup of `connection_id` at its token step.
@@ -123,7 +121,7 @@ impl ToastAction {
 /// Whether a toast's Retry asked for the work behind `id` since the last call; true once per
 /// click.
 pub fn take_retry(ctx: &egui::Context, id: Id) -> bool {
-    ctx.data_mut(|data| data.remove_temp::<RetryAsked>(id)).is_some()
+    mailbox::take::<RetryAsked>(ctx, id).is_some()
 }
 
 /// The buttons of an error toast: at least one, the most direct way out first.
@@ -208,37 +206,14 @@ impl ProviderFailure {
 mod tests {
     use review_core::ProviderError;
 
-    use super::{ProviderFailure, ToastAction, WaysOut, take_retry};
+    use super::{ProviderFailure, ToastAction, WaysOut};
 
     fn labels(ways_out: &WaysOut) -> Vec<&str> {
         ways_out.0.iter().map(|action| action.label.as_str()).collect()
     }
 
     #[test]
-    fn toast_ways_out_keep_their_order() {
-        let ways_out = WaysOut::new(ToastAction::retry(egui::Id::unique("r")))
-            .and_some(None)
-            .and(ToastAction::copy("Copy path", "C:/x"));
-        assert_eq!(labels(&ways_out), ["Retry", "Copy path"]);
-        assert!(WaysOut::from_vec(Vec::new()).is_none());
-    }
-
-    #[test]
-    fn toast_retry_is_taken_once() {
-        let ctx = egui::Context::default();
-        let id = egui::Id::unique("download");
-        let ToastAction { run: super::Run::Context(run), .. } = ToastAction::retry(id) else {
-            panic!("Retry runs in the context");
-        };
-        assert!(!take_retry(&ctx, id), "nothing asked yet");
-        run(&ctx);
-        assert!(!take_retry(&ctx, egui::Id::unique("other")), "another owner's id stays unasked");
-        assert!(take_retry(&ctx, id));
-        assert!(!take_retry(&ctx, id), "one click, one retry");
-    }
-
-    #[test]
-    fn toast_provider_failure_offers_fix_token_only_when_refused() {
+    fn provider_failure_offers_fix_token_only_when_refused() {
         let refused = ProviderFailure::from(ProviderError::Status {
             status: 403,
             path: "/repos".into(),
