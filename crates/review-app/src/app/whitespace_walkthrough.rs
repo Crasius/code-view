@@ -10,7 +10,7 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, wait_until};
+use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
@@ -140,8 +140,7 @@ fn open_files_tab(harness: &mut Harness<'_, ReviewApp>) {
 /// Selects `path` in the tree and waits for its diff under `banner`.
 fn open_file(harness: &mut Harness<'_, ReviewApp>, path: &str, banner: &str) {
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
-    let diff = format!("Diff of {path}");
-    wait_until(harness, banner, |harness| has(harness, &diff) && has(harness, banner));
+    wait_until(harness, banner, |harness| shows_file_view(harness, path) && has(harness, banner));
     // Highlighting and the changed-word bands arrive a few frames later.
     pump(harness, 30);
 }

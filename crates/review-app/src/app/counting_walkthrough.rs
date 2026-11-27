@@ -15,7 +15,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, wait_until};
+use super::action_e2e::{app, open_pull_request, shows_file_view, shows_folder_view, wait_until};
 use super::github_mock::{ExtraFile, FILE, GitHubHost};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -59,16 +59,15 @@ fn counting_walkthrough_diffs_show_while_the_lines_are_counted() {
             .rect(),
     );
 
+    // A card draws its code with the file view's diff view, under the same label.
     wait_until(&mut harness, "the first card's code", |harness| {
-        harness.query_by_label(&format!("Diff of {FILE}")).is_some()
+        shows_folder_view(harness) && harness.query_by_label(&format!("Diff of {FILE}")).is_some()
     });
     assert_counting(&harness, "the folder summary showed its first card");
 
     let opened = "src/part_03.rs";
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, opened).rect());
-    wait_until(&mut harness, "the opened file's diff", |harness| {
-        harness.query_by_label(&format!("Diff of {opened}")).is_some()
-    });
+    wait_until(&mut harness, "the opened file's diff", |harness| shows_file_view(harness, opened));
     assert_counting(&harness, "the file view showed the opened file");
 
     held.open();

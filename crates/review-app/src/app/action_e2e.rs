@@ -270,28 +270,24 @@ fn action_folder_summary_opens_the_file_view_and_the_trail_leads_back() {
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(&mut harness);
     let view = format!("View {FILE}");
     wait_until(&mut harness, "the summary card", |harness| {
         harness.query_by_label("1 changed file").is_some()
             && harness.query_by_label(&view).is_some()
     });
+    // What was on its way when the files showed lands first: the card's code, and anything that
+    // could open a file (a place to resume, the first file).
+    settle_background(&mut harness);
     assert!(
-        harness.query_by_label(&format!("Diff of {FILE}")).is_none(),
+        shows_folder_view(&harness)
+            && harness.query_by_label(&view).is_some()
+            && !shows_file_view(&harness, FILE),
         "no file opens by itself"
     );
 
     harness.click_at(harness.get_by_label(&view).rect());
-    wait_until(&mut harness, "the file view", |harness| {
-        harness.query_by_label(&format!("Diff of {FILE}")).is_some()
-    });
+    wait_until(&mut harness, "the file view", |harness| shows_file_view(harness, FILE));
     assert!(
         harness.query_by_label("lib.rs (current page)").is_none()
             && harness.query_by_role_and_label(Role::Link, "src").is_none(),
@@ -340,13 +336,9 @@ fn action_files_tab_opens_on_the_first_file_when_chosen() {
     harness.state_mut().services.settings.files_start = FilesStart::FirstFile;
     open_pull_request(&mut harness);
     files_tab(&mut harness);
-    let diff = format!("Diff of {FIRST_FILE}");
     wait_until(&mut harness, "the first file's diff", |harness| {
-        assert!(
-            harness.query_by_label("2 changed files").is_none(),
-            "the folder view showed before the first file"
-        );
-        harness.query_by_label(&diff).is_some()
+        assert!(!shows_folder_view(harness), "the folder view showed before the first file");
+        shows_file_view(harness, FIRST_FILE)
     });
     assert!(
         harness.query_by_label("first.rs (current page)").is_none(),
@@ -380,13 +372,12 @@ fn action_a_comment_link_wins_over_the_first_file() {
         harness.query_all_by_label_contains(&link).next().is_some()
     });
     harness.click_at(harness.query_all_by_label_contains(&link).next().expect("the link").rect());
-    let diff = format!("Diff of {FILE}");
     wait_until(&mut harness, "the commented file", |harness| {
         assert!(
-            harness.query_by_label(&format!("Diff of {FIRST_FILE}")).is_none(),
+            !shows_file_view(harness, FIRST_FILE),
             "the first file opened instead of the comment's"
         );
-        harness.query_by_label(&diff).is_some()
+        shows_file_view(harness, FILE)
     });
 }
 
@@ -430,12 +421,24 @@ pub(super) fn open_diff(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
         harness.query_by_role_and_label(Role::TreeItem, FILE).is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, FILE).rect());
-    let label = format!("Diff of {FILE}");
     // The existing thread's card sits under line 3 once the diff rows are built.
     wait_until(harness, "the diff", |harness| {
-        harness.query_by_label(&label).is_some() && harness.query_by_label(THREAD_TEXT).is_some()
+        shows_file_view(harness, FILE) && harness.query_by_label(THREAD_TEXT).is_some()
     });
-    harness.get_by_label(&label).rect()
+    harness.get_by_label(&format!("Diff of {FILE}")).rect()
+}
+
+/// The file view shows `path`'s diff. Its label alone does not tell: a card of the folder view
+/// draws its code with the same diff view, so once the card's code is in, "Diff of {path}" is
+/// there while no file is open. The two views never show in one frame.
+pub(super) fn shows_file_view(harness: &Harness<'_, ReviewApp>, path: &str) -> bool {
+    !shows_folder_view(harness) && harness.query_by_label(&format!("Diff of {path}")).is_some()
+}
+
+/// The folder view shows: its header, drawn in every frame it shows, ends the folder's trail at
+/// "{folder} (current folder)".
+pub(super) fn shows_folder_view(harness: &Harness<'_, ReviewApp>) -> bool {
+    harness.query_all_by_label_contains(" (current folder)").next().is_some()
 }
 
 /// A right click at `position`, the pointer resting there first: the menu is the hovered line's.

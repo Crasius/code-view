@@ -925,7 +925,7 @@ fn run_scenario(file_count: usize) {
     pump(&mut harness, 60.0);
     phases.push(("My pull requests (60 s)", 60.0));
 
-    fixture.recorder.enter("Open MR + Overview (20 s)");
+    enter_phase(&fixture.recorder, &harness, "Open MR + Overview (20 s)");
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
     wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     pump(&mut harness, 20.0);
@@ -955,7 +955,7 @@ fn run_scenario(file_count: usize) {
         })
     });
     wait_idle(&mut harness);
-    fixture.recorder.enter("Files + 20 diffs (60 s)");
+    enter_phase(&fixture.recorder, &harness, "Files + 20 diffs (60 s)");
     let started = harness_time(&harness);
     for _ in 0..20 {
         harness.key_press(egui::Key::J);
@@ -963,12 +963,10 @@ fn run_scenario(file_count: usize) {
     }
     let browsed = harness_time(&harness) - started;
     pump(&mut harness, (60.0 - browsed).max(0.0));
-    // A probe that went out in the last frames belongs to this phase, all three of its requests.
-    settle(&harness);
     phases.push(("Files + 20 diffs (60 s)", 60.0));
     let fetches_while_browsing = fixture.git_fetches() - fetches_before_files;
 
-    fixture.recorder.enter("Pipelines, running (3 min)");
+    enter_phase(&fixture.recorder, &harness, "Pipelines, running (3 min)");
     let started = harness_time(&harness);
     harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_until(&mut harness, "the jobs", |harness| has(harness, "test-3-1"));
@@ -977,7 +975,7 @@ fn run_scenario(file_count: usize) {
     pump_live(&mut harness, (180.0 - waited).max(0.0));
     phases.push(("Pipelines, running (3 min)", 180.0));
 
-    fixture.recorder.enter("Job log (10 s)");
+    enter_phase(&fixture.recorder, &harness, "Job log (10 s)");
     // 40 job rows: the filter brings the job into view, its row opens the log.
     harness.get_by_label("Filter checks").focus();
     harness.step();
@@ -987,7 +985,7 @@ fn run_scenario(file_count: usize) {
     pump(&mut harness, 10.0);
     phases.push(("Job log (10 s)", 10.0));
 
-    fixture.recorder.enter("Back to list + idle (5 min)");
+    enter_phase(&fixture.recorder, &harness, "Back to list + idle (5 min)");
     harness.state_mut().navigator.go(Route::MyPullRequests);
     pump(&mut harness, 300.0);
     phases.push(("Back to list + idle (5 min)", 300.0));
@@ -1086,6 +1084,14 @@ pub(super) fn wait_idle(harness: &mut Harness<'_, ReviewApp>) {
             if harness.state().services.background.running() == 0 { idle_frames + 1 } else { 0 };
         assert!(started.elapsed() < LIMIT, "background work did not finish");
     }
+}
+
+/// Starts `phase` once the background work in flight has finished ([`settle`]): what the last
+/// phase started (a job log's download, a probe) reaches the host in that phase, however long a
+/// loaded machine takes to send it.
+fn enter_phase(recorder: &Recorder, harness: &Harness<'_, ReviewApp>, phase: &str) {
+    settle(harness);
+    recorder.enter(phase);
 }
 
 /// Waits in real time, without a frame, until the background work in flight has finished, so the

@@ -10,7 +10,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, wait_until};
+use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
 use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -106,7 +106,7 @@ fn bug_keys_mark_viewed_then_step_and_triage_threads() {
     harness.key_press(Key::N);
     harness.run_steps(6);
     assert!(is_selected(&harness, SECOND_THREAD), "the panel no longer takes N");
-    assert!(harness.query_by_label(&format!("Diff of {FILE}")).is_none(), "nor opens a thread");
+    assert!(!shows_file_view(&harness, FILE), "nor opens a thread");
 }
 
 fn open_in_tree(harness: &mut Harness<'_, ReviewApp>, path: &str) {
@@ -118,8 +118,9 @@ fn open_in_tree(harness: &mut Harness<'_, ReviewApp>, path: &str) {
 }
 
 fn wait_for_diff(harness: &mut Harness<'_, ReviewApp>, path: &str) {
-    let label = format!("Diff of {path}");
-    wait_until(harness, &label, |harness| harness.query_by_label(&label).is_some());
+    wait_until(harness, &format!("the file view of {path}"), |harness| {
+        shows_file_view(harness, path)
+    });
 }
 
 /// The threads panel's row of the thread reading `text` is the selected one.
