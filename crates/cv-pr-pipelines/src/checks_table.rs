@@ -44,7 +44,7 @@ pub enum TableAction {
 
 pub struct TableInput<'a> {
     pub runs: &'a [PipelineRun],
-    /// Every run and job, in the platform's order.
+    /// Every run and job, in [`checks::order`].
     pub checks: &'a [Check<'a>],
     /// The stage bars of each check, in `checks` order.
     pub bars: &'a [Stages<'a>],
@@ -78,13 +78,13 @@ struct Columns {
 impl ChecksTable {
     pub fn show(&mut self, ui: &mut Ui, mut input: TableInput<'_>) -> Option<TableAction> {
         let mut action = None;
-        egui::Frame::new().inner_margin(egui::Margin::symmetric(24, 20)).show(ui, |ui| {
+        let margin = egui::Margin::symmetric(style::PAGE_MARGIN_X, 20);
+        egui::Frame::new().inner_margin(margin).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             action = self.toolbar(ui, &mut input);
             ui.add_space(style::SPACE_M + 2.0);
             let mut shown: Vec<(usize, Check<'_>)> =
                 input.checks.iter().copied().enumerate().collect();
-            shown.sort_by_key(|(_, check)| checks::order(check));
             shown.retain(|(_, check)| {
                 checks::matches(check, input.filter, &self.search, input.platform)
             });
@@ -270,7 +270,7 @@ impl ChecksTable {
             columns.status.center(),
             Align2::CENTER_CENTER,
             icon,
-            FontId::proportional(18.0),
+            icons::rest_font(&palette, icons::SIZE),
             color,
         );
 

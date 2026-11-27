@@ -66,7 +66,7 @@ fn rate_limit_wait(ui: &mut Ui, session: &PullRequestSession, services: &Service
     let actions: Vec<Action<'_>> = choices.iter().map(|(action, _)| *action).collect();
     let title = format!("Waiting for {platform}");
     let picked = egui::Frame::new()
-        .inner_margin(egui::Margin::same(24))
+        .inner_margin(egui::Margin::same(style::PAGE_MARGIN_X))
         .show(ui, |ui| states::message_with_actions(ui, icons::CLOCK, &title, &detail, &actions))
         .inner;
     match picked.map(|index| &choices[index].1) {
@@ -80,7 +80,8 @@ fn rate_limit_wait(ui: &mut Ui, session: &PullRequestSession, services: &Service
 
 /// Placeholder in the shape of the checks table: toolbar, header and rows.
 pub fn checks_skeleton(ui: &mut Ui) {
-    egui::Frame::new().inner_margin(egui::Margin::symmetric(24, 20)).show(ui, |ui| {
+    let margin = egui::Margin::symmetric(style::PAGE_MARGIN_X, 20);
+    egui::Frame::new().inner_margin(margin).show(ui, |ui| {
         ui.horizontal(|ui| {
             skeleton::bar(ui, 160.0, 20.0);
             for width in [56.0, 72.0, 80.0, 96.0, 80.0] {
@@ -102,7 +103,8 @@ pub fn checks_skeleton(ui: &mut Ui) {
 
 /// Placeholder in the shape of the stage view: pivot and a row of cards.
 pub fn stage_skeleton(ui: &mut Ui) {
-    egui::Frame::new().inner_margin(egui::Margin::symmetric(24, 12)).show(ui, |ui| {
+    let margin = egui::Margin::symmetric(style::PAGE_MARGIN_X, 12);
+    egui::Frame::new().inner_margin(margin).show(ui, |ui| {
         ui.horizontal(|ui| {
             skeleton::bar(ui, 56.0, 18.0);
             skeleton::bar(ui, 40.0, 18.0);
@@ -158,7 +160,7 @@ pub fn loaded_stages(
         (None, Some(message)) => {
             let message = message.to_owned();
             let picked = egui::Frame::new()
-                .inner_margin(egui::Margin::symmetric(24, 8))
+                .inner_margin(egui::Margin::symmetric(style::PAGE_MARGIN_X, 8))
                 .show(ui, |ui| {
                     states::error_with_actions(
                         ui,

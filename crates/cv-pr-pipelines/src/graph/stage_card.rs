@@ -79,8 +79,7 @@ pub fn show(
     let id = ui.scope_id().with(("stage_card", &stage.id));
     let mut action = None;
 
-    let header_rect = Rect::from_min_size(rect.min, vec2(rect.width(), HEADER_HEIGHT));
-    let header = ui.interact(header_rect, id.with("header"), Sense::click());
+    let header = ui.interact(header_rect(rect), id.with("header"), Sense::click());
     header.widget_info(|| {
         egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Stage {}", stage.name))
     });
@@ -95,7 +94,7 @@ pub fn show(
         pos2(rect.left() + SIDE, title_y),
         Align2::LEFT_CENTER,
         icon,
-        FontId::proportional(18.0),
+        icons::rest_font(&palette, icons::SIZE),
         color,
     );
     let name_left = rect.left() + SIDE + 26.0;
@@ -106,7 +105,7 @@ pub fn show(
     if let Some(picked) = card.summary_line(ui, &painter, stage, context) {
         action = Some(picked);
     }
-    cv_widgets::focus::ring(ui, &header, header_rect);
+    cv_widgets::focus::ring(ui, &header, header_rect(rect));
     let header = if is_cut { header.on_hover_text(&stage.name) } else { header };
     if header.clicked() {
         action = Some(CardAction::OpenStage);
@@ -123,6 +122,11 @@ pub fn show(
     action
 }
 
+/// The header strip at the top of a card at `card`.
+fn header_rect(card: Rect) -> Rect {
+    Rect::from_min_size(card.min, vec2(card.width(), HEADER_HEIGHT))
+}
+
 /// The card being drawn this frame.
 #[derive(Clone, Copy)]
 struct Card {
@@ -135,10 +139,6 @@ struct Card {
 }
 
 impl Card {
-    fn header_rect(self) -> Rect {
-        Rect::from_min_size(self.rect.min, vec2(self.rect.width(), HEADER_HEIGHT))
-    }
-
     /// The middle of the name line.
     fn title_y(self) -> f32 {
         self.rect.top() + HEADER_PADDING_Y + 10.0
@@ -154,7 +154,7 @@ impl Card {
                 egui::CornerRadius { nw: style::RADIUS_CARD, ne: style::RADIUS_CARD, sw: 0, se: 0 };
             let corners =
                 if opening > 0.0 { top } else { egui::CornerRadius::same(style::RADIUS_CARD) };
-            painter.rect_filled(self.header_rect(), corners, palette.hover.gamma_multiply(hover));
+            painter.rect_filled(header_rect(rect), corners, palette.hover.gamma_multiply(hover));
         }
         let border = motion::mix(palette.border, palette.border_strong, hover);
         painter.rect_stroke(rect, style::RADIUS_CARD, Stroke::new(1.0, border), StrokeKind::Inside);
@@ -250,7 +250,7 @@ impl Card {
             toggle_rect.center(),
             Align2::CENTER_CENTER,
             chevron,
-            FontId::proportional(16.0),
+            icons::rest_font(&palette, icons::SIZE),
             chevron_color,
         );
         cv_widgets::focus::ring(ui, &toggle, toggle_rect);
@@ -268,7 +268,7 @@ impl Card {
     ) -> Option<CardAction> {
         let Self { rect, opening, .. } = self;
         let palette = theme::palette(ui.ctx());
-        let header_bottom = self.header_rect().bottom();
+        let header_bottom = header_rect(rect).bottom();
         let body = Rect::from_min_max(pos2(rect.left(), header_bottom), rect.max);
         let clip = body.intersect(visible);
         painter.hline(rect.x_range().shrink(1.0), header_bottom, Stroke::new(1.0, palette.border));
@@ -379,7 +379,7 @@ fn job_row(
         pos2(rect.left() + side, rect.center().y),
         Align2::LEFT_CENTER,
         icon,
-        FontId::proportional(15.0),
+        icons::rest_font(&palette, icons::SIZE),
         color.gamma_multiply(fade),
     );
     let small = FontId::proportional(style::SMALL_SIZE);
@@ -511,7 +511,7 @@ mod tests {
 
     #[test]
     fn summarizes_like_azure_devops() {
-        use RunStatus::*;
+        use RunStatus::{Failed, Queued, Running, Skipped, Succeeded};
         let azure = ProviderKind::AzureDevOps;
         assert_eq!(summary(&stage(Succeeded, &[Succeeded]), azure), "1 job completed");
         assert_eq!(summary(&stage(Succeeded, &[Succeeded; 6]), azure), "6 jobs completed");

@@ -3,22 +3,26 @@
 use cv_base::theme::{self, icons, style};
 use cv_widgets::{badges, buttons, row};
 use egui::{Align2, FontId, Rect, Sense, Ui, pos2, vec2};
-use review_core::{PipelineJob, ProviderKind, RerunAction, RunStatus};
+use review_core::{PipelineJob, ProviderKind, RunStatus};
 
 use super::attempts::{self, Known};
 use super::graph::stage_card;
-use super::job_tree::{self, LogTarget};
+use super::job_tree;
 use super::rerun;
+use super::run_view::RunViewAction;
+use super::tree::jobs_of;
 
 const ROW_HEIGHT: f32 = 40.0;
 const HEADER_HEIGHT: f32 = 32.0;
 const RERUN_WIDTH: f32 = 36.0;
+/// Where the name column starts, from the row's left.
+const NAME_LEFT: f32 = 44.0;
+/// The duration column, left of [`duration_right`].
+const DURATION_WIDTH: f32 = 90.0;
 
-pub enum JobsAction {
-    Job(LogTarget),
-    Rerun(RerunAction),
-    AddToken,
-    Attempt { node_id: String, number: u32 },
+/// The right edge of the duration column, before the rerun column.
+fn duration_right(rect: Rect) -> f32 {
+    rect.right() - RERUN_WIDTH - 12.0
 }
 
 struct Row<'a> {
@@ -33,18 +37,11 @@ pub fn show(
     has_token: bool,
     is_busy: bool,
     known: Known<'_>,
-) -> Option<JobsAction> {
+) -> Option<RunViewAction> {
     let palette = theme::palette(ui.ctx());
     let rows: Vec<Row<'_>> = stages
         .iter()
-        .flat_map(|stage| {
-            let jobs: Vec<&PipelineJob> = if stage.children.is_empty() {
-                vec![stage]
-            } else {
-                stage.children.iter().collect()
-            };
-            jobs.into_iter().map(move |job| Row { job, stage })
-        })
+        .flat_map(|stage| jobs_of(stage).iter().map(move |job| Row { job, stage }))
         .collect();
     let mut action = None;
     let can_rerun_any = rows.iter().any(|row| !row.job.reruns.is_empty());
@@ -54,7 +51,7 @@ pub fn show(
             let add = buttons::subtle(ui, icons::KEY, "Add a token to rerun jobs")
                 .on_hover_text(rerun::NEEDS_TOKEN);
             if add.clicked() {
-                action = Some(JobsAction::AddToken);
+                action = Some(RunViewAction::AddToken);
             }
         });
     }
@@ -64,7 +61,7 @@ pub fn show(
     let small = FontId::proportional(style::SMALL_SIZE);
     let painter = ui.painter_at(header);
     painter.text(
-        pos2(header.left() + 44.0, header.center().y),
+        pos2(header.left() + NAME_LEFT, header.center().y),
         Align2::LEFT_CENTER,
         "Job",
         small.clone(),
@@ -78,7 +75,7 @@ pub fn show(
         palette.text_secondary,
     );
     painter.text(
-        pos2(header.right() - RERUN_WIDTH - 12.0, header.center().y),
+        pos2(duration_right(header), header.center().y),
         Align2::RIGHT_CENTER,
         "Duration",
         small,
@@ -112,7 +109,7 @@ struct RowContext<'a> {
     known: Known<'a>,
 }
 
-fn job_row(ui: &mut Ui, row: &Row<'_>, context: RowContext<'_>) -> Option<JobsAction> {
+fn job_row(ui: &mut Ui, row: &Row<'_>, context: RowContext<'_>) -> Option<RunViewAction> {
     let palette = theme::palette(ui.ctx());
     let (rect, response) =
         ui.allocate_exact_size(vec2(ui.available_width(), ROW_HEIGHT), Sense::click());
@@ -127,12 +124,12 @@ fn job_row(ui: &mut Ui, row: &Row<'_>, context: RowContext<'_>) -> Option<JobsAc
         pos2(rect.left() + 16.0, rect.center().y),
         Align2::LEFT_CENTER,
         icon,
-        FontId::proportional(16.0),
+        icons::rest_font(&palette, icons::SIZE),
         color,
     );
     let text_color =
         if row.job.status == RunStatus::Skipped { palette.text_secondary } else { palette.text };
-    let name_left = rect.left() + 44.0;
+    let name_left = rect.left() + NAME_LEFT;
     let (name, is_cut) = stage_card::ellipsized(
         ui,
         &row.job.name,
@@ -141,11 +138,11 @@ fn job_row(ui: &mut Ui, row: &Row<'_>, context: RowContext<'_>) -> Option<JobsAc
         rect.left() + context.stage_x - 16.0 - name_left,
     );
     painter.galley(pos2(name_left, rect.center().y - name.size().y / 2.0), name, text_color);
-    let duration_right = rect.right() - RERUN_WIDTH - 12.0;
+    let duration_left = duration_right(rect) - DURATION_WIDTH;
     let has_badge = !row.job.previous_attempts.is_empty();
     let badge_width =
         if has_badge { attempts::badge_width(ui, row.job, false) + style::SPACE_M } else { 0.0 };
-    let stage_width = duration_right - 90.0 - badge_width - (rect.left() + context.stage_x);
+    let stage_width = duration_left - badge_width - (rect.left() + context.stage_x);
     paint_stage_and_duration(ui, &painter, row, rect, context.stage_x, stage_width);
     cv_widgets::focus::ring(ui, &response, rect);
     let parent_log =
@@ -153,12 +150,12 @@ fn job_row(ui: &mut Ui, row: &Row<'_>, context: RowContext<'_>) -> Option<JobsAc
     let clicked = job_tree::click_target(row.job, parent_log, row.stage.web_url.as_deref());
     let mut action = None;
     if has_badge {
-        let right = pos2(duration_right - 90.0, rect.center().y);
+        let right = pos2(duration_left, rect.center().y);
         let id = ui.scope_id().with(("jobs_list_attempts", &row.job.id));
         let badge =
             attempts::Badge { node: row.job, is_compact: false, known: context.known, fade: 1.0 };
         if let Some(number) = attempts::badge_button(ui, id, &painter, right, badge) {
-            action = Some(JobsAction::Attempt { node_id: row.job.id.clone(), number });
+            action = Some(RunViewAction::Attempt { node_id: row.job.id.clone(), number });
         }
     }
     if let Some(rerun) = rerun_button(ui, row, rect, context) {
@@ -170,7 +167,7 @@ fn job_row(ui: &mut Ui, row: &Row<'_>, context: RowContext<'_>) -> Option<JobsAc
         (None, false) => response,
     };
     if response.clicked() && action.is_none() {
-        action = Some(JobsAction::Job(clicked));
+        action = Some(RunViewAction::Log(clicked));
     }
     action
 }
@@ -198,7 +195,7 @@ fn paint_stage_and_duration(
     }
     if let Some(duration) = super::duration(row.job.started_at, row.job.finished_at) {
         painter.text(
-            pos2(rect.right() - RERUN_WIDTH - 12.0, rect.center().y),
+            pos2(duration_right(rect), rect.center().y),
             Align2::RIGHT_CENTER,
             duration,
             FontId::proportional(style::SMALL_SIZE),
@@ -214,7 +211,7 @@ fn rerun_button(
     row: &Row<'_>,
     rect: Rect,
     context: RowContext<'_>,
-) -> Option<JobsAction> {
+) -> Option<RunViewAction> {
     let rerun_action = row.job.reruns.first()?;
     let button_rect = Rect::from_center_size(
         pos2(rect.right() - RERUN_WIDTH / 2.0 - 4.0, rect.center().y),
@@ -237,5 +234,5 @@ fn rerun_button(
         })
         .inner
         .on_disabled_hover_text(&tooltip);
-    button.clicked().then(|| JobsAction::Rerun(rerun_action.clone()))
+    button.clicked().then(|| RunViewAction::Rerun(rerun_action.clone()))
 }

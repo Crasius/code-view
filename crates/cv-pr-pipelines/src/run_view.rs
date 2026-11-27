@@ -13,7 +13,7 @@ use super::attempts::Known;
 use super::graph::stage_card::{CardAction, CardContext};
 use super::graph::stage_graph::{self, GraphInput};
 use super::job_tree::{self, LogTarget};
-use super::jobs_list::{self, JobsAction};
+use super::jobs_list;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Pivot {
@@ -89,24 +89,14 @@ impl RunView {
         ui.add_space(1.0);
         match self.pivot {
             Pivot::Stages => self.stages(ui, input),
-            Pivot::Jobs => {
-                let action = jobs_list::show(
-                    ui,
-                    input.stages,
-                    input.platform,
-                    input.has_token,
-                    input.is_busy,
-                    input.known,
-                )?;
-                Some(match action {
-                    JobsAction::Job(target) => RunViewAction::Log(target),
-                    JobsAction::Rerun(rerun) => RunViewAction::Rerun(rerun),
-                    JobsAction::AddToken => RunViewAction::AddToken,
-                    JobsAction::Attempt { node_id, number } => {
-                        RunViewAction::Attempt { node_id, number }
-                    }
-                })
-            }
+            Pivot::Jobs => jobs_list::show(
+                ui,
+                input.stages,
+                input.platform,
+                input.has_token,
+                input.is_busy,
+                input.known,
+            ),
         }
     }
 

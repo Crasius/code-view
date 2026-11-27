@@ -25,9 +25,9 @@ pub struct GraphLayout {
 impl GraphLayout {
     /// `height(index)` is the current height of a stage's card (collapsed or expanded).
     pub fn new(stages: &[PipelineJob], height: impl Fn(usize) -> f32) -> Self {
-        let columns = columns(stages);
         let index_of: HashMap<&str, usize> =
             stages.iter().enumerate().map(|(index, stage)| (stage.id.as_str(), index)).collect();
+        let columns = columns(stages, &index_of);
         let column_count = columns.iter().max().map_or(0, |max| max + 1);
         let mut rows = vec![0usize; stages.len()];
         let mut next_row = vec![0usize; column_count];
@@ -75,12 +75,10 @@ impl GraphLayout {
 
 /// Column of every stage: 0 without dependencies, else one right of its deepest dependency.
 /// Unknown ids and cycles are ignored, so a bad graph still draws.
-fn columns(stages: &[PipelineJob]) -> Vec<usize> {
-    let index_of: HashMap<&str, usize> =
-        stages.iter().enumerate().map(|(index, stage)| (stage.id.as_str(), index)).collect();
+fn columns(stages: &[PipelineJob], index_of: &HashMap<&str, usize>) -> Vec<usize> {
     let mut columns: Vec<Option<usize>> = vec![None; stages.len()];
     for start in 0..stages.len() {
-        resolve(start, stages, &index_of, &mut columns, &mut Vec::new());
+        resolve(start, stages, index_of, &mut columns, &mut Vec::new());
     }
     columns.into_iter().map(Option::unwrap_or_default).collect()
 }

@@ -3,13 +3,14 @@
 //! app: its log, a step's log, or (without any log yet) its state; the platform only opens from
 //! an explicit "Open in …" action.
 
-use cv_base::theme::{self, style};
+use cv_base::theme::{self, icons, style};
 use cv_widgets::{badges, row as row_style};
 use egui::{Align2, Sense, Ui, pos2, vec2};
 use review_core::{PipelineJob, RunStatus};
 
 use super::attempts::{self, Known};
 use super::graph::stage_card;
+use super::tree::find;
 
 const ROW_HEIGHT: f32 = 32.0;
 const INDENT: f32 = 18.0;
@@ -25,18 +26,14 @@ pub struct LogTarget {
     pub web_url: Option<String>,
 }
 
-/// The log behind `job`: its own, else the one inherited from its parent.
-fn target(
-    job: &PipelineJob,
-    inherited_log: Option<&str>,
-    inherited_url: Option<&str>,
-) -> Option<LogTarget> {
-    Some(LogTarget {
+/// `job` opening `log`, with its own page, else the one inherited from its parent.
+fn target(job: &PipelineJob, log: Option<&str>, inherited_url: Option<&str>) -> LogTarget {
+    LogTarget {
         job_id: job.id.clone(),
-        log_id: Some(job.log_id.as_deref().or(inherited_log)?.to_owned()),
+        log_id: log.map(str::to_owned),
         title: job.name.clone(),
         web_url: job.web_url.as_deref().or(inherited_url).map(str::to_owned),
-    })
+    }
 }
 
 /// What a click on an item opens in the app, always: its own log, else its first failed step's,
@@ -48,15 +45,9 @@ pub fn click_target(
     inherited_log: Option<&str>,
     inherited_url: Option<&str>,
 ) -> LogTarget {
-    let own = target(job, None, inherited_url);
+    let own = job.log_id.as_deref().map(|log| target(job, Some(log), inherited_url));
     own.or_else(|| first_log_below(job, inherited_url))
-        .or_else(|| target(job, inherited_log, inherited_url))
-        .unwrap_or_else(|| LogTarget {
-            job_id: job.id.clone(),
-            log_id: None,
-            title: job.name.clone(),
-            web_url: job.web_url.as_deref().or(inherited_url).map(str::to_owned),
-        })
+        .unwrap_or_else(|| target(job, inherited_log, inherited_url))
 }
 
 /// [`click_target`] for the item with `id` anywhere in the run, with what it inherits from its
@@ -170,7 +161,7 @@ fn tree_row(
         pos2(left, rect.center().y),
         Align2::LEFT_CENTER,
         icon,
-        egui::FontId::proportional(15.0),
+        icons::rest_font(&palette, icons::SIZE),
         color,
     );
     let duration = super::duration(row.job.started_at, row.job.finished_at);
@@ -258,7 +249,8 @@ fn flatten<'a>(
     let row = Row { job, depth, inherited_log, inherited_url };
     let (log_id, web_url) = (row.log_id(), row.web_url());
     rows.push(row);
-    let shows_children = depth == 0 || selected.is_some_and(|selected| contains(job, selected));
+    let shows_children = depth == 0
+        || selected.is_some_and(|selected| find(std::slice::from_ref(job), selected).is_some());
     if shows_children {
         for child in &job.children {
             flatten(child, depth + 1, log_id, web_url, selected, rows);
@@ -266,57 +258,48 @@ fn flatten<'a>(
     }
 }
 
-fn contains(job: &PipelineJob, id: &str) -> bool {
-    job.id == id || job.children.iter().any(|child| contains(child, id))
-}
-
 /// The log to open first for a stage: its first failed item with a log, else its first item
 /// with a log.
 pub fn initial_target(stage: &PipelineJob) -> Option<LogTarget> {
-    let mut rows = Vec::new();
-    collect_all(stage, 0, None, None, &mut rows);
-    first_log_of(&rows)
+    first_with_log(stage, None, None, is_failed).or_else(|| first_with_log(stage, None, None, any))
 }
 
 /// The first failed item with a log in a stage, whatever the stage's own status.
 pub fn failed_target(stage: &PipelineJob) -> Option<LogTarget> {
-    let mut rows = Vec::new();
-    collect_all(stage, 0, None, None, &mut rows);
-    let row =
-        rows.iter().find(|row| row.log_id().is_some() && row.job.status == RunStatus::Failed)?;
-    target(row.job, row.inherited_log, row.inherited_url)
+    first_with_log(stage, None, None, is_failed)
 }
 
 /// The first failed, else the first item with a log below `job` (not `job` itself).
 fn first_log_below(job: &PipelineJob, inherited_url: Option<&str>) -> Option<LogTarget> {
-    let mut rows = Vec::new();
     let url = job.web_url.as_deref().or(inherited_url);
-    for child in &job.children {
-        collect_all(child, 1, None, url, &mut rows);
-    }
-    first_log_of(&rows)
+    let first = |wants: fn(&PipelineJob) -> bool| {
+        job.children.iter().find_map(|child| first_with_log(child, None, url, wants))
+    };
+    first(is_failed).or_else(|| first(any))
 }
 
-fn first_log_of(rows: &[Row<'_>]) -> Option<LogTarget> {
-    let with_log = || rows.iter().filter(|row| row.log_id().is_some());
-    let failed = with_log().find(|row| row.job.status == RunStatus::Failed);
-    let row = failed.or_else(|| with_log().next())?;
-    target(row.job, row.inherited_log, row.inherited_url)
+/// The first item `wants`, in tree order from `job` down, that has a log of its own or one it
+/// inherits; `log` and `url` are what `job` inherits from its parents.
+fn first_with_log(
+    job: &PipelineJob,
+    log: Option<&str>,
+    url: Option<&str>,
+    wants: fn(&PipelineJob) -> bool,
+) -> Option<LogTarget> {
+    let own_log = job.log_id.as_deref().or(log);
+    if own_log.is_some() && wants(job) {
+        return Some(target(job, own_log, url));
+    }
+    let own_url = job.web_url.as_deref().or(url);
+    job.children.iter().find_map(|child| first_with_log(child, own_log, own_url, wants))
 }
 
-fn collect_all<'a>(
-    job: &'a PipelineJob,
-    depth: usize,
-    log: Option<&'a str>,
-    url: Option<&'a str>,
-    rows: &mut Vec<Row<'a>>,
-) {
-    let row = Row { job, depth, inherited_log: log, inherited_url: url };
-    let (log_id, web_url) = (row.log_id(), row.web_url());
-    rows.push(row);
-    for child in &job.children {
-        collect_all(child, depth + 1, log_id, web_url, rows);
-    }
+fn is_failed(job: &PipelineJob) -> bool {
+    job.status == RunStatus::Failed
+}
+
+fn any(_: &PipelineJob) -> bool {
+    true
 }
 
 #[cfg(test)]

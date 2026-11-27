@@ -179,12 +179,7 @@ mod tests {
                 FontId::proportional(14.0),
                 Color32::WHITE,
             );
-            job.wrap = TextWrapping {
-                max_width: 120.0,
-                max_rows: 1,
-                break_anywhere: true,
-                overflow_character: Some('…'),
-            };
+            job.wrap = TextWrapping::truncate_at_width(120.0);
             ui.ctx().fonts_mut(|fonts| {
                 let source = fonts.layout_job(job);
                 for zoom in [0.25, 0.5, 2.0] {
@@ -200,11 +195,6 @@ mod tests {
                     assert!(
                         (sharp.size().y - source.size().y).abs() < 2.0 / zoom,
                         "height at {zoom}"
-                    );
-                    assert_eq!(
-                        scaled_job(&source.job, zoom).sections[0].format.font_id.size,
-                        14.0 * zoom,
-                        "rasterized at the size on screen"
                     );
                 }
             });

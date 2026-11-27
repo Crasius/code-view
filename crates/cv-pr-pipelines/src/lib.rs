@@ -36,7 +36,7 @@ mod waiting;
 
 use std::borrow::Cow;
 
-use cv_base::theme::icons;
+use cv_base::theme::{icons, style};
 use cv_pr_session::session::PullRequestSession;
 use cv_runtime::intents;
 use cv_runtime::load::Live;
@@ -63,6 +63,9 @@ use self::run_header::{HeaderAction, HeaderInput, RunHeader, is_free_key, step_k
 use self::run_view::{RunView, RunViewAction, RunViewInput};
 use self::stage_bars::Stages;
 use self::tree::{find, first_log, log_owner, owning_job, replace_node, retried_ancestor};
+
+/// The page's side inset, without one above or below.
+const GUTTER: egui::Margin = egui::Margin::symmetric(style::PAGE_MARGIN_X, 0);
 
 /// What the tab shows: the checks table, one run full width, or a job's log beside the run's jobs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -186,7 +189,7 @@ impl PipelinesTab {
                     actions.push(Action::secondary(icons::KEY, "Add a token"));
                 }
                 let picked = egui::Frame::new()
-                    .inner_margin(egui::Margin::same(24))
+                    .inner_margin(egui::Margin::same(style::PAGE_MARGIN_X))
                     .show(ui, |ui| states::error_with_actions(ui, &message, &actions))
                     .inner;
                 match picked {
@@ -259,8 +262,6 @@ impl PipelinesTab {
             filter: &mut services.settings.pipelines.status_filter,
         };
         let action = self.table.show(ui, input);
-        drop(bars);
-        drop(checks);
         match action {
             Some(TableAction::Logs(key)) if key.job_id.is_none() => {
                 self.open_run(&key.run_id);
@@ -281,7 +282,7 @@ impl PipelinesTab {
             None => {}
         }
         if let Some(run) = self.reruns.failed_run(runs) {
-            egui::Frame::new().inner_margin(egui::Margin::symmetric(24, 0)).show(ui, |ui| {
+            egui::Frame::new().inner_margin(GUTTER).show(ui, |ui| {
                 self.reruns.show_failure(ui, run, run.web_url.as_deref(), session, services);
             });
         }
@@ -329,11 +330,9 @@ impl PipelinesTab {
         if is_focused {
             self.reruns.show_focus_failure(ui, run, web_url.as_deref(), session, services);
         } else {
-            egui::Frame::new()
-                .inner_margin(egui::Margin { left: 24, right: 24, top: 0, bottom: 0 })
-                .show(ui, |ui| {
-                    self.reruns.show_failure(ui, run, web_url.as_deref(), session, services);
-                });
+            egui::Frame::new().inner_margin(GUTTER).show(ui, |ui| {
+                self.reruns.show_failure(ui, run, web_url.as_deref(), session, services);
+            });
         }
         if !run.has_jobs {
             waiting::status_only(ui, session.kind, web_url.as_deref(), &open_label);
@@ -425,7 +424,7 @@ impl PipelinesTab {
             None
         } else {
             egui::Frame::new()
-                .inner_margin(egui::Margin { left: 24, right: 24, top: 12, bottom: 4 })
+                .inner_margin(egui::Margin { top: 12, bottom: 4, ..GUTTER })
                 .show(ui, |ui| self.header.show(ui, &header_input))
                 .inner
         };

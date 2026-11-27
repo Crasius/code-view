@@ -490,7 +490,7 @@ fn option(
         pos2(rect.left() + style::SPACE_S + 8.0, rect.center().y),
         Align2::CENTER_CENTER,
         icon,
-        FontId::proportional(16.0),
+        icons::rest_font(&palette, icons::SIZE),
         color,
     );
     let small = FontId::proportional(style::SMALL_SIZE);

@@ -17,6 +17,8 @@ use review_core::{
 };
 use review_store::CheckFilter;
 
+use super::tree::jobs_of;
+
 pub const FILTERS: [(CheckFilter, &str); 4] = [
     (CheckFilter::Failed, "Failed"),
     (CheckFilter::Running, "Running"),
@@ -122,10 +124,7 @@ pub fn list<'a>(
     for run in runs {
         checks.push(Check { run, job: None });
         for stage in stages(run).unwrap_or_default() {
-            if stage.children.is_empty() {
-                checks.push(Check { run, job: Some((stage, stage)) });
-            }
-            for job in &stage.children {
+            for job in jobs_of(stage) {
                 checks.push(Check { run, job: Some((stage, job)) });
             }
         }
@@ -174,12 +173,28 @@ pub fn rank(status: RunStatus) -> u8 {
 pub fn counts<'a>(checks: impl Iterator<Item = &'a Check<'a>>) -> [usize; 4] {
     let mut counts = [0; 4];
     for check in checks.filter(|check| check.run.is_head) {
-        let index =
-            FILTERS.iter().position(|(filter, _)| *filter == group(check.status())).unwrap_or(0);
-        counts[index] += 1;
+        counts[filter_index(group(check.status()))] += 1;
     }
     counts
 }
+
+/// Where `filter` sits in [`FILTERS`].
+const fn filter_index(filter: CheckFilter) -> usize {
+    match filter {
+        CheckFilter::Failed => 0,
+        CheckFilter::Running => 1,
+        CheckFilter::Succeeded => 2,
+        CheckFilter::Neutral => 3,
+    }
+}
+
+const _: () = {
+    let mut index = 0;
+    while index < FILTERS.len() {
+        assert!(filter_index(FILTERS[index].0) == index, "FILTERS and filter_index disagree");
+        index += 1;
+    }
+};
 
 /// True when `check` passes the status chips and the text filter, which matches the name, the
 /// line under it and the source. No chip selected shows everything; a chip shows the head
@@ -236,20 +251,11 @@ pub fn sub_line(run: &PipelineRun, stages: Option<&[PipelineJob]>) -> String {
         parts.push("older run".to_owned());
     }
     if let Some(stages) = stages.filter(|stages| !stages.is_empty()) {
-        let jobs: usize = stages.iter().map(|stage| stage.children.len().max(1)).sum();
+        let jobs: usize = stages.iter().map(|stage| jobs_of(stage).len()).sum();
         parts.push(plural(stages.len(), "stage"));
         parts.push(plural(jobs, "job"));
-        let retried = stages
-            .iter()
-            .flat_map(|stage| {
-                if stage.children.is_empty() {
-                    std::slice::from_ref(stage)
-                } else {
-                    stage.children.as_slice()
-                }
-            })
-            .filter(|job| !job.previous_attempts.is_empty())
-            .count();
+        let retried =
+            stages.iter().flat_map(jobs_of).filter(|job| !job.previous_attempts.is_empty()).count();
         if retried > 0 {
             parts.push(format!("{} retried", plural(retried, "job")));
         }
@@ -272,7 +278,7 @@ pub fn check_duration(check: &Check<'_>) -> Option<String> {
 }
 
 /// The head commit's failed runs that offer rerunning their failed jobs, for "Rerun failed".
-pub fn failed_reruns(runs: &[PipelineRun]) -> Vec<(String, review_core::RerunAction)> {
+pub fn failed_reruns(runs: &[PipelineRun]) -> Vec<(String, RerunAction)> {
     runs.iter()
         .filter(|run| run.is_head && group(run.status) == CheckFilter::Failed)
         .filter_map(|run| {

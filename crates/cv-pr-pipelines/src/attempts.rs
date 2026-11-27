@@ -46,6 +46,22 @@ pub struct Attempt {
     pub is_latest: bool,
 }
 
+impl Attempt {
+    /// "Failed, latest": its outcome, or that it opens on demand, and whether it is the latest.
+    fn state(&self) -> String {
+        let state = self.status.map_or("opens on demand", badges::run_status_label);
+        let latest = if self.is_latest { ", latest" } else { "" };
+        format!("{state}{latest}")
+    }
+}
+
+/// The icon of an attempt's outcome, or a history mark while it is not loaded.
+fn status_icon(status: Option<RunStatus>, palette: &Palette) -> (&'static str, Color32) {
+    status.map_or((icons::CLOCK_COUNTER_CLOCKWISE, palette.text_secondary), |status| {
+        badges::run_status_icon(status, palette)
+    })
+}
+
 /// Every attempt of `node`, newest first.
 pub fn list(node: &PipelineJob, known: Known<'_>) -> Vec<Attempt> {
     let latest = Attempt {
@@ -103,12 +119,7 @@ pub fn tooltip(node: &PipelineJob, known: Known<'_>) -> String {
     let lines: Vec<String> = list(node, known)
         .iter()
         .rev()
-        .map(|attempt| {
-            let state =
-                attempt.status.map_or("opens on demand", |status| badges::run_status_label(status));
-            let latest = if attempt.is_latest { ", latest" } else { "" };
-            format!("Attempt {}: {state}{latest}", attempt.number)
-        })
+        .map(|attempt| format!("Attempt {}: {}", attempt.number, attempt.state()))
         .collect();
     format!(
         "{} attempts\n{}\nClick to open an earlier attempt",
@@ -125,10 +136,7 @@ fn earlier_icon(
 ) -> (&'static str, Color32) {
     let status =
         node.previous_attempts.last().and_then(|attempt| known.job(attempt)).map(|job| job.status);
-    match status {
-        Some(status) => badges::run_status_icon(status, palette),
-        None => (icons::CLOCK_COUNTER_CLOCKWISE, palette.text_secondary),
-    }
+    status_icon(status, palette)
 }
 
 fn badge_text(node: &PipelineJob, is_compact: bool) -> String {
@@ -258,11 +266,7 @@ pub fn switcher(
         Stroke::new(1.0, border),
         StrokeKind::Inside,
     );
-    let (icon, color) = current
-        .and_then(|attempt| attempt.status)
-        .map_or((icons::CLOCK_COUNTER_CLOCKWISE, palette.text_secondary), |status| {
-            badges::run_status_icon(status, &palette)
-        });
+    let (icon, color) = status_icon(current.and_then(|attempt| attempt.status), &palette);
     let icon_center = pos2(rect.left() + style::SPACE_S + ICON_SIZE / 2.0, rect.center().y);
     ui.painter().text(
         icon_center,
@@ -283,7 +287,7 @@ pub fn switcher(
         pos2(rect.right() - style::SPACE_S, rect.center().y),
         Align2::RIGHT_CENTER,
         caret,
-        FontId::proportional(12.0),
+        icons::rest_font(&palette, icons::SIZE_SMALL),
         palette.text_secondary,
     );
     cv_widgets::focus::ring(ui, &button, rect);
@@ -312,7 +316,7 @@ fn popup(ui: &Ui, anchor: &Response, attempts: &[Attempt], shown: u32) -> Option
             }
             picked
         })
-        .and_then(|shown| shown.inner);
+        .and_then(|response| response.inner);
     if picked.is_some() {
         egui::Popup::close_id(ui.ctx(), popup_id);
     }
@@ -337,19 +341,14 @@ fn option(ui: &mut Ui, attempt: &Attempt, is_current: bool) -> bool {
     let palette = theme::palette(ui.ctx());
     let (rect, response) =
         ui.allocate_exact_size(vec2(ui.available_width(), OPTION_HEIGHT), Sense::click());
-    let state = attempt.status.map_or("opens on demand", badges::run_status_label);
-    let latest = if attempt.is_latest { ", latest" } else { "" };
-    let label = format!("Attempt {}, {state}{latest}", attempt.number);
+    let label = format!("Attempt {}, {}", attempt.number, attempt.state());
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::Role::ListBoxOption, true, is_current, &label)
     });
     let hover = row::hover_amount(ui, &response);
     let fill = if is_current { palette.selection } else { palette.hover.gamma_multiply(hover) };
     ui.painter().rect_filled(rect, style::RADIUS_CONTROL, fill);
-    let (icon, color) =
-        attempt.status.map_or((icons::CLOCK_COUNTER_CLOCKWISE, palette.text_secondary), |status| {
-            badges::run_status_icon(status, &palette)
-        });
+    let (icon, color) = status_icon(attempt.status, &palette);
     let left = rect.left() + style::SPACE_S;
     let title_y = rect.top() + OPTION_HEIGHT * 0.34;
     let detail_y = rect.top() + OPTION_HEIGHT * 0.70;
@@ -357,7 +356,7 @@ fn option(ui: &mut Ui, attempt: &Attempt, is_current: bool) -> bool {
         pos2(left + 8.0, title_y),
         Align2::CENTER_CENTER,
         icon,
-        FontId::proportional(16.0),
+        icons::rest_font(&palette, icons::SIZE),
         color,
     );
     let text_left = left + 16.0 + style::SPACE_S;
