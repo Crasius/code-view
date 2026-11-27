@@ -9,7 +9,8 @@ use cv_base::theme::{self, icons, style};
 use cv_services::Services;
 use cv_services::agent_names::{cli_name, install_url};
 use cv_services::agents::Detection;
-use cv_widgets::{buttons, glyph, tabs};
+use cv_widgets::tabs::{self, Segment};
+use cv_widgets::{buttons, glyph};
 use egui::{RichText, Ui};
 use review_agent::{AgentError, AgentKind, ModelChoice};
 
@@ -37,8 +38,9 @@ pub fn control(ui: &mut Ui, id: AssistantRow, row: &Row, services: &mut Services
 }
 
 fn agent(ui: &mut Ui, services: &mut Services) -> bool {
-    let options = AgentKind::ALL.map(|kind| (kind, cli_name(kind), kind.label()));
-    let changed = tabs::segmented_with_hints(ui, &mut services.settings.assistant.agent, &options);
+    let options =
+        AgentKind::ALL.map(|kind| Segment::new(kind, cli_name(kind)).with_hint(kind.label()));
+    let changed = tabs::segments(ui, &mut services.settings.assistant.agent, &options);
     if !services.settings.assistant.enabled {
         return changed;
     }

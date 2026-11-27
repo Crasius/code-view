@@ -5,7 +5,8 @@
 use cv_base::theme::{self, icons, style};
 use cv_pr_session::merge_choice;
 use cv_services::Services;
-use cv_widgets::{buttons, provider_icon, tabs};
+use cv_widgets::tabs::{self, Segment};
+use cv_widgets::{buttons, provider_icon};
 use egui::{RichText, Ui};
 use review_core::{MergeStrategy, ProviderKind};
 
@@ -75,12 +76,15 @@ fn favourites(ui: &mut Ui, services: &mut Services, previewed: &mut Option<Provi
                 ui.label(kind.label());
             });
             let mut favourite = services.settings.merge.platform_favourite(kind);
-            let mut options: Vec<(Option<MergeStrategy>, &str, &str)> =
-                vec![(None, "No favourite", "The platform's default, else the first allowed type")];
+            let mut options = vec![
+                Segment::new(None, "No favourite")
+                    .with_hint("The platform's default, else the first allowed type"),
+            ];
             options.extend(choices(kind).iter().map(|strategy| {
-                (Some(*strategy), short(*strategy, kind), merge_choice::name(*strategy, kind))
+                Segment::new(Some(*strategy), short(*strategy, kind))
+                    .with_hint(merge_choice::name(*strategy, kind))
             }));
-            if tabs::segmented_with_hints(ui, &mut favourite, &options) {
+            if tabs::segments(ui, &mut favourite, &options) {
                 services.settings.merge.set_platform_favourite(kind, favourite);
                 changed = true;
                 *previewed = Some(kind);

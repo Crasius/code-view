@@ -247,7 +247,7 @@ fn registry_for(services: &Services) -> std::io::Result<Registry> {
     #[cfg(any(test, feature = "test-support"))]
     {
         use cv_shell::browser::registration::MemoryKeys;
-        let manifest = services.paths.browser_dir().join(format!("{}.json", browser::HOST_NAME));
+        let manifest = browser::host_manifest(&services.paths);
         Ok(Registry::Keys { manifest, keys: Arc::new(MemoryKeys::default()) })
     }
     #[cfg(not(any(test, feature = "test-support")))]

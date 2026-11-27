@@ -9,9 +9,11 @@ use std::path::{Path, PathBuf};
 use cv_base::platform;
 use cv_base::theme::{self, icons, style};
 use cv_services::Services;
+use cv_services::agent_names::cli_name;
 use cv_services::agents::Detection;
-use cv_services::checkouts::{self, FolderPurpose};
-use cv_widgets::{buttons, tabs};
+use cv_services::checkouts::FolderPurpose;
+use cv_widgets::buttons;
+use cv_widgets::tabs::{self, Segment};
 use egui::{RichText, Ui};
 use review_core::AgentKind;
 use review_git::checkout::worktree_path;
@@ -33,19 +35,24 @@ pub fn control(ui: &mut Ui, id: CheckoutRow, services: &mut Services) -> bool {
         CheckoutRow::Pattern => changed = pattern(ui, services),
         CheckoutRow::Removal => changed = when_finished(ui, services),
         CheckoutRow::Open => {
+            let agent =
+                |kind| Segment::new(OpenByDefault::Always(OpenWith::Agent(kind)), cli_name(kind));
             let options = [
-                (OpenByDefault::Ask, "Ask each time"),
-                (OpenByDefault::Always(OpenWith::Nothing), "Nothing"),
-                (OpenByDefault::Always(OpenWith::Terminal), "Terminal"),
-                (OpenByDefault::Always(OpenWith::Agent(AgentKind::Claude)), "Claude Code"),
-                (OpenByDefault::Always(OpenWith::Agent(AgentKind::Codex)), "Codex"),
+                Segment::new(OpenByDefault::Ask, "Ask each time"),
+                Segment::new(OpenByDefault::Always(OpenWith::Nothing), "Nothing"),
+                Segment::new(OpenByDefault::Always(OpenWith::Terminal), "Terminal"),
+                agent(AgentKind::Claude),
+                agent(AgentKind::Codex),
             ];
             changed =
-                tabs::segmented(ui, &mut services.settings.checkouts.open_by_default, &options);
+                tabs::segments(ui, &mut services.settings.checkouts.open_by_default, &options);
         }
         CheckoutRow::Terminal => {
-            let options: Vec<(TerminalChoice, &str)> = platform::TERMINALS.to_vec();
-            changed = tabs::segmented(ui, &mut services.settings.checkouts.terminal, &options);
+            let options: Vec<Segment<'_, TerminalChoice>> = platform::TERMINALS
+                .iter()
+                .map(|&(choice, label)| Segment::new(choice, label))
+                .collect();
+            changed = tabs::segments(ui, &mut services.settings.checkouts.terminal, &options);
         }
         CheckoutRow::Agents => opens_assistant = agents(ui, services),
     }
@@ -256,11 +263,9 @@ fn pattern(ui: &mut Ui, services: &mut Services) -> bool {
         .font(theme::fonts::code_font(style::BODY_SIZE))
         .desired_width(ui.available_width().min(480.0));
     let response = ui.add(edit);
-    let example_clone: &Path =
-        Path::new(if cfg!(windows) { r"C:\src\login-app" } else { "/home/you/src/login-app" });
     let example = worktree_path(
         &services.settings.checkouts.worktree_pattern,
-        example_clone,
+        Path::new(platform::EXAMPLE_CLONE),
         12,
         "feature/login-cache",
     );
@@ -280,7 +285,7 @@ fn pattern(ui: &mut Ui, services: &mut Services) -> bool {
 fn agents(ui: &mut Ui, services: &mut Services) -> bool {
     let palette = theme::palette(ui.ctx());
     for kind in [AgentKind::Claude, AgentKind::Codex] {
-        let name = checkouts::agent_name(kind);
+        let name = cli_name(kind);
         let text = match services.agents.detection(kind, &services.background) {
             Detection::Installed(cli) => format!("{name} {}", cli.version),
             Detection::Missing(_) => format!("{name}: not installed"),

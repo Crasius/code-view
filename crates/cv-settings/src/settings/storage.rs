@@ -8,6 +8,7 @@ use std::path::Path;
 use cv_base::theme::{self, FileHue, icons, style};
 use cv_runtime::toasts::ToastAction;
 use cv_services::Services;
+use cv_widgets::numbers::format_bytes;
 use cv_widgets::{buttons, row, skeleton};
 use egui::{Align, Color32, Layout, Rect, RichText, Sense, Ui, vec2};
 use review_store::retention::{
@@ -376,49 +377,4 @@ fn create_folder(folder: &Path) -> Result<(), String> {
 
 fn days(age: std::time::Duration) -> u64 {
     age.as_secs() / (24 * 60 * 60)
-}
-
-/// "0 B", "820 KB", "3.4 MB", "2.31 GB" (binary units, as Explorer shows them). A size whose
-/// rounded number would reach 1024 takes the next unit: "1.0 MB", never "1024 KB".
-pub fn format_bytes(bytes: u64) -> String {
-    const KIB: f64 = 1024.0;
-    let value = bytes as f64;
-    let kilobytes = value / KIB;
-    let megabytes = kilobytes / KIB;
-    if value < KIB {
-        format!("{bytes} B")
-    } else if kilobytes.round() < KIB {
-        format!("{kilobytes:.0} KB")
-    } else if (megabytes * 10.0).round() / 10.0 < KIB {
-        format!("{megabytes:.1} MB")
-    } else {
-        let gigabytes = value / KIB / KIB / KIB;
-        if gigabytes.fract() == 0.0 {
-            format!("{gigabytes:.0} GB")
-        } else {
-            format!("{gigabytes:.2} GB")
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::format_bytes;
-
-    #[test]
-    fn formats_sizes_like_explorer() {
-        assert_eq!(format_bytes(0), "0 B");
-        assert_eq!(format_bytes(820 * 1024), "820 KB");
-        assert_eq!(format_bytes(3 * 1024 * 1024 + 400 * 1024), "3.4 MB");
-        assert_eq!(format_bytes(10 * 1024 * 1024 * 1024), "10 GB");
-        assert_eq!(format_bytes(2_480_000_000), "2.31 GB");
-    }
-
-    #[test]
-    fn a_size_that_rounds_up_to_1024_takes_the_next_unit() {
-        assert_eq!(format_bytes(1024 * 1024 - 1), "1.0 MB");
-        assert_eq!(format_bytes(1023 * 1024), "1023 KB");
-        assert_eq!(format_bytes(1024 * 1024 * 1024 - 1), "1.00 GB");
-        assert_eq!(format_bytes(1023 * 1024 * 1024), "1023.0 MB");
-    }
 }

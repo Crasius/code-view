@@ -6,7 +6,7 @@
 //! repaint on its own.
 
 use cv_base::theme::{self, Palette, motion, style};
-use cv_widgets::{badges, focus, row};
+use cv_widgets::{badges, elide, focus, row};
 use egui::{Align, Layout, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder, pos2, vec2};
 use review_store::{HeaderMode, HeaderModes};
 
@@ -22,6 +22,8 @@ const MINIATURE_MIN: f32 = 180.0;
 const CARD_MIN: f32 = 2.0 * style::SPACE_L + CHOICES_WIDTH + style::SPACE_L + MINIATURE_MIN;
 /// A choice's pictogram.
 const PICTOGRAM: egui::Vec2 = vec2(30.0, 22.0);
+/// The chips' labels and the "Set all tabs to" before them.
+const CHIP_FONT: egui::FontId = egui::FontId::proportional(style::SMALL_SIZE);
 /// The heading leaves this much room for its text beside the chips, or puts them below it.
 const HEADING_TEXT_MIN: f32 = 360.0;
 
@@ -152,18 +154,13 @@ fn set_all_chip(ui: &mut Ui, choice: &Choice, modes: &mut HeaderModes) -> bool {
 
 /// The heading's chips with their label and gaps, as wide as they lay out.
 fn chips_width(ui: &Ui) -> f32 {
-    let label = text_width(ui, "Set all tabs to");
+    let label = elide::text_width(ui, "Set all tabs to", &CHIP_FONT);
     let chips: f32 = CHOICES.iter().map(|choice| chip_size(ui, choice.label).x).sum();
     label + chips + 3.0 * ui.spacing().item_spacing.x
 }
 
-fn text_width(ui: &Ui, text: &str) -> f32 {
-    let font = egui::FontId::proportional(style::SMALL_SIZE);
-    ui.painter().layout_no_wrap(text.to_owned(), font, theme::palette(ui.ctx()).text).size().x
-}
-
 fn chip_size(ui: &Ui, label: &str) -> egui::Vec2 {
-    vec2(text_width(ui, label) + 2.0 * style::SPACE_M, style::CONTROL_HEIGHT)
+    vec2(elide::text_width(ui, label, &CHIP_FONT) + 2.0 * style::SPACE_M, style::CONTROL_HEIGHT)
 }
 
 /// A rounded outlined button with a short label, named "Set all tabs to …" for screen readers.
@@ -181,8 +178,7 @@ fn chip(ui: &mut Ui, label: &str) -> egui::Response {
         Stroke::new(1.0, palette.border_strong),
         StrokeKind::Inside,
     );
-    let font = egui::FontId::proportional(style::SMALL_SIZE);
-    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, font, palette.text);
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, CHIP_FONT, palette.text);
     focus::ring(ui, &response, rect);
     response
 }
