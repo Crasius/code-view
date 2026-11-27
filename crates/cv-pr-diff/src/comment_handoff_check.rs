@@ -62,7 +62,7 @@ fn harness() -> Harness<'static, Scene> {
         )
 }
 
-/// The head line the comments go on, and the one below it.
+/// The head line the comments go on.
 fn commented_line() -> u32 {
     line_of(NEW, "pub fn total(&self)")
 }
@@ -151,19 +151,7 @@ fn write_comment(harness: &mut Harness<'_, Scene>) {
     let plus = harness.state().fixture.view.marker_point(Pane::Inline, row);
     harness.hover_at(plus);
     harness.step();
-    harness.event(egui::Event::PointerButton {
-        pos: plus,
-        button: egui::PointerButton::Primary,
-        pressed: true,
-        modifiers: egui::Modifiers::NONE,
-    });
-    harness.step();
-    harness.event(egui::Event::PointerButton {
-        pos: plus,
-        button: egui::PointerButton::Primary,
-        pressed: false,
-        modifiers: egui::Modifiers::NONE,
-    });
+    harness.click_point(plus, egui::PointerButton::Primary);
     settle(harness);
     assert!(harness.state().fixture.view.composer().is_some(), "the + opens a comment");
     harness.event(egui::Event::Text(BODY.to_owned()));

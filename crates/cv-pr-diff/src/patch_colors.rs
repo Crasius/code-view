@@ -553,20 +553,20 @@ impl PatchColors {
 
     /// Test driver: polls on every repaint request of the workers (see
     /// [`cv_syntax::color_worker::observe_repaints`]) until all colors of `key` are worked out,
-    /// for at most 30 seconds.
+    /// for at most [`cv_testkit::WAIT_LIMIT`].
     #[cfg(test)]
     pub(crate) fn wait_finished(
         &mut self,
         repaints: &Receiver<()>,
         key: &DiffKey,
     ) -> Option<Arc<LineSpans>> {
-        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        let deadline = Instant::now() + cv_testkit::WAIT_LIMIT;
         loop {
             self.poll();
             if let Some(spans) = self.finished(key) {
                 return Some(spans);
             }
-            let left = deadline.checked_duration_since(std::time::Instant::now())?;
+            let left = deadline.checked_duration_since(Instant::now())?;
             repaints.recv_timeout(left).ok()?;
         }
     }
@@ -636,8 +636,6 @@ impl Drop for PatchColors {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
-
     use cv_base::theme::syntax::TokenKind;
     use cv_syntax::color_worker::observe_repaints;
     use review_git::{DiffOptions, FileDiff};
@@ -774,7 +772,7 @@ mod tests {
     #[test]
     fn a_diff_load_hands_over_its_first_colors_before_it_finishes() {
         let ctx = egui::Context::default();
-        let mut colors = PatchColors::default().with_wait(Duration::from_secs(30));
+        let mut colors = PatchColors::default().with_wait(cv_testkit::WAIT_LIMIT);
         let colorer = colors.colorer(&ctx);
         let diff =
             Arc::new(FileDiff::parse_unified(b"@@ -1,1 +1,1 @@\n-fn old() {}\n+fn new() {}\n"));
@@ -828,15 +826,10 @@ mod tests {
         let (key, ctx) = (key("src/cold.rs"), egui::Context::default());
         let repaints = observe_repaints(&ctx);
         let stored_is = |wanted: &LineSpans| {
-            let deadline = Instant::now() + cv_testkit::WAIT_LIMIT;
-            loop {
+            cv_testkit::poll_until("the colors reach the disk tier", || {
                 let stored = cold.read(COLD_KIND, COLD_VERSION, &cold_key(&key));
-                if stored.and_then(|bytes| decode(&bytes)).as_ref() == Some(wanted) {
-                    return;
-                }
-                assert!(Instant::now() < deadline, "the colors reach the disk tier");
-                repaints.recv_timeout(Duration::from_millis(20)).ok();
-            }
+                stored.and_then(|bytes| decode(&bytes)).as_ref() == Some(wanted)
+            });
         };
         let mut colors = PatchColors::default();
         colors.cold_worthy = Duration::ZERO;

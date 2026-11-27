@@ -241,23 +241,22 @@ fn reveal_thread(
     view_height: f32,
 ) -> ThreadReveal {
     let threads = inputs.threads;
-    let row = built.rows.iter().position(
-        |row| matches!(row.kind, RowKind::Thread(index) if threads[index as usize].id == thread_id),
-    );
-    if let Some(row) = row {
-        let flash = threads
-            .iter()
-            .find(|thread| thread.id == thread_id)
-            .and_then(|thread| thread_lines(thread));
-        return ThreadReveal::Scroll((offsets[row] - view_height / 3.0).max(0.0), flash);
+    let found = built.rows.iter().enumerate().find_map(|(row, built_row)| match built_row.kind {
+        RowKind::Thread(index) if threads[index as usize].id == thread_id => {
+            Some((row, threads[index as usize]))
+        }
+        _ => None,
+    });
+    if let Some((row, thread)) = found {
+        let top = (offsets[row] - view_height / 3.0).max(0.0);
+        return ThreadReveal::Scroll(top, thread_lines(thread));
     }
     let Some(thread) =
         built.detached.iter().map(|index| threads[*index]).find(|thread| thread.id == thread_id)
     else {
         return ThreadReveal::Keep;
     };
-    let anchor = thread.anchor.as_ref().filter(|_| !thread.is_outdated && inputs.can_expand());
-    if let Some(gap) = anchor.and_then(|anchor| built.gap_of(anchor.old_line, anchor.new_line)) {
+    if let Some(gap) = built.thread_gap(thread, inputs.can_expand()) {
         built.expand_gap(gap, Expand::All);
         return ThreadReveal::Keep;
     }

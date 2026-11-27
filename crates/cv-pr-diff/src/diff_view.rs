@@ -47,7 +47,8 @@ use self::place::Place;
 use self::removals::Popover;
 pub use self::requests::LineRequest;
 use self::requests::Requests;
-use self::rows::{Change, DiffRows, KeepPlace};
+pub(crate) use self::rows::DiffRows;
+use self::rows::{Change, KeepPlace};
 use self::selecting::{Code, Drag, KeysView, Selecting};
 use crate::detached_threads::{self, Detached, DetachedEvent};
 use crate::diff_overview::past_end::Ends;
@@ -312,8 +313,7 @@ impl DiffView {
         }
         let detached = Detached {
             threads: &self.built.detached,
-            gaps: &self.built.gaps,
-            reveals: &self.built.reveals,
+            rows: &self.built,
             can_expand: inputs.can_expand(),
         };
         match detached_threads::show(ui, &detached, inputs, threads_ui)? {

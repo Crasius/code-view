@@ -4,7 +4,6 @@
 
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::time::{Duration, Instant};
 
 use egui::{Color32, Shape};
 use egui_kittest::Harness;
@@ -358,10 +357,9 @@ fn a_file_opened_right_after_the_pull_request_is_colored_in_its_first_frame() {
     state
         .colors
         .warm_up(&[changed_file("src/lib.rs"), changed_file(TS_PATH)], Some(TS_PATH.to_owned()));
-    let started = Instant::now();
-    while !grammar::is_warming(grammar) && started.elapsed() < Duration::from_secs(30) {
-        std::thread::yield_now();
-    }
+    poll_until("the warm-up compiles the TypeScript grammar", || {
+        grammar::is_warming(grammar) || grammar::is_warmed(grammar)
+    });
     let mut harness = Harness::builder()
         .with_size([1180.0, 760.0])
         .with_context_setup(|ctx| {

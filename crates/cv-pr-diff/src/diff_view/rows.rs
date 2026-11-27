@@ -106,7 +106,7 @@ pub(super) enum KeepPlace {
 }
 
 #[derive(Default)]
-pub(super) struct DiffRows {
+pub(crate) struct DiffRows {
     pub rows: Vec<Row>,
     /// What the rows were built from; `None` before the first build.
     key: Option<BuildKey>,
@@ -139,7 +139,7 @@ pub(super) struct DiffRows {
 
 impl DiffRows {
     /// What rows for `inputs` and the new comment's card at `composer` are built from.
-    pub(crate) fn key_for(
+    pub(super) fn key_for(
         &self,
         inputs: &DiffInputs<'_>,
         composer: Option<ComposerAnchor>,
@@ -158,7 +158,7 @@ impl DiffRows {
     }
 
     /// How rows built from `key` and `threads` would differ; `None` when they are these rows.
-    pub(crate) fn change_to(&self, key: &BuildKey, threads: &[&ReviewThread]) -> Option<Change> {
+    pub(super) fn change_to(&self, key: &BuildKey, threads: &[&ReviewThread]) -> Option<Change> {
         let same_threads = self.threads.matches(threads);
         let built = self.key.as_ref();
         if built == Some(key) && same_threads {
@@ -178,7 +178,7 @@ impl DiffRows {
     }
 
     /// Builds the rows from `key` and returns the rows they replace.
-    pub(crate) fn rebuild(&mut self, inputs: &DiffInputs<'_>, key: BuildKey) -> Vec<Row> {
+    pub(super) fn rebuild(&mut self, inputs: &DiffInputs<'_>, key: BuildKey) -> Vec<Row> {
         let diff = inputs.diff.as_ref();
         if self.key.as_ref().is_none_or(|built| built.diff != key.diff) {
             self.word_highlights = WordHighlights::new(diff);
@@ -264,6 +264,12 @@ impl DiffRows {
             .iter()
             .zip(&self.reveals)
             .position(|(gap, reveal)| reveal.hidden(gap) > 0 && gap.contains(old_line, new_line))
+    }
+
+    /// The collapsed gap holding `thread`'s line, when revealing it would place the thread inline.
+    pub(crate) fn thread_gap(&self, thread: &ReviewThread, can_expand: bool) -> Option<usize> {
+        let anchor = thread.anchor.as_ref().filter(|_| !thread.is_outdated && can_expand)?;
+        self.gap_of(anchor.old_line, anchor.new_line)
     }
 
     /// The row holding the anchor's line in these rows of `diff`, or the collapsed gap hiding it.

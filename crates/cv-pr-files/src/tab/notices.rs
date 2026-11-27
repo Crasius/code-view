@@ -4,7 +4,7 @@
 use review_git::{ChangeKind, ChangedFile};
 
 use cv_base::theme::{self, icons};
-use cv_pr_diff::whitespace_notice;
+use cv_pr_diff::whitespace_notice::{self, HiddenNoticePick};
 use cv_pr_session::web_link;
 use cv_widgets::states::{self, Action};
 
@@ -32,8 +32,8 @@ pub(crate) fn without_changes(
     }
     if ignores_whitespace {
         return match whitespace_notice::hidden_notice(ui, web_link) {
-            Some(true) => Some(NoChanges::ShowWhitespace),
-            Some(false) => {
+            Some(HiddenNoticePick::ShowWhitespace) => Some(NoChanges::ShowWhitespace),
+            Some(HiddenNoticePick::OpenLink) => {
                 open_link(ui, web_link);
                 None
             }
