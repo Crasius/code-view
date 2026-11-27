@@ -192,18 +192,28 @@ fn only_the_cards_near_the_view_load() {
         started.len()
     );
 
-    // The arrows scroll three rows, Page Down a screen less the card header.
+    // The arrows scroll three rows, Page Down a screen less the card header. The cards measured
+    // after the jump grew the content past where the view stood: placing the view there must not
+    // spring back and leave it coasting, which moved every later key's target.
     let offset = |harness: &Harness<'_, Scene>| harness.state().summary.viewport.top() + MARGIN;
     key(&mut harness, Key::Home);
-    assert!(offset(&harness).abs() < 0.5, "Home leads to the top: {}", offset(&harness));
+    assert!(offset(&harness).abs() < 0.5, "Home leads to the top: {} not 0", offset(&harness));
     let geometry = harness.state().summary.geometry.expect("laid out");
     key(&mut harness, Key::ArrowDown);
     let rows = 3.0 * geometry.line;
-    assert!((offset(&harness) - rows).abs() < 0.5, "Down scrolls 3 rows: {}", offset(&harness));
+    assert!(
+        (offset(&harness) - rows).abs() < 0.5,
+        "Down scrolls 3 rows: {} not {rows} ({geometry:?})",
+        offset(&harness)
+    );
     let screen = harness.state().summary.viewport.height() - geometry.header;
     key(&mut harness, Key::PageDown);
     let paged = rows + screen;
-    assert!((offset(&harness) - paged).abs() < 0.5, "Page Down: {} not {paged}", offset(&harness));
+    assert!(
+        (offset(&harness) - paged).abs() < 0.5,
+        "Page Down: {} not {paged} ({geometry:?})",
+        offset(&harness)
+    );
 }
 
 /// 10,000 files with about 250,000 changed lines (and one 20,000-line file): every frame looks at
