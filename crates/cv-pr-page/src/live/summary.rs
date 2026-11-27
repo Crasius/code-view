@@ -190,43 +190,12 @@ fn by(names: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use cv_pr_threads::samples;
-    use review_core::{
-        DiffStat, MergeStatus, PullRequestSummary, ReviewVote, Reviewer, ThreadStatus, UserIdentity,
-    };
-    use time::OffsetDateTime;
+    use review_core::{MergeStatus, ReviewVote, Reviewer, ThreadStatus, UserIdentity};
 
     use super::*;
 
     fn detail(head: &str) -> PullRequestDetail {
-        PullRequestDetail {
-            summary: PullRequestSummary {
-                repository_key: "o/r".into(),
-                repository_name: "r".into(),
-                number: 1,
-                title: "Fix".into(),
-                author: UserIdentity::default(),
-                state: PullRequestState::Open,
-                is_draft: false,
-                source_branch: "feature".into(),
-                target_branch: "main".into(),
-                created_at: OffsetDateTime::UNIX_EPOCH,
-                updated_at: None,
-                web_url: String::new(),
-                labels: Vec::new(),
-                reviewers: Vec::new(),
-                checks: None,
-                diff_stat: DiffStat::default(),
-                head_sha: None,
-                target_sha: None,
-            },
-            description: String::new(),
-            target_sha: "base".into(),
-            head_sha: head.into(),
-            merge_status: MergeStatus::Mergeable,
-            git_fetch_refs: Vec::new(),
-            closed_at: None,
-            auto_complete: None,
-        }
+        PullRequestDetail { head_sha: head.into(), ..cv_testkit::samples::detail("o/r", 1) }
     }
 
     fn thread(id: &str, comments: &[(&str, &str)]) -> ReviewThread {

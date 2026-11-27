@@ -19,6 +19,8 @@ mod live;
 mod merge_button;
 mod overview;
 #[cfg(test)]
+mod page_harness;
+#[cfg(test)]
 mod pipelines_follow_check;
 #[cfg(test)]
 mod update_place_walkthrough;

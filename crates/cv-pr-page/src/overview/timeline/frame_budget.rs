@@ -7,7 +7,7 @@ use review_core::ReviewThread;
 
 use super::cards;
 use cv_pr_threads::{ThreadsUi, samples};
-use cv_testkit::frame_bench::{Bench, PATTERNS, Report, SCALES};
+use cv_testkit::frame_bench::{self, Bench, Report, SCALES};
 use cv_widgets::scroll;
 
 const THREADS: usize = 500;
@@ -34,11 +34,7 @@ fn bench_timeline(pixels_per_point: f32, reports: &mut Vec<Report>) {
     let rect = bench.ctx.content_rect();
     let pointer = pos2(rect.left() + 400.0, rect.center().y);
     bench.warm_up(pointer);
-    let scale = pixels_per_point * 100.0;
-    for (pattern, speed) in PATTERNS {
-        let name = format!("timeline 500 threads @{scale:.0}% {pattern}");
-        reports.push(bench.scroll_best(&name, pointer, vec2(0.0, -speed)));
-    }
+    reports.extend(bench.scroll_patterns("timeline 500 threads", pointer, vec2(0.0, -1.0)));
 }
 
 #[test]
@@ -48,10 +44,5 @@ fn frame_budget_timeline() {
     for pixels_per_point in SCALES {
         bench_timeline(pixels_per_point, &mut reports);
     }
-    for report in &reports {
-        report.print();
-    }
-    for report in &reports {
-        report.assert_within_budget();
-    }
+    frame_bench::finish(&reports);
 }
