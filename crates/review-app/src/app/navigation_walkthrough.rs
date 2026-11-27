@@ -19,7 +19,7 @@ use review_store::{AppPaths, PullRequestTab};
 
 use super::ReviewApp;
 use super::scripted_platforms::{Origin, origin};
-use super::walkthrough::{app_with, saved_paths, settle_background, wait_until};
+use super::walkthrough::{app_with, pump, saved_paths, settle_background, wait_until};
 use cv_base::platform;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::provider::{Script, Scripted};
@@ -89,7 +89,7 @@ fn linked_card_and_breadcrumbs_lead_to_their_targets() {
     assert_eq!(harness.state().route, Route::PullRequest(key(NUMBER)));
     // What the revisit sent has landed; then two simulated seconds in which a poll would ask.
     settle_background(&mut harness);
-    harness.run_steps(120);
+    pump(&mut harness, 2.0);
     assert_eq!(
         linked_calls.load(Ordering::SeqCst),
         1,
@@ -97,24 +97,19 @@ fn linked_card_and_breadcrumbs_lead_to_their_targets() {
     );
 
     // Every crumb leads to its level.
-    harness.click_at(harness.get_by_role_and_label(Role::Link, REPOSITORY).rect());
-    settle(&mut harness);
-    assert_eq!(
-        harness.state().route,
-        Route::RepositoryPullRequests {
-            connection_id: CONNECTION_ID.to_owned(),
-            repository_key: REPOSITORY.to_owned()
-        }
-    );
-    harness.click_at(harness.get_by_role_and_label(Role::Link, CONNECTION_NAME).rect());
-    settle(&mut harness);
-    assert_eq!(
-        harness.state().route,
-        Route::Connection { connection_id: CONNECTION_ID.to_owned() }
-    );
-    harness.click_at(harness.get_by_role_and_label(Role::Link, review_core::APP_NAME).rect());
-    settle(&mut harness);
-    assert_eq!(harness.state().route, Route::MyPullRequests);
+    let repository = Route::RepositoryPullRequests {
+        connection_id: CONNECTION_ID.to_owned(),
+        repository_key: REPOSITORY.to_owned(),
+    };
+    let connection_page = Route::Connection { connection_id: CONNECTION_ID.to_owned() };
+    for (crumb, route) in [
+        (REPOSITORY, repository),
+        (CONNECTION_NAME, connection_page),
+        (review_core::APP_NAME, Route::MyPullRequests),
+    ] {
+        harness.click_at(harness.get_by_role_and_label(Role::Link, crumb).rect());
+        wait_for_place(&mut harness, &(route, None));
+    }
     assert!(
         harness.query_by_role_and_label(Role::Link, review_core::APP_NAME).is_none(),
         "the root is the current page now"
@@ -138,44 +133,39 @@ fn back_and_forward_through_tabs(harness: &mut Harness<'_, ReviewApp>) {
     harness.state_mut().navigator.go(pull_request.clone());
     wait_until(harness, "the pull request again", |harness| tab_node(harness, "Files").is_some());
     settle_background(harness);
-    assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Overview)));
-    click_tab(harness, "Files");
-    click_tab(harness, "Pipelines");
-    assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Pipelines)));
+    let on_tab = |tab| (pull_request.clone(), Some(tab));
+    assert_eq!(place(harness), on_tab(PullRequestTab::Overview));
+    click_tab(harness, "Files", &on_tab(PullRequestTab::Files));
+    click_tab(harness, "Pipelines", &on_tab(PullRequestTab::Pipelines));
 
     // A side button click is a press and a release: one step, over the page's content.
     side_button(harness, PointerButton::Extra1);
-    assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Files)));
+    wait_for_place(harness, &on_tab(PullRequestTab::Files));
     harness.key_press_modifiers(Modifiers::ALT, egui::Key::ArrowLeft);
-    settle(harness);
-    assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Overview)));
+    wait_for_place(harness, &on_tab(PullRequestTab::Overview));
     harness.key_press_modifiers(Modifiers::ALT, egui::Key::ArrowLeft);
-    settle(harness);
-    assert_eq!(place(harness), (Route::MyPullRequests, None));
+    wait_for_place(harness, &(Route::MyPullRequests, None));
 
     // Forward retraces the steps, tab by tab.
     side_button(harness, PointerButton::Extra2);
-    assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Overview)));
+    wait_for_place(harness, &on_tab(PullRequestTab::Overview));
     harness.key_press_modifiers(Modifiers::ALT, egui::Key::ArrowRight);
-    settle(harness);
-    assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Files)));
+    wait_for_place(harness, &on_tab(PullRequestTab::Files));
     assert!(
         harness.query_by_label_contains("Forward to Pull request #7, Pipelines tab (").is_some(),
         "the forward arrow names the tab it leads to"
     );
 
     // A new step clears forward: Alt+Right goes nowhere, the arrow rests disabled.
-    click_tab(harness, "Commits");
+    click_tab(harness, "Commits", &on_tab(PullRequestTab::Commits));
     harness.key_press_modifiers(Modifiers::ALT, egui::Key::ArrowRight);
-    settle(harness);
-    assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Commits)));
+    wait_for_place(harness, &on_tab(PullRequestTab::Commits));
     let forward = harness.get_by_label_contains("Forward (");
     assert!(forward.accesskit_node().is_disabled(), "forward was cleared");
 
     // The bar's back arrow leads where its tooltip says.
     harness.click_at(harness.get_by_label_contains("Back to Pull request #7, Files tab (").rect());
-    settle(harness);
-    assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Files)));
+    wait_for_place(harness, &on_tab(PullRequestTab::Files));
 
     command_arrows_on_macos(harness, &pull_request);
 }
@@ -192,30 +182,27 @@ fn command_arrows_on_macos(harness: &mut Harness<'_, ReviewApp>, pull_request: &
     harness.ctx.set_os(egui::os::OperatingSystem::Mac);
     // What egui-winit reports for ⌘ on macOS: the Command key, which is also egui's `command`.
     let command = Modifiers::MAC_CMD | Modifiers::COMMAND;
+    let on_tab = |tab| (pull_request.clone(), Some(tab));
     harness.key_press_modifiers(command, Key::ArrowRight);
-    settle(harness);
-    assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Commits)));
+    wait_for_place(harness, &on_tab(PullRequestTab::Commits));
     harness.key_press_modifiers(command, Key::ArrowLeft);
-    settle(harness);
-    assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Files)));
+    wait_for_place(harness, &on_tab(PullRequestTab::Files));
 
     // The search box has the keys: Cmd+arrows and Option+arrows stay in it.
     harness.key_press_modifiers(command, Key::K);
-    settle(harness);
-    assert!(harness.ctx.text_edit_focused(), "the search box takes the keys");
+    wait_until(harness, "the search box to take the keys", |harness| {
+        harness.ctx.text_edit_focused()
+    });
     for modifiers in [command, Modifiers::ALT] {
         for arrow in [Key::ArrowLeft, Key::ArrowRight] {
             harness.key_press_modifiers(modifiers, arrow);
-            settle(harness);
-            assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Files)));
+            wait_for_place(harness, &on_tab(PullRequestTab::Files));
         }
     }
     harness.key_press(Key::Escape);
-    settle(harness);
-    assert!(!harness.ctx.text_edit_focused(), "Esc closed the search");
+    wait_until(harness, "Esc to close the search", |harness| !harness.ctx.text_edit_focused());
     harness.key_press_modifiers(command, Key::ArrowLeft);
-    settle(harness);
-    assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Overview)));
+    wait_for_place(harness, &on_tab(PullRequestTab::Overview));
 }
 
 /// The route and the pull request tab the app shows.
@@ -230,9 +217,19 @@ fn tab_node<'a>(harness: &'a Harness<'_, ReviewApp>, name: &str) -> Option<egui_
     })
 }
 
-fn click_tab(harness: &mut Harness<'_, ReviewApp>, name: &str) {
+/// Waits until the app shows `shown` ([`place`]).
+fn wait_for_place(harness: &mut Harness<'_, ReviewApp>, shown: &(Route, Option<PullRequestTab>)) {
+    wait_until(harness, &format!("{shown:?}"), |harness| place(harness) == *shown);
+}
+
+/// Clicks the tab named `name` and waits until the app shows `then`.
+fn click_tab(
+    harness: &mut Harness<'_, ReviewApp>,
+    name: &str,
+    then: &(Route, Option<PullRequestTab>),
+) {
     harness.click_at(tab_node(harness, name).unwrap_or_else(|| panic!("the {name} tab")).rect());
-    settle(harness);
+    wait_for_place(harness, then);
 }
 
 /// Presses and releases a mouse side button in the middle of the page.
@@ -243,7 +240,6 @@ fn side_button(harness: &mut Harness<'_, ReviewApp>, button: PointerButton) {
         harness.event(Event::PointerButton { pos, button, pressed, modifiers: Modifiers::NONE });
         harness.step();
     }
-    settle(harness);
 }
 
 fn key(number: u64) -> PullRequestKey {
@@ -266,12 +262,6 @@ fn harness(
             linked_calls: linked_calls.clone(),
         }))
     })
-}
-
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..20 {
-        harness.step();
-    }
 }
 
 fn connection() -> Connection {

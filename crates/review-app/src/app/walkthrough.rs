@@ -1,7 +1,7 @@
 //! The walkthrough kit: how a test starts the whole app, waits for it, clicks and reads it.
 //!
-//! The waits differ in when they return. [`wait_until`] runs four more frames after its condition
-//! held, so what the frame that met it started has landed. [`wait_until_unsettled`] returns on the
+//! The waits differ in when they return. [`wait_until`] runs [`SETTLE_FRAMES`] more frames after
+//! its condition held, so what the frame that met it started has landed. [`wait_until_unsettled`] returns on the
 //! frame the condition held. [`wait_for`] returns a value, also on that frame, and
 //! [`wait_until_still`] a value that two frames in a row gave (a place at rest). The other ways to
 //! let time pass: [`settle_background`] (three frames without background work, before a place is
@@ -169,8 +169,11 @@ pub(super) fn wait_until_still<T: PartialEq>(
     )
 }
 
+/// The frames [`wait_until`] runs after its condition held.
+pub(super) const SETTLE_FRAMES: usize = 4;
+
 fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    harness.run_steps(4);
+    harness.run_steps(SETTLE_FRAMES);
 }
 
 /// Steps until no background work (git, the provider) is left for a few frames: what was on its

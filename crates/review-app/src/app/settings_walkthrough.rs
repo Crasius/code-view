@@ -15,7 +15,9 @@ use super::ReviewApp;
 use super::github_mock::GitHubHost;
 use super::scripted_platforms::platforms;
 use super::tree_side_walkthrough as tree_side;
-use super::walkthrough::{app, app_with, has, saved_paths, saved_settings, wait_until};
+use super::walkthrough::{
+    app, app_with, has, saved_paths, saved_settings, wait_until, wait_until_still,
+};
 use cv_runtime::route::Route;
 use cv_testkit::{Clicks, ScratchDir, samples};
 
@@ -54,10 +56,7 @@ fn sections_search_previews_and_connections() {
     }
 
     // The search: Ctrl+F, a word, the matching rows across sections.
-    harness.key_press_modifiers(Modifiers::COMMAND, Key::F);
-    settle(&mut harness);
-    harness.event(egui::Event::Text("font".to_owned()));
-    settle(&mut harness);
+    search(&mut harness, "font");
     assert!(has(&harness, "Code font size"), "the Appearance row");
     assert!(has(&harness, "1 setting matches “font”"));
     assert!(!has(&harness, "Open folder"), "nothing from Storage");
@@ -65,37 +64,30 @@ fn sections_search_previews_and_connections() {
 
     // Esc in the field clears it; the section is back.
     harness.key_press(Key::Escape);
-    settle(&mut harness);
+    wait_for_no_results(&mut harness, "font");
     assert_only(&harness, "Keyboard and mouse");
 
     // No match: the empty state, and "Clear search" leads back.
-    harness.key_press_modifiers(Modifiers::COMMAND, Key::F);
-    settle(&mut harness);
-    harness.event(egui::Event::Text("zzz".to_owned()));
-    settle(&mut harness);
+    search(&mut harness, "zzz");
     assert!(has(&harness, "No setting matches “zzz”"));
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Clear search").rect());
-    settle(&mut harness);
-    assert!(!has(&harness, "No setting matches “zzz”"));
+    wait_for_no_results(&mut harness, "zzz");
     assert_only(&harness, "Keyboard and mouse");
 
     // The Appearance sample follows the diff layout.
     open(&mut harness, "Appearance");
     assert!(harness.query_by_role_and_label(Role::Label, "Side by side").is_some());
     harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "Inline").rect());
-    settle(&mut harness);
-    assert!(
-        harness.query_by_role_and_label(Role::Label, "Inline").is_some(),
-        "the sample is inline"
-    );
+    wait_until(&mut harness, "the sample to be inline", |harness| {
+        harness.query_by_role_and_label(Role::Label, "Inline").is_some()
+    });
     assert!(harness.query_by_role_and_label(Role::Label, "Side by side").is_none());
 
     // A connection's row opens its facts with Check again, Edit and Remove.
     open(&mut harness, "Connections");
     assert!(!has(&harness, "Check again"));
-    harness.click_at(harness.get_by_role_and_label(Role::Button, "Contoso GitHub").rect());
-    settle(&mut harness);
-    assert!(has(&harness, "Check again") && has(&harness, "Edit") && has(&harness, "Remove…"));
+    open_connection(&mut harness);
+    assert!(has(&harness, "Edit") && has(&harness, "Remove…"));
     assert!(has(&harness, "github.com"), "the host among the facts");
 }
 
@@ -118,8 +110,7 @@ fn sections_fit_a_narrow_window() {
         );
     }
     open(&mut harness, "Connections");
-    harness.click_at(harness.get_by_role_and_label(Role::Button, "Contoso GitHub").rect());
-    settle(&mut harness);
+    open_connection(&mut harness);
     findings.extend(super::clip_check::inspect(&mut harness));
     assert!(findings.is_empty(), "layout problems:\n{}", findings.join("\n"));
 }
@@ -159,21 +150,19 @@ fn file_tree_side_moves_the_tree() {
     wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
 
     for word in ["tree", "sidebar", "left", "right"] {
-        harness.key_press_modifiers(Modifiers::COMMAND, Key::F);
-        settle(&mut harness);
-        harness.event(egui::Event::Text(word.to_owned()));
-        settle(&mut harness);
+        search(&mut harness, word);
         assert!(has(&harness, "File tree side"), "{word:?} finds the row");
         harness.key_press(Key::Escape);
-        settle(&mut harness);
+        wait_for_no_results(&mut harness, word);
     }
 
     open(&mut harness, "Appearance");
     harness.get_by_label("File tree side").scroll_to_me();
-    settle(&mut harness);
-    harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "Right").rect());
-    settle(&mut harness);
-    assert_eq!(saved_settings(&harness).file_tree_side, TreeSide::Right, "Right is saved");
+    let right = in_view(&mut harness, Role::RadioButton, "Right");
+    harness.click_at(right);
+    wait_until(&mut harness, "Right to be saved", |harness| {
+        saved_settings(harness).file_tree_side == TreeSide::Right
+    });
 
     harness.key_press_modifiers(Modifiers::ALT, Key::ArrowLeft);
     wait_until(&mut harness, "the pull request list", |harness| {
@@ -200,8 +189,7 @@ fn checkboxes_center_on_their_rows() {
     for (section, name, description) in SWITCHES {
         open(&mut harness, section);
         harness.get_by_role_and_label(Role::CheckBox, name).scroll_to_me();
-        settle(&mut harness);
-        let control = harness.get_by_role_and_label(Role::CheckBox, name).rect().center().y;
+        let control = in_view(&mut harness, Role::CheckBox, name).center().y;
         let block = harness
             .get_by_role_and_label(Role::Label, name)
             .rect()
@@ -214,9 +202,50 @@ fn checkboxes_center_on_their_rows() {
 
 /// Shows the sample: beside the rows it is always in view, above them it is at the top.
 fn show_sample(harness: &mut Harness<'_, ReviewApp>) {
-    settle(harness);
+    wait_until(harness, "the live sample", |harness| {
+        harness.query_by_label("Live sample").is_some()
+    });
     harness.get_by_label("Live sample").scroll_to_me();
-    settle(harness);
+    let window = harness.ctx.content_rect();
+    wait_until_still(harness, "the live sample's top in view", |harness| {
+        let sample = harness.query_by_label("Live sample")?.rect();
+        window.contains(sample.left_top()).then_some(sample)
+    });
+}
+
+/// Waits until the widget of `role` labelled `label`, scrolled to, rests inside the window, and
+/// returns where it is.
+fn in_view(harness: &mut Harness<'_, ReviewApp>, role: Role, label: &str) -> egui::Rect {
+    let window = harness.ctx.content_rect();
+    wait_until_still(harness, &format!("{label} in view"), |harness| {
+        let rect = harness.query_by_role_and_label(role, label)?.rect();
+        window.contains_rect(rect).then_some(rect)
+    })
+}
+
+/// Ctrl+F, then `word` typed into the search, once the search field has the keys.
+fn search(harness: &mut Harness<'_, ReviewApp>, word: &str) {
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::F);
+    wait_until(harness, "the search field to take the keys", |harness| {
+        harness.ctx.text_edit_focused()
+    });
+    harness.event(egui::Event::Text(word.to_owned()));
+    let quoted = format!("“{word}”");
+    wait_until(harness, &format!("the results for {quoted}"), |harness| has(harness, &quoted));
+}
+
+/// Waits until the results for `word` are gone: the search was cleared.
+fn wait_for_no_results(harness: &mut Harness<'_, ReviewApp>, word: &str) {
+    let quoted = format!("“{word}”");
+    wait_until(harness, &format!("the results for {quoted} to go"), |harness| {
+        !has(harness, &quoted)
+    });
+}
+
+/// Clicks the Contoso GitHub connection's row and waits for its facts.
+fn open_connection(harness: &mut Harness<'_, ReviewApp>) {
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Contoso GitHub").rect());
+    wait_until(harness, "the connection's facts", |harness| has(harness, "Check again"));
 }
 
 /// The section's own text shows, every other section's does not.
@@ -226,9 +255,12 @@ fn assert_only(harness: &Harness<'_, ReviewApp>, shown: &str) {
     }
 }
 
+/// Clicks the section `title` in the sidebar and waits for the text only it shows.
 fn open(harness: &mut Harness<'_, ReviewApp>, title: &str) {
+    let (_, marker) =
+        SECTIONS.into_iter().find(|(section, _)| *section == title).expect("a section");
     harness.click_at(harness.get_by_role_and_label(Role::Tab, title).rect());
-    settle(harness);
+    wait_until(harness, &format!("the {title} section"), |harness| has(harness, marker));
 }
 
 /// The app on `scratch` with a GitHub and a GitLab connection, in a window `width` wide.
@@ -244,10 +276,4 @@ fn harness(scratch: &ScratchDir, width: f32) -> Harness<'static, ReviewApp> {
     });
     let builder = Harness::builder().with_size([width, 900.0]).with_step_dt(1.0 / 60.0);
     app_with(builder, saved_paths(scratch, &connections), platforms(None))
-}
-
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..30 {
-        harness.step();
-    }
 }

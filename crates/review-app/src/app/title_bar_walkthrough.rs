@@ -6,7 +6,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::walkthrough::app_with;
+use super::walkthrough::{app_with, wait_until};
 use cv_runtime::route::Route;
 use cv_testkit::ScratchDir;
 
@@ -21,14 +21,10 @@ fn harness(scratch: &ScratchDir) -> Harness<'static, ReviewApp> {
         connection_id: "Acme GitHub".to_owned(),
         repository_key: "acme/widgets".to_owned(),
     });
-    settle(&mut harness);
+    wait_until(&mut harness, "the repository's list in the title bar", |harness| {
+        harness.query_by_label("acme/widgets (current page)").is_some()
+    });
     harness
-}
-
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..30 {
-        harness.step();
-    }
 }
 
 fn set_window(harness: &mut Harness<'_, ReviewApp>, is_focused: bool, is_maximized: bool) {
@@ -52,24 +48,23 @@ fn caption_buttons_maximized_and_search() {
         harness.query_by_role_and_label(Role::Link, review_core::APP_NAME).is_some(),
         "the breadcrumbs moved into the title bar"
     );
-    assert!(harness.query_by_label("acme/widgets (current page)").is_some());
 
     set_window(&mut harness, false, true);
-    settle(&mut harness);
-    assert!(
-        harness.query_by_role_and_label(Role::Button, "Restore").is_some(),
-        "maximized shows restore"
-    );
+    wait_until(&mut harness, "the maximized window's Restore button", |harness| {
+        harness.query_by_role_and_label(Role::Button, "Restore").is_some()
+    });
     set_window(&mut harness, true, false);
 
     // Ctrl+K focuses the search; with nothing loaded the text still leads to the full list.
     harness.key_press_modifiers(Modifiers::COMMAND, Key::K);
     harness.event(egui::Event::Text("widgets".to_owned()));
-    settle(&mut harness);
     let filter = "Show all pull requests";
-    assert!(harness.query_by_label(filter).is_some(), "the search offers the full list");
+    wait_until(&mut harness, "the search to offer the full list", |harness| {
+        harness.query_by_label(filter).is_some()
+    });
     harness.key_press(Key::Enter);
-    settle(&mut harness);
-    assert_eq!(harness.state().route, Route::MyPullRequests, "Enter runs the highlighted result");
+    wait_until(&mut harness, "Enter to run the highlighted result", |harness| {
+        harness.state().route == Route::MyPullRequests
+    });
     assert!(harness.query_by_label(filter).is_none(), "the results close after a pick");
 }
