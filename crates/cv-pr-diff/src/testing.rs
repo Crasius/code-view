@@ -14,7 +14,8 @@ use cv_syntax::grammar;
 use cv_syntax::highlight::{self, LineSpans};
 use egui_kittest::Harness;
 use review_core::{
-    NewThread, ProviderKind, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus, UserIdentity,
+    DiffSide, NewThread, ProviderKind, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus,
+    UserIdentity,
 };
 use review_git::FileDiff;
 use review_store::{PaneSizes, ThemePreference};
@@ -158,14 +159,33 @@ pub struct Fixture {
 }
 
 pub fn fixture(layout: Layout) -> Fixture {
+    fixture_of(layout, Some(OLD), Some(NEW))
+}
+
+/// The unified diff of two texts as the app parses it, with 3 lines of context.
+pub fn diff_of(old: &str, new: &str) -> Arc<FileDiff> {
     let unified =
-        similar::TextDiff::from_lines(OLD, NEW).unified_diff().context_radius(3).to_string();
+        similar::TextDiff::from_lines(old, new).unified_diff().context_radius(3).to_string();
+    Arc::new(FileDiff::parse_unified(unified.as_bytes()))
+}
+
+/// The whole file as one side, as the Files tab shows an added or deleted file.
+pub fn whole_file_fixture(side: DiffSide) -> Fixture {
+    let layout = Layout::WholeFile(side);
+    match side {
+        DiffSide::Old => fixture_of(layout, Some(OLD), None),
+        DiffSide::New => fixture_of(layout, None, Some(NEW)),
+    }
+}
+
+/// [`fixture`] for other texts: `None` is a side the file does not have.
+pub fn fixture_of(layout: Layout, old: Option<&str>, new: Option<&str>) -> Fixture {
     Fixture {
         view: DiffView::default(),
-        diff: Arc::new(FileDiff::parse_unified(unified.as_bytes())),
+        diff: diff_of(old.unwrap_or_default(), new.unwrap_or_default()),
         contents: FileContents {
-            old: Some(side(OLD)),
-            new: Some(side(NEW)),
+            old: old.map(side),
+            new: new.map(side),
             coloring: Coloring::Done,
             error: None,
         },
@@ -198,8 +218,13 @@ pub fn side(source: &str) -> SideContents {
 }
 
 pub fn harness(fixture: Fixture) -> Harness<'static, Fixture> {
+    harness_sized(fixture, [1180.0, 760.0])
+}
+
+/// [`harness`] with a window of another `size`.
+pub fn harness_sized(fixture: Fixture, size: [f32; 2]) -> Harness<'static, Fixture> {
     Harness::builder()
-        .with_size([1180.0, 760.0])
+        .with_size(size)
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
             theme::motion::set_reduced(ctx, false);

@@ -18,8 +18,7 @@ use review_git::FileDiff;
 
 use super::{PAST_END_LABEL, last_view_box, past_end};
 use crate::diff_view::OVERVIEW_WIDTH;
-use crate::testing::{Fixture, fixture, harness, settle, side};
-use cv_code::contents::{Coloring, FileContents};
+use crate::testing::{Fixture, fixture_of, harness, settle};
 use cv_code::diff_rows::Layout;
 
 /// The harness's size (see [`harness`]).
@@ -41,14 +40,8 @@ fn file_fixture(lines: u32) -> Fixture {
     }
     let unified =
         similar::TextDiff::from_lines(&old, &new).unified_diff().context_radius(10_000).to_string();
-    let mut fixture = fixture(Layout::SideBySide);
+    let mut fixture = fixture_of(Layout::SideBySide, Some(&old), Some(&new));
     fixture.diff = Arc::new(FileDiff::parse_unified(unified.as_bytes()));
-    fixture.contents = FileContents {
-        old: Some(side(&old)),
-        new: Some(side(&new)),
-        coloring: Coloring::Done,
-        error: None,
-    };
     fixture
 }
 
@@ -206,13 +199,7 @@ fn new_only_fixture(lines: u32, cut: u32) -> Fixture {
             writeln!(new, "    let value_{line} = {changed};").expect("a string takes text");
         }
     }
-    let unified =
-        similar::TextDiff::from_lines(&old, &new).unified_diff().context_radius(3).to_string();
-    let mut fixture = fixture(Layout::NewOnly);
-    fixture.diff = Arc::new(FileDiff::parse_unified(unified.as_bytes()));
-    fixture.contents.old = Some(side(&old));
-    fixture.contents.new = Some(side(&new));
-    fixture
+    fixture_of(Layout::NewOnly, Some(&old), Some(&new))
 }
 
 /// An added file of `lines` lines: all of them new, shown whole.
@@ -221,12 +208,7 @@ fn added_fixture(lines: u32) -> Fixture {
     for line in 1..=lines {
         writeln!(new, "    let value_{line} = {line};").expect("a string takes text");
     }
-    let unified = similar::TextDiff::from_lines("", &new).unified_diff().to_string();
-    let mut fixture = fixture(Layout::WholeFile(DiffSide::New));
-    fixture.diff = Arc::new(FileDiff::parse_unified(unified.as_bytes()));
-    fixture.contents.old = None;
-    fixture.contents.new = Some(side(&new));
-    fixture
+    fixture_of(Layout::WholeFile(DiffSide::New), None, Some(&new))
 }
 
 /// Owner report: "scroll past the end" did not work in New only. Its rows end in removals of no

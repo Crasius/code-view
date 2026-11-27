@@ -138,16 +138,12 @@ impl Sideways {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use egui::{Event, Modifiers, MouseWheelSource, MouseWheelUnit, TouchPhase, pos2, vec2};
     use egui_kittest::Harness;
-    use review_git::FileDiff;
 
-    use crate::testing::{Fixture, fixture, show_diff, side};
+    use crate::testing::{Fixture, fixture_of, show_diff};
     use cv_base::platform::PageSwipe;
     use cv_base::theme;
-    use cv_code::contents::{Coloring, FileContents};
     use cv_code::diff_rows::Layout;
     use cv_runtime::history::Step;
     use cv_runtime::history::swipe::{Swipe, SwipeFrame};
@@ -187,16 +183,7 @@ mod tests {
             (0..40).map(line).collect::<Vec<_>>().join("\n") + "\n"
         };
         let (old, new): (String, String) = (long("old"), long("new"));
-        let mut fixture = fixture(Layout::Inline);
-        let unified =
-            similar::TextDiff::from_lines(&old, &new).unified_diff().context_radius(3).to_string();
-        fixture.diff = Arc::new(FileDiff::parse_unified(unified.as_bytes()));
-        fixture.contents = FileContents {
-            old: Some(side(&old)),
-            new: Some(side(&new)),
-            coloring: Coloring::Done,
-            error: None,
-        };
+        let fixture = fixture_of(Layout::Inline, Some(&old), Some(&new));
         let page = Page { fixture, swipe: Swipe::default(), steps: Vec::new() };
         let mut harness = Harness::builder()
             .with_size([1180.0, 520.0])

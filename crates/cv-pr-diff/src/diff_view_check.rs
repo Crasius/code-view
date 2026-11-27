@@ -3,10 +3,7 @@
 //!
 //! The shared fixture lives in [`crate::testing`].
 
-use std::sync::Arc;
-
 use cv_base::theme;
-use cv_code::contents::{Coloring, FileContents};
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
 use cv_pr_threads::samples;
@@ -14,13 +11,13 @@ use cv_testkit::Clicks;
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use review_core::{ReviewThread, ThreadStatus};
-use review_git::FileDiff;
+use review_core::{DiffSide, ReviewThread, ThreadStatus};
 
 use crate::diff_view::DiffInputs;
 use crate::find::FindInputs;
 use crate::testing::{
-    Fixture, NEW, OLD, PATH, fixture, harness, line_of, settle, show_diff, side, thread_on_old_line,
+    Fixture, NEW, OLD, PATH, fixture, fixture_of, harness, harness_sized, line_of, settle,
+    thread_on_old_line, whole_file_fixture,
 };
 
 /// A spot in the code area away from every wedge and popover.
@@ -155,17 +152,28 @@ fn check_popover_keyboard(harness: &mut Harness<'_, Fixture>, loop_label: &str) 
 
 #[test]
 fn new_only_offers_another_layout_for_an_emptied_file() {
-    let mut fixture = fixture(Layout::NewOnly);
-    let unified =
-        similar::TextDiff::from_lines(OLD, "").unified_diff().context_radius(3).to_string();
-    fixture.diff = Arc::new(FileDiff::parse_unified(unified.as_bytes()));
-    fixture.contents.new = Some(side(""));
-    let mut harness = harness(fixture);
+    let mut harness = harness(fixture_of(Layout::NewOnly, Some(OLD), Some("")));
     settle(&mut harness);
     assert!(harness.query_by_label("The new version is empty").is_some());
     harness.click_at(harness.get_by_label_contains("Show inline").rect());
     settle(&mut harness);
     assert_eq!(harness.state().events, ["show inline"]);
+}
+
+/// An added or a deleted file shows its one version whole: a row for each of its lines, in order.
+#[test]
+fn a_file_with_one_version_shows_each_of_its_lines() {
+    for (side, text) in [(DiffSide::New, NEW), (DiffSide::Old, OLD)] {
+        let mut harness = harness(whole_file_fixture(side));
+        settle(&mut harness);
+        let state = harness.state();
+        let row = |line: u32| match side {
+            DiffSide::Old => state.view.row_of(&state.diff, Some(line), None),
+            DiffSide::New => state.view.row_of(&state.diff, None, Some(line)),
+        };
+        let last = text.lines().count() as u32;
+        assert_eq!(row(last) - row(1), last as usize - 1, "{side:?}: one row per line");
+    }
 }
 
 /// The file's contents and a thread arriving after the user stepped to a change rebuild the
@@ -250,17 +258,7 @@ fn a_new_code_size_keeps_the_line_under_the_pointer() {
     };
     let old: String = (0..400).map(|index| line(index, false)).collect();
     let new: String = (0..400).map(|index| line(index, index % 4 == 0)).collect();
-    let mut fixture = fixture(Layout::Inline);
-    let unified =
-        similar::TextDiff::from_lines(&old, &new).unified_diff().context_radius(3).to_string();
-    fixture.diff = Arc::new(FileDiff::parse_unified(unified.as_bytes()));
-    fixture.contents = FileContents {
-        old: Some(side(&old)),
-        new: Some(side(&new)),
-        coloring: Coloring::Done,
-        error: None,
-    };
-    let mut harness = harness(fixture);
+    let mut harness = harness(fixture_of(Layout::Inline, Some(&old), Some(&new)));
     settle(&mut harness);
     harness.hover_at(egui::pos2(600.0, 420.0));
     for _ in 0..4 {
@@ -412,28 +410,10 @@ fn switching_comments_keeps_the_view_in_place() {
     };
     let old: String = (0..400).map(|index| line(index, false)).collect();
     let new: String = (0..400).map(|index| line(index, index % 4 == 0)).collect();
-    let mut fixture = fixture(Layout::Inline);
-    let unified =
-        similar::TextDiff::from_lines(&old, &new).unified_diff().context_radius(3).to_string();
-    fixture.diff = Arc::new(FileDiff::parse_unified(unified.as_bytes()));
-    fixture.contents = FileContents {
-        old: Some(side(&old)),
-        new: Some(side(&new)),
-        coloring: Coloring::Done,
-        error: None,
-    };
+    let mut fixture = fixture_of(Layout::Inline, Some(&old), Some(&new));
     fixture.threads.push(thread_on_new_line("first", 5, "A comment on the first change."));
     fixture.threads.push(thread_on_new_line("second", 9, "A comment on the second change."));
-    let mut harness = Harness::builder()
-        .with_size([1180.0, 520.0])
-        .with_context_setup(theme::fonts::install)
-        .build_ui_state(
-            |ui, state: &mut Fixture| {
-                theme::activate(ui.ctx(), state.theme);
-                show_diff(ui, state);
-            },
-            fixture,
-        );
+    let mut harness = harness_sized(fixture, [1180.0, 520.0]);
     settle(&mut harness);
     harness.hover_at(egui::pos2(600.0, 300.0));
     for _ in 0..3 {

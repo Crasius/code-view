@@ -393,6 +393,7 @@ pub(super) fn range_in_pane(side: DiffSide, pane: Pane) -> bool {
 mod tests {
     use super::*;
     use crate::find::FindInputs;
+    use crate::testing::diff_of;
     use cv_code::contents::{Coloring, FileContents};
     use cv_pr_threads::samples;
     use cv_syntax::blob_text::BlobText;
@@ -433,9 +434,7 @@ mod tests {
 
     /// The rows of the 60-line `head` against `BASE`, built after `rows` were.
     fn rebuilt(rows: &mut DiffRows, head: &str) {
-        let unified =
-            similar::TextDiff::from_lines(BASE, head).unified_diff().context_radius(3).to_string();
-        let diff = Arc::new(FileDiff::parse_unified(unified.as_bytes()));
+        let diff = diff_of(BASE, head);
         let side = |text: &str| SideContents {
             text: Arc::new(BlobText::from_bytes(text.as_bytes().to_vec())),
             spans: Arc::new(LineSpans::default()),
