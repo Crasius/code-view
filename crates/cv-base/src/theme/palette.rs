@@ -40,9 +40,18 @@ pub struct Palette {
     pub hover: Color32,
     pub pressed: Color32,
     pub success: Color32,
+    /// Behind a success message, with `success` text on it.
+    pub success_surface: Color32,
+    /// The fill of a resolved badge, with the `success_on_badge` check on it.
+    pub success_badge: Color32,
+    pub success_on_badge: Color32,
     pub warning: Color32,
     pub warning_surface: Color32,
+    /// Warning text on `warning_surface`: the dark theme's `warning` is too bright for small text.
+    pub warning_text: Color32,
     pub error: Color32,
+    /// Behind an error message, with `error` text on it.
+    pub error_surface: Color32,
     /// The filled star of a favorite repository: amber, 3:1 or more on `surface`, `hover` and `selection`.
     pub favorite: Color32,
     /// Azure DevOps' brand blue for its platform mark: 3:1 or more on `surface`, `hover` and `selection`.
@@ -131,9 +140,15 @@ impl Palette {
         hover: Color32::from_rgb(0xF2, 0xF2, 0xF2),
         pressed: Color32::from_rgb(0xE6, 0xE6, 0xE6),
         success: Color32::from_rgb(0x10, 0x7C, 0x10),
+        success_surface: Color32::from_rgb(0xE6, 0xF4, 0xEA),
+        // `success` at 18 % (`gamma_multiply(0.18)`) over the white `surface`.
+        success_badge: Color32::from_rgb(0xD4, 0xE7, 0xD4),
+        success_on_badge: Color32::from_rgb(0x10, 0x7C, 0x10),
         warning: Color32::from_rgb(0x8A, 0x5A, 0x00),
         warning_surface: Color32::from_rgb(0xFF, 0xF4, 0xCE),
+        warning_text: Color32::from_rgb(0x8A, 0x5A, 0x00),
         error: Color32::from_rgb(0xC4, 0x31, 0x4B),
+        error_surface: Color32::from_rgb(0xFB, 0xE9, 0xEB),
         favorite: Color32::from_rgb(0xB4, 0x53, 0x09),
         platform_azure: Color32::from_rgb(0x00, 0x78, 0xD4),
         platform_gitlab: Color32::from_rgb(0xE2, 0x43, 0x29),
@@ -187,9 +202,14 @@ impl Palette {
         hover: Color32::from_rgb(0x2F, 0x2F, 0x2F),
         pressed: Color32::from_rgb(0x38, 0x38, 0x38),
         success: Color32::from_rgb(0x54, 0xB0, 0x54),
+        success_surface: Color32::from_rgb(0x1F, 0x33, 0x24),
+        success_badge: Color32::from_rgb(0x2E, 0x5D, 0x33),
+        success_on_badge: Color32::from_rgb(0x9F, 0xE0, 0x9F),
         warning: Color32::from_rgb(0xFC, 0xE1, 0x00),
         warning_surface: Color32::from_rgb(0x43, 0x35, 0x19),
+        warning_text: Color32::from_rgb(0xE8, 0xC5, 0x5A),
         error: Color32::from_rgb(0xF1, 0x70, 0x7B),
+        error_surface: Color32::from_rgb(0x3D, 0x23, 0x26),
         favorite: Color32::from_rgb(0xF5, 0xB5, 0x4A),
         platform_azure: Color32::from_rgb(0x3A, 0x96, 0xDD),
         platform_gitlab: Color32::from_rgb(0xFC, 0x6D, 0x26),
@@ -216,4 +236,86 @@ impl Palette {
             Color32::from_rgb(0xA3, 0xAE, 0xB8),
         ],
     };
+}
+
+/// The WCAG 2 contrast ratio of two opaque colours, 1.0 to 21.0.
+#[cfg(any(test, feature = "test-support"))]
+pub fn contrast_ratio(a: Color32, b: Color32) -> f32 {
+    let luminance = |color: Color32| {
+        let linear = egui::Rgba::from(color);
+        0.2126 * linear.r() + 0.7152 * linear.g() + 0.0722 * linear.b()
+    };
+    let (a, b) = (luminance(a), luminance(b));
+    (a.max(b) + 0.05) / (a.min(b) + 0.05)
+}
+
+/// `color` painted over the opaque `background`, blended in gamma space as egui paints.
+#[cfg(any(test, feature = "test-support"))]
+pub fn over(color: Color32, background: Color32) -> Color32 {
+    let keep = 1.0 - f32::from(color.a()) / 255.0;
+    let blend = |top: u8, under: u8| (f32::from(top) + f32::from(under) * keep).round() as u8;
+    Color32::from_rgb(
+        blend(color.r(), background.r()),
+        blend(color.g(), background.g()),
+        blend(color.b(), background.b()),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every hue keeps 3:1 (WCAG non-text contrast) on each fill a tree row can have.
+    #[test]
+    fn every_hue_has_three_to_one_contrast_on_tree_rows() {
+        for palette in [Palette::LIGHT, Palette::DARK] {
+            for hue in FileHue::ALL {
+                for (row, background) in [
+                    ("surface", palette.surface),
+                    ("hover", palette.hover),
+                    ("pressed", palette.pressed),
+                    ("selection", palette.selection),
+                ] {
+                    let ratio = contrast_ratio(palette.file_hue(hue), background);
+                    assert!(
+                        ratio >= 3.0,
+                        "{hue:?} on {row} (dark {}): {ratio:.2}",
+                        palette.is_dark
+                    );
+                }
+            }
+        }
+    }
+
+    /// Text on a tinted surface keeps 4.5:1 (WCAG text contrast); the check on a resolved badge
+    /// is a glyph and keeps 3:1.
+    #[test]
+    fn tinted_surfaces_keep_their_foreground_readable() {
+        for palette in [Palette::LIGHT, Palette::DARK] {
+            for (pair, foreground, background, least) in [
+                ("success text", palette.success, palette.success_surface, 4.5),
+                ("error text", palette.error, palette.error_surface, 4.5),
+                ("warning text", palette.warning_text, palette.warning_surface, 4.5),
+                ("resolved check", palette.success_on_badge, palette.success_badge, 3.0),
+            ] {
+                let ratio = contrast_ratio(foreground, background);
+                assert!(ratio >= least, "{pair} (dark {}): {ratio:.2}", palette.is_dark);
+            }
+        }
+    }
+
+    #[test]
+    fn contrast_ratio_spans_one_to_twenty_one() {
+        assert!((contrast_ratio(Color32::BLACK, Color32::WHITE) - 21.0).abs() < 0.01);
+        assert!((contrast_ratio(Color32::WHITE, Color32::BLACK) - 21.0).abs() < 0.01);
+        assert!((contrast_ratio(Palette::LIGHT.text, Palette::LIGHT.text) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn over_blends_a_premultiplied_colour_onto_its_background() {
+        let light = Palette::LIGHT;
+        assert_eq!(over(light.success.gamma_multiply(0.18), light.surface), light.success_badge);
+        assert_eq!(over(light.text, light.surface), light.text, "opaque: the colour itself");
+        assert_eq!(over(Color32::TRANSPARENT, light.selection), light.selection);
+    }
 }

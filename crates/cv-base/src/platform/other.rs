@@ -15,6 +15,8 @@ use super::{FontSources, SaveRequest};
 
 pub const AZURE_CLI: &str = "az";
 pub const HAS_SAVE_DIALOG: bool = false;
+/// A clone's folder as Settings › Local checkouts shows it in its example.
+pub const EXAMPLE_CLONE: &str = "/home/you/src/login-app";
 /// The terminals Settings › Local checkouts offers, with their names.
 pub const TERMINALS: &[(TerminalChoice, &str)] = &[(TerminalChoice::System, "xterm")];
 

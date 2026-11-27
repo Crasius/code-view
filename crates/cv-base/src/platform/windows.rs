@@ -29,6 +29,8 @@ use super::{FontFace, FontSources, SaveRequest, VariableUiFont};
 /// `az` is a batch file on Windows; only the `.cmd` name starts it without a shell.
 pub const AZURE_CLI: &str = "az.cmd";
 pub const HAS_SAVE_DIALOG: bool = true;
+/// A clone's folder as Settings › Local checkouts shows it in its example.
+pub const EXAMPLE_CLONE: &str = r"C:\src\login-app";
 /// The terminals Settings › Local checkouts offers, with their names.
 pub const TERMINALS: &[(TerminalChoice, &str)] = &[
     (TerminalChoice::System, "Windows Terminal"),
