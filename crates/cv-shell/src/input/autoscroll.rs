@@ -268,12 +268,6 @@ fn arrow(center: Pos2, along: Vec2, color: Color32) -> egui::Shape {
     )
 }
 
-/// Where egui should think the pointer is: the origin while active.
-#[cfg(test)]
-fn origin(autoscroll: &Autoscroll) -> Option<Pos2> {
-    autoscroll.active.map(|active| active.origin)
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -281,7 +275,7 @@ mod tests {
     use egui::{Event, Key, Modifiers, PointerButton, Pos2, ViewportId, pos2, vec2};
     use egui_kittest::Harness;
 
-    use super::{Autoscroll, origin};
+    use super::Autoscroll;
 
     struct State {
         autoscroll: Autoscroll,
@@ -348,7 +342,7 @@ mod tests {
         frame(&mut harness, vec![middle(start, true)]);
         frame(&mut harness, vec![middle(start, false)]);
         assert_eq!(
-            origin(&harness.state().autoscroll),
+            harness.state().autoscroll.active.map(|active| active.origin),
             Some(start),
             "a short click makes the mode sticky"
         );

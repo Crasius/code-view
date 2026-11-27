@@ -28,6 +28,7 @@ use cv_runtime::cache::page_cache::pull_request_part;
 use cv_runtime::intents::AddRequest;
 use cv_runtime::links::pull_request_link;
 use cv_runtime::route::PullRequestKey;
+use cv_runtime::toasts::{ToastAction, WaysOut};
 use cv_services::Services;
 use cv_services::writes::Answer;
 
@@ -152,6 +153,41 @@ pub(crate) fn verdict(key: PullRequestKey, error: Option<&ProviderError>) -> Ver
         _ => return Verdict::Unknown(key),
     };
     Verdict::NoAccess { key, denial }
+}
+
+/// The toast for a pull request link its connection's token cannot read: why, then the page on
+/// its platform and the connection's token setup.
+pub(crate) fn announce_refusal(services: &mut Services, key: &PullRequestKey, denial: Denial) {
+    let Some(connection) = services.connection(&key.connection_id) else {
+        return;
+    };
+    let (name, connection) = (short_name(key), &connection.name);
+    let text = match denial {
+        Denial::NotFound => format!(
+            "{name} did not open: connection {connection} cannot find it. It does not exist, or \
+             the token cannot see its repository."
+        ),
+        Denial::Forbidden => {
+            format!(
+                "{name} did not open: the token of connection {connection} has no access to it."
+            )
+        }
+        Denial::TokenRefused => {
+            format!("{name} did not open: the host refused the token of connection {connection}.")
+        }
+    };
+    let fix = ToastAction::fix_token(&key.connection_id);
+    let ways_out =
+        match ToastAction::open_pull_request(services.connection(&key.connection_id), key, None) {
+            Some(page) => WaysOut::new(page).and(fix),
+            None => fix.into(),
+        };
+    services.toasts.error(text, ways_out);
+}
+
+/// `widgets #7`: the repository's last segment and the number.
+pub(crate) fn short_name(key: &PullRequestKey) -> String {
+    format!("{} #{}", key.repository_key.rsplit('/').next().unwrap_or_default(), key.number)
 }
 
 #[cfg(test)]

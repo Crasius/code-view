@@ -2,7 +2,7 @@
 //! last 240 frames as a sparkline against the 240 Hz and 165 Hz budgets, the monitor's refresh
 //! rate, the renderer and vsync, and the memory: the heap's live bytes and the largest caches
 //! ([`cv_runtime::cache::memory`]). Samples are recorded on every frame, shown or not, so the
-//! numbers are there the moment the overlay opens; recording costs two ring-buffer pushes.
+//! numbers are there the moment the overlay opens; recording costs three ring-buffer pushes.
 //!
 //! egui is reactive: an idle app renders no frames, so the frame rate is "frames in the last
 //! second", which drops to the overlay's own slow refresh while nothing moves.

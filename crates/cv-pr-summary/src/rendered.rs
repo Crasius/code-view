@@ -16,7 +16,8 @@ use review_core::ReviewThread;
 use review_git::ChangedFile;
 use review_store::{AppSettings, DiffLayout};
 
-use super::code::{self, CodeOutput, ThreadsByPath};
+use super::card::BodyOutput;
+use super::code::{self, ThreadsByPath};
 use super::layout::{self, Geometry};
 use super::{FolderSummary, SummaryInputs};
 use cv_pr_rendered::markdown_diff::embedded::{self, Embedding};
@@ -180,7 +181,7 @@ impl RenderedCard {
         clip: Rect,
         frame: &RenderedFrame<'_>,
         threads_ui: &mut ThreadsUi,
-    ) -> CodeOutput {
+    ) -> BodyOutput {
         let mut event = None;
         if let Some(model) = self.model() {
             // The whole visible part of the summary: where the view's top is matters, not the card's.
@@ -193,7 +194,7 @@ impl RenderedCard {
                 })
                 .inner;
         }
-        CodeOutput {
+        BodyOutput {
             event: None,
             rendered: event,
             split: None,

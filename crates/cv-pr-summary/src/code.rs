@@ -1,6 +1,5 @@
 //! A loaded card's rows: the file view's diff view in its compact layout, embedded in the card's
-//! body, with the threads on the card's lines. What a card's body did ([`CodeOutput`]) is the same
-//! for a rendered card.
+//! body, with the threads on the card's lines.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -11,11 +10,11 @@ use review_git::{ChangeKind, ChangedFile, FileDiff};
 
 use super::SummaryInputs;
 use super::bodies::CardBody;
+use super::card::BodyOutput;
 use cv_code::diff_rows::Layout;
 use cv_editor::markdown_editor;
-use cv_pr_diff::diff_view::{self, DiffEvent, DiffInputs, Embedded};
+use cv_pr_diff::diff_view::{self, DiffInputs, Embedded};
 use cv_pr_diff::find::FindInputs;
-use cv_pr_rendered::markdown_diff::RenderedEvent;
 use cv_pr_threads::ThreadsUi;
 use cv_syntax::highlight::LineSpans;
 
@@ -31,24 +30,6 @@ pub(crate) struct CardCode<'a> {
     pub layout: Layout,
     /// The old side's share of a side-by-side card.
     pub split: f32,
-}
-
-/// What a loaded card's rows did this frame.
-pub(crate) struct CodeOutput {
-    pub event: Option<DiffEvent>,
-    /// What the user did in a rendered card (see [`super::rendered`]).
-    pub rendered: Option<RenderedEvent>,
-    /// The share the user moved the boundary between the sides to, and whether they let go.
-    pub split: Option<f32>,
-    pub split_committed: bool,
-    /// Code rows painted.
-    #[cfg(test)]
-    pub rows: usize,
-    /// The rows' height, comment cards included.
-    pub height: f32,
-    /// Where the rows want the view scrolled: y below the body's top for the view's top.
-    pub scroll: Option<f32>,
-    pub has_selection: bool,
 }
 
 pub(crate) fn threads_by_path<'a>(threads: &[&'a ReviewThread]) -> ThreadsByPath<'a> {
@@ -112,7 +93,7 @@ pub(crate) fn show(
     card: &mut CardBody,
     code: &CardCode<'_>,
     threads_ui: &mut ThreadsUi,
-) -> CodeOutput {
+) -> BodyOutput {
     let CardBody { diff, view, spans, .. } = card;
     let file = code.file;
     if view.composer().is_some() || !code.threads.is_empty() {
@@ -138,7 +119,7 @@ pub(crate) fn show(
             view.show_embedded(ui, &diff_inputs, threads_ui, &embedded, has_keyboard)
         })
         .inner;
-    CodeOutput {
+    BodyOutput {
         event: output.event,
         rendered: None,
         split: output.split,
