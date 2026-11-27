@@ -564,6 +564,8 @@ struct LayoutCase {
     pane: Pane,
     first: (Option<u32>, Option<u32>),
     last: (Option<u32>, Option<u32>),
+    /// The line the drag of [`a_selection_offers_one_comment_button`] ends on.
+    comment_last: (Option<u32>, Option<u32>),
     width: f32,
 }
 
@@ -572,7 +574,8 @@ const BLOCK_FROM: usize = 12;
 const BLOCK_TO: usize = 5;
 
 /// Three added lines in each layout, and in the wrapped inline diff the signature of `total` over
-/// its removed loop and its wrapped new body to its brace.
+/// its removed loop and its wrapped new body to its brace; the comment's drag there ends on the
+/// first line of that body.
 fn layout_cases() -> Vec<LayoutCase> {
     let is_empty = line_of(NEW, "pub fn is_empty(");
     let added = ((None, Some(is_empty)), (None, Some(is_empty + 2)));
@@ -585,6 +588,7 @@ fn layout_cases() -> Vec<LayoutCase> {
         pane,
         first: added.0,
         last: added.1,
+        comment_last: added.1,
         width: 1180.0,
     };
     vec![
@@ -598,6 +602,7 @@ fn layout_cases() -> Vec<LayoutCase> {
             pane: Pane::Inline,
             first: (Some(old_total), Some(new_total)),
             last: (Some(old_total + 6), Some(new_total + 2)),
+            comment_last: (None, Some(new_total + 1)),
             width: 640.0,
         },
     ]
@@ -746,17 +751,6 @@ fn assert_row_selected(
     }
 }
 
-/// The [`layout_cases`] of [`a_selection_offers_one_comment_button`]: in the wrapped inline diff
-/// the drag ends on the first line of `total`'s new body.
-fn comment_cases() -> Vec<LayoutCase> {
-    let new_total = line_of(NEW, "pub fn total(");
-    let mut cases = layout_cases();
-    for case in cases.iter_mut().filter(|case| case.name == "inline-wrapped") {
-        case.last = (None, Some(new_total + 1));
-    }
-    cases
-}
-
 /// A selection over several lines offers exactly one comment button, "Comment on lines X–Y", on
 /// the line the selection was dragged to (as Azure DevOps does): the last line after a drag down,
 /// the first after a drag up. It stays the only one wherever the pointer rests, and its hint opens
@@ -765,15 +759,15 @@ fn comment_cases() -> Vec<LayoutCase> {
 #[test]
 fn a_selection_offers_one_comment_button() {
     let is_empty = line_of(NEW, "pub fn is_empty(");
-    for case in comment_cases() {
+    for case in layout_cases() {
         let head = |(_, new_line): (Option<u32>, Option<u32>)| new_line.expect("a head line");
-        let label = format!("Comment on lines {}–{}", head(case.first), head(case.last));
+        let label = format!("Comment on lines {}–{}", head(case.first), head(case.comment_last));
         let mut harness = harness(case.fixture);
         harness.set_size(egui::vec2(case.width, 760.0));
         settle(&mut harness);
         let (first, last) = (
             row(harness.state(), case.first.0, case.first.1),
-            row(harness.state(), case.last.0, case.last.1),
+            row(harness.state(), case.comment_last.0, case.comment_last.1),
         );
         for is_up in [false, true] {
             let name = format!("{}-{}", case.name, if is_up { "up" } else { "down" });

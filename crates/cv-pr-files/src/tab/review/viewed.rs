@@ -119,7 +119,6 @@ mod tests {
 
     use super::{ViewedMarks, ViewedToggle};
     use cv_runtime::route::PullRequestKey;
-    use cv_services::Services;
     use cv_testkit::ScratchDir;
 
     fn file(path: &str) -> ChangedFile {
@@ -135,11 +134,7 @@ mod tests {
     #[test]
     fn a_folder_marks_all_its_files_then_unmarks_them() {
         let scratch = ScratchDir::new("viewed-folder");
-        let mut services = Services::new(
-            egui::Context::default(),
-            scratch.app_paths(),
-            cv_providers::create_provider,
-        );
+        let mut services = crate::tests::services_in(&scratch);
         let key = PullRequestKey {
             connection_id: "ado".into(),
             repository_key: "Shop/web".into(),
