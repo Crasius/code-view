@@ -44,12 +44,12 @@ const OLDER_PIPELINE_ID: u64 = 901;
 const STEP_SECONDS: f32 = 0.5;
 
 #[test]
-fn browsing_300_files_costs_only_the_live_probe() {
+fn browsing_300_files_stays_within_the_request_budget() {
     run_scenario(300);
 }
 
 #[test]
-fn browsing_3000_files_fetches_blobs_in_chunks() {
+fn browsing_3000_files_stays_within_the_request_budget() {
     run_scenario(3000);
 }
 

@@ -266,10 +266,10 @@ impl JumpBox {
                         scroll.dormant_handle_opacity = scroll.active_handle_opacity;
                         // Every match is listed; past a screenful the results scroll, only the rows
                         // in view are laid out, and the arrow keys keep the highlighted one in
-                        // view. The height is set for this
-                        // frame's results: an area hands its content the size it had last frame,
-                        // so a height left to the space available would stay at whatever the
-                        // results first opened with (two rows after an opening with one).
+                        // view. The height is set for this frame's results: an area hands its
+                        // content the size it had last frame, so a height left to the space
+                        // available would stay at whatever the results first opened with (two
+                        // rows after an opening with one).
                         let mut results = egui::ScrollArea::vertical()
                             .id_salt("title_bar_jump_results")
                             .min_scrolled_height(height)

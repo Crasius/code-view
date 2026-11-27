@@ -279,13 +279,18 @@ impl GitHubHost {
     }
 
     /// `GET /pulls/7` reads after `delay` (before the page opens), with no reviews: a slow host.
+    /// Both answers outrank those a host with a pull request mounted.
     pub fn delay_detail(&self, delay: std::time::Duration) {
+        let priority = self.take_priority();
         self.mount(
             repository_api("GET", &format!("/pulls/{NUMBER}"))
-                .respond_with(ok(json!({})).set_delay(delay)),
+                .respond_with(ok(json!({})).set_delay(delay))
+                .with_priority(priority),
         );
         self.mount(
-            repository_api("GET", &format!("/pulls/{NUMBER}/reviews")).respond_with(ok(json!([]))),
+            repository_api("GET", &format!("/pulls/{NUMBER}/reviews"))
+                .respond_with(ok(json!([])))
+                .with_priority(priority),
         );
     }
 

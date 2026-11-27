@@ -26,7 +26,8 @@ fn has_mirror(scratch: &Path) -> bool {
 fn the_mirror_opens_while_the_detail_is_still_loading() {
     let scratch = ScratchDir::new("open-path-overlap");
     let host = GitHubHost::with_pull_request(scratch.path());
-    // The detail never answers within the test, so a mirror that opens cannot have waited for it.
+    // The held detail outranks the real one and never answers within the test, so a mirror that
+    // opens cannot have waited for it.
     host.delay_detail(LIMIT + Duration::from_secs(60));
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     click_pull_request_row(&mut harness);
