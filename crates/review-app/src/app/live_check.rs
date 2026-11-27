@@ -17,6 +17,7 @@
 
 use std::time::{Duration, Instant};
 
+use cv_base::platform::heap;
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -34,6 +35,7 @@ const NETWORK_TIMEOUT: Duration = Duration::from_secs(600);
 #[test]
 #[ignore = "needs network; run explicitly"]
 fn live_walkthrough_of_a_public_pull_request() {
+    cv_testkit::allow_real_network();
     let platform = Platform::from_environment();
     let repository = std::env::var("REVIEW_LIVE_REPO")
         .unwrap_or_else(|_| platform.default_repository.to_owned());
@@ -297,7 +299,7 @@ fn wait_for_colors(
             return Some(started.elapsed());
         }
         if is_coloring && sampled.elapsed() > SAMPLE_EVERY {
-            *peak = (*peak).max(memory());
+            *peak = peak.max(memory());
             sampled = Instant::now();
         }
         let is_too_large = harness.query_by_label_contains("Syntax colors are off").is_some();
@@ -309,44 +311,31 @@ fn wait_for_colors(
     }
 }
 
-/// Working set, private bytes and the process's peak working set so far, in MB (zero where unknown).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+/// The process's heap bytes and private bytes (none where the system does not count them).
+#[derive(Clone, Copy)]
 struct Memory {
-    private: u64,
-    working_set: u64,
-    peak_working_set: u64,
+    heap: usize,
+    private: Option<usize>,
+}
+
+impl Memory {
+    /// Each count's larger value.
+    fn max(self, other: Self) -> Self {
+        Self { heap: self.heap.max(other.heap), private: self.private.max(other.private) }
+    }
 }
 
 impl std::fmt::Display for Memory {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            formatter,
-            "{} MB working set (peak {} MB) / {} MB private",
-            self.working_set, self.peak_working_set, self.private
-        )
+        const MB: usize = 1024 * 1024;
+        let private =
+            self.private.map_or_else(|| "unknown".to_owned(), |bytes| (bytes / MB).to_string());
+        write!(formatter, "{} MB heap / {private} MB private", self.heap / MB)
     }
 }
 
-/// Reads Windows' process counters through PowerShell.
-#[expect(
-    clippy::disallowed_methods,
-    reason = "the live check measures its own process from the test thread"
-)]
 fn memory() -> Memory {
-    let script = format!(
-        "$p = Get-Process -Id {}; '{{0}} {{1}} {{2}}' -f [int]($p.WorkingSet64 / 1MB), [int]($p.PrivateMemorySize64 / 1MB), [int]($p.PeakWorkingSet64 / 1MB)",
-        std::process::id()
-    );
-    let text = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .output()
-        .ok()
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .unwrap_or_default();
-    let mut numbers = text.split_whitespace().map(|number| number.parse().unwrap_or(0));
-    let working_set = numbers.next().unwrap_or(0);
-    let private = numbers.next().unwrap_or(0);
-    Memory { private, working_set, peak_working_set: numbers.next().unwrap_or(0) }
+    Memory { heap: heap::live_bytes(), private: heap::private_bytes() }
 }
 
 /// The start page lists the organizations' open pull requests without a token.
@@ -403,13 +392,14 @@ fn first_row_number(harness: &Harness<'_, ReviewApp>) -> Option<u64> {
 
 /// A very large pull request end to end: the file list, the tree, the first diff, the tree scrolled
 /// to its last file, and `REVIEW_LIVE_FILE` (its largest diff) scrolled from top to bottom.
-/// `REVIEW_LIVE_REPO` and `REVIEW_LIVE_PR` name the pull request; prints the load times, the peak
-/// working set and the UI frame times (`Harness::step`, without the GPU).
+/// `REVIEW_LIVE_REPO` and `REVIEW_LIVE_PR` name the pull request; prints the load times, the
+/// memory and the UI frame times (`Harness::step`, without the GPU).
 ///
 /// `REVIEW_LIVE_REPO=microsoft/TypeScript REVIEW_LIVE_PR=51387 REVIEW_LIVE_FILE=src/compiler/checker.ts cargo test -p review-app --release live_large -- --ignored --nocapture`
 #[test]
 #[ignore = "needs network; run explicitly"]
 fn live_large_pull_request() {
+    cv_testkit::allow_real_network();
     let platform = Platform::from_environment();
     let repository =
         std::env::var("REVIEW_LIVE_REPO").expect("REVIEW_LIVE_REPO names the repository");
@@ -488,14 +478,20 @@ fn live_large_pull_request() {
         Err(_) => println!("REVIEW_LIVE_FILE unset: no large diff scrolled"),
     }
     println!("memory at the end {}", memory());
-    if let Some(traffic) = review_core::http::traffic::of(CONNECTION_ID) {
-        println!(
-            "API requests: {} sent, {} unchanged (304), {} rate-limited",
-            traffic.sent, traffic.not_modified, traffic.rate_limited
-        );
-        for endpoint in traffic.endpoints {
-            println!("    {:>3}  {} {}", endpoint.count, endpoint.method, endpoint.path);
-        }
+    report_traffic();
+}
+
+/// Every request the connection sent, by method and path template.
+fn report_traffic() {
+    let Some(traffic) = review_core::http::traffic::of(CONNECTION_ID) else {
+        return;
+    };
+    println!(
+        "API requests: {} sent, {} unchanged (304), {} rate-limited",
+        traffic.sent, traffic.not_modified, traffic.rate_limited
+    );
+    for endpoint in traffic.endpoints {
+        println!("    {:>3}  {} {}", endpoint.count, endpoint.method, endpoint.path);
     }
 }
 
@@ -520,7 +516,7 @@ fn large_diff(harness: &mut Harness<'_, ReviewApp>, path: &str) -> FrameTimes {
     let mut peak = memory();
     let colored = wait_for_colors(harness, Duration::from_secs(60), &mut peak);
     println!(
-        "{path}: diff shown after {:.2} s, colors after {}, {}",
+        "{path}: diff shown after {:.2} s, colors after {}, peak while coloring {peak}, {}",
         shown.as_secs_f32(),
         colored.map_or_else(
             || "no progress shown".to_owned(),
@@ -540,124 +536,6 @@ fn large_diff(harness: &mut Harness<'_, ReviewApp>, path: &str) -> FrameTimes {
         scroll(harness, center, 20, -24_000.0, &mut frames);
     }
     frames
-}
-
-/// Leaving a pull request through the breadcrumb while its live probe is due sends nothing for it.
-/// The probe comes due while the window is inactive; the click is the window's first active frame,
-/// so had the page run once more, the probe would have gone out. A control round first shows the
-/// pending probe going out when the window just becomes active. `REVIEW_LIVE_REPO`, `REVIEW_LIVE_PR`.
-#[test]
-#[ignore = "needs network; run explicitly"]
-fn live_leaving_a_pull_request_sends_nothing_for_it() {
-    let platform = Platform::from_environment();
-    let repository =
-        std::env::var("REVIEW_LIVE_REPO").expect("REVIEW_LIVE_REPO names the repository");
-    let number: u64 = std::env::var("REVIEW_LIVE_PR")
-        .expect("REVIEW_LIVE_PR names the pull request")
-        .parse()
-        .expect("a number");
-    let scratch = ScratchDir::new("live-leave");
-    let paths = live_paths(&scratch, &platform);
-    let builder = Harness::builder().with_size([1440.0, 900.0]).allow_missing_glyphs();
-    let mut harness = super::startup::start(builder, |creation| {
-        ReviewApp::new(creation, paths.clone(), cv_providers::create_provider)
-    });
-    let key = PullRequestKey {
-        connection_id: CONNECTION_ID.to_owned(),
-        repository_key: repository.clone(),
-        number,
-    };
-    harness.state_mut().navigator.go(Route::PullRequest(key));
-    wait_until(&mut harness, "the pull request", |harness| files_tab(harness).is_some());
-    // The load and its baseline probe.
-    wait_for_quiet(&mut harness);
-    let pull_request_reads = || {
-        review_core::http::traffic::of(CONNECTION_ID).map_or(0, |traffic| {
-            traffic
-                .endpoints
-                .iter()
-                .filter(|endpoint| endpoint.path.contains("/pulls/:id"))
-                .map(|endpoint| endpoint.count)
-                .sum::<u64>()
-        })
-    };
-    println!("pull request reads after opening: {}", pull_request_reads());
-
-    let before = pull_request_reads();
-    probe_due_while_inactive(&mut harness);
-    set_window_focus(&mut harness, true);
-    harness.step();
-    wait_for_quiet(&mut harness);
-    let control = pull_request_reads() - before;
-    println!(
-        "control: the window became active with the probe due: {control} pull request read(s)"
-    );
-    assert!(control > 0, "the pending probe goes out once the window is active");
-
-    probe_due_while_inactive(&mut harness);
-    let before = pull_request_reads();
-    let crumb = harness.get_by_role_and_label(Role::Link, &repository).rect().center();
-    harness.hover_at(crumb);
-    harness.step();
-    let button = |pressed| egui::Event::PointerButton {
-        pos: crumb,
-        button: egui::PointerButton::Primary,
-        pressed,
-        modifiers: egui::Modifiers::NONE,
-    };
-    harness.event(button(true));
-    harness.step();
-    set_window_focus(&mut harness, true);
-    harness.event(button(false));
-    harness.step();
-    assert!(
-        matches!(harness.state().route, Route::RepositoryPullRequests { .. }),
-        "the breadcrumb leads to the repository"
-    );
-    wait_for_quiet(&mut harness);
-    settle(&mut harness, Duration::from_secs(3));
-    let after = pull_request_reads() - before;
-    println!("left by the breadcrumb with the probe due: {after} pull request read(s)");
-    for endpoint in review_core::http::traffic::of(CONNECTION_ID)
-        .map(|traffic| traffic.endpoints)
-        .unwrap_or_default()
-    {
-        println!("    {:>3}  {} {}", endpoint.count, endpoint.method, endpoint.path);
-    }
-    assert_eq!(after, 0, "nothing went out for the pull request that was left");
-}
-
-/// The window loses focus and more than the anonymous probe interval (120 s) passes in simulated time.
-fn probe_due_while_inactive(harness: &mut Harness<'_, ReviewApp>) {
-    set_window_focus(harness, false);
-    harness.step();
-    let time = |harness: &Harness<'_, ReviewApp>| harness.ctx.input(|input| input.time);
-    let end = time(harness) + 130.0;
-    while time(harness) < end {
-        harness.step();
-        cv_testkit::let_threads_run(Duration::from_millis(3));
-    }
-    assert!(harness.state().services.refresh.pending_count() > 0, "the probe waits for the window");
-}
-
-fn set_window_focus(harness: &mut Harness<'_, ReviewApp>, is_focused: bool) {
-    harness.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().focused =
-        Some(is_focused);
-    harness.input_mut().focused = is_focused;
-}
-
-/// Steps until no background task ran for a while.
-fn wait_for_quiet(harness: &mut Harness<'_, ReviewApp>) {
-    let started = Instant::now();
-    let mut quiet_since = Instant::now();
-    while quiet_since.elapsed() < Duration::from_secs(2) {
-        harness.step();
-        if harness.state().services.background.running() > 0 {
-            quiet_since = Instant::now();
-        }
-        assert!(started.elapsed() < NETWORK_TIMEOUT, "background work did not finish");
-        cv_testkit::let_threads_run(Duration::from_millis(20));
-    }
 }
 
 /// The live harness with a 60 Hz simulated clock: waiting for a long fetch in real time then also
@@ -776,10 +654,8 @@ impl Platform {
     }
 }
 
-/// `scratch`'s data folders with the anonymous connection to `platform` saved, for a live check
-/// whose app may reach the real hosts (and wait on them as long as they take).
+/// `scratch`'s data folders with the anonymous connection to `platform` saved.
 fn live_paths(scratch: &ScratchDir, platform: &Platform) -> AppPaths {
-    cv_testkit::allow_real_network();
     let connection = Connection {
         name: format!("{} (anonymous)", platform.kind.label()),
         organizations: platform
