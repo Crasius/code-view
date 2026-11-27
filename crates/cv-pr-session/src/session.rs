@@ -72,13 +72,13 @@ pub struct PullRequestSession {
     pub threads: Live<Vec<ReviewThread>>,
     /// Pipeline runs and status checks (Overview checks and Pipelines tab): the head commit's, and
     /// older runs where the platform lists them.
-    pub runs: Live<Vec<PipelineRun>>,
+    pub runs: Live<Arc<[PipelineRun]>>,
     /// Stages (with their jobs) per run id, loaded on demand: the head runs' for the stage bars of
     /// the checks table and the overview, an older run's once it is opened.
     stages: HashMap<String, StageLoad>,
     /// Earlier attempts the platform lists by id only, by (run id, attempt target), loaded when
     /// the user opens one. They never change, so each loads once.
-    attempts: HashMap<(String, String), Live<PipelineJob>>,
+    attempts: HashMap<(String, String), Live<Arc<PipelineJob>>>,
     /// The remote and the mirror, opened with the page; [`Self::mirror`] fetches into it.
     repository: Repository,
     pub mirror: Load<Mirror>,
@@ -127,7 +127,7 @@ impl PullRequestSession {
             detail: Live::seeded(detail),
             listed,
             threads: Live::seeded(cache.get(&part("threads"))),
-            runs: Live::seeded(cache.get(&part("runs"))),
+            runs: Live::seeded(cache.get::<Vec<PipelineRun>>(&part("runs")).map(Arc::from)),
             stages: HashMap::new(),
             attempts: HashMap::new(),
             repository: Repository::default(),
@@ -241,7 +241,7 @@ impl PullRequestSession {
         let repository = self.key.repository_key.clone();
         let number = self.key.number;
         self.runs.start(&services.background, async move {
-            provider.pipeline_runs(&repository, number).await
+            provider.pipeline_runs(&repository, number).await.map(Arc::from)
         });
     }
 
@@ -255,7 +255,7 @@ impl PullRequestSession {
     }
 
     /// The stages of a run, once asked for with [`Self::want_stages`].
-    pub fn stages(&self, run_id: &str) -> Option<&Live<Vec<PipelineJob>>> {
+    pub fn stages(&self, run_id: &str) -> Option<&Live<Arc<[PipelineJob]>>> {
         self.stages.get(run_id).map(|load| &load.live)
     }
 
@@ -290,12 +290,15 @@ impl PullRequestSession {
     /// True when every head run's stages are there or failed to load: the checks table waits for
     /// them, so their job rows never shift in later.
     pub fn are_head_stages_settled(&self) -> bool {
-        self.runs.ready().into_iter().flatten().filter(|run| run.has_jobs && run.is_head).all(
-            |run| {
+        self.runs
+            .ready()
+            .into_iter()
+            .flat_map(|runs| runs.iter())
+            .filter(|run| run.has_jobs && run.is_head)
+            .all(|run| {
                 self.stages(&run.id)
                     .is_some_and(|load| load.ready().is_some() || load.error().is_some())
-            },
-        )
+            })
     }
 
     /// Loads the stages of `run_id` again, whatever is on screen (after a rerun, or Retry).
@@ -314,7 +317,7 @@ impl PullRequestSession {
             .runs
             .ready()
             .into_iter()
-            .flatten()
+            .flat_map(|runs| runs.iter())
             .filter(|run| !run.status.is_finished())
             .filter(|run| self.stages.get(&run.id).is_some_and(|load| !load.live.is_loading()))
             .map(|run| (run.id.clone(), (run.status, run.finished_at)))
@@ -340,12 +343,12 @@ impl PullRequestSession {
             .or_insert_with(|| StageLoad { live: Live::default(), loaded_for: state });
         load.loaded_for = state;
         load.live.start(&services.background, async move {
-            provider.pipeline_jobs(&repository, number, &run).await
+            provider.pipeline_jobs(&repository, number, &run).await.map(Arc::from)
         });
     }
 
     /// An earlier attempt of `run_id` listed by id only, once asked for with [`Self::want_attempt`].
-    pub fn attempt(&self, run_id: &str, target: &str) -> Option<&Live<PipelineJob>> {
+    pub fn attempt(&self, run_id: &str, target: &str) -> Option<&Live<Arc<PipelineJob>>> {
         self.attempts.get(&(run_id.to_owned(), target.to_owned()))
     }
 
@@ -354,7 +357,7 @@ impl PullRequestSession {
         self.attempts
             .iter()
             .filter(|((run, _), _)| run == run_id)
-            .filter_map(|((_, target), live)| live.ready().map(|job| (target.as_str(), job)))
+            .filter_map(|((_, target), live)| live.ready().map(|job| (target.as_str(), &**job)))
             .collect()
     }
 
@@ -370,7 +373,7 @@ impl PullRequestSession {
         let number = self.key.number;
         let (run, target) = (run_id.to_owned(), target.to_owned());
         live.start(&services.background, async move {
-            provider.pipeline_attempt(&repository, number, &run, &target).await
+            provider.pipeline_attempt(&repository, number, &run, &target).await.map(Arc::new)
         });
     }
 
@@ -410,7 +413,7 @@ impl PullRequestSession {
             && let Some(runs) = self.runs.ready()
         {
             forget_unlisted(&mut self.stages, &mut self.attempts, runs);
-            cache.put(&cache_key(&storage_key, "runs"), runs.clone(), now);
+            cache.put(&cache_key(&storage_key, "runs"), runs.to_vec(), now);
         }
         for load in self.stages.values_mut() {
             load.live.poll();
@@ -671,7 +674,7 @@ fn forget_unlisted<S, A>(
 
 /// One run's stages and the run state they were asked for.
 struct StageLoad {
-    live: Live<Vec<PipelineJob>>,
+    live: Live<Arc<[PipelineJob]>>,
     loaded_for: (RunStatus, Option<Timestamp>),
 }
 
