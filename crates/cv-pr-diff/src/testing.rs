@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+#[cfg(test)]
 use cv_base::theme;
 use cv_code::contents::{Coloring, FileContents, SideContents};
 use cv_code::diff_rows::Layout;
@@ -207,6 +208,7 @@ impl Fixture {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn fixture(layout: Layout) -> Fixture {
     fixture_of(layout, Some(OLD), Some(NEW))
 }
@@ -227,7 +229,7 @@ pub fn whole_file_fixture(side: DiffSide) -> Fixture {
     }
 }
 
-/// [`fixture`] for other texts: `None` is a side the file does not have.
+/// `fixture` for other texts: `None` is a side the file does not have.
 pub(crate) fn fixture_of(layout: Layout, old: Option<&str>, new: Option<&str>) -> Fixture {
     Fixture {
         view: DiffView::default(),
@@ -267,12 +269,14 @@ pub(crate) fn side(source: &str) -> SideContents {
     SideContents { text: Arc::new(text), spans: Arc::new(spans) }
 }
 
+#[cfg(test)]
 pub(crate) fn harness(fixture: Fixture) -> Harness<'static, Fixture> {
     harness_sized(fixture, [1180.0, 760.0])
 }
 
 /// [`harness`] with a window of another `size`. Eight steps, 2 s simulated, cover the hover delay
 /// and the eased transitions; [`settle`] fails past them.
+#[cfg(test)]
 pub(crate) fn harness_sized(fixture: Fixture, size: [f32; 2]) -> Harness<'static, Fixture> {
     Harness::builder()
         .with_size(size)
@@ -337,6 +341,7 @@ pub fn post_comment<State>(harness: &mut Harness<'_, State>, body: &str) {
 }
 
 /// 1-based line of `needle` in `text`.
+#[cfg(test)]
 pub(crate) fn line_of(text: &str, needle: &str) -> u32 {
     text.lines().position(|line| line.contains(needle)).expect("line in the sample") as u32 + 1
 }

@@ -38,8 +38,7 @@ use self::cards::CardHeights;
 pub use self::code_rows::flash::{flash_asks_for_frames, flashed_lines};
 use self::code_rows::menu::{self, MenuChoice, MenuItems};
 use self::code_rows::{CodeRows, RowAction};
-pub(crate) use self::frame::EmbeddedOutput;
-pub use self::frame::{DiffInputs, Embedded, keep_below};
+pub use self::frame::{DiffInputs, Embedded, EmbeddedOutput, keep_below};
 use self::frame::{Frame, RowLayout, Screen, Sight, syntax_mix};
 pub use self::navigation::{ChangePosition, Direction};
 use self::offsets::RowOffsets;
@@ -61,9 +60,9 @@ use crate::removal_popover::RemovalPopover;
 use crate::selection::{DiffSelection, Selection};
 use cv_base::platform::shortcut;
 use cv_base::theme;
-use cv_code::diff_rows::{self, Layout, Row, RowKind};
 #[cfg(any(test, feature = "test-support"))]
-use cv_code::diff_rows::{RangeOwner, RangeRows};
+use cv_code::diff_rows::RangeOwner;
+use cv_code::diff_rows::{self, Layout, Row, RowKind};
 use cv_code::gaps::Expand;
 use cv_code::line_source::{self, Pane};
 use cv_pr_threads::{ThreadEvent, ThreadsUi};
@@ -952,7 +951,7 @@ impl DiffView {
         (probe, pane_rect)
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     /// Screen position just inside character `column` of the line `pane` shows on `row`.
     pub(crate) fn text_point(&self, pane: Pane, row: usize, column: usize) -> egui::Pos2 {
         let (probe, rect) = self.probe_pane(pane, row);
@@ -981,7 +980,7 @@ impl DiffView {
             || self.built.ranges.iter().any(|range| range.owner == RangeOwner::Draft)
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     /// Selects the text of every row of `pane`, as a drag from the first line to the end of the
     /// last would.
     pub(crate) fn select_all_text(&mut self, pane: Pane) {
@@ -1011,13 +1010,13 @@ impl DiffView {
         pos2(rect.left() + probe.number_width / 2.0, rect.top() + probe.line_height / 2.0)
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     /// The top of the view on the rows in the last frame.
     pub(crate) fn view_top(&self) -> f32 {
         self.place.top()
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     /// Where row `row` starts, from the top of the first row.
     pub(crate) fn row_top(&self, row: usize) -> f32 {
         self.offsets[row]
@@ -1037,8 +1036,8 @@ impl DiffView {
         pos2(rect.left() + probe.marker_center, rect.top() + probe.line_height / 2.0)
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    pub(crate) fn range_rows(&self) -> &[RangeRows] {
+    #[cfg(test)]
+    pub(crate) fn range_rows(&self) -> &[cv_code::diff_rows::RangeRows] {
         &self.built.ranges
     }
 

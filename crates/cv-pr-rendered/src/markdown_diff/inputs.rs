@@ -48,7 +48,7 @@ impl RenderedInputs<'_> {
 
 /// How the images of the two versions load and compare.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct RenderedImages {
+pub struct RenderedImages {
     /// Where relative image paths of the old and of the new version point.
     pub bases: [Option<ImageBase>; 2],
     /// Content ids (blob ids) of the repository images each version shows, by source as written:

@@ -475,7 +475,7 @@ impl PatchColors {
 
     /// Diff loads wait `wait` instead of [`WAIT`] for their first colors, so a test of that wait
     /// does not depend on how soon a pool busy with other tests' colors gets to them.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn with_wait(mut self, wait: Duration) -> Self {
         self.wait = wait;
@@ -484,7 +484,7 @@ impl PatchColors {
 
     /// Diff loads wait `wait` instead of [`WARMING_WAIT`] while a warm-up compiles their grammar,
     /// so a test of that wait does not depend on how fast a loaded machine compiles.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn with_warming_wait(mut self, wait: Duration) -> Self {
         self.warming_wait = wait;
@@ -554,7 +554,7 @@ impl PatchColors {
     /// Test driver: polls on every repaint request of the workers (see
     /// [`cv_syntax::color_worker::observe_repaints`]) until all colors of `key` are worked out,
     /// for at most 30 seconds.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn wait_finished(
         &mut self,
         repaints: &Receiver<()>,
