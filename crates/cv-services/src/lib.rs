@@ -41,7 +41,7 @@ use cv_runtime::toasts::{ToastAction, Toasts};
 
 use self::agents::AgentDirectory;
 use self::checkouts::Checkouts;
-use self::connection::providers::{ProviderFactory, ProviderRegistry};
+use self::connection::providers::ProviderRegistry;
 use self::connection::traffic::{self, ConnectionRate, RateLimited};
 use self::diff_stats::DiffStats;
 use self::linked::LinkedCache;
@@ -86,7 +86,15 @@ pub struct Services {
 }
 
 impl Services {
-    pub fn new(ctx: egui::Context, paths: AppPaths, factory: ProviderFactory) -> Self {
+    pub fn new(
+        ctx: egui::Context,
+        paths: AppPaths,
+        factory: impl Fn(Connection, reqwest::Client) -> Arc<dyn Provider> + Send + Sync + 'static,
+    ) -> Self {
+        Self::with_providers(ctx, paths, ProviderRegistry::new(factory))
+    }
+
+    fn with_providers(ctx: egui::Context, paths: AppPaths, providers: ProviderRegistry) -> Self {
         #[cfg(any(test, feature = "test-support"))]
         let watchdog = cv_testkit::Watchdog::start();
         #[cfg(any(test, feature = "test-support"))]
@@ -134,7 +142,7 @@ impl Services {
             paths,
             connections,
             settings,
-            providers: ProviderRegistry::new(factory),
+            providers,
             mirrors,
             retention,
             toasts,

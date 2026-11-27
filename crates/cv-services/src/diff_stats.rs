@@ -320,9 +320,9 @@ fn why(row: &StatRow, was_asked: bool) -> String {
 /// Counts the rows on screen that need it, unless the window is inactive (then they wait, still
 /// shown as counting). `project_rows` gives every loaded row of a row's repository, which a
 /// batching platform counts together.
-pub fn want(
+pub fn want<'a>(
     services: &mut Services,
-    visible: &[StatRow],
+    visible: impl IntoIterator<Item = &'a StatRow>,
     project_rows: impl Fn(&StatRow) -> Vec<StatRow>,
 ) {
     let is_active =

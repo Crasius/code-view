@@ -13,16 +13,19 @@ pub type ProviderFactory = fn(Connection, reqwest::Client) -> Arc<dyn Provider>;
 /// so every page, load and cache that holds the handle uses the new settings from its next call
 /// on. Stored connections' providers report token problems to [`ProviderRegistry::issues`].
 pub struct ProviderRegistry {
-    factory: ProviderFactory,
+    /// Any closure, so a test hands the fixture it captured instead of looking it up in a static.
+    factory: Box<dyn Fn(Connection, reqwest::Client) -> Arc<dyn Provider> + Send + Sync>,
     http: reqwest::Client,
     providers: HashMap<String, (Connection, Arc<WatchedProvider>)>,
     issues: AccessIssues,
 }
 
 impl ProviderRegistry {
-    pub fn new(factory: ProviderFactory) -> Self {
+    pub fn new(
+        factory: impl Fn(Connection, reqwest::Client) -> Arc<dyn Provider> + Send + Sync + 'static,
+    ) -> Self {
         Self {
-            factory,
+            factory: Box::new(factory),
             http: http_client(),
             providers: HashMap::new(),
             issues: AccessIssues::default(),
@@ -95,6 +98,8 @@ pub fn unknown_connection(connection_id: &str) -> ProviderError {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use review_core::{Connection, ProviderKind};
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -132,6 +137,47 @@ mod tests {
         registry.update(&Connection { token: Some("fixed-token".to_owned()), ..connection });
         assert_eq!(
             held.current_user().await.expect("the new token").login.as_deref(),
+            Some("mona")
+        );
+    }
+
+    /// A test hands its fixture to the registry through the closure, not through a static.
+    #[tokio::test]
+    async fn a_registry_built_from_a_closure_hands_out_the_provider_it_captured() {
+        let server = MockServer::start().await;
+        let user = serde_json::json!({ "id": 1, "login": "mona" });
+        Mock::given(method("GET"))
+            .and(path("/api/v3/user"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(user))
+            .mount(&server)
+            .await;
+        let fixture = Connection {
+            id: "fixture".to_owned(),
+            name: "mock".to_owned(),
+            kind: ProviderKind::GitHub,
+            base_url: server.uri(),
+            organizations: Vec::new(),
+            token: Some("token".to_owned()),
+        };
+        let captured = cv_providers::create_provider(fixture.clone(), cv_testkit::http_client());
+        let handed = Arc::clone(&captured);
+        let mut registry = ProviderRegistry::new(move |_, _| Arc::clone(&handed));
+        // Nothing listens on the discard port: only the captured provider reaches the mock.
+        let asked = Connection {
+            id: "asked".to_owned(),
+            base_url: "http://127.0.0.1:9".to_owned(),
+            ..fixture
+        };
+
+        assert!(Arc::ptr_eq(&registry.build_uncached(&asked), &captured));
+        assert_eq!(
+            registry
+                .get(&asked)
+                .current_user()
+                .await
+                .expect("the captured provider")
+                .login
+                .as_deref(),
             Some("mona")
         );
     }
