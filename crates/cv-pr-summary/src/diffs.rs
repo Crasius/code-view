@@ -7,7 +7,7 @@ use std::sync::Arc;
 use review_git::{ChangedFile, FileDiff};
 
 use super::bodies::CardBody;
-use super::layout;
+use super::card::{self, Body};
 use super::rendered;
 use super::{DiffSource, FolderSummary, MAX_BUILDS_PER_FRAME, SummaryInputs};
 use cv_syntax::highlight::LineSpans;
@@ -66,10 +66,6 @@ pub fn plan_wanted(summary: &mut FolderSummary, inputs: &SummaryInputs<'_>) {
     let (slots, collapsed, files) = (&summary.slots, &summary.collapsed, inputs.files);
     let is_expanded = |card: usize| !collapsed.contains(&files[slots[card].file].path);
     summary.loads.plan(&summary.index, summary.viewport, is_expanded);
-    #[cfg(test)]
-    {
-        summary.stats.wanted = summary.loads.wanted().len();
-    }
 }
 
 /// Starts the wanted loads the budget allows: from the cache at once, from the mirror a few at
@@ -139,10 +135,11 @@ fn start_rendered(
 
 /// The card shows code that is not loaded, failed or loading yet.
 pub fn needs_load(summary: &FolderSummary, file: &ChangedFile) -> bool {
-    let is_placeholder = file.is_binary
-        || (layout::is_too_large(file) && !summary.forced.contains(&file.path))
-        || layout::is_unchanged(file);
-    !is_placeholder && !summary.bodies.contains(&file.path) && !summary.loads.is_tried(&file.path)
+    let shows_code = matches!(
+        card::placeholder_body(file, summary.forced.contains(&file.path), None),
+        Body::Pending
+    );
+    shows_code && !summary.bodies.contains(&file.path) && !summary.loads.is_tried(&file.path)
 }
 
 /// Queues the syntax colors of the loaded cards on screen and one screen around it that have

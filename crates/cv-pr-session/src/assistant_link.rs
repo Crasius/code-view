@@ -7,6 +7,7 @@
 //! is ([`publish_room`]) and which cited lines it painted ([`note_cited`]). They live in
 //! `cv-pr-session`, below both the diff and the assistant, so neither crate names the other.
 
+use cv_base::mailbox;
 use cv_base::platform::shortcut;
 use egui::{Context, Id, Rect};
 use review_store::ChatQuote;
@@ -32,7 +33,7 @@ pub fn is_enabled(ctx: &Context) -> bool {
 
 /// Opens the assistant from elsewhere on the page this frame: with the lines of the diff quoted
 /// (Alt+A or the diff's context menu on a selection), or empty (Alt+A without one).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Request {
     pub quote: Option<ChatQuote>,
 }
@@ -42,12 +43,12 @@ pub fn request(ctx: &Context, quote: Option<ChatQuote>) {
     if !is_enabled(ctx) {
         return;
     }
-    ctx.data_mut(|data| data.insert_temp(Id::unique(REQUEST_ID), Request { quote }));
+    mailbox::post(ctx, Id::unique(REQUEST_ID), Request { quote });
 }
 
 /// The request of this frame, once.
 pub fn take_request(ctx: &Context) -> Option<Request> {
-    ctx.data_mut(|data| data.remove_temp::<Request>(Id::unique(REQUEST_ID)))
+    mailbox::take(ctx, Id::unique(REQUEST_ID))
 }
 
 /// Tells the mini chat where the Files tab's content is this frame: it floats inside.
