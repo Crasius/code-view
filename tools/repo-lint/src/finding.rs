@@ -132,3 +132,23 @@ impl fmt::Display for Finding {
         write!(f, "{} {}: {}", self.rule.id(), self.rule.name(), self.message)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `id` and `name` are exhaustive matches; `ALL` is not, so a rule the README documents but
+    /// `ALL` leaves out would make its waiver unknown to `from_id`.
+    #[test]
+    fn every_documented_rule_is_listed() {
+        let documented: Vec<(&str, &str)> = include_str!("../README.md")
+            .lines()
+            .filter_map(|line| line.strip_prefix("### "))
+            .filter(|heading| heading.starts_with("RL"))
+            .filter_map(|heading| heading.split_once(' '))
+            .map(|(id, name)| (id, name.trim()))
+            .collect();
+        let listed: Vec<(&str, &str)> = Rule::ALL.map(|rule| (rule.id(), rule.name())).into();
+        assert_eq!(documented, listed);
+    }
+}

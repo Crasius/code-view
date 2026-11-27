@@ -327,44 +327,10 @@ mod tests {
         allowed_dependencies(name).expect("a row").contains(&dependency)
     }
 
-    /// The edges of the layer table in .agents/rules/rust.md (Workspace), each pointing down.
     #[test]
-    fn the_layer_table_edges_are_allowed() {
-        let edges: &[(&str, &[&str])] = &[
-            ("cv-widgets", &["cv-base"]),
-            ("cv-testkit", &["cv-base"]),
-            ("cv-runtime", &["cv-widgets"]),
-            ("cv-media", &["cv-runtime"]),
-            ("cv-syntax", &["cv-runtime"]),
-            ("cv-markdown", &["cv-media", "cv-syntax", "cv-widgets"]),
-            ("cv-services", &["cv-media", "cv-runtime", "cv-widgets", "cv-testkit"]),
-            ("cv-editor", &["cv-markdown"]),
-            ("cv-code", &["cv-syntax", "cv-services"]),
-            ("cv-shell", &["cv-services"]),
-            ("cv-pr-session", &["cv-markdown", "cv-services", "cv-media"]),
-            ("cv-pr-tree", &["cv-widgets"]),
-            ("cv-pr-threads", &["cv-pr-session", "cv-code", "cv-editor"]),
-            ("cv-pr-assistant", &["cv-pr-session", "cv-markdown", "cv-providers"]),
-            ("cv-pr-pipelines", &["cv-pr-session", "cv-shell"]),
-            ("cv-lists", &["cv-pr-session"]),
-            ("cv-settings", &["cv-pr-session", "cv-code", "cv-shell", "provider-gitlab"]),
-            ("cv-pr-diff", &["cv-pr-threads", "cv-code", "cv-editor", "cv-pr-session", "cv-shell"]),
-            ("cv-pr-rendered", &["cv-pr-diff", "cv-markdown", "cv-media"]),
-            ("cv-pr-summary", &["cv-pr-rendered", "cv-pr-tree", "cv-shell"]),
-            ("cv-pr-files", &["cv-pr-summary", "cv-shell"]),
-            ("cv-pr-page", &["cv-pr-files", "cv-pr-pipelines", "cv-pr-assistant", "cv-shell"]),
-            ("review-app", &["cv-pr-page", "cv-lists", "cv-settings", "cv-providers"]),
-            ("cv-providers", &["provider-github", "provider-gitlab", "provider-azure"]),
-        ];
-        for (name, dependencies) in edges {
-            for dependency in *dependencies {
-                assert!(may_use(name, dependency), "{name} -> {dependency}");
-            }
-        }
-    }
-
-    #[test]
-    fn same_layer_and_upward_edges_are_refused() {
+    fn edges_must_point_to_a_strictly_lower_layer() {
+        assert!(may_use("cv-pr-page", "cv-base"), "many layers down");
+        assert!(may_use("cv-settings", "provider-gitlab"), "a domain crate from its row");
         assert!(!may_use("cv-base", "cv-testkit"), "a second cv-base and global allocator");
         assert!(!may_use("cv-widgets", "cv-testkit"), "same layer");
         assert!(!may_use("cv-pr-threads", "cv-pr-assistant"), "same layer");

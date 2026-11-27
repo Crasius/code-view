@@ -59,9 +59,11 @@ pub fn classify<'a>(
     let mut queue: VecDeque<(String, bool, bool)> =
         roots.into_iter().map(|(path, test)| (path, test, true)).collect();
     while let Some((path, test, is_root)) = queue.pop_front() {
-        match is_test.get(&path) {
-            Some(&known) if known <= test => continue,
-            _ => {}
+        // A file reached once as shipped stays shipped; a test-only mark is upgraded when a
+        // shipped path reaches it.
+        let settled = is_test.get(&path).is_some_and(|&known| !known || test);
+        if settled {
+            continue;
         }
         is_test.insert(path.clone(), test);
         let Some(items) = decls_of(&path) else {
