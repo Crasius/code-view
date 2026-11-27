@@ -123,6 +123,21 @@ impl AgentProcess {
         self.stdin.flush().await
     }
 
+    /// Runs `exchange` within `limit`, then [`AgentProcess::finish`]es the process. The exchange's
+    /// error is `None` when the CLI stopped reading its input: its exit then tells why, as
+    /// [`AgentError::Exited`]. Past `limit` the answer is [`AgentError::Timeout`] for `what`.
+    pub(crate) async fn exchange<T>(
+        mut self,
+        limit: Duration,
+        what: &'static str,
+        exchange: impl AsyncFnOnce(&mut Self) -> Result<T, Option<AgentError>>,
+    ) -> Result<T, AgentError> {
+        let answer = tokio::time::timeout(limit, exchange(&mut self)).await;
+        let (code, stderr_tail) = self.finish(EXIT_GRACE).await;
+        let answer = answer.unwrap_or(Err(Some(AgentError::Timeout(what))));
+        answer.map_err(|error| error.unwrap_or(AgentError::Exited { code, stderr_tail }))
+    }
+
     /// Closes stdin, waits up to `grace` for the exit, then kills. Returns the exit code (`None`
     /// when killed or ended by a signal) and the last lines of stderr.
     pub(crate) async fn finish(self, grace: Duration) -> (Option<i32>, String) {
@@ -194,10 +209,46 @@ fn strip_ansi(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use std::ffi::OsStr;
+    use std::time::Duration;
 
     use tokio::process::Command;
 
-    use super::{remove_host_tokens, strip_ansi};
+    use super::{AgentProcess, command, remove_host_tokens, strip_ansi};
+    use crate::AgentError;
+
+    /// A CLI that writes "fatal: boom" to stderr and exits with code 3 without reading its input.
+    fn crashing_cli() -> AgentProcess {
+        let (program, args) = if cfg!(windows) {
+            ("cmd", ["/C", "echo fatal: boom 1>&2& exit 3"])
+        } else {
+            ("sh", ["-c", "echo 'fatal: boom' >&2; exit 3"])
+        };
+        let command = command(program.as_ref(), args, &std::env::temp_dir());
+        AgentProcess::spawn(command).expect("the shell starts")
+    }
+
+    #[tokio::test]
+    async fn a_failed_write_reports_how_the_cli_ended() {
+        let mut agent = crashing_cli();
+        agent.child.wait().await.expect("the CLI exits");
+        let answer = agent
+            .exchange(Duration::from_secs(30), "the model list", async |agent| {
+                agent.send(&serde_json::json!({})).await.map_err(|_| None)
+            })
+            .await;
+        let exited = AgentError::Exited { code: Some(3), stderr_tail: "fatal: boom".to_owned() };
+        assert_eq!(answer, Err(exited));
+    }
+
+    #[tokio::test]
+    async fn a_cli_that_does_not_answer_in_time_times_out_instead_of_exiting() {
+        let answer: Result<(), AgentError> = crashing_cli()
+            .exchange(Duration::from_millis(10), "the model list", async |_| {
+                std::future::pending().await
+            })
+            .await;
+        assert_eq!(answer, Err(AgentError::Timeout("the model list")));
+    }
 
     #[test]
     fn the_agent_starts_without_the_hosts_access_tokens() {

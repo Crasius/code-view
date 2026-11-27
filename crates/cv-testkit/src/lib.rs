@@ -9,9 +9,9 @@
 //!   server's origin starts without an earlier test's rate-limit pause ([`fresh_origin`]);
 //! - a [`Watchdog`] stops the test binary with a message once a test runs past the watchdog limit
 //!   (5 min, `REVIEW_TEST_WATCHDOG_SECS` overrides it) in real time, so a call that never returns
-//!   fails the run instead of hanging it; the message
-//!   says where the test was ([`step`], [`frame_started`]: the wait under way, its frames, the
-//!   background work in flight, a panic it hung after);
+//!   fails the run instead of hanging it; the message says where the test was ([`step`],
+//!   [`frame_started`]: the wait under way, its frames, the background work in flight, a panic it
+//!   hung after);
 //! - at most [`PROCESS_SLOTS`] such tests run at once ([`take_process_slot`]): the processes they
 //!   start (git above all) are started one after another for the whole test binary, so every
 //!   further test adds to each one's wait.

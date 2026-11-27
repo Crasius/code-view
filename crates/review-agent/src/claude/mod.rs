@@ -19,7 +19,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use crate::driver::{Launch, Protocol, Reaction};
-use crate::process::{self, AgentProcess, EXIT_GRACE};
+use crate::process::{self, AgentProcess};
 use crate::{AgentCli, AgentError, AgentEvent, ModelInfo, SessionConfig};
 use stream::ClaudeStream;
 
@@ -142,18 +142,15 @@ impl Protocol for ClaudeProtocol {
 pub(crate) async fn list_models(cli: &AgentCli) -> Result<Vec<ModelInfo>, AgentError> {
     let args = MACHINE_MODE.iter().chain(&ISOLATED).chain(&["--no-session-persistence"]);
     let command = process::command(&cli.program, args, &std::env::temp_dir());
-    let mut agent = AgentProcess::spawn(command)?;
+    let agent = AgentProcess::spawn(command)?;
     let request = json!({"type": "control_request", "request_id": "models", "request": {"subtype": "initialize"}});
-    let answer = tokio::time::timeout(MODELS_TIMEOUT, async {
-        agent.send(&request).await.map_err(|_| None)?;
-        initialize_answer(&mut agent).await.map_err(Some)
-    })
-    .await;
-    let (code, stderr_tail) = agent.finish(EXIT_GRACE).await;
-    let response = answer.unwrap_or(Err(Some(AgentError::Timeout("the model list"))));
-    response
-        .map(|response| models_from_initialize(&response))
-        .map_err(|error| error.unwrap_or(AgentError::Exited { code, stderr_tail }))
+    let response = agent
+        .exchange(MODELS_TIMEOUT, "the model list", async |agent| {
+            agent.send(&request).await.map_err(|_| None)?;
+            initialize_answer(agent).await.map_err(Some)
+        })
+        .await?;
+    Ok(models_from_initialize(&response))
 }
 
 async fn initialize_answer(agent: &mut AgentProcess) -> Result<Value, AgentError> {

@@ -14,7 +14,7 @@ use std::time::Duration;
 use serde_json::{Map, Value, json};
 
 use crate::driver::{Launch, Protocol, Reaction};
-use crate::process::{self, AgentProcess, EXIT_GRACE};
+use crate::process::{self, AgentProcess};
 use crate::{AgentCli, AgentError, AgentEvent, AgentKind, ModelInfo, SessionConfig};
 use protocol::{ThreadSetup, TurnReader};
 
@@ -235,15 +235,11 @@ impl Protocol for CodexProtocol {
 /// The visible models from `model/list`, all pages, in the server's order (newest first).
 pub(crate) async fn list_models(cli: &AgentCli) -> Result<Vec<ModelInfo>, AgentError> {
     let command = process::command(&cli.program, ["app-server"], &std::env::temp_dir());
-    let mut agent = AgentProcess::spawn(command)?;
-    let listed = tokio::time::timeout(MODELS_TIMEOUT, all_models(&mut agent)).await;
-    let (code, stderr_tail) = agent.finish(EXIT_GRACE).await;
-    let listed = listed.unwrap_or(Err(Some(AgentError::Timeout("the model list"))));
-    listed.map_err(|error| error.unwrap_or(AgentError::Exited { code, stderr_tail }))
+    let agent = AgentProcess::spawn(command)?;
+    agent.exchange(MODELS_TIMEOUT, "the model list", all_models).await
 }
 
-/// Every model page; the error is `None` when the CLI stopped reading its input, whose exit
-/// then tells why.
+/// Every model page, as an [`AgentProcess::exchange`].
 async fn all_models(agent: &mut AgentProcess) -> Result<Vec<ModelInfo>, Option<AgentError>> {
     let initialize = json!({"id": 0, "method": "initialize", "params": initialize_params()});
     agent.send(&initialize).await.map_err(|_| None)?;
