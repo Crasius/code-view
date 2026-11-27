@@ -56,6 +56,7 @@ mod loads;
 mod rendered;
 #[cfg(test)]
 mod rendered_check;
+mod scroll;
 #[cfg(test)]
 mod split_check;
 #[cfg(test)]
@@ -68,7 +69,7 @@ mod zoom_check;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use egui::{Rect, Ui, UiBuilder, pos2, vec2};
+use egui::{Rect, Ui, pos2, vec2};
 use review_core::{ChangeBreakdown, NewThread, ProviderKind, ReviewThread};
 use review_git::{ChangedFile, DiffOptions, FileDiff};
 use review_store::{DiffLayout, RenderedWidth};
@@ -80,7 +81,7 @@ use self::header::HeaderAction;
 use self::layout::{CardIndex, Geometry, HEIGHT_EPSILON, Shape, Shapes, note_height};
 use self::loads::Loads;
 use self::rendered::{RenderedCards, RenderedFrame};
-use cv_base::theme::{self, style};
+use cv_base::theme;
 use cv_code::compaction::SUMMARY_CONTEXT;
 use cv_code::diff_paint::Metrics;
 use cv_pr_diff::diff_view::{self, DiffEvent, Embedded};
@@ -380,43 +381,22 @@ impl FolderSummary {
         let area = ui.available_rect_before_wrap();
         let palette = theme::palette(ui.ctx());
         ui.painter().rect_filled(area, 0, palette.ground);
-        let margin = egui::Margin {
-            left: MARGIN as i8,
-            right: (MARGIN + style::SCROLL_GUTTER) as i8,
-            top: MARGIN as i8,
-            bottom: MARGIN as i8,
-        };
-        // A drag on the code selects it, as in the file view; it does not scroll.
-        let mut scroll = egui::ScrollArea::vertical()
-            .id_salt(("folder_summary", inputs.folder))
-            .auto_shrink(false)
-            .scroll_source(
-                egui::scroll_area::ScrollSource::SCROLL_BAR
-                    | egui::scroll_area::ScrollSource::MOUSE_WHEEL,
-            )
-            .content_margin(margin);
-        if let Some(offset) = self.scroll_to.take() {
-            scroll = scroll.vertical_scroll_offset(offset);
-        }
         let total = self.index.total();
-        let output = ui
-            .scope_builder(UiBuilder::new().max_rect(area), |ui| {
-                scroll.show_viewport(ui, |ui, viewport| {
-                    ui.set_min_height(total);
-                    let frame = PaintFrame {
-                        inputs,
-                        threads,
-                        geometry,
-                        origin: ui.max_rect().min,
-                        width: ui.available_width(),
-                        // The viewport counts the top margin; cards start below it.
-                        viewport: viewport.translate(vec2(0.0, -MARGIN)),
-                        split: *split,
-                    };
-                    self.paint_cards(ui, &frame, threads_ui)
-                })
-            })
-            .inner;
+        let placed = self.scroll_to.take();
+        let output = scroll::show(ui, area, inputs.folder, placed, |ui, viewport| {
+            ui.set_min_height(total);
+            let frame = PaintFrame {
+                inputs,
+                threads,
+                geometry,
+                origin: ui.max_rect().min,
+                width: ui.available_width(),
+                // The viewport counts the top margin; cards start below it.
+                viewport: viewport.translate(vec2(0.0, -MARGIN)),
+                split: *split,
+            };
+            self.paint_cards(ui, &frame, threads_ui)
+        });
         if let Some(moved) = self.split_moved.take() {
             *split = moved;
             ui.ctx().request_repaint();
