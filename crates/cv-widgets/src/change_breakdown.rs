@@ -266,16 +266,17 @@ impl Row<'_> {
     /// The row in words for assistive technology, and its name as a label of its own, so the
     /// walkthrough can measure where the text sits in the row.
     fn describe(&self, ui: &Ui, rect: Rect, name_rect: Rect, lines: Option<&(String, String)>) {
-        let summary = match (self.changes.files, lines) {
-            (0, _) => format!("{}: no files", self.name),
-            (files, None) => format!("{}: {}, counting lines", self.name, files_text(files)),
-            (files, Some((added, deleted))) => {
-                format!("{}: {}, {added} {deleted}", self.name, files_text(files))
-            }
-        };
         let id = ui.scope_id().with(("change_breakdown_row", self.name));
-        ui.interact(rect, id, Sense::hover())
-            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Row, true, &summary));
+        ui.interact(rect, id, Sense::hover()).widget_info(|| {
+            let summary = match (self.changes.files, lines) {
+                (0, _) => format!("{}: no files", self.name),
+                (files, None) => format!("{}: {}, counting lines", self.name, files_text(files)),
+                (files, Some((added, deleted))) => {
+                    format!("{}: {}, {added} {deleted}", self.name, files_text(files))
+                }
+            };
+            egui::WidgetInfo::labeled(egui::Role::Row, true, summary)
+        });
         ui.interact(name_rect, id.with("name"), Sense::hover())
             .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, self.name));
     }

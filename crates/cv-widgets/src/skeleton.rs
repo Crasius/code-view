@@ -11,7 +11,7 @@
 use std::time::Duration;
 
 use cv_base::platform;
-use cv_base::theme::{self, motion};
+use cv_base::theme::{self, motion, style};
 use egui::{Color32, Context, Id, Rect, Response, Sense, Ui, vec2};
 
 const SHIMMER_PERIOD_SECONDS: f64 = 1.6;
@@ -133,12 +133,12 @@ pub fn header(ui: &mut Ui) {
         bar(ui, 420.0, 24.0);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), command_bar);
     });
-    ui.add_space(8.0);
+    ui.add_space(style::SPACE_S);
     ui.horizontal(|ui| {
         circle(ui, 20.0);
         bar(ui, 360.0, 14.0);
     });
-    ui.add_space(4.0);
+    ui.add_space(style::SPACE_XS);
 }
 
 /// Matches the header's command bar (menu, merge, votes), laid out right to left. The header
@@ -259,12 +259,12 @@ pub fn thread_cards(ui: &mut Ui, count: usize) {
             circle(ui, 28.0);
             ui.vertical(|ui| {
                 bar(ui, 180.0, 12.0);
-                ui.add_space(4.0);
+                ui.add_space(style::SPACE_XS);
                 bar(ui, 420.0 + (index * 41 % 160) as f32, 12.0);
                 bar(ui, 300.0 + (index * 29 % 140) as f32, 12.0);
             });
         });
-        ui.add_space(16.0);
+        ui.add_space(style::SPACE_L);
     }
 }
 
@@ -277,8 +277,8 @@ mod tests {
     fn sweeps(mut add: impl FnMut(&mut egui::Ui)) -> bool {
         let ctx = egui::Context::default();
         for _ in 0..2 {
-            let mut output = ctx.run_ui(egui::RawInput::default(), &mut add);
-            output.textures_delta.clear();
+            let output = ctx.run_ui(egui::RawInput::default(), &mut add);
+            output.drop_without_applying_deltas();
         }
         ctx.repaint_causes().iter().any(|cause| cause.file.ends_with("skeleton.rs"))
     }

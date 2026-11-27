@@ -1,6 +1,7 @@
 use cv_base::theme::{self, icons, motion, style};
 use egui::{Align2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 
+use super::elide::text_width;
 use super::row;
 
 const PIVOT_HEIGHT: f32 = 40.0;
@@ -33,18 +34,9 @@ pub fn pivot(ui: &mut Ui, labels: &[String], selected: usize) -> Option<usize> {
 
 /// The width [`pivot`] takes for these labels, for rows that plan their room before drawing.
 pub fn pivot_width(ui: &Ui, labels: &[String]) -> f32 {
-    let palette = theme::palette(ui.ctx());
-    let tabs: f32 = labels
-        .iter()
-        .map(|label| {
-            let bold = ui.painter().layout_no_wrap(
-                label.clone(),
-                theme::fonts::semibold_font(style::BODY_SIZE),
-                palette.text,
-            );
-            bold.size().x + PIVOT_PADDING * 2.0
-        })
-        .sum();
+    let font = theme::fonts::semibold_font(style::BODY_SIZE);
+    let tabs: f32 =
+        labels.iter().map(|label| text_width(ui, label, &font) + PIVOT_PADDING * 2.0).sum();
     tabs + PIVOT_SPACING * labels.len().saturating_sub(1) as f32
 }
 
@@ -61,8 +53,7 @@ pub fn pivot_with_counts(
     let mut clicked = None;
     let mut selected_rect = None;
     let count_font = egui::FontId::proportional(style::SMALL_SIZE);
-    let min_count_width =
-        ui.painter().layout_no_wrap("000".to_owned(), count_font, palette.text).size().x;
+    let min_count_width = text_width(ui, "000", &count_font);
     let inner = ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = PIVOT_SPACING;
         for (index, (label, count, shortcut)) in tabs.iter().enumerate() {
@@ -273,9 +264,7 @@ fn segment_width(ui: &Ui, label: &str, icon: Option<&str>) -> f32 {
         return icons::SIZE + style::SPACE_M * 2.0;
     }
     let font = theme::fonts::semibold_font(style::BODY_SIZE);
-    let galley =
-        ui.painter().layout_no_wrap(reserve_digits(label), font, theme::palette(ui.ctx()).text);
-    galley.size().x + style::SPACE_L * 2.0
+    text_width(ui, &reserve_digits(label), &font) + style::SPACE_L * 2.0
 }
 
 /// Segmented control for small sets of mutually exclusive options; true when the value changed.

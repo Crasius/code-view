@@ -44,7 +44,7 @@ pub fn reference(ui: &Ui, reference: &str, font: &FontId, width: f32) -> String 
 /// The longest form of `text` that `measure` says fits `width`, in this order of preference:
 /// the whole text; the owner cut (`contoso-pl…/data-loader#59`); the name cut (`data…#59`);
 /// the number alone. Text without a trailing `#123` or `!123` is cut at the end.
-pub fn fit_reference(text: &str, width: f32, measure: impl Fn(&str) -> f32) -> String {
+fn fit_reference(text: &str, width: f32, measure: impl Fn(&str) -> f32) -> String {
     if measure(text) <= width {
         return text.to_owned();
     }
@@ -106,12 +106,12 @@ mod tests {
     fn in_a_frame(check: impl FnOnce(&egui::Ui)) {
         let ctx = egui::Context::default();
         let mut check = Some(check);
-        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
             if let Some(check) = check.take() {
                 check(ui);
             }
         });
-        output.textures_delta.clear();
+        output.drop_without_applying_deltas();
     }
 
     #[test]
