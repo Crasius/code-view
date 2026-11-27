@@ -196,7 +196,7 @@ fn paint_bar(ui: &Ui, card: Rect, color: Color32) {
 /// The thread on the pull request's page, once the page and the platform are known.
 fn thread_url(threads: &ThreadsUi, thread: &ReviewThread) -> Option<String> {
     let page = threads.context.web_url.as_deref()?;
-    links::thread_url(threads.edits.provider()?, page, thread)
+    links::thread_url(threads.context.provider.as_deref()?, page, thread)
 }
 
 fn hairline(ui: &mut Ui, palette: &Palette) {
@@ -527,7 +527,7 @@ mod tests {
             let mut threads = ThreadsUi::for_tests(ProviderKind::GitHub);
             threads.context.web_url = Some("https://code.example/acme/shop/pull/12".into());
             if has_provider {
-                threads.edits.set_provider(&links::tests::github());
+                threads.context.provider = Some(links::tests::github());
             }
             let shown = thread.clone();
             let mut harness = Harness::builder()

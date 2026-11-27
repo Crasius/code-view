@@ -7,8 +7,6 @@
 //!
 //! Changes are few at a time, so they sit in a short list that a card scans without allocating.
 
-use std::sync::Arc;
-
 use cv_pr_session::session::PullRequestSession;
 use cv_runtime::load::Load;
 use cv_runtime::toasts::Toasts;
@@ -84,40 +82,10 @@ struct Entry {
 
 #[derive(Default)]
 pub(crate) struct CommentEdits {
-    /// What the platform lets the user do per thread; set by the first frame with a session.
-    provider: Option<Arc<dyn Provider>>,
     entries: Vec<Entry>,
 }
 
 impl CommentEdits {
-    pub(crate) fn set_provider(&mut self, provider: &Arc<dyn Provider>) {
-        if self.provider.is_none() {
-            self.provider = Some(Arc::clone(provider));
-        }
-    }
-
-    /// The platform of the pull request, once a frame with its session ran.
-    pub(crate) fn provider(&self) -> Option<&dyn Provider> {
-        self.provider.as_deref()
-    }
-
-    /// What the menu of `comment` offers: what the platform lets the user do in `thread`, for
-    /// [`may_change`] comments only.
-    pub(crate) fn actions(
-        &self,
-        thread: &ReviewThread,
-        comment: &ThreadComment,
-        me: Option<&UserIdentity>,
-        can_write: bool,
-    ) -> CommentActions {
-        match &self.provider {
-            Some(provider) if may_change(thread, comment, me, can_write) => {
-                provider.comment_actions(thread)
-            }
-            _ => CommentActions::NONE,
-        }
-    }
-
     pub(crate) fn view(&self, thread_id: &str, comment_id: &str) -> View {
         let Some(entry) = self.entry(thread_id, comment_id) else {
             return View::Plain;
@@ -330,6 +298,23 @@ fn finish(
     };
     *change = next;
     done
+}
+
+/// What the menu of `comment` offers: what `provider` lets the user do in `thread`, for
+/// [`may_change`] comments only.
+pub(crate) fn actions(
+    provider: Option<&dyn Provider>,
+    thread: &ReviewThread,
+    comment: &ThreadComment,
+    me: Option<&UserIdentity>,
+    can_write: bool,
+) -> CommentActions {
+    match provider {
+        Some(provider) if may_change(thread, comment, me, can_write) => {
+            provider.comment_actions(thread)
+        }
+        _ => CommentActions::NONE,
+    }
 }
 
 /// Only the signed-in user's own comments, outside platform notices, and only with a token: other

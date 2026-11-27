@@ -30,6 +30,7 @@ pub mod samples;
 pub mod suggestion;
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use cv_pr_session::actions::{ActionRunner, Refresh};
 use cv_pr_session::session::PullRequestSession;
@@ -38,7 +39,7 @@ use cv_runtime::route::PullRequestKey;
 use cv_runtime::toasts::ToastAction;
 use cv_services::Services;
 use cv_services::writes::Effect;
-use review_core::{NewThread, ProviderKind, ReviewThread, ThreadStatus, UserIdentity};
+use review_core::{NewThread, Provider, ProviderKind, ReviewThread, ThreadStatus, UserIdentity};
 use review_store::ThreadStore;
 
 use self::card::NewComments;
@@ -76,6 +77,8 @@ pub struct ThreadContext {
     /// The pull request's web page, for thread links.
     pub web_url: Option<String>,
     pub connection_id: String,
+    /// The pull request's platform, for thread links and what the user may do per comment.
+    pub(crate) provider: Option<Arc<dyn Provider>>,
 }
 
 impl ThreadContext {
@@ -86,6 +89,7 @@ impl ThreadContext {
             author_id: None,
             web_url: None,
             connection_id: connection_id.to_owned(),
+            provider: None,
         }
     }
 }
@@ -180,6 +184,7 @@ impl ThreadsUi {
         self.now = ctx.input(|input| input.time);
         self.context.platform = session.kind;
         self.context.can_write = session.has_token;
+        self.context.provider = Some(session.provider.clone());
         self.context.author_id =
             session.detail.ready().map(|detail| detail.summary.author.id.clone());
         self.context.web_url = session.detail.ready().map(|detail| detail.summary.web_url.clone());
@@ -205,7 +210,6 @@ impl ThreadsUi {
             session.reload_threads(services);
         }
         self.on_post_news(&news);
-        self.edits.set_provider(&session.provider);
         let version = session.threads.version();
         if self.edits.poll(&issues, &self.context.connection_id, version, &mut services.toasts) {
             session.reload_threads(services);
