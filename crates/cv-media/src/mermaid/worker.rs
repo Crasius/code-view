@@ -16,7 +16,7 @@ use egui::vec2;
 use super::diagram::{self, DiagramFailure, DiagramTheme, Svg};
 
 /// The argument that makes the executable serve diagrams instead of opening its window.
-pub const WORKER_ARG: &str = "--mermaid-worker";
+const WORKER_ARG: &str = "--mermaid-worker";
 /// Fields per frame and bytes per field a reader accepts; anything larger is a broken stream.
 const MAX_FIELDS: usize = 64;
 const MAX_FIELD_BYTES: usize = 64 * 1024 * 1024;
@@ -34,7 +34,7 @@ pub fn serve_if_asked() -> bool {
 }
 
 /// Answers every request read from `input` on `output` until `input` ends.
-pub fn serve(input: impl Read, output: impl Write) -> io::Result<()> {
+fn serve(input: impl Read, output: impl Write) -> io::Result<()> {
     let mut input = BufReader::new(input);
     let mut output = BufWriter::new(output);
     while let Some(fields) = read_frame(&mut input)? {
@@ -60,7 +60,7 @@ pub fn serve(input: impl Read, output: impl Write) -> io::Result<()> {
     Ok(())
 }
 
-pub fn write_frame(output: &mut impl Write, fields: &[&str]) -> io::Result<()> {
+fn write_frame(output: &mut impl Write, fields: &[&str]) -> io::Result<()> {
     output.write_all(&(fields.len() as u32).to_le_bytes())?;
     for field in fields {
         output.write_all(&(field.len() as u32).to_le_bytes())?;
@@ -70,7 +70,7 @@ pub fn write_frame(output: &mut impl Write, fields: &[&str]) -> io::Result<()> {
 }
 
 /// The next frame; `None` when the stream ended between frames.
-pub fn read_frame(input: &mut impl Read) -> io::Result<Option<Vec<String>>> {
+fn read_frame(input: &mut impl Read) -> io::Result<Option<Vec<String>>> {
     let mut word = [0_u8; 4];
     match input.read_exact(&mut word) {
         Ok(()) => {}
@@ -114,7 +114,7 @@ fn parse_answer(fields: &[String]) -> Option<Result<Svg, DiagramFailure>> {
 
 /// A running renderer: where requests go and where answers come from (read on a thread of its
 /// own, so a wait can time out).
-pub struct Worker {
+pub(crate) struct Worker {
     input: Box<dyn Write + Send>,
     answers: mpsc::Receiver<io::Result<Option<Vec<String>>>>,
     /// The renderer process; the tests run the renderer on a thread instead.
@@ -124,7 +124,7 @@ pub struct Worker {
 impl Worker {
     /// Starts the renderer: this executable as [`WORKER_ARG`].
     #[cfg(not(any(test, feature = "test-support")))]
-    pub fn start() -> io::Result<Self> {
+    pub(crate) fn start() -> io::Result<Self> {
         use std::process::{Command, Stdio};
         let mut process = Command::new(std::env::current_exe()?)
             .arg(WORKER_ARG)
@@ -139,7 +139,7 @@ impl Worker {
 
     /// The test binary cannot start itself as the renderer: [`serve`] runs on a thread over pipes.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn start() -> io::Result<Self> {
+    pub(crate) fn start() -> io::Result<Self> {
         let (request_reader, request_writer) = io::pipe()?;
         let (answer_reader, answer_writer) = io::pipe()?;
         std::thread::Builder::new()
@@ -148,7 +148,7 @@ impl Worker {
         Ok(Self::connect(Box::new(request_writer), answer_reader, None))
     }
 
-    pub fn connect(
+    fn connect(
         input: Box<dyn Write + Send>,
         output: impl Read + Send + 'static,
         process: Option<std::process::Child>,
@@ -171,7 +171,7 @@ impl Worker {
 
     /// Draws `source` in `theme`. `Err` means the renderer is gone (it crashed, broke the
     /// protocol or took longer than `timeout` and was stopped): the caller drops this worker.
-    pub fn draw(
+    pub(crate) fn draw(
         &mut self,
         source: &str,
         theme: &DiagramTheme,
