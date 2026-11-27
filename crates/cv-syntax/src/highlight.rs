@@ -5,7 +5,7 @@
 //! Parsing is the whole cost (the regex searches of the grammar: 15,000 lines of TypeScript take
 //! seconds on one thread), so a long text reads in parts at once, see [`read_lines`]. The threads
 //! that read are kept ones, never started per text: each thread that searched with a grammar adds
-//! its own search caches to it (see [`READERS`]).
+//! its own search caches to it (see `READERS`).
 
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -131,7 +131,7 @@ pub fn highlight(
     }
 }
 
-/// [`highlight`] without waiting: queues `text` for a reader thread ([`READERS`]), which hands each
+/// [`highlight`] without waiting: queues `text` for a reader thread (`READERS`), which hands each
 /// finished chunk to `deliver` itself and calls `finish` once `deliver` took the last one. The text
 /// is read from a copy, which costs little next to reading it.
 pub fn start_highlight(
@@ -275,8 +275,8 @@ pub fn start_indent(line: &str) -> Option<usize> {
 /// Reads lines `0..count` with `reader`, handing each line's spans to `each` in order; stops as
 /// soon as `each` returns false. Returns whether every line was read.
 ///
-/// A long text reads in parts at once (see [`MIN_PART_LINES`]): the first on this thread, the
-/// others on the reader threads ([`READERS`]), queued once the first [`HEAD_LINES`] are read and
+/// A long text reads in parts at once (see `MIN_PART_LINES`): the first on this thread, the
+/// others on the reader threads (`READERS`), queued once the first `HEAD_LINES` are read and
 /// handed on. A part no reader thread started by the time the lines before it are read is read
 /// here, in order. A part's lines count from the line where the reader of the lines before it is
 /// in the state the part's reader was in there: from then on both read every line alike, so the
@@ -299,7 +299,7 @@ pub fn read_lines<R: LineReader>(
 }
 
 /// What a reader thread read of a part: the spans of its lines from `start`, and its reader's
-/// state every [`CHECK_EVERY`] lines (by line). `end` is the reader's state once it read the
+/// state every `CHECK_EVERY` lines (by line). `end` is the reader's state once it read the
 /// whole part.
 pub struct Part<S> {
     start: usize,
@@ -454,7 +454,7 @@ impl<R: LineReader, F: FnMut(&[Span]) -> bool> InOrder<R, F> {
     }
 }
 
-/// Reads `lines` with `reader`, keeping its state every [`CHECK_EVERY`] lines from the first;
+/// Reads `lines` with `reader`, keeping its state every `CHECK_EVERY` lines from the first;
 /// gives up once `stop` is set.
 pub fn read_part<R: LineReader>(
     mut reader: R,

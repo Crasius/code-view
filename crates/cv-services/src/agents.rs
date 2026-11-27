@@ -4,7 +4,7 @@
 //! arrived.
 //!
 //! Tests never start a real CLI: in test builds (and with the `test-support` feature) the
-//! directory answers from [`FakeAgents`], which reports every agent as not installed until a test
+//! directory answers from `FakeAgents`, which reports every agent as not installed until a test
 //! sets it up, hands out scripted sessions and records the terminals the app would open.
 
 use review_agent::{
@@ -165,7 +165,7 @@ impl AgentDirectory {
 
     /// Opens the user's terminal in `dir` running `program` with `args` (an agent's CLI, to sign in
     /// or to go on in it). Test builds have no way to open a terminal: the directory records it in
-    /// [`FakeAgents`] instead.
+    /// `FakeAgents` instead.
     #[cfg_attr(
         not(any(test, feature = "test-support")),
         expect(clippy::unused_self, reason = "test builds record the terminals they hold")
@@ -187,7 +187,7 @@ impl AgentDirectory {
     }
 
     /// Opens the user's terminal `terminal` with a plain shell in `dir` (a checkout's folder); test
-    /// builds record it in [`FakeAgents`] as the program `shell (<terminal>)`.
+    /// builds record it in `FakeAgents` as the program `shell (<terminal>)`.
     #[cfg_attr(
         not(any(test, feature = "test-support")),
         expect(clippy::unused_self, reason = "test builds record the terminals they hold")

@@ -1,6 +1,6 @@
 //! A loaded image as the renderer draws it: one texture, or an animation (GIF, animated WebP or
 //! PNG). A short animation keeps every frame as a texture with how long it shows; a long one
-//! ([`Picture::streamed`]) is decoded one frame after another by a thread of its own into one
+//! (`Picture::streamed`) is decoded one frame after another by a thread of its own into one
 //! texture, so it plays at its full size whatever its length. The animation loops from its first
 //! frame once it is first drawn and repaints only when the next frame is due; time it was not drawn
 //! does not count. Under reduced motion it stays on its first frame, as browsers that honour the

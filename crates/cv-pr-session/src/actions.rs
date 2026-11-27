@@ -4,7 +4,7 @@
 //! and the pull request on its platform. Retry runs the failed write once more through the page's
 //! next [`ActionRunner::poll`]; a failed merge also stays on the merge button
 //! ([`ActionRunner::take_merge_failure`]). A merge refused because new commits arrived after the
-//! review ([`MergeOptions::is_head_moved`]) offers Reload instead of Retry: running it again would
+//! review (`MergeOptions::is_head_moved`) offers Reload instead of Retry: running it again would
 //! hit the same guard, reloading shows the new commits to review.
 //!
 //! The merge button asks for its auto-complete writes ([`AutoCompleteWrite`]) by leaving them in
@@ -88,7 +88,7 @@ impl Write {
         }
     }
 
-    /// The write's name in "<name> failed: <reason>".
+    /// The write's name in "`<name>` failed: `<reason>`".
     fn name(&self, kind: ProviderKind) -> &'static str {
         match self {
             Write::Merge(_) => "Merge",

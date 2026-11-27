@@ -1,5 +1,5 @@
 //! The parts of the surface that need nothing from the system, shared by the systems without an
-//! own implementation of them ([`super::macos`], [`super::linux`] and [`super::other`]). The
+//! own implementation of them (`super::macos`, `super::linux` and `super::other`). The
 //! system-drawn title bar, the missing Save dialog and `xdg-open` serve Linux and the other
 //! systems.
 

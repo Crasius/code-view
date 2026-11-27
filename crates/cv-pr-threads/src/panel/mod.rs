@@ -212,7 +212,7 @@ pub(crate) fn toggle(
     response.on_hover_text(tooltip).clicked()
 }
 
-/// [`toggle`] for the threads `session` loaded: the tab bar's "Threads" toggle; true when clicked.
+/// `toggle` for the threads `session` loaded: the tab bar's "Threads" toggle; true when clicked.
 pub fn panel_toggle(
     ui: &mut Ui,
     session: &PullRequestSession,

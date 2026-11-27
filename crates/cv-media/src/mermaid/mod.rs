@@ -1,18 +1,18 @@
 //! Mermaid diagrams for rendered Markdown, drawn off the UI thread and outside the app's process.
 //!
 //! A diagram is asked for by its source and theme ([`DiagramStore::state`]); the first ask queues
-//! it for the render thread, which hands it to the renderer process ([`worker`]) and turns the SVG
+//! it for the render thread, which hands it to the renderer process (`worker`) and turns the SVG
 //! into a texture with resvg. Nothing is sent anywhere else: the renderer is pure Rust, in a
 //! process of this app. Each step is cached: the SVG by source and theme, the texture by its
 //! pixel scale, so a theme switch draws again, a zoom or a move to another screen only
 //! rasterizes again, and scrolling costs nothing. The size a source drew at is remembered on its
 //! own, so a diagram drawn again (another theme) holds its place meanwhile.
 //!
-//! Textures live in memory up to [`MEMORY_LIMIT`] (least recently drawn go first, their SVG kept)
+//! Textures live in memory up to `MEMORY_LIMIT` (least recently drawn go first, their SVG kept)
 //! and only while they are drawn: one nobody drew for [`memory::UNSEEN_TEXTURE_SECONDS`] goes too
 //! ([`DiagramStore::release_unseen`]) and is rasterized again from its SVG when it is seen again.
-//! Entries beyond [`MAX_ENTRIES`] are forgotten oldest first. The render thread, and with it the
-//! renderer process, ends after [`IDLE_EXIT`] without work and starts again on the next diagram.
+//! Entries beyond `MAX_ENTRIES` are forgotten oldest first. The render thread, and with it the
+//! renderer process, ends after `IDLE_EXIT` without work and starts again on the next diagram.
 
 mod diagram;
 mod worker;

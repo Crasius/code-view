@@ -1,6 +1,6 @@
 //! Recently shown diffs and the diffs loaded ahead of the user (the Files tab's prefetch), bounded by
 //! bytes, so flipping between files is instant without growing memory. A diff loaded ahead counts
-//! as unopened until something shows it: at most [`MAX_UNOPENED`] of them stay, the ones the
+//! as unopened until something shows it: at most `MAX_UNOPENED` of them stay, the ones the
 //! user moved away from are released ([`DiffCache::release_unopened`]), and they go first, oldest
 //! first, when the byte budget is spent; the shown diffs go least recently used first.
 
@@ -109,7 +109,7 @@ impl DiffCache {
     }
 
     /// A diff loaded ahead, unless the cache has it already: the oldest unopened one goes once
-    /// there are more than [`MAX_UNOPENED`].
+    /// there are more than `MAX_UNOPENED`.
     pub fn insert_ahead(&mut self, key: DiffKey, diff: Arc<FileDiff>) {
         if self.contains(&key) {
             return;

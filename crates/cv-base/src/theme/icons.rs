@@ -3,9 +3,9 @@
 //!
 //! # Weights
 //!
-//! Regular, Bold and Fill share one set of codepoints; [`Weight::family`] picks the font. Inline
+//! Regular, Bold and Fill share one set of codepoints; `Weight::family` picks the font. Inline
 //! text such as `"{icon}  Label"` falls back to Bold, the weight for text-sized icons. Painters
-//! choose with [`weight`] / [`state_font`]:
+//! choose with `weight` / [`state_font`]:
 //!
 //! | State                      | Light theme              | Dark theme |
 //! |----------------------------|--------------------------|------------|

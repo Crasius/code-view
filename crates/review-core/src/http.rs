@@ -1,7 +1,7 @@
 //! Shared HTTP plumbing. One pooled [`reqwest::Client`] serves every connection;
 //! auth headers go on each request, never on the client.
 //!
-//! Every request goes through the per-host [`budget`]: at most six requests (`budget::MAX_IN_FLIGHT`)
+//! Every request goes through the per-host `budget`: at most six requests (`budget::MAX_IN_FLIGHT`)
 //! wait for an answer per host and API kind (REST, GraphQL), a 429 (or GitHub's rate-limit 403)
 //! pauses that host's REST or GraphQL requests until its `Retry-After` / reset time and the
 //! request is retried once, and the [`traffic`] counters record

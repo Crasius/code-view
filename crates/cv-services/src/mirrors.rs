@@ -43,7 +43,7 @@ impl MirrorRegistry {
         Ok(mirror)
     }
 
-    /// Stamps `mirror` as used now by `usage`, as [`Self::open`] does.
+    /// Stamps `mirror` as used now by `usage`, as `Self::open` does.
     pub fn record_use(mirror: &GitMirror, usage: &MirrorUse<'_>) {
         // A missing stamp only lets the mirror age out by its folder time; never worth failing the page for.
         let _unstamped = retention::record_mirror_use(mirror.git_dir(), usage, SystemTime::now());
@@ -67,7 +67,7 @@ impl MirrorRegistry {
 
 impl MirrorGuard for MirrorRegistry {
     /// In use means held outside the registry: by an open pull request's git data or by a task
-    /// running git. Holding the lock meanwhile keeps [`Self::open`] from handing the mirror out.
+    /// running git. Holding the lock meanwhile keeps `Self::open` from handing the mirror out.
     fn retire_if_idle(&self, git_dir: &Path, retire: &mut dyn FnMut() -> bool) -> bool {
         let mut mirrors = self.mirrors.blocking_lock();
         let held =

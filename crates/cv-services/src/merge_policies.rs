@@ -2,7 +2,7 @@
 //!
 //! Nothing loads on its own: the page of an open pull request asks ([`MergePolicies::want`])
 //! for its merge button and merge card while it is on screen, and only while the window is active. An
-//! answer stays for [`FRESH_FOR`]; after that the next ask loads it again behind the shown one.
+//! answer stays for `FRESH_FOR`; after that the next ask loads it again behind the shown one.
 //! A failed read becomes the platform's full capability list marked as not reported, and stays
 //! until the user retries, so a broken host is not asked again on every frame.
 
@@ -44,7 +44,7 @@ pub struct MergePolicies {
 }
 
 impl MergePolicies {
-    /// The policy of `key`, loading it when unknown or older than [`FRESH_FOR`] and `is_active`.
+    /// The policy of `key`, loading it when unknown or older than `FRESH_FOR` and `is_active`.
     pub fn want(
         &mut self,
         background: &Background,

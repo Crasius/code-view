@@ -2,8 +2,8 @@
 //! unless the screen published a [`LinkResolver`] that knows them: then pull request links and
 //! shorthand references (`#12`, `!12`) open in the app, and Ctrl+click or the context menu still
 //! opens the web page. Images load through the [`ImageSource`] the screen published (see
-//! [`images`]); without one they show as a card. Mermaid fences and Azure DevOps' `::: mermaid` containers
-//! show as diagrams on every platform (see [`mermaid`]).
+//! `images`); without one they show as a card. Mermaid fences and Azure DevOps' `::: mermaid` containers
+//! show as diagrams on every platform (see `mermaid`).
 // RS-LINT-02: egui lays out in f32 points while lines, columns and counts are usize, so layout
 // math converts between them (`lib.rs`, `render.rs`, `mermaid.rs`, `video.rs`, `images/`).
 #![expect(
@@ -44,7 +44,7 @@ use cv_runtime::cache::memory::{self, BoundedCache, Holder};
 use egui::Ui;
 use review_core::ProviderKind;
 
-/// How [`render`] lays out a document.
+/// How [`render()`] lays out a document.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RenderOptions {
     /// Follow this platform's dialect; `None` follows CommonMark/GFM.
@@ -131,7 +131,7 @@ pub struct Units {
 }
 
 impl Units {
-    /// The pieces of `text` in `platform`'s dialect, as [`render`] would show them.
+    /// The pieces of `text` in `platform`'s dialect, as [`render()`] would show them.
     pub fn parse(text: &str, platform: Option<ProviderKind>) -> Self {
         let Some(source) = dialect_source(text, platform) else {
             return Self { blocks: Vec::new(), units: Vec::new() };

@@ -9,7 +9,7 @@
 //! and every pull request that highlights (see [`compiled`]). Compiling is the expensive part
 //! (TypeScript about 30 MB), so a set stays after its last use, within a process
 //! budget of [`BUDGET_BYTES`] (the languages used longest ago go first) and for at most
-//! [`KEEP_UNUSED`] without a use. A set a thread is highlighting with right now never goes.
+//! `KEEP_UNUSED` without a use. A set a thread is highlighting with right now never goes.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;

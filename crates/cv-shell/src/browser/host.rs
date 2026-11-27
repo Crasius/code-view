@@ -4,7 +4,7 @@
 //!
 //! `check` locates the link, answers `pass` for a pull request the app itself just opened in the
 //! browser ([`super::passes`]) and otherwise reads it once with its connection's token
-//! ([`link_check`]); `open` only locates it and hands it over: the extension asks `open` after a
+//! (`link_check`); `open` only locates it and hands it over: the extension asks `open` after a
 //! `check` said open, and the app checks the link again when it arrives, with a read whose detail
 //! its page then reuses.
 //!
@@ -49,7 +49,7 @@ pub trait AppSide {
         connection: &Connection,
         key: &PullRequestKey,
     ) -> Option<review_core::Result<()>>;
-    /// The app opened the pull request `key` in the browser within [`super::passes::TTL`].
+    /// The app opened the pull request `key` in the browser within `super::passes::TTL`.
     fn is_passed(&self, key: &PullRequestKey) -> bool;
     /// Opens `url` in Code View.
     fn hand_over(&self, url: &str) -> io::Result<HandOver>;

@@ -259,7 +259,7 @@ impl Link<'_> {
     }
 }
 
-/// What holds the place of the line totals in [`line`].
+/// What holds the place of the line totals in [`line()`].
 enum Totals {
     /// "+added" and "−deleted".
     Counted(Arc<Galley>, Arc<Galley>),

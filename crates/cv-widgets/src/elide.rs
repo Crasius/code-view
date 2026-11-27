@@ -1,5 +1,5 @@
 //! Text cut to fit a width with an ellipsis, and the width a text takes. Plain lines are cut at
-//! the end ([`line`], [`job`]). References (`owner/repo#59`, `group/project!12`)
+//! the end ([`line()`], [`job`]). References (`owner/repo#59`, `group/project!12`)
 //! are cut in the middle so the number stays readable: `owner…/repo#59`, then `re…#59`.
 //!
 //! Rows lay out their trailing parts (pills, durations, buttons) first and hand the remaining

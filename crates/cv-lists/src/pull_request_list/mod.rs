@@ -5,14 +5,14 @@
 //! their own; a card per host keeps a slow or failing host's skeleton or error inside its card, so
 //! rows of the other hosts never reshuffle when it arrives (a flat list merged across hosts would
 //! jump). Within a card rows are newest first, with the repository in its own column. Above them
-//! the Favorites card mixes the starred repositories of every host (see [`favorites`]); it shows
+//! the Favorites card mixes the starred repositories of every host (see `favorites`); it shows
 //! its rows once all of them answered, so it never reshuffles either. With the Favorites lane
 //! hidden (an option) the card is gone and asks nothing; each card lists the rows of starred
 //! repositories first instead, marked with a star. Another option, on by default, groups each
 //! card's rows by repository under a header per repository (`list_rows::cards::sections`); the
 //! page header's books tool switches it, as does Settings.
 //!
-//! Each row shows its checks and approvals ([`statuses`]): what the listing brought at once, the
+//! Each row shows its checks and approvals (`statuses`): what the listing brought at once, the
 //! rest asked for the rows on screen only and asked again when a refresh lists them changed.
 //!
 //! Only what is on screen loads. A card's listing goes out only while the card is on screen
@@ -20,13 +20,13 @@
 //! every load, automatic (the first one, a revisit, a warm, the scheduler's beat) or the user's
 //! (Refresh, Retry), is owed to the others until they scroll in or are expanded. A page never shown
 //! yet knows no screen, so a warm before its first frame loads nothing. The size column, the
-//! checks and the read-ahead ask for rows on screen only ([`statuses`], [`warm`],
+//! checks and the read-ahead ask for rows on screen only (`statuses`, `warm`,
 //! [`cv_services::diff_stats`]).
 //!
 //! While shown, every open card on screen refreshes through the refresh scheduler
 //! ([`queries::LIST_INTERVAL`]): paused while the window is inactive, caught up once when it is
 //! active again, and at once after a return to the window (the scheduler's wake). Each beat also
-//! renews the checks and votes of the rows on screen ([`statuses::RowStatuses::renew`]).
+//! renews the checks and votes of the rows on screen (`statuses::RowStatuses::renew`).
 
 mod changes;
 mod favorites;

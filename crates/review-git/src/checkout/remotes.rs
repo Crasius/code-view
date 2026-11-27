@@ -102,7 +102,7 @@ pub fn matching_remote(dir: &Path, url: &str) -> Option<String> {
         .map(|(name, _)| name)
 }
 
-/// The clones in `folders` (the folders and up to [`MAX_DEPTH`] levels below) with a remote of
+/// The clones in `folders` (the folders and up to `MAX_DEPTH` levels below) with a remote of
 /// the repository `url` names. A worktree or submodule (a `.git` file) is not a clone; nothing
 /// below a clone is looked into. Reads the disk: call it off the UI thread.
 pub fn find_clones(folders: &[PathBuf], url: &str) -> Vec<FoundClone> {

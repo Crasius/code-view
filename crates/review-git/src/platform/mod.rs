@@ -1,6 +1,6 @@
 //! What running `git` needs from the operating system. Windows hides the console window a console
 //! program would open from a GUI process; elsewhere (macOS included) a child process opens no
-//! window, so [`other`] leaves the command as it is.
+//! window, so `other` leaves the command as it is.
 
 #[cfg(not(windows))]
 mod other;

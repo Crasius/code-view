@@ -2,16 +2,16 @@
 //! `ctx.open_url` of a pull request page). Without this the extension would see that navigation,
 //! ask the host, and send the page straight back to the window it came from.
 //!
-//! The app records every URL a frame opens that [`link_access::locate`] resolves to a pull request
+//! The app records every URL a frame opens that `link_access::locate` resolves to a pull request
 //! ([`Recorder`]), keyed by the pull request rather than the URL, so `/files`, a fragment and the
 //! `visualstudio.com` host all match. The host's `check` asks [`contains`] right after
-//! [`link_access::locate`] and answers `pass` within [`TTL`], without a read. No URL is changed:
+//! `link_access::locate` and answers `pass` within `TTL`, without a read. No URL is changed:
 //! a marker in the query or fragment would show up in the browser and in links the user copies
 //! from there.
 //!
 //! The file is `passes.json` in the browser folder, shared by two processes: the app writes it,
 //! the host only reads it. Every write goes through a temp file and a rename, so the host never
-//! reads half a list, and drops the entries past [`TTL`], so the file stays a handful of lines.
+//! reads half a list, and drops the entries past `TTL`, so the file stays a handful of lines.
 //! Writes of the app run one at a time on the background runtime (never disk on the UI thread),
 //! each reading the file it replaces, so a later write never loses an earlier pass. A file that
 //! is missing or unreadable is an empty list: the extension hands the page back to Code View.
@@ -98,7 +98,7 @@ pub(crate) fn record(path: &Path, key: &PullRequestKey, now: SystemTime) -> io::
     review_store::write_bytes(path, &serde_json::to_vec(&passes)?)
 }
 
-/// The app opened `key` in the browser within [`TTL`] before `now`.
+/// The app opened `key` in the browser within `TTL` before `now`.
 pub fn contains(path: &Path, key: &PullRequestKey, now: SystemTime) -> bool {
     load(path).iter().any(|pass| pass.is_for(key) && pass.is_fresh(now))
 }

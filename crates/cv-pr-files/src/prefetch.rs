@@ -24,7 +24,7 @@
 //! of the folder left behind at once, as do the summary and other compared commits for the files
 //! whose versions they change (a diff is its file's versions', [`DiffKey`]). Opened diffs stay in
 //! the cache's recently shown ones, so going back is instant. The cache keeps at most
-//! [`cv_pr_diff::diff_cache::MAX_UNOPENED`] unopened diffs in any case.
+//! `cv_pr_diff::diff_cache::MAX_UNOPENED` unopened diffs in any case.
 //!
 //! A thread row the pointer rests on (the Threads panel, the Overview's timeline) counts as a
 //! hovered file row too: the row names its file for the frame ([`hover`]), and a file row of the

@@ -1,10 +1,10 @@
-//! Whether Code View can open a pull request link: [`locate`] finds the saved connection that
-//! serves it, then [`AccessCheck`] asks that connection's token to read the pull request. The
+//! Whether Code View can open a pull request link: `locate` finds the saved connection that
+//! serves it, then `AccessCheck` asks that connection's token to read the pull request. The
 //! copied-link check runs both before it opens a page; anything else that asks "can Code View open
 //! this URL?" (a browser extension) asks the same two steps. Together they answer one of
-//! open ([`Verdict::Open`]), no access ([`Verdict::NoAccess`]), not connected
-//! ([`Target::NotConnected`]) and not a pull request ([`Target::NotAPullRequest`]), or that the
-//! host gave no clear answer ([`Verdict::Unknown`]).
+//! open (`Verdict::Open`), no access (`Verdict::NoAccess`), not connected
+//! (`Target::NotConnected`) and not a pull request (`Target::NotAPullRequest`), or that the
+//! host gave no clear answer (`Verdict::Unknown`).
 //!
 //! The check is one read, the pull request's detail through the provider, on the background
 //! runtime. A detail it read goes to the page cache, where the page that opens next finds it

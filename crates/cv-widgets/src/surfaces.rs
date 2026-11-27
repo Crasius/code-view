@@ -8,7 +8,7 @@
 //! * [`mark_pan`]: a canvas the user drags around with the middle button (and the primary one)
 //!   and zooms itself; middle-click autoscroll leaves it alone, and Ctrl+wheel over it, or
 //!   Ctrl+Plus/Minus/0 over it or with keyboard focus inside it, are its own, not the app zoom's.
-//! * [`mark_middle_click`]: a control that acts on a middle click (a link that opens its page);
+//! * `mark_middle_click`: a control that acts on a middle click (a link that opens its page);
 //!   middle-click autoscroll does not start over it, so the click reaches the control.
 //!
 //! Views call these every frame they are shown; the app reads the previous frame's marks, so a

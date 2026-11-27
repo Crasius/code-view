@@ -8,7 +8,7 @@
 //! drags to another corner (kept in the settings) and fades while it covers the cited lines,
 //! unless the pointer is on it. A reference to a file the pull request does not change shows a
 //! notice with its way on, never a dead end.
-//! The card's title line carries the agent and model chip ([`super::chip`]).
+//! The card's title line carries the agent and model chip (`super::chip`).
 //!
 //! Its state lives on the [`Assistant`], so it survives tab switches; the Files tab tells it
 //! where its content and the cited lines are this frame

@@ -3,8 +3,8 @@
 //!
 //! Other views link token problems here without knowing the wizard:
 //! * [`intents::request_fix`] opens the wizard for a connection at its token step ("Fix token").
-//! * [`fix_token_button`] is the ready-made button for a 401/403 message.
-//! * [`intents::request_add`] opens the wizard for a new connection to a cloud host, prefilled.
+//! * `fix_token_button` is the ready-made button for a 401/403 message.
+//! * `intents::request_add` opens the wizard for a new connection to a cloud host, prefilled.
 //! * `services.providers.issues().get(connection_id)` tells whether a connection has a recorded
 //!   token problem, explained in the platform's permission names.
 //!

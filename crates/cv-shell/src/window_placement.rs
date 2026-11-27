@@ -42,7 +42,7 @@ impl WindowKeeper {
     }
 
     /// Once per frame: notes moves and resizes, and saves the placement when the window closes or
-    /// has rested for [`SAVE_DELAY`].
+    /// has rested for `SAVE_DELAY`.
     pub fn track(&mut self, ctx: &egui::Context, services: &mut Services) {
         let (seen, is_closing, now) = ctx.input(|input| {
             let viewport = input.viewport();

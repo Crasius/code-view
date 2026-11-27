@@ -13,7 +13,7 @@ use crate::{AppPaths, atomic_file};
 ///
 /// Stored per connection (`threads\<connection>\<pull request>.json`) so removing a connection
 /// removes its drafts and read marks, and a new connection that reuses the id starts empty. Files
-/// from before that layout move into their connection's folder on first load ([`FlatLayout`]).
+/// from before that layout move into their connection's folder on first load (`FlatLayout`).
 pub struct ThreadStore {
     /// `None` for a store that is never written.
     file: Option<PathBuf>,

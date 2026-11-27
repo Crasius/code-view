@@ -8,7 +8,7 @@
 //! so what is left after the page is free. Once
 //! any content took part of a gesture, the whole gesture belongs to it, the way Safari leaves a
 //! swipe to a page that can still scroll that way. The step fires once, as soon as the fingers
-//! have travelled [`TRAVEL`]; momentum never counts.
+//! have travelled `TRAVEL`; momentum never counts.
 //!
 //! Fingers to the right go back, to the left forward, whichever way the system scrolls content
 //! (its natural scrolling setting turns the deltas round). Only where the system's "Swipe between

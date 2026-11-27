@@ -54,7 +54,7 @@ pub struct CheckoutRecord {
     /// removing the worktree instead of removing it by itself.
     #[serde(default)]
     pub merged_here: bool,
-    /// The checkout's log and its updates, newest last, at most [`MAX_LOG_LINES`].
+    /// The checkout's log and its updates, newest last, at most `MAX_LOG_LINES`.
     #[serde(default)]
     pub log: Vec<String>,
 }
@@ -66,7 +66,7 @@ impl CheckoutRecord {
             && self.number == number
     }
 
-    /// Appends `lines` to the log, dropping the oldest beyond [`MAX_LOG_LINES`].
+    /// Appends `lines` to the log, dropping the oldest beyond `MAX_LOG_LINES`.
     pub fn append_log(&mut self, lines: impl IntoIterator<Item = String>) {
         self.log.extend(lines);
         let excess = self.log.len().saturating_sub(MAX_LOG_LINES);

@@ -84,7 +84,7 @@ fn base_of(ctx: &Context, base: ImageBase) -> Option<Arc<FileBase>> {
 pub struct ImageRequest<'a> {
     pub src: &'a str,
     pub base: Option<&'a FileBase>,
-    /// It is a video ([`ImageSpec::is_video`]).
+    /// It is a video (`ImageSpec::is_video`).
     pub video: bool,
 }
 

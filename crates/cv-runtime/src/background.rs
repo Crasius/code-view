@@ -9,7 +9,7 @@ use tokio::sync::oneshot;
 /// nothing polls in between, so an idle app does no work at all.
 ///
 /// Dropping it cancels what still runs, except the tasks started with [`Spawner::spawn_kept`]
-/// (the last write of a closing page): the drop waits up to [`EXIT_WAIT`] for those.
+/// (the last write of a closing page): the drop waits up to `EXIT_WAIT` for those.
 pub struct Background {
     runtime: tokio::runtime::Runtime,
     ctx: egui::Context,
@@ -151,7 +151,7 @@ impl Drop for Open {
 }
 
 impl Drop for Background {
-    /// The app exits: the kept tasks end first, up to [`EXIT_WAIT`] in all.
+    /// The app exits: the kept tasks end first, up to `EXIT_WAIT` in all.
     fn drop(&mut self) {
         let (open, ended) = &*self.kept;
         let open = open.lock().unwrap_or_else(PoisonError::into_inner);

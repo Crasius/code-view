@@ -5,7 +5,7 @@
 //! resume) and would hand them the parent's private messaging socket and token.
 #![expect(unsafe_code, reason = "removing environment variables is unsafe since Rust 2024")]
 
-/// Set by Claude Code and the Codex companion for their child processes ([observed] in both).
+/// Set by Claude Code and the Codex companion for their child processes (\[observed\] in both).
 /// The user's own configuration (`CLAUDE_CODE_USE_*`, `CODEX_HOME`, …) stays.
 pub(super) const PARENT_SESSION_VARIABLES: [&str; 9] = [
     "CLAUDECODE",

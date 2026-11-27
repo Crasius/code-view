@@ -57,7 +57,7 @@ pub struct Mirror {
 /// only when a refreshed detail names other commits than the ones the mirror was prepared for.
 ///
 /// The user's writes ([`cv_services::writes`]) show in the detail and the threads in the frame
-/// they succeed ([`Self::catch_up_writes`]), and every detail and thread list that arrives gets
+/// they succeed (`Self::catch_up_writes`), and every detail and thread list that arrives gets
 /// those the host may not show yet applied before it is shown or remembered.
 pub struct PullRequestSession {
     pub key: PullRequestKey,

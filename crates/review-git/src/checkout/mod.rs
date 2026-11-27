@@ -1,12 +1,12 @@
 //! Local checkouts of a pull request in the user's own clones: a new worktree beside the clone, the
 //! clone itself, or a new clone. Every commit and file comes from the app's mirror of the
-//! repository ([`supply`]), never from the host directly, and no credential reaches the user's
+//! repository (`supply`), never from the host directly, and no credential reaches the user's
 //! repositories; the mirror downloads what it lacks through its own authorization.
 //!
 //! Where the user's work could be touched the code refuses instead of forcing: a clone with
 //! changed files is not switched, a branch checked out elsewhere gets no second worktree, an
 //! update only fast-forwards or follows a force-push of a branch nobody committed to
-//! ([`update`]), and a worktree is removed only when asked ([`remove`]). What a failed checkout
+//! ([`update()`]), and a worktree is removed only when asked (`remove`). What a failed checkout
 //! made is taken away again ([`undo`]), and only that.
 
 mod naming;

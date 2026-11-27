@@ -36,7 +36,7 @@ pub fn fork_branch(number: u64, branch: &str) -> String {
 }
 
 /// The folder a new worktree of pull request `number` gets: `pattern` with `{clone}` (the clone's
-/// folder), `{number}` and `{branch}` (its [`slug`]) filled in. `/` and `\` both separate folders.
+/// folder), `{number}` and `{branch}` (its `slug`) filled in. `/` and `\` both separate folders.
 /// A relative result is taken from the clone's parent folder.
 pub fn worktree_path(pattern: &str, clone: &Path, number: u64, branch: &str) -> PathBuf {
     let pattern = pattern.trim();

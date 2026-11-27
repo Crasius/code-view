@@ -1,7 +1,7 @@
 //! `path:line` and `path:start-end` in an answer: found in the agent's Markdown, checked against
 //! the checkout (the file is there and has the line), and turned into links that open the Files
 //! tab at that line. Fenced code stays as written; inline code that is only a citation becomes a
-//! link with its code look kept. How those links show and open is [`links`].
+//! link with its code look kept. How those links show and open is `links`.
 #![warn(clippy::string_slice, clippy::indexing_slicing, clippy::cast_possible_truncation)]
 
 pub(super) mod links;

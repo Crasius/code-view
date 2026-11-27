@@ -1,4 +1,4 @@
-//! The find widget of the open file's diff: the text diff ([`text`]) and the rendered Markdown
+//! The find widget of the open file's diff: the text diff (`text`) and the rendered Markdown
 //! diff search the same way and share the widget ([`bar`]).
 //!
 //! The widget searches the pane that has the focus, as an editor's find does: side by side the
@@ -16,7 +16,7 @@
 //! kept until the next search, indexed by line for the rows that paint.
 //!
 //! The same search finds the other occurrences of the text selected in the text diff
-//! ([`occurrences`]).
+//! (`occurrences`).
 
 pub mod bar;
 mod matcher;

@@ -10,8 +10,8 @@
 //! - `hide_console`: a git child process opens no console window.
 //! - `data_roots`: the folders the app's config and cache folders go in.
 //!
-//! [`windows`] (DPAPI), [`macos`] (Keychain) and [`linux`] (Secret Service) are the supported
-//! systems; [`other`] keeps the crate building elsewhere.
+//! `windows` (DPAPI), `macos` (Keychain) and `linux` (Secret Service) are the supported
+//! systems; `other` keeps the crate building elsewhere.
 
 #[cfg(target_os = "linux")]
 mod linux;

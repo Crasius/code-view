@@ -239,7 +239,7 @@ struct Sample<'a> {
     new_spans: Option<Vec<Vec<Span>>>,
     layout: DiffLayout,
     wrap: bool,
-    /// The least room any pane had right of its text (see [`slack`]).
+    /// The least room any pane had right of its text (see `slack`).
     slack: std::cell::Cell<f32>,
 }
 

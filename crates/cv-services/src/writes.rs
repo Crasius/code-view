@@ -16,7 +16,7 @@
 //!   detail, thread list and list answer for that pull request gets it applied again
 //!   ([`Writes::settle_detail`], [`Writes::settle_threads`], [`Writes::settle_rows`]). A detail or
 //!   thread list that shows it retires it for its kind; lists come from several endpoints that lag
-//!   apart, so for them only [`SETTLE_WINDOW`] or a reload by hand retires it.
+//!   apart, so for them only `SETTLE_WINDOW` or a reload by hand retires it.
 //! - A later write of the same thing (a second vote, reopening after a close) replaces the earlier
 //!   entry. A reload by hand (F5, Refresh) retires the entries it reloads: the user asked for the
 //!   host's word.

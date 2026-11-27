@@ -60,7 +60,7 @@ pub(crate) fn resolve_item(url: &str, connections: &[Connection]) -> Option<(Str
     })
 }
 
-/// The item's page on its platform, the inverse of [`resolve_item`].
+/// The item's page on its platform, the inverse of `resolve_item`.
 pub fn item_web_url(connection: &Connection, item: &ItemRef) -> String {
     let base = connection.base_url();
     let encoded = |key: &str| encode_path(key.split('/'));

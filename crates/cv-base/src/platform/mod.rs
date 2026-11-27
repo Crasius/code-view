@@ -3,29 +3,29 @@
 //! functions and types:
 //!
 //! - Start-up: [`prepare_environment`] (first in `main`; it also drops an agent session's markers,
-//!   [`session`]) and [`viewport`] (the window's style).
+//!   `session`) and [`viewport`] (the window's style).
 //! - Processes: [`hide_console`] (and [`hide_std_console`]) for command-line tools, [`AZURE_CLI`]
 //!   (the Azure CLI's executable), [`downloads_dir`], [`open_folder`], [`open_terminal`] (the
 //!   user's terminal running a command, for the assistant's CLIs), [`open_shell`] and
 //!   [`TERMINALS`] (a terminal in a checkout's folder), [`EXAMPLE_CLONE`] (a clone's folder for
 //!   examples).
-//! - Text, for cv-base's theme only: [`font_sources`] (the system's UI, code, emoji and symbol
-//!   fonts) and [`register_chrome_fonts`] (fonts the window chrome draws with).
-//! - Motion, for cv-base's theme only: [`prefers_reduced_motion`].
+//! - Text, for cv-base's theme only: `font_sources` (the system's UI, code, emoji and symbol
+//!   fonts) and `register_chrome_fonts` (fonts the window chrome draws with).
+//! - Motion, for cv-base's theme only: `prefers_reduced_motion`.
 //! - The window: [`integrate_title_bar`] and [`Caption`] (the app's bar as the window's title bar),
 //!   [`PlacedWindow`] (restoring the window's placement), [`FrameHold`] (the frame rate limit's
 //!   wait), [`monitor_refresh_hz`], [`is_window_active`] (whether refreshes and animations run).
 //! - Dialogs: [`HAS_SAVE_DIALOG`], [`dialog_owner`], [`ask_save_path`], [`ask_folder`].
 //! - Keys: [`shortcut!`] (a shortcut's label), [`FOCUS_MODE_KEY`], [`DIFF_FIND_KEY`],
-//!   [`BACK_SHORTCUT`] and [`FORWARD_SHORTCUT`], all in [`keys`].
+//!   [`BACK_SHORTCUT`] and [`FORWARD_SHORTCUT`], all in `keys`.
 //! - Gestures: [`page_swipe`], the trackpad's swipe between pages.
-//! - Pointer: [`pointer`], the pointing hand over everything clickable (every system).
+//! - Pointer: [`pointer`](mod@pointer), the pointing hand over everything clickable (every system).
 //! - Graphics: [`gl`], the OpenGL driver's strings (the same on every system).
 //! - Memory: [`heap`], the global allocator that counts the heap's live bytes (every system).
 //!
-//! [`windows`], [`macos`] and [`linux`] are the supported systems; [`other`] keeps the app
+//! `windows`, `macos` and `linux` are the supported systems; `other` keeps the app
 //! building and running elsewhere (the BSDs) with the system's own title bar and no integration.
-//! [`portable`] holds the parts the systems other than Windows share, [`window_drag`] the egui drag
+//! `portable` holds the parts the systems other than Windows share, `window_drag` the egui drag
 //! area of a title bar the system cannot hit-test and [`long_press_moves_window`] for widgets on
 //! the bar (the breadcrumbs) that move the window when held.
 
@@ -75,7 +75,7 @@ pub use window_drag::long_press_moves_window;
 #[cfg(all(windows, any(test, feature = "test-support")))]
 pub use windows::{hit_test, published_caption};
 
-/// Drops the markers of a coding agent session the app was started from ([`session`]), then
+/// Drops the markers of a coding agent session the app was started from (`session`), then
 /// prepares what the system needs. Call first in `main`, before any other thread runs.
 pub fn prepare_environment() {
     session::forget_parent_session();

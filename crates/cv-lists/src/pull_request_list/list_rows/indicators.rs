@@ -10,7 +10,7 @@
 //! Approvals: up to [`MAX_AVATARS`] reviewers, blocking votes first (changes requested, waiting
 //! for the author), then approvals, then those who have not voted, the rest in a "+n" circle. A
 //! vote rings its avatar in the vote's color and adds a badge of its own shape
-//! ([`avatar::vote_mark`]), so it reads at list density without hover. Reviewers without a vote
+//! (`avatar::vote_mark`), so it reads at list density without hover. Reviewers without a vote
 //! stay muted and unringed, so a row without approvals is quiet. Its tooltip and accessible name
 //! list the approvals the platform requires and every reviewer with their vote; a click opens the
 //! pull request.

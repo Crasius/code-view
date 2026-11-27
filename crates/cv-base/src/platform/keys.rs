@@ -1,7 +1,7 @@
 //! How each system writes keyboard shortcuts, and the one shortcut that differs per system.
 //!
 //! Shortcuts themselves match on egui's `Modifiers::COMMAND`, which is Ctrl on Windows and ⌘ on
-//! macOS, so the keys need nothing per system; only their labels do. [`shortcut!`] spells a
+//! macOS, so the keys need nothing per system; only their labels do. `shortcut!` spells a
 //! shortcut the system's way as a `&'static str` literal, so it fits `concat!` and constants:
 //!
 //! | `shortcut!(…)`        | Windows and others | macOS    |

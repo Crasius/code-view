@@ -1,10 +1,10 @@
 //! Videos in rendered Markdown, played through ffmpeg run as a process of its own (a sidecar): the
 //! app links no decoder, a crash stays in ffmpeg's process, and videos play once ffmpeg is
-//! installed, beside `CodeView` or on `PATH` ([`Tools::locate`]). Without it a video shows a card
+//! installed, beside `CodeView` or on `PATH` (`Tools::locate`). Without it a video shows a card
 //! with the install command.
 //!
 //! A video is a file on disk, kept next to the image cache ([`crate::images`] writes it).
-//! [`prepare`] reads its size, length and frame rate with `ffprobe` and draws its first frame as
+//! `prepare` reads its size, length and frame rate with `ffprobe` and draws its first frame as
 //! the poster; [`player`] streams the frames while it plays. Every run reads only that one file in
 //! a known container (`-protocol_whitelist file`, `-format_whitelist`), so a crafted file cannot
 //! make ffmpeg open addresses or other files, and no run decodes sound.
@@ -73,7 +73,7 @@ pub struct Clip {
     pub file: PathBuf,
     /// Its own size in pixels, upright.
     pub natural: [u32; 2],
-    /// The size of the frames ffmpeg delivers: `natural` within [`PLAY_EDGE`].
+    /// The size of the frames ffmpeg delivers: `natural` within `PLAY_EDGE`.
     pub frame: [usize; 2],
     /// Seconds; zero when the container does not say.
     pub duration: f64,

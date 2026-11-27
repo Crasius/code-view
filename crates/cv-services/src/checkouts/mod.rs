@@ -1,9 +1,9 @@
 //! Local checkouts of pull requests: the records of what is checked out where (`checkouts.json`),
-//! the checkout jobs that run ([`job`]), keeping checkouts current and removing worktrees
-//! ([`upkeep`]), what happens once a pull request is merged or closed elsewhere ([`finish`]), and
-//! finding the user's clones ([`clones`]). Every git and disk access runs on the
+//! the checkout jobs that run (`job`), keeping checkouts current and removing worktrees
+//! (`upkeep`), what happens once a pull request is merged or closed elsewhere (`finish`), and
+//! finding the user's clones (`clones`). Every git and disk access runs on the
 //! [`Background`]; the pull request page, the title bar and Settings read the state each frame,
-//! and [`poll`] moves finished work into it.
+//! and `poll` moves finished work into it.
 //!
 //! What opens after a checkout (a terminal, Claude Code, Codex) starts through the
 //! [`AgentDirectory`](crate::agents::AgentDirectory), so test builds record it instead.
@@ -358,7 +358,7 @@ pub(crate) fn poll(services: &mut Services) {
 }
 
 /// The pull request `key` was seen merged or closed (its page, or the state asked at start): its
-/// checkout gets what Settings says ([`finish`]). Once per pull request and app run; not while
+/// checkout gets what Settings says (`finish`). Once per pull request and app run; not while
 /// its checkout, an update or a removal runs.
 pub fn finished(services: &mut Services, key: &PullRequestKey) {
     let checkouts = &mut services.checkouts;

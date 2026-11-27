@@ -3,7 +3,7 @@
 //! process on Windows. Windows reads the saved `PATH` from the registry, so a CLI installed after
 //! the app started is found without signing out. Elsewhere (macOS included) a child process opens
 //! no window, a program is any executable file and the process's own `PATH` is the one to search,
-//! so [`other`] leaves the command as it is.
+//! so `other` leaves the command as it is.
 
 #[cfg(not(windows))]
 mod other;

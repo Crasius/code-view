@@ -1,5 +1,5 @@
 //! Comment composer. The Markdown text is the source of truth (it is what GitHub, GitLab and
-//! Azure DevOps store); three modes ([`Mode`]) show and edit the same `&mut String`:
+//! Azure DevOps store); three modes (`Mode`) show and edit the same `&mut String`:
 //! - Rich text (`crate::rich_editor`): the comment as it will look, as `TipTap` writes it in a
 //!   browser. It reads the String when it changed since it last wrote it and writes Markdown back
 //!   after every edit, so a mode switch never rewrites text nobody edited.

@@ -209,7 +209,7 @@ fn arrows(
     event
 }
 
-/// "<file> is not changed in this pull request." with its way on: the file at the head commit,
+/// "`<file>` is not changed in this pull request." with its way on: the file at the head commit,
 /// and the reference after it (or before it, at the end).
 fn outside_notice(ui: &mut Ui, path: &str, current: Option<usize>, count: usize) -> Option<Event> {
     let text = format!("{path} is not changed in this pull request.");
@@ -227,7 +227,7 @@ fn outside_notice(ui: &mut Ui, path: &str, current: Option<usize>, count: usize)
     }
 }
 
-/// The pulsing dot and "Working · 3 s · <latest step>"; the dot pulses only while this shows.
+/// The pulsing dot and "Working · 3 s · `<latest step>`"; the dot pulses only while this shows.
 fn working_line(ui: &mut Ui, text: &str) {
     let palette = theme::palette(ui.ctx());
     let height = buttons::SUBTLE_HEIGHT;

@@ -8,7 +8,7 @@
 //!
 //! The work runs on a small pool next to the whole-file coloring thread, so it never waits behind
 //! a long file, and on the shared compiled grammars (see [`grammar::compiled`]). A diff load waits
-//! for its first lines (or at most [`WAIT`]) before it reports the diff, so diff and colors reach
+//! for its first lines (or at most `WAIT`) before it reports the diff, so diff and colors reach
 //! the screen in the same frame.
 //!
 //! Colors that took long to work out (a large diff, a grammar compiled first) also go to the disk
@@ -250,7 +250,7 @@ pub struct Colorer {
 
 impl Colorer {
     /// Colors `diff` in the background and returns once its first lines are colored, the diff has
-    /// no grammar, or after [`WAIT`] ([`WARMING_WAIT`] while a warm-up compiles its grammar),
+    /// no grammar, or after `WAIT` (`WARMING_WAIT` while a warm-up compiles its grammar),
     /// whichever comes first. [`Priority::Urgent`] puts it before queued work.
     pub async fn color(&self, key: DiffKey, diff: Arc<FileDiff>, priority: Priority) {
         let (first, first_colored) = tokio::sync::oneshot::channel();

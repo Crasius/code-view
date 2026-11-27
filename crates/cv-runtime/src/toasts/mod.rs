@@ -1,5 +1,5 @@
 //! Short confirmations, notes and errors in the bottom-right corner. An error always carries its
-//! ways out ([`WaysOut`], [`ways_out`]) and stays until one is clicked or it is dismissed; the
+//! ways out ([`WaysOut`], `ways_out`) and stays until one is clicked or it is dismissed; the
 //! same error again replaces the one shown instead of stacking.
 //!
 //! The clock is egui's input time, like the refresh schedule's: a toast's age counts from the
@@ -94,7 +94,7 @@ impl Toasts {
     }
 
     /// Shows `folder` in the system's file manager; a failure says so with the path to copy.
-    /// Test builds record the folder instead ([`opened_folder`]).
+    /// Test builds record the folder instead (`opened_folder`).
     pub fn open_folder(&mut self, ctx: &egui::Context, folder: &Path) {
         if let Err(error) = open_folder(ctx, folder) {
             let path = folder.display().to_string();
@@ -297,7 +297,7 @@ fn fade(elapsed: f32, seconds: f32) -> f32 {
 const OPENED_FOLDER: &str = "toasts.opened_folder";
 
 /// The system's file manager on `folder`. Test builds open nothing: the folder is kept for
-/// [`opened_folder`].
+/// `opened_folder`.
 fn open_folder(ctx: &egui::Context, folder: &Path) -> std::io::Result<()> {
     if cfg!(any(test, feature = "test-support")) {
         ctx.data_mut(|data| {
