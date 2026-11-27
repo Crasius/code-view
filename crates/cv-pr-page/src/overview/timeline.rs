@@ -12,7 +12,8 @@ use cv_pr_session::session::PullRequestSession;
 use cv_pr_threads::{CardOptions, Jump, PostState, ThreadsUi, lazy_list};
 use cv_services::Services;
 use cv_widgets::states::{self, Action};
-use cv_widgets::{checkbox, settle, skeleton, tabs};
+use cv_widgets::tabs::{self, Segment};
+use cv_widgets::{checkbox, settle, skeleton};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Filter {
@@ -100,13 +101,13 @@ fn filter_bar(ui: &mut Ui, threads: &[ReviewThread]) -> (Filter, bool) {
         let all = format!("All {}", active + resolved);
         let active_label = format!("Active {active}");
         let resolved_label = format!("Resolved {resolved}");
-        tabs::segmented(
+        tabs::segments(
             ui,
             &mut filter,
             &[
-                (Filter::All, &all),
-                (Filter::Active, &active_label),
-                (Filter::Resolved, &resolved_label),
+                Segment::new(Filter::All, &all),
+                Segment::new(Filter::Active, &active_label),
+                Segment::new(Filter::Resolved, &resolved_label),
             ],
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

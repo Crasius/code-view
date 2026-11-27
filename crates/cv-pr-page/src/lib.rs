@@ -486,7 +486,7 @@ fn failed_page(
         actions.push(Action::secondary(provider_icon::glyph(*kind), &open_label));
     }
     let picked = egui::Frame::new()
-        .inner_margin(egui::Margin::same(24))
+        .inner_margin(egui::Margin::same(style::PAGE_MARGIN_X))
         .show(ui, |ui| states::error_with_actions(ui, message, &actions))
         .inner;
     match picked {

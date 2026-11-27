@@ -76,17 +76,18 @@ pub enum PipelineRequest {
 }
 
 /// What the Linked card's rows were built from: the answers of the detail, the threads and the
-/// commits, the platform's own links and the connections.
-type LinkedKey = (u64, u64, u64, usize, usize);
+/// commits, the platform's own links and the connections' revision.
+type LinkedKey = (u64, u64, u64, usize, u64);
 
 /// A new answer of any part rebuilds the rows, also one with as many threads (a reply came in) or
-/// commits (a force push) as before, and the detail that arrives after a refresh started.
+/// commits (a force push) as before, the detail that arrives after a refresh started, and an
+/// edited connection.
 fn linked_key<D, T, C>(
     detail: &Live<D>,
     threads: &Live<T>,
     commits: &Live<C>,
     native: usize,
-    connections: usize,
+    connections: u64,
 ) -> LinkedKey {
     (detail.version(), threads.version(), commits.version(), native, connections)
 }
@@ -423,7 +424,7 @@ impl OverviewTab {
             &session.threads,
             &session.commits,
             native.len(),
-            services.connections.all().len(),
+            services.connections.revision(),
         );
         let here = session.here();
         if self.linked.key != Some(key) {
@@ -565,8 +566,12 @@ pub fn section_card_with_action<A>(
 
 #[cfg(test)]
 mod tests {
+    use review_core::{Connection, ProviderKind};
+    use review_store::ConnectionStore;
+
     use super::{linked_key, without_leading_heading};
     use cv_runtime::load::Live;
+    use cv_testkit::{ScratchDir, samples};
 
     #[test]
     fn linked_rows_follow_a_reply_in_a_reloaded_thread() {
@@ -576,6 +581,26 @@ mod tests {
         let before = linked_key(&detail, &threads, &commits, 0, 1);
         threads.set(vec!["See #3, and #4 too".into()]);
         assert_ne!(linked_key(&detail, &threads, &commits, 0, 1), before, "as many threads");
+    }
+
+    /// An edited connection (a new base URL) keeps the number of connections, and the rows it
+    /// resolves links against must still be rebuilt.
+    #[test]
+    fn linked_rows_follow_an_edited_connection() {
+        let scratch = ScratchDir::new("linked-edited-connection");
+        let mut store = ConnectionStore::open(&scratch.app_paths()).expect("empty store");
+        let connection =
+            samples::connection("work", ProviderKind::GitLab, "https://gitlab.example");
+        store.upsert(connection.clone()).expect("add the connection");
+        let detail: Live<u8> = Live::seeded(Some(1));
+        let threads: Live<Vec<String>> = Live::default();
+        let commits: Live<Vec<String>> = Live::default();
+        let before = linked_key(&detail, &threads, &commits, 0, store.revision());
+        let moved = Connection { base_url: "https://gitlab.other.example".into(), ..connection };
+        store.upsert(moved).expect("edit the connection");
+        assert_eq!(store.all().len(), 1, "an edit adds no connection");
+        let after = linked_key(&detail, &threads, &commits, 0, store.revision());
+        assert_ne!(after, before, "the edited connection rebuilds the rows");
     }
 
     #[test]

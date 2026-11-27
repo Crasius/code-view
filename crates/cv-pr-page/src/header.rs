@@ -8,7 +8,7 @@ use cv_services::Services;
 use cv_widgets::numbers::number_prefix;
 use cv_widgets::refresh_status::{self, RefreshStatus};
 use cv_widgets::{
-    avatar, badges, buttons, copy_chip, focus, glyph, provider_icon, row, skeleton, states,
+    avatar, badges, buttons, copy_chip, elide, focus, glyph, provider_icon, row, skeleton, states,
 };
 use egui::{RichText, Ui};
 use review_core::{MergeOptions, PullRequestDetail, PullRequestState, PullRequestSummary};
@@ -92,21 +92,17 @@ fn author_line(ui: &mut Ui, summary: &PullRequestSummary, is_busy: bool, reserve
     let prefix = format!("{} wants to merge", summary.author.display_name);
     let spacing = ui.spacing().item_spacing.x;
     let body = egui::TextStyle::Body.resolve(ui.style());
-    let text_width = |ui: &Ui, text: &str| {
-        ui.fonts_mut(|fonts| {
-            fonts.layout_no_wrap(text.to_owned(), body.clone(), palette.text_secondary).size().x
-        })
-    };
     // The spinner slot keeps its place after the line; the prefix, the arrow and the two chips
     // share the rest. A narrow header cuts the prefix only once both chips are at their least.
     // Five gaps: before the prefix, both chips, the arrow and the spinner slot.
     let room = ui.available_width()
         - icons::SIZE
-        - text_width(ui, icons::ARROW_RIGHT)
+        - elide::text_width(ui, icons::ARROW_RIGHT, &body)
         - 5.0 * spacing
         - reserved;
     let least_chip = copy_chip::min_width(ui);
-    let prefix_width = text_width(ui, &prefix).min((room - 2.0 * least_chip).max(0.0));
+    let prefix_width =
+        elide::text_width(ui, &prefix, &body).min((room - 2.0 * least_chip).max(0.0));
     ui.scope(|ui| {
         ui.set_max_width(prefix_width);
         ui.add(egui::Label::new(RichText::new(prefix).color(palette.text_secondary)).truncate());
@@ -125,10 +121,7 @@ fn author_line(ui: &mut Ui, summary: &PullRequestSummary, is_busy: bool, reserve
     let (slot, _) =
         ui.allocate_exact_size(egui::vec2(icons::SIZE, icons::SIZE), egui::Sense::hover());
     if is_busy {
-        egui::Spinner::new()
-            .size(icons::SIZE - 2.0)
-            .color(palette.text_secondary)
-            .paint_at(ui, slot);
+        states::spinner(ui, slot, palette.text_secondary);
     }
 }
 

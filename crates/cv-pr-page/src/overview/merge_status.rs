@@ -11,12 +11,13 @@ use review_core::{MergeStatus, PipelineRun, ProviderKind, PullRequestState, Revi
 use super::super::merge_button::MergeTypeLine;
 use cv_base::theme::{self, icons, motion, style};
 use cv_pr_pipelines::stage_bars;
-use cv_pr_pipelines::{checks, ellipsized, follow_running, stages_of};
+use cv_pr_pipelines::{checks, follow_running, stages_of};
 use cv_pr_session::auto_complete;
 use cv_pr_session::session::PullRequestSession;
 use cv_services::Services;
+use cv_widgets::numbers::counted;
 use cv_widgets::states;
-use cv_widgets::{badges, buttons, glyph, merge_strategy_icon, row, skeleton};
+use cv_widgets::{badges, buttons, elide, glyph, merge_strategy_icon, row, skeleton};
 
 const STATUS_ICON: f32 = 22.0;
 /// The padding around a status line's content.
@@ -121,12 +122,7 @@ fn status_line<R>(
             let font = theme::fonts::semibold_font(style::BODY_SIZE);
             // The action first, then the detail in what the headline leaves; when even the
             // headline does not fit, both are cut (each shows in full on hover).
-            let headline = ui.fonts_mut(|fonts| {
-                fonts
-                    .layout_no_wrap(text.to_owned(), font.clone(), egui::Color32::PLACEHOLDER)
-                    .size()
-                    .x
-            });
+            let headline = elide::text_width(ui, text, &font);
             row::with_trailing(
                 ui,
                 egui::Align::Center,
@@ -235,16 +231,8 @@ fn pipelines_line(
 
 /// How much narrower `label` is than the wider of the toggle's two labels.
 fn toggle_slack(ui: &Ui, label: &str) -> f32 {
-    let width = |text: &str| {
-        ui.painter()
-            .layout_no_wrap(
-                text.to_owned(),
-                FontId::proportional(style::BODY_SIZE),
-                egui::Color32::PLACEHOLDER,
-            )
-            .size()
-            .x
-    };
+    let font = FontId::proportional(style::BODY_SIZE);
+    let width = |text: &str| elide::text_width(ui, text, &font);
     (width(SHOW_LABEL).max(width(HIDE_LABEL)) - width(label)).max(0.0)
 }
 
@@ -375,10 +363,11 @@ fn pipeline_row(ui: &mut Ui, rect: Rect, run: &PipelineRun, session: &PullReques
     let known = session.stages(&run.id).and_then(|load| load.ready()).map(Vec::as_slice);
     let small = FontId::proportional(style::SMALL_SIZE);
     let name_width = name_rect.width().max(0.0);
-    let (name, is_cut) =
-        ellipsized(ui, &run.name, FontId::proportional(style::BODY_SIZE), palette.text, name_width);
+    let body = FontId::proportional(style::BODY_SIZE);
+    let name = elide::line(&painter, &run.name, body, palette.text, name_width);
+    let is_cut = name.elided;
     let sub_text = checks::sub_line(run, known);
-    let (sub, _) = ellipsized(ui, &sub_text, small.clone(), palette.text_secondary, name_width);
+    let sub = elide::line(&painter, &sub_text, small.clone(), palette.text_secondary, name_width);
     let block = name.size().y + style::SPACE_LINE + sub.size().y;
     let top = rect.center().y - block / 2.0;
     let sub_top = top + name.size().y + style::SPACE_LINE;
@@ -620,7 +609,7 @@ fn approvals_line(
             |_| None,
         )
     } else if is_open {
-        let count = checks::plural(reviewers.len(), "reviewer");
+        let count = counted(reviewers.len(), "reviewer", "reviewers");
         let detail_text = detail_text.unwrap_or(if reviewers.is_empty() {
             "No reviewers yet".to_owned()
         } else {

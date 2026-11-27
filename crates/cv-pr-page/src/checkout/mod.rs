@@ -628,17 +628,12 @@ fn popover_id(key: &PullRequestKey) -> egui::Id {
 
 /// Opens the checkout's popover on its pull request's page (the title bar's chip).
 pub fn reveal(ctx: &egui::Context, key: &PullRequestKey) {
-    ctx.data_mut(|data| data.insert_temp(egui::Id::unique(REVEAL_ID), key.clone()));
+    cv_base::mailbox::post(ctx, egui::Id::unique(REVEAL_ID), key.clone());
 }
 
 fn take_request(ctx: &egui::Context, name: &str, key: &PullRequestKey) -> bool {
-    let id = egui::Id::unique(name);
-    let asked = ctx.data(|data| data.get_temp::<PullRequestKey>(id));
-    if asked.as_ref() == Some(key) {
-        ctx.data_mut(|data| data.remove::<PullRequestKey>(id));
-        return true;
-    }
-    false
+    cv_base::mailbox::take_if(ctx, egui::Id::unique(name), |asked: &PullRequestKey| asked == key)
+        .is_some()
 }
 
 /// The kind of checkout removal is offered for.

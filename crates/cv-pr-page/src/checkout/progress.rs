@@ -7,10 +7,10 @@ use std::time::Instant;
 use egui::{Align2, RichText, Sense, Ui, pos2, vec2};
 
 use super::Act;
-use cv_base::theme::{self, icons, motion, style};
+use cv_base::theme::{self, icons, style};
 use cv_services::checkouts::{Job, JobProgress, StepState};
-use cv_widgets::buttons;
 use cv_widgets::progress_log::{self, format_duration};
+use cv_widgets::{buttons, states};
 
 const SEGMENT_HEIGHT: f32 = 4.0;
 const SEGMENT_GAP: f32 = 4.0;
@@ -85,7 +85,6 @@ fn segments(ui: &mut Ui, progress: &JobProgress) {
 /// The steps: their state's icon, label and duration (the running one's so far).
 pub(super) fn steps(ui: &mut Ui, progress: &JobProgress, now: Instant) {
     let palette = theme::palette(ui.ctx());
-    let reduced = motion::is_reduced(ui.ctx());
     for row in &progress.steps {
         let (rect, response) =
             ui.allocate_exact_size(vec2(ui.available_width(), STEP_HEIGHT), Sense::hover());
@@ -97,7 +96,6 @@ pub(super) fn steps(ui: &mut Ui, progress: &JobProgress, now: Instant) {
             StepState::Done => (Some(icons::CHECK), palette.success, "done"),
             StepState::Failed => (Some(icons::X), palette.error, "failed"),
             StepState::Waiting => (Some(icons::CIRCLE_DASHED), palette.text_disabled, "waiting"),
-            StepState::Running if reduced => (Some(icons::CIRCLE_NOTCH), palette.accent, "running"),
             StepState::Running => (None, palette.accent, "running"),
         };
         match icon {
@@ -110,7 +108,7 @@ pub(super) fn steps(ui: &mut Ui, progress: &JobProgress, now: Instant) {
                     color,
                 );
             }
-            None => egui::Spinner::new().size(icons::SIZE - 2.0).color(color).paint_at(ui, slot),
+            None => states::spinner(ui, slot, color),
         }
         let text_color = match row.state {
             StepState::Waiting => palette.text_secondary,

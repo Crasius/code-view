@@ -1,12 +1,13 @@
 //! The split button's two halves: where they sit, how they read to screen readers, and the main
 //! part's width, wide enough for every label so the button never resizes.
 
-use egui::{Color32, Rect, Response, Sense, Ui, pos2, vec2};
+use egui::{Rect, Response, Sense, Ui, pos2, vec2};
 
 use super::{CHEVRON_WIDTH, FAILED_LABEL, ICON_GAP, PADDING_X, auto_complete, complete_label};
 use cv_base::theme::{icons, style};
 use cv_pr_session::merge_choice;
 use cv_pr_session::session::PullRequestSession;
+use cv_widgets::elide;
 
 /// The split button's two halves this frame.
 #[derive(Clone, Copy)]
@@ -55,9 +56,7 @@ impl SplitParts {
 pub(super) fn main_width(ui: &Ui, session: &PullRequestSession, label: &str) -> f32 {
     let kind = session.kind;
     let font = egui::FontId::proportional(style::BODY_SIZE);
-    let text_width = |text: &str| {
-        ui.painter().layout_no_wrap(text.to_owned(), font.clone(), Color32::WHITE).size().x
-    };
+    let text_width = |text: &str| elide::text_width(ui, text, &font);
     let reserved = session
         .capabilities
         .merge_strategies

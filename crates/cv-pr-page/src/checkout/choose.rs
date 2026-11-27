@@ -11,8 +11,10 @@ use review_store::checkouts::{CheckoutPlace, OpenWith};
 use super::{Act, Choice, View, cards, settings_link, then_name, worktree_folder};
 use cv_base::theme::{self, icons, style};
 use cv_runtime::intents::SettingsSection;
-use cv_services::checkouts::{FolderPurpose, plural};
-use cv_widgets::{badges, buttons, checkbox, focus, row};
+use cv_services::agent_names::cli_name;
+use cv_services::checkouts::FolderPurpose;
+use cv_widgets::numbers::counted;
+use cv_widgets::{badges, buttons, checkbox, focus, row, states};
 
 const RADIO: f32 = 16.0;
 /// The inner margin of a "Where" option's card.
@@ -79,10 +81,12 @@ pub(super) fn show(
     let state = match (&survey.state.branch, survey.state.tracked_changes().len()) {
         (Some(branch), 0) => format!("on {branch}, clean"),
         (Some(branch), changed) => {
-            format!("on {branch}, {changed} changed {}", plural(changed, "file"))
+            format!("on {branch}, {}", counted(changed, "changed file", "changed files"))
         }
         (None, 0) => "detached, clean".to_owned(),
-        (None, changed) => format!("detached, {changed} changed {}", plural(changed, "file")),
+        (None, changed) => {
+            format!("detached, {}", counted(changed, "changed file", "changed files"))
+        }
     };
     let your_clone = Choosable {
         title: "Your clone",
@@ -107,7 +111,10 @@ pub(super) fn looking(ui: &mut Ui, view: &View<'_>, error: Option<&str>) -> Opti
     let palette = theme::palette(ui.ctx());
     let Some(error) = error else {
         ui.horizontal(|ui| {
-            ui.add(egui::Spinner::new().size(icons::SIZE - 2.0).color(palette.text_secondary));
+            let size = egui::Vec2::splat(icons::SIZE - 2.0);
+            let (slot, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+            response.widget_info(|| egui::WidgetInfo::new(egui::Role::ProgressIndicator));
+            states::spinner(ui, slot, palette.text_secondary);
             ui.label(
                 RichText::new(format!("Looking for your clone of {}…", view.key.repository_key))
                     .color(palette.text_secondary),
@@ -157,7 +164,7 @@ fn then_open(ui: &mut Ui, view: &View<'_>, choice: &mut Choice) -> Option<Act> {
         (OpenWith::Terminal, "Terminal".to_owned(), true),
     ];
     for (kind, is_installed) in view.agents {
-        let name = cv_services::checkouts::agent_name(kind).to_owned();
+        let name = cli_name(kind).to_owned();
         options.push((OpenWith::Agent(kind), name, is_installed));
     }
     ui.horizontal_wrapped(|ui| {
