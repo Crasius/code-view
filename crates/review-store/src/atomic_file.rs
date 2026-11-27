@@ -23,7 +23,7 @@ pub(crate) fn write_json<T: Serialize>(path: &Path, value: &T) -> io::Result<()>
 /// Writes `bytes` to a temporary file next to `path` and renames it into place. Each write has
 /// its own temporary file, so saves of one file at the same time each land whole, the last one
 /// winning; a shared one would take a mix of them, and every rename after the first would fail.
-pub(crate) fn write_bytes(path: &Path, bytes: &[u8]) -> io::Result<()> {
+pub fn write_bytes(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let name = path.file_name().map_or_else(Default::default, |name| name.to_string_lossy());
     let unique = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
     let temp_path =
