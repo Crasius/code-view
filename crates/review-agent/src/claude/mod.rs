@@ -23,6 +23,11 @@ use crate::process::{self, AgentProcess, EXIT_GRACE};
 use crate::{AgentCli, AgentError, AgentEvent, ModelInfo, SessionConfig};
 use stream::ClaudeStream;
 
+/// SDK mode: one stream-json message per line on stdin and stdout.
+const MACHINE_MODE: [&str; 6] =
+    ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"];
+/// The isolation from the module doc: no settings files and no MCP servers.
+const ISOLATED: [&str; 2] = ["--restricted", "--strict-mcp-config"];
 /// The tools the agent gets: reading files and running the allowed commands.
 const TOOLS: &str = "Read,Grep,Glob,Bash";
 /// The Bash commands the agent may run without asking: git's read-only history commands.
@@ -54,17 +59,8 @@ pub(crate) async fn launch(config: &SessionConfig) -> Result<Launch, AgentError>
 
 /// The command line of a session; the brief is in `brief_file`.
 pub(crate) fn args(config: &SessionConfig, brief_file: &Path) -> Vec<OsString> {
-    let mut args: Vec<OsString> = [
-        "-p",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--include-partial-messages",
-    ]
-    .map(OsString::from)
-    .to_vec();
+    let mut args: Vec<OsString> = MACHINE_MODE.map(OsString::from).to_vec();
+    args.push(OsString::from("--include-partial-messages"));
     let choices = [
         ("--model", config.pick.model.as_deref()),
         ("--effort", config.pick.effort.as_deref()),
@@ -75,10 +71,8 @@ pub(crate) fn args(config: &SessionConfig, brief_file: &Path) -> Vec<OsString> {
             args.extend([OsString::from(flag), OsString::from(value)]);
         }
     }
-    args.extend(
-        ["--restricted", "--strict-mcp-config", "--tools", TOOLS, "--allowedTools"]
-            .map(OsString::from),
-    );
+    args.extend(ISOLATED.map(OsString::from));
+    args.extend(["--tools", TOOLS, "--allowedTools"].map(OsString::from));
     args.extend(ALLOWED_COMMANDS.map(OsString::from));
     args.extend(
         ["--permission-mode", "dontAsk", "--append-system-prompt-file"].map(OsString::from),
@@ -146,47 +140,37 @@ impl Protocol for ClaudeProtocol {
 /// The models from the CLI's answer to the SDK's `initialize` control request; the documented
 /// aliases when it lists none.
 pub(crate) async fn list_models(cli: &AgentCli) -> Result<Vec<ModelInfo>, AgentError> {
-    let args = [
-        "-p",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--restricted",
-        "--strict-mcp-config",
-        "--no-session-persistence",
-    ];
+    let args = MACHINE_MODE.iter().chain(&ISOLATED).chain(&["--no-session-persistence"]);
     let command = process::command(&cli.program, args, &std::env::temp_dir());
     let mut agent = AgentProcess::spawn(command)?;
     let request = json!({"type": "control_request", "request_id": "models", "request": {"subtype": "initialize"}});
-    let answer = match agent.send(&request).await {
-        Ok(()) => tokio::time::timeout(MODELS_TIMEOUT, initialize_answer(&mut agent)).await,
-        Err(error) => Ok(Err(error)),
-    };
+    let answer = tokio::time::timeout(MODELS_TIMEOUT, async {
+        agent.send(&request).await.map_err(|_| None)?;
+        initialize_answer(&mut agent).await.map_err(Some)
+    })
+    .await;
     let (code, stderr_tail) = agent.finish(EXIT_GRACE).await;
-    match answer {
-        Ok(Ok(response)) => Ok(models_from_initialize(&response)),
-        Ok(Err(error)) => Err(error),
-        Err(_) => Err(AgentError::Exited { code, stderr_tail }),
-    }
+    let response = answer.unwrap_or(Err(Some(AgentError::Timeout("the model list"))));
+    response
+        .map(|response| models_from_initialize(&response))
+        .map_err(|error| error.unwrap_or(AgentError::Exited { code, stderr_tail }))
 }
 
 async fn initialize_answer(agent: &mut AgentProcess) -> Result<Value, AgentError> {
     while let Some(line) = agent.next_line().await {
-        let Ok(message) = serde_json::from_str::<Value>(&line) else { continue };
+        let Ok(mut message) = serde_json::from_str::<Value>(&line) else { continue };
         let is_answer = message.get("type").and_then(Value::as_str) == Some("control_response")
             && message.pointer("/response/request_id").and_then(Value::as_str) == Some("models");
         if !is_answer {
             continue;
         }
-        let response = message.get("response").cloned().unwrap_or(Value::Null);
+        let mut response = message.get_mut("response").map(Value::take).unwrap_or_default();
         if response.get("subtype").and_then(Value::as_str) == Some("error") {
             let words =
                 response.get("error").and_then(Value::as_str).unwrap_or("initialize failed");
             return Err(AgentError::Protocol(words.to_owned()));
         }
-        return Ok(response.get("response").cloned().unwrap_or(Value::Null));
+        return Ok(response.get_mut("response").map(Value::take).unwrap_or_default());
     }
     Err(AgentError::Protocol("the CLI ended before it listed its models".to_owned()))
 }
@@ -194,7 +178,8 @@ async fn initialize_answer(agent: &mut AgentProcess) -> Result<Value, AgentError
 /// `models` of an `initialize` answer, in order, without the "default" entry (the CLI's own
 /// choice; the entry with the same resolved model becomes the default instead).
 pub(crate) fn models_from_initialize(response: &Value) -> Vec<ModelInfo> {
-    let entries = response.get("models").and_then(Value::as_array).cloned().unwrap_or_default();
+    let entries: &[Value] =
+        response.get("models").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
     let field =
         |entry: &Value, key: &str| entry.get(key).and_then(Value::as_str).unwrap_or("").to_owned();
     let default_model = entries
@@ -203,7 +188,7 @@ pub(crate) fn models_from_initialize(response: &Value) -> Vec<ModelInfo> {
         .map(|entry| field(entry, "resolvedModel"));
     let mut default_taken = false;
     let mut models = Vec::new();
-    for entry in &entries {
+    for entry in entries {
         let id = field(entry, "value");
         if id.is_empty() || id == "default" {
             continue;
