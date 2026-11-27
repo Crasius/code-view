@@ -6,8 +6,8 @@
 //! bottom-aligning the line boxes puts code spans on the prose baseline, where egui's default
 //! centered alignment raises them.
 
-mod code;
-mod links;
+pub(super) mod code;
+pub(super) mod links;
 mod table;
 pub(super) mod typeset;
 
@@ -24,7 +24,6 @@ use egui::{
 };
 use pulldown_cmark::{Alignment, BlockQuoteKind};
 
-pub(super) use self::code::COPIED_SECONDS;
 use self::code::{CodeStyle, code_job, copy_button};
 use self::links::{byte_at, link_menu};
 use self::table::{Columns, Grid, cell_align, paint_lines};
@@ -50,6 +49,11 @@ pub const BULLETS: [&str; 3] = ["•", "◦", "▪"];
 pub const CHECKBOX_SIZE: f32 = 14.0;
 /// Ids below one top-level block: `next_id` counts within the block in the low bits.
 const BLOCK_ID_BITS: u32 = 20;
+
+/// The height of a thematic break at `scale`: room above and below its hairline.
+pub(super) fn rule_height(scale: f32) -> f32 {
+    tokens::SPACE_S * scale * 2.0 + 1.0
+}
 
 /// Laid-out heights of a document's top-level blocks for one width, scale and pixel density.
 #[derive(Clone, Default)]
@@ -89,9 +93,6 @@ pub struct Renderer {
     /// The next block is a top-level one (its tables may grow to `breakout`).
     is_top: bool,
 }
-
-/// Images in a running text preload this share of a screen before they scroll into view.
-const PRELOAD_SCREENS: f32 = 0.5;
 
 impl Renderer {
     pub fn new(palette: Palette, id: Id, scale: f32, links: Option<Arc<dyn LinkResolver>>) -> Self {
@@ -232,8 +233,9 @@ impl Renderer {
                 );
                 // Blocks just outside the view are laid out too, so their images start loading
                 // before they are scrolled to.
-                let ahead =
-                    ui.clip_rect().expand2(vec2(0.0, ui.clip_rect().height() * PRELOAD_SCREENS));
+                let ahead = ui
+                    .clip_rect()
+                    .expand2(vec2(0.0, ui.clip_rect().height() * images::PRELOAD_SCREENS));
                 if !ui.is_visible() || !ahead.intersects(rect) {
                     ui.add_space(height);
                     continue;
@@ -292,10 +294,8 @@ impl Renderer {
             }
             Block::Rule => {
                 let width = ui.available_width();
-                let (rect, _) = ui.allocate_exact_size(
-                    vec2(width, self.px(tokens::SPACE_S) * 2.0 + 1.0),
-                    Sense::hover(),
-                );
+                let (rect, _) =
+                    ui.allocate_exact_size(vec2(width, rule_height(self.scale)), Sense::hover());
                 ui.painter().hline(
                     rect.x_range(),
                     rect.center().y,

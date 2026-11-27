@@ -4,28 +4,18 @@ use review_core::{
 };
 use serde::Deserialize;
 
-use super::branch_name;
 use super::identity::{IdentityRef, ReviewerRef};
 use super::repository::Repository;
+use super::{CommitRef, branch_name};
 use crate::client::RepoKey;
 use crate::pull_requests::NO_IDENTITY;
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct CommitRef {
-    pub commit_id: String,
-}
 
 /// `WebApiTagDefinition`: a pull request tag ("label").
 #[derive(Debug, Deserialize)]
 pub(crate) struct Tag {
     pub name: String,
-    #[serde(default = "active_by_default")]
+    #[serde(default = "crate::dto::default_true")]
     pub active: bool,
-}
-
-fn active_by_default() -> bool {
-    true
 }
 
 #[derive(Debug, Deserialize)]

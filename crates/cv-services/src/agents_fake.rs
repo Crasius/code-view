@@ -2,7 +2,7 @@
 //! installed (and signed in), and scripts each started session through its [`FakeAgent`]. A
 //! terminal the app opens is only recorded.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
@@ -25,7 +25,7 @@ pub enum FakeCli {
 pub struct FakeAgents {
     clis: Mutex<HashMap<AgentKind, FakeCli>>,
     /// Sessions started and not yet taken by the test, with what they were started with.
-    sessions: Mutex<Vec<(SessionConfig, FakeAgent)>>,
+    sessions: Mutex<VecDeque<(SessionConfig, FakeAgent)>>,
     /// Terminals opened and not yet taken by the test.
     terminals: Mutex<Vec<FakeTerminal>>,
 }
@@ -77,7 +77,10 @@ impl FakeAgents {
             FakeCli::Installed { is_signed_in: false, .. } => Err(AgentError::NotSignedIn(kind)),
             FakeCli::Installed { is_signed_in: true, .. } => {
                 let (session, events, agent) = Session::fake();
-                self.sessions.lock().unwrap_or_else(PoisonError::into_inner).push((config, agent));
+                self.sessions
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push_back((config, agent));
                 Ok((session, events))
             }
         }
@@ -99,7 +102,6 @@ impl FakeAgents {
 
     /// The oldest session started and not taken yet.
     pub fn take_session(&self) -> Option<(SessionConfig, FakeAgent)> {
-        let mut sessions = self.sessions.lock().unwrap_or_else(PoisonError::into_inner);
-        (!sessions.is_empty()).then(|| sessions.remove(0))
+        self.sessions.lock().unwrap_or_else(PoisonError::into_inner).pop_front()
     }
 }

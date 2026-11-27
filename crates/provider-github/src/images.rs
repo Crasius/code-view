@@ -18,7 +18,7 @@ use review_core::http::image::{self, Authorize, Body, Validators};
 use review_core::{ProviderError, Result, http};
 use serde_json::json;
 
-use crate::client::GitHubClient;
+use crate::client::{GitHubClient, PUBLIC_API_ROOT};
 use crate::repo_key::RepoKey;
 
 /// The contents API answers with the file's bytes for this media type.
@@ -87,12 +87,12 @@ async fn attachment(
     limit: u64,
     known: &Validators,
 ) -> Result<Body> {
-    let repo = RepoKey::parse(repo)?;
+    RepoKey::parse(repo)?;
     // The address is a parsed URL: quotes and angle brackets in it are percent-encoded.
     let text = format!("<img src=\"{url}\">");
-    let request = client.rest(Method::POST, "/markdown").json(
-        &json!({ "text": text, "mode": "gfm", "context": format!("{}/{}", repo.owner, repo.name) }),
-    );
+    let request = client
+        .rest(Method::POST, "/markdown")
+        .json(&json!({ "text": text, "mode": "gfm", "context": repo }));
     let rendered = match http::fetch(request).await {
         Ok(rendered) => rendered,
         Err(ProviderError::Status { status: 401 | 403, .. }) => return Ok(Body::Private),
@@ -159,7 +159,7 @@ fn contents_api(web_root: &str, rest_root: &str, url: &str) -> Option<String> {
             }
             _ => return None,
         }
-    } else if parsed.host_str() == Some(RAW_HOST) && rest_root == "https://api.github.com" {
+    } else if parsed.host_str() == Some(RAW_HOST) && rest_root == PUBLIC_API_ROOT {
         match segments.as_slice() {
             [owner, repo, reference, path @ ..] if !path.is_empty() => {
                 (*owner, *repo, *reference, path.join("/"))
@@ -183,12 +183,13 @@ mod tests {
     fn repository_files_on_the_web_read_through_the_contents_api() {
         let api = |url: &str| contents_api("https://github.com", "https://api.github.com", url);
         assert_eq!(
-            api("https://github.com/cli/cli/blob/abc123/docs/img/a%20b.png?raw=true").as_deref(),
-            Some("https://api.github.com/repos/cli/cli/contents/docs/img/a%20b.png?ref=abc123")
+            api("https://github.com/contoso/app/blob/abc123/docs/img/a%20b.png?raw=true")
+                .as_deref(),
+            Some("https://api.github.com/repos/contoso/app/contents/docs/img/a%20b.png?ref=abc123")
         );
         assert_eq!(
-            api("https://raw.githubusercontent.com/cli/cli/main/logo.svg").as_deref(),
-            Some("https://api.github.com/repos/cli/cli/contents/logo.svg?ref=main")
+            api("https://raw.githubusercontent.com/contoso/app/main/logo.svg").as_deref(),
+            Some("https://api.github.com/repos/contoso/app/contents/logo.svg?ref=main")
         );
         assert_eq!(
             api("https://github.com/user-attachments/assets/0d6b2a3c-1111"),

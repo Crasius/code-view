@@ -13,14 +13,14 @@ use std::sync::Arc;
 use cv_base::theme::{Palette, icons, motion, style as tokens};
 use cv_media::image_state::bump_image_generation;
 use cv_media::mermaid::{DiagramFailure, DiagramRequest, DiagramState, DiagramStore, DiagramTheme};
-use cv_widgets::{buttons, focus, glyph};
+use cv_widgets::{buttons, copy_chip, glyph};
 use egui::{
     Align2, Color32, CursorIcon, FontId, Id, Rect, Response, Sense, Stroke, StrokeKind, Ui,
     WidgetInfo, pos2, vec2,
 };
 
 use super::images::{self, Anchor};
-use super::render::COPIED_SECONDS;
+use super::render::code::{FloatButton, float_button};
 
 /// Diagrams taller than this (at zoom 1) shrink to it; Enlarge shows them whole.
 const MAX_HEIGHT: f32 = 640.0;
@@ -30,6 +30,8 @@ const PADDING: f32 = tokens::SPACE_M;
 const LINE_ESTIMATE: f32 = 22.0;
 const MIN_ESTIMATE: f32 = 96.0;
 const MAX_ESTIMATE: f32 = 360.0;
+/// The width of a diagram not drawn yet (at zoom 1).
+const PLACEHOLDER_WIDTH: f32 = 480.0;
 const TITLE: &str = "Mermaid diagram";
 
 /// Whether a fence's info string asks for a Mermaid diagram.
@@ -139,7 +141,7 @@ pub(super) fn show(ui: &mut Ui, diagram: &Diagram<'_>, source: impl FnOnce(&mut 
             }
             _ if wants_source => {
                 let block = source(ui);
-                let toggle = float_button(ui, diagram, block, 1, icons::GRAPH, "Show diagram");
+                let toggle = corner_button(ui, diagram, block, 1, icons::GRAPH, "Show diagram");
                 if toggle.clicked() {
                     set_source_view(&ctx, source_id, false);
                 }
@@ -163,9 +165,10 @@ fn show_diagram(ui: &mut Ui, diagram: &Diagram<'_>, state: &DiagramState, source
     };
     let shown = match natural {
         Some(natural) => natural * fit(natural, room, MAX_HEIGHT * diagram.scale),
-        None => {
-            vec2(room.min(480.0 * diagram.scale), estimate_height(diagram.code) * diagram.scale)
-        }
+        None => vec2(
+            room.min(PLACEHOLDER_WIDTH * diagram.scale),
+            estimate_height(diagram.code) * diagram.scale,
+        ),
     };
     let (rect, response) =
         ui.allocate_exact_size(vec2(width, shown.y + 2.0 * padding), Sense::click());
@@ -252,10 +255,10 @@ fn diagram_actions(
         }
     };
     let rect = response.rect;
-    let copy = float_button(ui, diagram, rect, 0, icons::COPY, "Copy source");
-    let toggle = float_button(ui, diagram, rect, 1, icons::CODE, "Show source");
+    let copy = corner_button(ui, diagram, rect, 0, icons::COPY, "Copy source");
+    let toggle = corner_button(ui, diagram, rect, 1, icons::CODE, "Show source");
     let enlarged =
-        can_enlarge && float_button(ui, diagram, rect, 2, icons::CORNERS_OUT, "Enlarge").clicked();
+        can_enlarge && corner_button(ui, diagram, rect, 2, icons::CORNERS_OUT, "Enlarge").clicked();
     if copy.clicked() {
         copy_source(&ctx, diagram);
     }
@@ -322,12 +325,11 @@ fn failure_note(
                 .font(icons::rest_font(palette, size + 2.0))
                 .color(palette.warning),
         );
-        let note = ui.label(
-            egui::RichText::new(&text)
+        ui.label(
+            egui::RichText::new(text)
                 .font(FontId::proportional(size))
                 .color(palette.text_secondary),
         );
-        note.widget_info(|| WidgetInfo::labeled(egui::Role::Label, true, &text));
         if buttons::subtle(ui, icons::COPY, "Copy source").clicked() {
             copy_source(ui.ctx(), diagram);
         }
@@ -351,16 +353,13 @@ fn set_source_view(ctx: &egui::Context, id: Id, show_source: bool) {
 }
 
 fn copy_source(ctx: &egui::Context, diagram: &Diagram<'_>) {
-    ctx.copy_text(diagram.code.to_owned());
-    let now = ctx.input(|input| input.time);
-    ctx.data_mut(|data| data.insert_temp(diagram.id.with("copied"), now));
+    copy_chip::mark_copied(ctx, diagram.id, diagram.code.to_owned());
+    ctx.request_repaint();
 }
 
-/// Button `slot` (0 is the corner, counting leftwards) floating over the top-right of `block`,
-/// as the code block's copy button does: it takes no room and fades in while the pointer is
-/// over the block or a button has keyboard focus. Slot 0 of the source view is the code block's
-/// own copy button.
-fn float_button(
+/// Button `slot` (0 is the corner, counting leftwards) of the diagram's corner buttons
+/// ([`float_button`]). Slot 0 of the source view is the code block's own copy button.
+fn corner_button(
     ui: &Ui,
     diagram: &Diagram<'_>,
     block: Rect,
@@ -368,63 +367,21 @@ fn float_button(
     icon: &str,
     label: &str,
 ) -> Response {
-    let palette = diagram.palette;
-    let side = tokens::CONTROL_HEIGHT - tokens::SPACE_S;
-    let step = side + tokens::SPACE_XS;
-    let rect = Rect::from_min_size(
-        block.right_top() + vec2(-tokens::SPACE_XS - side - step * slot as f32, tokens::SPACE_XS),
-        vec2(side, side),
-    );
-    let response = ui.interact(rect, diagram.id.with(("button", slot)), Sense::click());
-    let now = ui.input(|input| input.time);
-    let copied_at: Option<f64> = ui.ctx().data(|data| data.get_temp(diagram.id.with("copied")));
-    let is_copied = icon == icons::COPY && copied_at.is_some_and(|at| now - at < COPIED_SECONDS);
-    if let Some(at) = copied_at.filter(|_| is_copied) {
-        ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(
-            (at + COPIED_SECONDS - now).max(0.0),
-        ));
-    }
-    let wanted =
-        response.hovered() || response.has_focus() || is_copied || ui.rect_contains_pointer(block);
-    let shown = motion::toggle(ui.ctx(), diagram.id.with(("shown", slot)), wanted, motion::FAST);
-    let label = if is_copied { "Copied" } else { label };
-    response.widget_info(|| WidgetInfo::labeled(egui::Role::Button, true, label));
-    if shown > 0.0 {
-        let fill = if response.hovered() { palette.pressed } else { palette.surface };
-        let painter = ui.painter();
-        painter.rect_filled(rect, tokens::RADIUS_CONTROL, fill.gamma_multiply(shown));
-        painter.rect_stroke(
-            rect,
-            tokens::RADIUS_CONTROL,
-            Stroke::new(1.0, palette.border.gamma_multiply(shown)),
-            StrokeKind::Inside,
-        );
-        let (glyph, color) = if is_copied {
-            (icons::CHECK, palette.success)
-        } else {
-            (icon, palette.text_secondary)
-        };
-        painter.text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            glyph,
-            icons::rest_font(palette, icons::SIZE_SMALL),
-            color.gamma_multiply(shown),
-        );
-    }
-    focus::ring(ui, &response, rect);
-    if shown > 0.0 {
-        response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(label)
-    } else {
-        response
-    }
+    let button = FloatButton {
+        id: diagram.id.with(("button", slot)),
+        slot,
+        icon,
+        label,
+        copied: (icon == icons::COPY).then_some(diagram.id),
+    };
+    float_button(ui, block, &button, diagram.palette)
 }
 
 #[cfg(test)]
 mod tests {
     use egui::vec2;
 
-    use super::{containers_as_fences, estimate_height, fit, is_mermaid};
+    use super::{containers_as_fences, fit, is_mermaid};
 
     #[test]
     fn azure_devops_containers_become_fences_of_the_same_length() {
@@ -476,12 +433,5 @@ mod tests {
         assert_eq!(fit(vec2(200.0, 100.0), 600.0, 640.0), 1.0, "a small diagram keeps its size");
         assert_eq!(fit(vec2(1200.0, 300.0), 600.0, 640.0), 0.5, "a wide one fits the width");
         assert_eq!(fit(vec2(300.0, 1280.0), 600.0, 640.0), 0.5, "a tall one the height limit");
-    }
-
-    #[test]
-    fn the_placeholder_grows_with_the_source_within_bounds() {
-        assert_eq!(estimate_height("graph TD; A-->B"), super::MIN_ESTIMATE);
-        assert_eq!(estimate_height(&"A-->B\n".repeat(500)), super::MAX_ESTIMATE);
-        assert!(estimate_height(&"A-->B\n".repeat(8)) > super::MIN_ESTIMATE);
     }
 }

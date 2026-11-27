@@ -17,19 +17,18 @@ use serde::Deserialize;
 use time::OffsetDateTime;
 use time::macros::format_description;
 
-use crate::client::{API_VERSION_PREVIEW, Client, RepoKey};
+use crate::client::{Client, RepoKey, is_services_host};
 use crate::dto::ValueList;
-use crate::dto::identity::ConnectionData;
 use crate::dto::repository::Repository;
+use crate::identity::connection_data;
 
 /// Profile and accounts APIs of Azure DevOps Services.
 const PROFILE_ROOT: &str = "https://app.vssps.visualstudio.com";
-const SERVICES_HOST: &str = "https://dev.azure.com";
 
 /// Where to create a token and the exact boxes to tick; Azure DevOps has no pre-fill.
 pub fn token_guide(base_url: &str, organization: Option<&str>) -> TokenGuide {
     let base = base_url.trim_end_matches('/');
-    let is_services = base.eq_ignore_ascii_case(SERVICES_HOST);
+    let is_services = is_services_host(base);
     let create_url = token_page_url(base, organization);
     let mut settings = vec![TokenSetting::new(
         format!("Name: {TOKEN_NAME}"),
@@ -99,7 +98,7 @@ pub fn token_guide(base_url: &str, organization: Option<&str>) -> TokenGuide {
 }
 
 /// `https://dev.azure.com/{org}/_usersSettings/tokens`, or the collection's page on Server.
-pub fn token_page_url(base_url: &str, organization: Option<&str>) -> String {
+fn token_page_url(base_url: &str, organization: Option<&str>) -> String {
     let base = base_url.trim_end_matches('/');
     match organization.map(str::trim).filter(|organization| !organization.is_empty()) {
         Some(organization) => {
@@ -154,11 +153,6 @@ async fn probe(client: &Client, url: &str, query: &[(&str, &str)]) -> Result<Pro
         Err(ProviderError::Status { status: 401 | 403, .. }) => Ok(Probe::Denied),
         Err(error) => Err(error),
     }
-}
-
-async fn connection_data(client: &Client, organization: &str) -> Result<ConnectionData> {
-    let url = client.organization_api(organization, "connectionData");
-    client.json(client.request_versioned(Method::GET, &url, API_VERSION_PREVIEW)).await
 }
 
 /// Signs in per organization and probes what the token reads. Only `GET` requests.
@@ -322,9 +316,7 @@ pub(crate) async fn discover(client: &Client) -> Result<Vec<ScopeCandidate>> {
     if client.is_services() {
         return discover_organizations(client, PROFILE_ROOT).await;
     }
-    // The organization root of an empty name is the server root.
-    let url =
-        format!("{}/_apis/projectCollections", client.organization_root("").trim_end_matches('/'));
+    let url = format!("{}/_apis/projectCollections", client.base_url());
     let collections: ValueList<CollectionDto> = client.get(&url, &[]).await?;
     Ok(collections
         .value
@@ -546,6 +538,7 @@ mod tests {
         let error = discover_organizations(&client("https://dev.azure.com", PAT), &server.uri())
             .await
             .expect_err("needs scope");
+        assert!(matches!(error, ProviderError::Unsupported(_)), "{error:?}");
         assert!(error.to_string().contains("User Profile: Read"));
     }
 

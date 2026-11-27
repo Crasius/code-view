@@ -7,9 +7,9 @@
 use review_core::{Fingerprint, PullRequestRevision, Result};
 
 use crate::client::{Client, RepoKey};
-use crate::dto::ValueList;
 use crate::dto::pull_request::PullRequest;
 use crate::dto::thread::Thread;
+use crate::dto::{CommitRef, ValueList};
 use crate::pull_requests;
 
 pub(crate) async fn revision(
@@ -27,9 +27,8 @@ pub(crate) async fn revision(
 }
 
 fn of(pull_request: &PullRequest, threads: &[Thread]) -> PullRequestRevision {
-    let commit = |commit: &Option<crate::dto::pull_request::CommitRef>| {
-        commit.as_ref().map(|commit| commit.commit_id.clone())
-    };
+    let commit =
+        |commit: &Option<CommitRef>| commit.as_ref().map(|commit| commit.commit_id.clone());
     let mut fingerprint = Fingerprint::default();
     fingerprint
         .add(&pull_request.status)

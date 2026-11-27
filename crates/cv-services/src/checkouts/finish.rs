@@ -19,17 +19,17 @@ use review_core::{Provider, PullRequestState};
 use review_git::checkout::{self, CheckoutError, Finished, FinishedTree, Keep};
 use review_store::checkouts::{CheckoutKind, CheckoutRecord, WhenFinished};
 
-use super::upkeep::plural;
-use cv_runtime::background::{Background, Task, TaskPoll};
+use cv_runtime::background::{Background, TASK_LOST, Task, TaskPoll};
 use cv_runtime::route::PullRequestKey;
+use cv_widgets::numbers::counted;
 use cv_widgets::progress_log::timestamp;
 
 /// What a finished pull request's checkout gets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Decision {
     Remove,
-    /// The page offers the removal; with why it did not go by itself.
-    Ask(Option<String>),
+    /// The page offers the removal.
+    Ask,
     Keep,
     /// The record goes, the folder stays: a clone is never removed.
     Forget,
@@ -41,11 +41,11 @@ pub(super) fn decide(mode: WhenFinished, record: &CheckoutRecord) -> Decision {
         return if mode == WhenFinished::Keep { Decision::Keep } else { Decision::Forget };
     }
     if record.merged_here {
-        return if mode == WhenFinished::Keep { Decision::Keep } else { Decision::Ask(None) };
+        return if mode == WhenFinished::Keep { Decision::Keep } else { Decision::Ask };
     }
     match mode {
         WhenFinished::RemoveAutomatically => Decision::Remove,
-        WhenFinished::Ask => Decision::Ask(None),
+        WhenFinished::Ask => Decision::Ask,
         WhenFinished::Keep => Decision::Keep,
     }
 }
@@ -96,8 +96,8 @@ impl Finish {
         self.offers.get(key)
     }
 
-    pub(super) fn ask(&mut self, key: &PullRequestKey, kept: Option<String>) {
-        self.offers.insert(key.clone(), Offer { kept });
+    pub(super) fn ask(&mut self, key: &PullRequestKey) {
+        self.offers.insert(key.clone(), Offer::default());
     }
 
     pub(super) fn has_asked_states(&self) -> bool {
@@ -178,10 +178,9 @@ impl Finish {
             match task.poll() {
                 TaskPoll::Pending => {}
                 TaskPoll::Done(result) => done.push((key.clone(), result)),
-                TaskPoll::Lost => done.push((
-                    key.clone(),
-                    Err(CheckoutError::Git("The background task stopped unexpectedly.".into())),
-                )),
+                TaskPoll::Lost => {
+                    done.push((key.clone(), Err(CheckoutError::Git(TASK_LOST.into()))));
+                }
             }
         }
         let mut changes = Vec::new();
@@ -208,12 +207,12 @@ impl Finish {
 fn kept_reason(keep: &Keep) -> String {
     match keep {
         Keep::Changed(files) => {
-            let count = files.len();
-            format!("{count} uncommitted {} in the worktree", plural(count, "file"))
+            let files = counted(files.len(), "uncommitted file", "uncommitted files");
+            format!("{files} in the worktree")
         }
         Keep::LocalCommits(commits) => {
-            let count = commits.len();
-            format!("{count} local {} not in the pull request", plural(count, "commit"))
+            let commits = counted(commits.len(), "local commit", "local commits");
+            format!("{commits} not in the pull request")
         }
         Keep::UnknownHead => "Code View does not know the pull request's last head".to_owned(),
     }
@@ -250,14 +249,14 @@ mod tests {
     fn the_setting_decides_for_a_worktree_merged_elsewhere() {
         let worktree = record(CheckoutKind::Worktree, false);
         assert_eq!(decide(WhenFinished::RemoveAutomatically, &worktree), Decision::Remove);
-        assert_eq!(decide(WhenFinished::Ask, &worktree), Decision::Ask(None));
+        assert_eq!(decide(WhenFinished::Ask, &worktree), Decision::Ask);
         assert_eq!(decide(WhenFinished::Keep, &worktree), Decision::Keep);
     }
 
     #[test]
     fn a_merge_from_code_view_asks_and_a_clone_only_loses_its_record() {
         let merged_here = record(CheckoutKind::Worktree, true);
-        assert_eq!(decide(WhenFinished::RemoveAutomatically, &merged_here), Decision::Ask(None));
+        assert_eq!(decide(WhenFinished::RemoveAutomatically, &merged_here), Decision::Ask);
         assert_eq!(decide(WhenFinished::Keep, &merged_here), Decision::Keep);
         for kind in [CheckoutKind::Clone, CheckoutKind::NewClone, CheckoutKind::Adopted] {
             let clone = record(kind, false);

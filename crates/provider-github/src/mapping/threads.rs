@@ -299,8 +299,9 @@ mod tests {
         assert!(threads[1].anchor.as_ref().is_some_and(|anchor| anchor.range.is_none()));
     }
 
-    /// A real anonymous `GET /repos/cli/cli/pulls/14682/comments` row (trimmed): outdated, so
-    /// `line` is null and only the original line and commit say where it was written.
+    /// A real anonymous `GET /repos/{owner}/{repo}/pulls/{number}/comments` row (trimmed,
+    /// renamed): outdated, so `line` is null and only the original line and commit say where it
+    /// was written.
     #[test]
     fn rest_outdated_comments_keep_their_origin() {
         let comments: Vec<ReviewCommentDto> =
@@ -319,7 +320,7 @@ mod tests {
         );
         assert_eq!(
             origin.web_url.as_deref(),
-            Some("https://github.com/cli/cli/pull/14682#discussion_r4270374354")
+            Some("https://github.com/contoso/app/pull/14682#discussion_r4270374354")
         );
 
         let current: Vec<ReviewCommentDto> =

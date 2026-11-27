@@ -7,6 +7,10 @@
 //! A reference starts a word and ends one: `abc#12`, `#12abc`, `&#39;` and `v1.2#3` are text.
 //! Also finds ticket keys (`ABC-123`) for the overview's linked tickets.
 
+// RS-DONT-04: parses references from pull request text, so indexing, string slicing and narrowing
+// casts are checked here.
+#![warn(clippy::string_slice, clippy::indexing_slicing, clippy::cast_possible_truncation)]
+
 use std::ops::Range;
 
 use review_core::ProviderKind;
@@ -18,8 +22,7 @@ pub fn find(text: &str, platform: ProviderKind) -> Vec<Range<usize>> {
     let bytes = text.as_bytes();
     let mut found = Vec::new();
     let mut index = 0;
-    while index < bytes.len() {
-        let marker = bytes[index];
+    while let Some(&marker) = bytes.get(index) {
         let is_marker = marker == b'#' || (marker == b'!' && platform != ProviderKind::GitHub);
         if !is_marker {
             index += 1;
@@ -41,8 +44,9 @@ pub fn find(text: &str, platform: ProviderKind) -> Vec<Range<usize>> {
 
 /// End of the number after a marker, when the number is a whole word.
 fn number_end(bytes: &[u8], from: usize) -> Option<usize> {
-    let digits = bytes[from..].iter().take_while(|byte| byte.is_ascii_digit()).count();
-    if digits == 0 || digits > MAX_DIGITS || bytes[from] == b'0' {
+    let rest = bytes.get(from..)?;
+    let digits = rest.iter().take_while(|byte| byte.is_ascii_digit()).count();
+    if digits == 0 || digits > MAX_DIGITS || rest.first() == Some(&b'0') {
         return None;
     }
     let end = from + digits;
@@ -58,7 +62,7 @@ fn number_end(bytes: &[u8], from: usize) -> Option<usize> {
 /// Start of the reference whose marker sits at `marker`: the marker itself, or the start of a
 /// repository path directly before it where the platform allows one.
 fn reference_start(text: &str, marker: usize, platform: ProviderKind) -> Option<usize> {
-    let before = &text[..marker];
+    let before = text.get(..marker)?;
     let path_len = before
         .chars()
         .rev()
@@ -66,13 +70,13 @@ fn reference_start(text: &str, marker: usize, platform: ProviderKind) -> Option<
         .map(char::len_utf8)
         .sum::<usize>();
     let start = marker - path_len;
-    if !starts_word(&text[..start]) {
+    if !starts_word(text.get(..start)?) {
         return None;
     }
     if path_len == 0 {
         return Some(marker);
     }
-    let path = &text[start..marker];
+    let path = text.get(start..marker)?;
     let segments: Vec<&str> = path.split('/').collect();
     let is_valid_segment = |segment: &&str| {
         !segment.is_empty() && !segment.starts_with('.') && !segment.ends_with('.')
@@ -104,15 +108,18 @@ pub fn ticket_keys(text: &str) -> Vec<&str> {
     let bytes = text.as_bytes();
     let mut keys = Vec::new();
     let mut index = 0;
-    while index < bytes.len() {
-        let is_word_start = index == 0
-            || !(bytes[index - 1].is_ascii_alphanumeric()
-                || matches!(bytes[index - 1], b'_' | b'-'));
-        if !is_word_start || !bytes[index].is_ascii_uppercase() {
+    while let Some(&first) = bytes.get(index) {
+        let previous = index.checked_sub(1).and_then(|previous| bytes.get(previous));
+        let is_word_start = previous.is_none_or(|&previous| {
+            !(previous.is_ascii_alphanumeric() || matches!(previous, b'_' | b'-'))
+        });
+        if !is_word_start || !first.is_ascii_uppercase() {
             index += 1;
             continue;
         }
-        let project = bytes[index..]
+        let project = bytes
+            .get(index..)
+            .unwrap_or_default()
             .iter()
             .take_while(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
             .count();
@@ -126,10 +133,11 @@ pub fn ticket_keys(text: &str) -> Vec<&str> {
         if project >= 2
             && bytes.get(dash) == Some(&b'-')
             && digits > 0
-            && bytes[dash + 1] != b'0'
+            && bytes.get(dash + 1) != Some(&b'0')
             && is_whole
+            && let Some(key) = text.get(index..end)
         {
-            keys.push(&text[index..end]);
+            keys.push(key);
             index = end;
         } else {
             index += project.max(1);
@@ -145,7 +153,10 @@ mod tests {
     use super::{find, ticket_keys};
 
     fn refs(text: &str, platform: review_core::ProviderKind) -> Vec<&str> {
-        find(text, platform).into_iter().map(|range| &text[range]).collect()
+        find(text, platform)
+            .into_iter()
+            .map(|range| text.get(range).expect("find returns char boundaries"))
+            .collect()
     }
 
     #[test]

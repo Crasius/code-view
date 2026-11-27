@@ -8,6 +8,7 @@ use review_core::{ItemKind, ItemRef, LinkedItem, LinkedState, Result};
 use serde::Deserialize;
 
 use crate::client::{ApiClient, project_path};
+use crate::merge_requests::pull_request_state;
 
 /// GitLab's page size limit; more references per project are listed in further requests.
 const MAX_IIDS: usize = 100;
@@ -62,7 +63,10 @@ pub(crate) async fn items(client: &ApiClient, references: &[ItemRef]) -> Result<
 
 fn to_item(reference: ItemRef, is_merge_request: bool, dto: ItemDto) -> LinkedItem {
     let (kind, (state, label)) = if is_merge_request {
-        (ItemKind::PullRequest, merge_request_state(&dto.state, dto.draft))
+        (
+            ItemKind::PullRequest,
+            LinkedState::of_pull_request(pull_request_state(&dto.state), dto.draft),
+        )
     } else {
         let state = if dto.state == "closed" {
             (LinkedState::Done, "Closed")
@@ -81,30 +85,5 @@ fn to_item(reference: ItemRef, is_merge_request: bool, dto: ItemDto) -> LinkedIt
         checks: None,
         item_type: None,
         web_url: dto.web_url,
-    }
-}
-
-/// The app's words for pull request states, the same on every platform.
-fn merge_request_state(state: &str, is_draft: bool) -> (LinkedState, &'static str) {
-    match state {
-        "merged" => (LinkedState::Merged, "Merged"),
-        "closed" => (LinkedState::Closed, "Abandoned"),
-        _ if is_draft => (LinkedState::Draft, "Draft"),
-        _ => (LinkedState::Open, "Active"),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use review_core::LinkedState;
-
-    use super::merge_request_state;
-
-    #[test]
-    fn maps_merge_request_states() {
-        assert_eq!(merge_request_state("merged", false).0, LinkedState::Merged);
-        assert_eq!(merge_request_state("closed", true).0, LinkedState::Closed);
-        assert_eq!(merge_request_state("opened", true).0, LinkedState::Draft);
-        assert_eq!(merge_request_state("locked", false).0, LinkedState::Open);
     }
 }

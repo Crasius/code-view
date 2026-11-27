@@ -30,13 +30,13 @@ pub fn platform(wizard: &mut Wizard, ui: &mut Ui) {
             kind.label(),
             detail,
             is_selected,
-            true,
+            parts::Mark::Chevron,
         )
         .clicked()
         {
             wizard.select_kind(kind);
         }
-        ui.add_space(8.0);
+        ui.add_space(theme::style::SPACE_S);
     }
 }
 
@@ -47,24 +47,21 @@ pub fn host(wizard: &mut Wizard, ui: &mut Ui) {
         (Hosting::Cloud, host::cloud_label(kind), host::cloud_detail(kind)),
         (Hosting::SelfHosted, host::self_hosted_label(kind), host::self_hosted_detail(kind)),
     ] {
-        let icon = if hosting == Hosting::Cloud {
-            cv_base::theme::icons::LINK
-        } else {
-            cv_base::theme::icons::FOLDER
-        };
-        if parts::choice_row(ui, icon, title, detail, wizard.hosting == hosting, false).clicked()
-            && wizard.hosting != hosting
+        let icon = if hosting == Hosting::Cloud { icons::LINK } else { icons::FOLDER };
+        let is_selected = wizard.hosting == hosting;
+        if parts::choice_row(ui, icon, title, detail, is_selected, parts::Mark::Radio).clicked()
+            && !is_selected
         {
             wizard.hosting = hosting;
             wizard.host_input.clear();
             wizard.reset_token();
         }
-        ui.add_space(8.0);
+        ui.add_space(theme::style::SPACE_S);
     }
 
     let resolved = wizard.resolved();
     if host::needs_input(kind, wizard.hosting) {
-        ui.add_space(8.0);
+        ui.add_space(theme::style::SPACE_S);
         let (label, example) = host::field(kind, wizard.hosting);
         let label = ui
             .label(RichText::new(label).font(theme::fonts::semibold_font(theme::style::BODY_SIZE)));
@@ -80,7 +77,7 @@ pub fn host(wizard: &mut Wizard, ui: &mut Ui) {
             && ui.input(|input| input.key_pressed(egui::Key::Enter))
             && resolved.is_ok()
         {
-            wizard.go(Step::Token);
+            wizard.step = Step::Token;
         }
         if response.changed() {
             wizard.reset_token();
@@ -112,10 +109,10 @@ pub fn host(wizard: &mut Wizard, ui: &mut Ui) {
             buttons::primary_icon(ui, icons::ARROW_RIGHT, "Continue")
         });
         if next.inner.clicked() {
-            wizard.go(Step::Token);
+            wizard.step = Step::Token;
         }
     });
     if goes_back {
-        wizard.go(Step::Platform);
+        wizard.step = Step::Platform;
     }
 }

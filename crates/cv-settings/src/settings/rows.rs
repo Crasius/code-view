@@ -13,10 +13,27 @@ use egui::{Color32, FontId, Stroke, Ui};
 use super::category::Category;
 use super::shortcuts;
 
-/// Which setting a row stands for; the page draws its control from this.
+/// Which setting a row stands for; the page draws its control from this. A section with several
+/// rows has its own enum, so its control matches every one of them and a new row cannot fall
+/// through to another section's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RowId {
     ConnectionList,
+    Appearance(AppearanceRow),
+    Merging(MergingRow),
+    Assistant(AssistantRow),
+    Checkout(CheckoutRow),
+    ClipboardLinks,
+    BrowserExtension,
+    StorageUsage,
+    ClearCache,
+    Requests,
+    /// An entry of [`shortcuts::SHORTCUTS`].
+    Shortcut(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppearanceRow {
     Theme,
     DiffLayout,
     CodeFontSize,
@@ -37,27 +54,32 @@ pub enum RowId {
     PaneSizes,
     FavoritesLane,
     RepositorySections,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MergingRow {
     Favourites,
     Remembered,
-    AssistantShown,
-    AssistantAgent,
-    AssistantClaudeModel,
-    AssistantCodexModel,
-    AssistantMiniChat,
-    CheckoutClones,
-    CheckoutSearch,
-    CheckoutPattern,
-    CheckoutRemoval,
-    CheckoutOpen,
-    CheckoutTerminal,
-    CheckoutAgents,
-    ClipboardLinks,
-    BrowserExtension,
-    StorageUsage,
-    ClearCache,
-    Requests,
-    /// An entry of [`shortcuts::SHORTCUTS`].
-    Shortcut(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssistantRow {
+    Shown,
+    Agent,
+    ClaudeModel,
+    CodexModel,
+    MiniChat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckoutRow {
+    Clones,
+    Search,
+    Pattern,
+    Removal,
+    Open,
+    Terminal,
+    Agents,
 }
 
 /// Where a row's control sits.
@@ -102,10 +124,6 @@ const fn row(
     Row { id, category, label, description, keywords, placement }
 }
 
-/// The occurrences row's label, also its switch's name for screen readers.
-pub const OCCURRENCES: &str = "Highlight other occurrences of the selection";
-/// The next-unviewed row's label, also its switch's name for screen readers.
-pub const NEXT_UNVIEWED: &str = "After marking a file viewed, open the next unviewed one";
 /// The pull request header row's label and description; its block shows them as its heading.
 pub const HEADER_TITLE: &str = "Pull request header";
 pub const HEADER_HELP: &str = "The title and review actions above the tabs. Pick per tab how they behave; each card plays what you picked.";
@@ -120,7 +138,7 @@ const ROWS: &[Row] = &[
         Placement::Block,
     ),
     row(
-        RowId::Theme,
+        RowId::Appearance(AppearanceRow::Theme),
         Category::Appearance,
         "Theme",
         "System follows the light or dark mode of your computer.",
@@ -128,7 +146,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::DiffLayout,
+        RowId::Appearance(AppearanceRow::DiffLayout),
         Category::Appearance,
         "Diff layout",
         "Side by side, inline, or only the new version with the changes marked.",
@@ -136,7 +154,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::CodeFontSize,
+        RowId::Appearance(AppearanceRow::CodeFontSize),
         Category::Appearance,
         "Code font size",
         "Code in diffs, files and logs.",
@@ -144,7 +162,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::WrapLines,
+        RowId::Appearance(AppearanceRow::WrapLines),
         Category::Appearance,
         "Wrap long lines",
         concat!("In the text diff. ", shortcut!(alt "Z"), " switches it in the diff."),
@@ -152,7 +170,7 @@ const ROWS: &[Row] = &[
         Placement::Trailing,
     ),
     row(
-        RowId::Comments,
+        RowId::Appearance(AppearanceRow::Comments),
         Category::Appearance,
         "Comments in the diff",
         concat!(
@@ -164,15 +182,15 @@ const ROWS: &[Row] = &[
         Placement::Trailing,
     ),
     row(
-        RowId::SelectionOccurrences,
+        RowId::Appearance(AppearanceRow::SelectionOccurrences),
         Category::Appearance,
-        OCCURRENCES,
+        "Highlight other occurrences of the selection",
         "Selecting a word or other text within one line in the text diff marks every other place it occurs in the file.",
         "selection highlight matches same word occurrences",
         Placement::Trailing,
     ),
     row(
-        RowId::ScrollPastEnd,
+        RowId::Appearance(AppearanceRow::ScrollPastEnd),
         Category::Appearance,
         "Scroll past the end",
         "The diff scrolls on until its last line is at the top of the view. Right-click the overview strip beside the diff to switch it there.",
@@ -180,7 +198,7 @@ const ROWS: &[Row] = &[
         Placement::Trailing,
     ),
     row(
-        RowId::ContextLines,
+        RowId::Appearance(AppearanceRow::ContextLines),
         Category::Appearance,
         "Context lines",
         "Unchanged lines shown around each change.",
@@ -188,7 +206,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::FavoritesLane,
+        RowId::Appearance(AppearanceRow::FavoritesLane),
         Category::Appearance,
         "Show the Favorites lane",
         "The overview's first card, with the pull requests of your starred repositories. Off, they come first in every card instead, marked with a star; the star in the overview's header switches it too.",
@@ -196,7 +214,7 @@ const ROWS: &[Row] = &[
         Placement::Trailing,
     ),
     row(
-        RowId::RepositorySections,
+        RowId::Appearance(AppearanceRow::RepositorySections),
         Category::Appearance,
         "Group by repository",
         "Each card of the overview lists its pull requests under a header per repository, which closes and opens its section. Off, they are listed newest first, each with its repository. The books button in the overview's header switches it too.",
@@ -204,7 +222,7 @@ const ROWS: &[Row] = &[
         Placement::Trailing,
     ),
     row(
-        RowId::PullRequestStart,
+        RowId::Appearance(AppearanceRow::PullRequestStart),
         Category::Appearance,
         "Pull requests open on",
         "The first time. After that, a pull request opens where you left it: the same tab and file, also after a restart.",
@@ -212,7 +230,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::FilesStart,
+        RowId::Appearance(AppearanceRow::FilesStart),
         Category::Appearance,
         "Files tab opens on",
         "A link to a file or comment always opens that file.",
@@ -220,7 +238,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::TreeSide,
+        RowId::Appearance(AppearanceRow::TreeSide),
         Category::Appearance,
         "File tree side",
         "The Files tab's tree beside the diff; the button in the tree's header flips it too.",
@@ -228,9 +246,9 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::NextUnviewed,
+        RowId::Appearance(AppearanceRow::NextUnviewed),
         Category::Appearance,
-        NEXT_UNVIEWED,
+        "After marking a file viewed, open the next unviewed one",
         concat!(
             "In the Files tab, ",
             shortcut!(alt "V"),
@@ -242,7 +260,7 @@ const ROWS: &[Row] = &[
         Placement::Trailing,
     ),
     row(
-        RowId::PullRequestHeader,
+        RowId::Appearance(AppearanceRow::PullRequestHeader),
         Category::Appearance,
         HEADER_TITLE,
         HEADER_HELP,
@@ -250,7 +268,7 @@ const ROWS: &[Row] = &[
         Placement::TitledBlock,
     ),
     row(
-        RowId::RenderedMarkdown,
+        RowId::Appearance(AppearanceRow::RenderedMarkdown),
         Category::Appearance,
         "Rendered Markdown",
         "The reading column is centered; drag its edges in the preview to resize it, double-click one to reset it.",
@@ -258,7 +276,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::CommentEditor,
+        RowId::Appearance(AppearanceRow::CommentEditor),
         Category::Appearance,
         "Comment editor",
         "How comment boxes open, per platform: Rich text writes the comment as it will look, Markdown shows its source. The switch above a comment box changes it too.",
@@ -266,7 +284,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::InterfaceScale,
+        RowId::Appearance(AppearanceRow::InterfaceScale),
         Category::Appearance,
         "Interface scale",
         concat!(
@@ -277,7 +295,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::FrameRate,
+        RowId::Appearance(AppearanceRow::FrameRate),
         Category::Appearance,
         "Frame rate limit",
         "Caps animations, smooth scrolling and loading effects; clicks and keys always show at once. Lower limits use less power.",
@@ -285,7 +303,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::PaneSizes,
+        RowId::Appearance(AppearanceRow::PaneSizes),
         Category::Appearance,
         "Pane sizes",
         "The widths you dragged the file tree, threads and other panes to.",
@@ -293,7 +311,7 @@ const ROWS: &[Row] = &[
         Placement::Trailing,
     ),
     row(
-        RowId::Favourites,
+        RowId::Merging(MergingRow::Favourites),
         Category::Merging,
         "Favourite merge type",
         "Per platform; without one the button takes the platform's default, else the first allowed type.",
@@ -301,7 +319,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::Remembered,
+        RowId::Merging(MergingRow::Remembered),
         Category::Merging,
         "Remembered per repository",
         "Each repository's favourite, last used merge type and source branch choice.",
@@ -309,7 +327,7 @@ const ROWS: &[Row] = &[
         Placement::Trailing,
     ),
     row(
-        RowId::AssistantShown,
+        RowId::Assistant(AssistantRow::Shown),
         Category::Assistant,
         "Show the assistant",
         concat!(
@@ -321,7 +339,7 @@ const ROWS: &[Row] = &[
         Placement::Trailing,
     ),
     row(
-        RowId::AssistantAgent,
+        RowId::Assistant(AssistantRow::Agent),
         Category::Assistant,
         "Default agent",
         "New conversations start with it; the chip in a conversation switches.",
@@ -329,7 +347,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::AssistantClaudeModel,
+        RowId::Assistant(AssistantRow::ClaudeModel),
         Category::Assistant,
         "Claude Code model",
         "Fastest takes the quickest model the CLI lists; CLI default leaves the choice to its own settings.",
@@ -337,7 +355,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::AssistantCodexModel,
+        RowId::Assistant(AssistantRow::CodexModel),
         Category::Assistant,
         "Codex model",
         "Fastest takes the quickest model the CLI lists; CLI default leaves the choice to its own settings.",
@@ -345,7 +363,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::AssistantMiniChat,
+        RowId::Assistant(AssistantRow::MiniChat),
         Category::Assistant,
         "Keep the answer beside the code",
         "A citation opens the Files tab with a small chat in its corner: the answer, its references and a follow-up. Off, a citation only opens the file.",
@@ -353,7 +371,7 @@ const ROWS: &[Row] = &[
         Placement::Trailing,
     ),
     row(
-        RowId::CheckoutClones,
+        RowId::Checkout(CheckoutRow::Clones),
         Category::LocalCheckouts,
         "Your clones",
         "Found by matching the remote URL in the folders below. Add a folder to search, or pin a clone by hand.",
@@ -361,7 +379,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::CheckoutSearch,
+        RowId::Checkout(CheckoutRow::Search),
         Category::LocalCheckouts,
         "Search in",
         "Folders looked through for clones, and the folders inside them two levels deep.",
@@ -369,7 +387,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::CheckoutPattern,
+        RowId::Checkout(CheckoutRow::Pattern),
         Category::LocalCheckouts,
         "Folder for new worktrees",
         "{clone}, {number} and {branch} are filled in. A relative pattern starts beside the clone.",
@@ -377,7 +395,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::CheckoutRemoval,
+        RowId::Checkout(CheckoutRow::Removal),
         Category::LocalCheckouts,
         "When a pull request is merged or closed elsewhere",
         "Applies when a merge or close is detected on the server, not when you merge from Code View. \
@@ -386,7 +404,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::CheckoutOpen,
+        RowId::Checkout(CheckoutRow::Open),
         Category::LocalCheckouts,
         "Open by default",
         "What Check out offers to open first. Ask each time starts from your last choice.",
@@ -394,7 +412,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::CheckoutTerminal,
+        RowId::Checkout(CheckoutRow::Terminal),
         Category::LocalCheckouts,
         "Terminal",
         "Where Terminal opens a checkout.",
@@ -402,7 +420,7 @@ const ROWS: &[Row] = &[
         Placement::Below,
     ),
     row(
-        RowId::CheckoutAgents,
+        RowId::Checkout(CheckoutRow::Agents),
         Category::LocalCheckouts,
         "Coding agents",
         "Claude Code and Codex as the Assistant section finds them; Check out opens them in the checkout.",
@@ -581,59 +599,43 @@ pub fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
         .inner
 }
 
-/// An on/off setting as a checkbox named by its row; the row's header shows the name.
-pub fn switch(ui: &mut Ui, value: &mut bool, name: &str) -> bool {
+/// An on/off setting as a checkbox named by its row's label; the row's header shows the label.
+pub fn switch(ui: &mut Ui, value: &mut bool, row: &Row) -> bool {
     let response = cv_widgets::checkbox::checkbox(ui, value, "");
-    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, *value, name));
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, *value, row.label));
     response.changed()
-}
-
-/// The line between two rows of a card.
-pub fn divider(ui: &mut Ui) {
-    let palette = theme::palette(ui.ctx());
-    let (rect, _) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
-    ui.painter().hline(rect.x_range(), rect.center().y, Stroke::new(1.0, palette.border));
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Category, RowId, all, highlights, matches, of};
-
-    fn found(query: &str) -> Vec<(Category, RowId)> {
-        all().filter(|row| matches(row, query)).map(|row| (row.category, row.id)).collect()
-    }
+    use super::{Category, Placement, RowId, highlights, matches, row};
 
     #[test]
-    fn a_word_finds_the_rows_that_use_it_in_any_section() {
-        assert_eq!(found("font"), vec![(Category::Appearance, RowId::CodeFontSize)]);
-        let clipboard = found("CLIPBOARD");
-        assert!(clipboard.contains(&(Category::Links, RowId::ClipboardLinks)), "{clipboard:?}");
-    }
-
-    #[test]
-    fn every_word_of_the_query_must_match() {
-        assert!(found("clear cache").contains(&(Category::Storage, RowId::ClearCache)));
-        assert_eq!(found("clear zzz"), Vec::new());
-        assert_eq!(found("   "), Vec::new(), "blank searches find nothing");
-    }
-
-    #[test]
-    fn keywords_and_the_section_title_count() {
-        assert!(found("dark").contains(&(Category::Appearance, RowId::Theme)));
-        for word in ["header", "hide", "collapse", "minimize", "scroll", "tab"] {
-            let header = (Category::Appearance, RowId::PullRequestHeader);
-            assert!(found(word).contains(&header), "{word} finds the header's modes");
+    fn a_query_matches_when_every_word_occurs_in_a_field_of_the_row() {
+        let cache = row(
+            RowId::ClearCache,
+            Category::Storage,
+            "Clear cache",
+            "Deletes all mirrors.",
+            "free space",
+            Placement::Block,
+        );
+        let cases = [
+            ("a word of the label", "cache", true),
+            ("a word of the description", "mirrors", true),
+            ("a keyword", "space", true),
+            ("the section's title", Category::Storage.title(), true),
+            ("ASCII case folds", "CLEAR Cache", true),
+            ("every word of the label and the keywords", "clear free", true),
+            ("one word that occurs nowhere", "clear zzz", false),
+            ("a word of another row", "font", false),
+            ("a blank query", "   ", false),
+            ("an empty query", "", false),
+        ];
+        for (case, query, expected) in cases {
+            assert_eq!(matches(&cache, query), expected, "{case}: {query:?}");
         }
-        assert!(found("starred").contains(&(Category::Appearance, RowId::FavoritesLane)));
-        assert!(found("storage").iter().all(|(category, _)| *category == Category::Storage));
-    }
-
-    /// The model chip always sits in the title line; there is no row to move it.
-    #[test]
-    fn the_assistant_has_no_row_for_the_chip_place() {
-        let places = of(Category::Assistant).filter(|row| row.label.contains("title line"));
-        assert_eq!(places.count(), 0);
     }
 
     #[test]

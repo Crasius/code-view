@@ -121,7 +121,7 @@ impl Holder {
     }
 }
 
-/// The holders and their bytes, the largest first, followed by the HTTP answer cache.
+/// The holders and the HTTP answer cache with their bytes, the largest first.
 pub fn holders() -> Vec<(&'static str, usize)> {
     let mut holders = readings();
     holders.sort_by_key(|(_, bytes)| std::cmp::Reverse(*bytes));
@@ -313,16 +313,6 @@ impl<K: Eq + Hash + Clone, V> BoundedCache<K, V> {
     pub fn used(&self) -> usize {
         self.used
     }
-
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
 }
 
 impl<K, V> Drop for BoundedCache<K, V> {
@@ -348,7 +338,7 @@ mod tests {
         assert_eq!(cache.used(), 300);
         cache.insert("huge", 5, 151);
         assert_eq!(cache.peek(&"huge"), None, "more than half the budget is not kept");
-        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.keys().count(), 3);
     }
 
     #[test]

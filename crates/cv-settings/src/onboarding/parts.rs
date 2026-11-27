@@ -2,30 +2,29 @@
 
 use cv_base::theme::{self, Palette, icons};
 use cv_widgets::{buttons, focus, glyph, row};
-use egui::{
-    Align, Color32, CornerRadius, Frame, Layout, Margin, Response, RichText, Sense, Stroke, Ui,
-    vec2,
-};
+use egui::{Align, Color32, Frame, Layout, Margin, Response, RichText, Sense, Stroke, Ui, vec2};
 use review_core::setup::{Access, FeatureCheck};
 
-pub const HEADLINE_SIZE: f32 = 22.0;
+const HEADLINE_SIZE: f32 = 22.0;
 const STEP_DOT: f32 = 22.0;
 const ROW_HEIGHT: f32 = 56.0;
+const CALLOUT_PADDING: Margin = Margin::symmetric(14, 12);
+const SHEET_PADDING: Margin = Margin::symmetric(32, 28);
 
 pub fn headline(ui: &mut Ui, title: &str, detail: &str) {
     let palette = theme::palette(ui.ctx());
     ui.label(RichText::new(title).font(theme::fonts::semibold_font(HEADLINE_SIZE)));
     if !detail.is_empty() {
-        ui.add_space(4.0);
+        ui.add_space(theme::style::SPACE_XS);
         ui.label(RichText::new(detail).color(palette.text_secondary));
     }
-    ui.add_space(20.0);
+    ui.add_space(theme::style::SPACE_XL);
 }
 
 pub fn section(ui: &mut Ui, title: &str) {
-    ui.add_space(8.0);
+    ui.add_space(theme::style::SPACE_S);
     ui.label(RichText::new(title).font(theme::fonts::semibold_font(theme::style::SECTION_SIZE)));
-    ui.add_space(4.0);
+    ui.add_space(theme::style::SPACE_XS);
 }
 
 pub fn small(ui: &mut Ui, text: &str) -> Response {
@@ -44,7 +43,7 @@ pub fn stepper(ui: &mut Ui, labels: &[&str], current: usize) -> Option<usize> {
     let palette = theme::palette(ui.ctx());
     let mut clicked = None;
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 8.0;
+        ui.spacing_mut().item_spacing.x = theme::style::SPACE_S;
         for (index, label) in labels.iter().enumerate() {
             if index > 0 {
                 let (rect, _) = ui.allocate_exact_size(vec2(28.0, STEP_DOT), Sense::hover());
@@ -114,14 +113,23 @@ pub fn stepper(ui: &mut Ui, labels: &[&str], current: usize) -> Option<usize> {
     clicked
 }
 
-/// A full-width list row: icon, title, detail, and a radio mark or chevron.
+/// What a choice row shows at its right end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mark {
+    /// A radio mark: the row is one of several choices.
+    Radio,
+    /// A chevron: the row leads on to the next step.
+    Chevron,
+}
+
+/// A full-width list row: icon, title, detail, and its `mark`.
 pub fn choice_row(
     ui: &mut Ui,
     icon: &str,
     title: &str,
     detail: &str,
     is_selected: bool,
-    shows_chevron: bool,
+    mark: Mark,
 ) -> Response {
     let palette = theme::palette(ui.ctx());
     let width = ui.available_width();
@@ -166,7 +174,7 @@ pub fn choice_row(
         palette.text_secondary,
     );
     let mark_center = egui::pos2(rect.right() - 24.0, rect.center().y);
-    if shows_chevron {
+    if mark == Mark::Chevron {
         painter.text(
             mark_center,
             egui::Align2::CENTER_CENTER,
@@ -204,9 +212,9 @@ impl Tone {
     fn colors(self, palette: &Palette) -> (Color32, Color32, &'static str) {
         match self {
             Tone::Info => (palette.selection, palette.accent_text, icons::INFO),
-            Tone::Success => (palette.diff_added_line, palette.success, icons::CHECK_CIRCLE),
+            Tone::Success => (palette.success_surface, palette.success, icons::CHECK_CIRCLE),
             Tone::Warning => (palette.warning_surface, palette.warning, icons::WARNING),
-            Tone::Error => (palette.diff_deleted_line, palette.error, icons::X_CIRCLE),
+            Tone::Error => (palette.error_surface, palette.error, icons::X_CIRCLE),
         }
     }
 }
@@ -229,8 +237,8 @@ fn tinted(ui: &mut Ui, tone: Tone, title: &str, body: &str, actions: Option<Acti
     Frame::new()
         .fill(fill)
         .stroke(Stroke::new(1.0, accent.gamma_multiply(0.35)))
-        .corner_radius(CornerRadius::same(4))
-        .inner_margin(Margin::symmetric(14, 12))
+        .corner_radius(theme::style::RADIUS_CONTROL)
+        .inner_margin(CALLOUT_PADDING)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal_top(|ui| {
@@ -245,13 +253,13 @@ fn tinted(ui: &mut Ui, tone: Tone, title: &str, body: &str, actions: Option<Acti
                         ui.label(RichText::new(body).color(palette.text));
                     }
                     if let Some(actions) = actions {
-                        ui.add_space(4.0);
+                        ui.add_space(theme::style::SPACE_XS);
                         ui.horizontal_wrapped(|ui| actions(ui));
                     }
                 });
             });
         });
-    ui.add_space(12.0);
+    ui.add_space(theme::style::SPACE_M);
 }
 
 /// A button that opens `url` in the browser; the arrow says it leaves the app.
@@ -267,7 +275,7 @@ pub fn open_button(ui: &mut Ui, is_primary: bool, text: &str, url: &str) -> Resp
     response
 }
 
-pub fn access_icon(access: Access, palette: &Palette) -> (&'static str, Color32, &'static str) {
+fn access_icon(access: Access, palette: &Palette) -> (&'static str, Color32, &'static str) {
     match access {
         Access::Granted => (icons::CHECK_CIRCLE, palette.success, "Works"),
         Access::Limited => (icons::MINUS_CIRCLE, palette.warning, "Works partly"),
@@ -284,7 +292,7 @@ pub fn access_row(ui: &mut Ui, check: &FeatureCheck, fix_url: &str, host_label: 
     let (icon, color, state) = access_icon(check.access, &palette);
     ui.horizontal(|ui| {
         ui.set_min_height(44.0);
-        ui.add_space(4.0);
+        ui.add_space(theme::style::SPACE_XS);
         let icon_response = glyph::decorative(ui, RichText::new(icon).size(20.0).color(color));
         icon_response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, state));
         row::centered_lines(ui, |ui| {
@@ -314,14 +322,14 @@ pub fn divider(ui: &mut Ui) {
     ui.painter().hline(rect.x_range(), rect.center().y, Stroke::new(1.0, palette.border));
 }
 
-/// A white sheet with a hairline border, the frame every step is drawn in.
+/// A sheet in the surface colour with a hairline border, the frame every step is drawn in.
 pub fn sheet<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
     let palette = theme::palette(ui.ctx());
     Frame::new()
         .fill(palette.surface)
         .stroke(Stroke::new(1.0, palette.border))
-        .corner_radius(CornerRadius::same(4))
-        .inner_margin(Margin::symmetric(32, 28))
+        .corner_radius(theme::style::RADIUS_CONTROL)
+        .inner_margin(SHEET_PADDING)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             add_contents(ui)

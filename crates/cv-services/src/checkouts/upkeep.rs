@@ -9,14 +9,16 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use review_core::short_sha;
 use review_git::GitMirror;
 use review_git::checkout::{
     self, Blocked, CheckoutError, Event, LocalRepo, Removal, UpdateOutcome, UpdateRequest, Updated,
 };
 use review_store::checkouts::CheckoutRecord;
 
-use cv_runtime::background::{Background, Task, TaskPoll};
+use cv_runtime::background::{Background, TASK_LOST, Task, TaskPoll};
 use cv_runtime::route::PullRequestKey;
+use cv_widgets::numbers::counted;
 use cv_widgets::progress_log::{ProgressLog, timestamp};
 
 /// How a checkout stands against the pull request's head the page last saw.
@@ -180,10 +182,9 @@ impl Upkeep {
             match task.poll() {
                 TaskPoll::Pending => {}
                 TaskPoll::Done(result) => removed.push((key.clone(), result)),
-                TaskPoll::Lost => removed.push((
-                    key.clone(),
-                    Err(CheckoutError::Git("The background task stopped unexpectedly.".into())),
-                )),
+                TaskPoll::Lost => {
+                    removed.push((key.clone(), Err(CheckoutError::Git(TASK_LOST.into()))));
+                }
             }
         }
         for (key, result) in removed {
@@ -208,38 +209,32 @@ impl Upkeep {
 
     fn updated(&mut self, key: PullRequestKey, result: Option<UpdateResult>) -> Change {
         let Some(result) = result else {
-            let blocked = Blocked::Refused("The background task stopped unexpectedly.".into());
+            let blocked = Blocked::Refused(TASK_LOST.into());
             self.statuses
                 .insert(key.clone(), Status { blocked: Some(blocked), ..Status::default() });
             return Change::Stayed { key, log: Vec::new() };
         };
-        let short = |sha: &str| sha.get(..7).unwrap_or(sha).to_owned();
         let now = timestamp(time::OffsetDateTime::now_utc());
         let mut log = result.log;
-        match result.outcome {
-            Ok(UpdateOutcome::Updated(updated)) => {
+        let outcome = result
+            .outcome
+            .unwrap_or_else(|error| UpdateOutcome::Blocked(Blocked::Refused(error.to_string())));
+        match outcome {
+            UpdateOutcome::Updated(updated) => {
                 self.statuses.insert(key.clone(), Status::default());
                 let how = match updated {
                     Updated::UpToDate => "already there".to_owned(),
                     Updated::FastForwarded { from } => {
-                        format!("fast-forward from {}", short(&from))
+                        format!("fast-forward from {}", short_sha(&from))
                     }
                     Updated::Moved { from } => {
-                        format!("followed a force-push from {}", short(&from))
+                        format!("followed a force-push from {}", short_sha(&from))
                     }
                 };
-                log.push(format!("{now}  Updated to {} ({how})", short(&result.head)));
+                log.push(format!("{now}  Updated to {} ({how})", short_sha(&result.head)));
                 Change::Updated { key, head: result.head, log }
             }
-            Ok(UpdateOutcome::Blocked(blocked)) => {
-                log.push(format!("{now}  Not updated: {}", reason(&blocked, result.behind)));
-                let status =
-                    Status { behind: result.behind, blocked: Some(blocked), is_updating: false };
-                self.statuses.insert(key.clone(), status);
-                Change::Stayed { key, log }
-            }
-            Err(error) => {
-                let blocked = Blocked::Refused(error.to_string());
+            UpdateOutcome::Blocked(blocked) => {
                 log.push(format!("{now}  Not updated: {}", reason(&blocked, result.behind)));
                 let status =
                     Status { behind: result.behind, blocked: Some(blocked), is_updating: false };
@@ -263,13 +258,12 @@ async fn behind(request: &UpdateRequest) -> usize {
 pub fn reason(blocked: &Blocked, behind: usize) -> String {
     match blocked {
         Blocked::Changed(files) => {
-            format!("{} changed {} in the checkout", files.len(), plural(files.len(), "file"))
+            format!("{} in the checkout", counted(files.len(), "changed file", "changed files"))
         }
-        Blocked::LocalCommits(commits) => format!(
-            "{} local {} not in the pull request",
-            commits.len(),
-            plural(commits.len(), "commit")
-        ),
+        Blocked::LocalCommits(commits) => {
+            let commits = counted(commits.len(), "local commit", "local commits");
+            format!("{commits} not in the pull request")
+        }
         Blocked::Refused(message) => {
             let first = message.lines().next().unwrap_or(message);
             format!("git refused: {first}")

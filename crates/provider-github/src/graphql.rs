@@ -6,7 +6,7 @@
 //! back as a `null` context and a `FORBIDDEN` error next to the data; the rollup's `state` still
 //! decides and the context counts as unlisted, so that error is dropped for every query.
 
-use reqwest::Method;
+use reqwest::{Method, RequestBuilder};
 use review_core::{ProviderError, Result, http};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -28,7 +28,7 @@ struct Envelope<T> {
 #[derive(Debug, Deserialize)]
 struct GraphQlError {
     message: String,
-    #[serde(default, rename = "type")]
+    #[serde(rename = "type")]
     kind: Option<String>,
     /// Where in `data` the error left a `null`: field names and list indexes.
     #[serde(default)]
@@ -50,11 +50,9 @@ impl<T> Envelope<T> {
 pub(crate) struct PageInfo {
     #[serde(default)]
     pub has_next_page: bool,
-    #[serde(default)]
     pub end_cursor: Option<String>,
     #[serde(default)]
     pub has_previous_page: bool,
-    #[serde(default)]
     pub start_cursor: Option<String>,
 }
 
@@ -64,6 +62,7 @@ pub(crate) struct PageInfo {
 pub(crate) struct Connection<T> {
     #[serde(default)]
     pub page_info: PageInfo,
+    /// A plain `default` would make serde require `T: Default`.
     #[serde(default = "Vec::new")]
     pub nodes: Vec<Option<T>>,
 }
@@ -101,12 +100,21 @@ async fn send<T: DeserializeOwned>(
     query: &str,
     variables: Value,
 ) -> Result<Envelope<T>> {
-    client.require_token(action)?;
-    let request = client
-        .request(Method::POST, client.graphql_url())
-        .json(&json!({ "query": query, "variables": variables }));
-    let envelope: Envelope<T> = http::json(request).await?;
+    let envelope: Envelope<T> = http::json(post(client, action, query, &variables)?).await?;
     Ok(envelope.without_hidden_contexts())
+}
+
+/// The POST of one query or mutation; GraphQL always needs a token on GitHub.
+fn post(
+    client: &GitHubClient,
+    action: &str,
+    query: &str,
+    variables: &Value,
+) -> Result<RequestBuilder> {
+    client.require_token(action)?;
+    Ok(client
+        .request(Method::POST, client.graphql_url())
+        .json(&json!({ "query": query, "variables": variables })))
 }
 
 fn into_found<T>(envelope: Envelope<T>) -> Result<T> {
@@ -138,11 +146,7 @@ pub(crate) async fn execute_partial<T: DeserializeOwned>(
     query: &str,
     variables: Value,
 ) -> Result<Partial<T>> {
-    client.require_token(action)?;
-    let request = client
-        .request(Method::POST, client.graphql_url())
-        .json(&json!({ "query": query, "variables": variables }));
-    let response = http::send(request).await?;
+    let response = http::send(post(client, action, query, &variables)?).await?;
     let blocked_ids = sso::left_out_organizations(response.headers());
     let bytes = response.bytes().await?;
     let envelope: Envelope<T> = serde_json::from_slice(&bytes)?;
@@ -199,15 +203,15 @@ fn status_for(kind: Option<&str>) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::{Connection, Envelope, into_data, into_found, into_partial};
+    use crate::mapping::fixtures::parse;
     use review_core::ProviderError;
     use serde_json::Value;
 
     #[test]
     fn errors_become_status_errors() {
-        let envelope: Envelope<Value> = serde_json::from_str(
+        let envelope: Envelope<Value> = parse(
             r#"{"data":null,"errors":[{"type":"NOT_FOUND","message":"Could not resolve to a node"},{"message":"second"}]}"#,
-        )
-        .expect("fixture");
+        );
         match into_data(envelope) {
             Err(ProviderError::Status { status, body, .. }) => {
                 assert_eq!(status, 404);
@@ -219,18 +223,15 @@ mod tests {
 
     #[test]
     fn saml_errors_next_to_data_keep_the_data() {
-        let envelope: Envelope<Value> = serde_json::from_str(
+        let envelope: Envelope<Value> = parse(
             r#"{"data":{"x":1},"errors":[{"type":"FORBIDDEN","message":"Resource protected by organization SAML enforcement."}]}"#,
-        )
-        .expect("fixture");
+        );
         let partial = into_partial(envelope, vec![7]).expect("partial");
         assert!(partial.is_saml_denied);
         assert_eq!(partial.blocked_ids, [7]);
         assert_eq!(partial.data["x"], 1);
-        let other: Envelope<Value> = serde_json::from_str(
-            r#"{"data":{"x":1},"errors":[{"type":"FORBIDDEN","message":"Nope"}]}"#,
-        )
-        .expect("fixture");
+        let other: Envelope<Value> =
+            parse(r#"{"data":{"x":1},"errors":[{"type":"FORBIDDEN","message":"Nope"}]}"#);
         assert!(matches!(
             into_partial(other, Vec::new()),
             Err(ProviderError::Status { status: 403, .. })
@@ -239,31 +240,26 @@ mod tests {
 
     #[test]
     fn a_batch_keeps_its_found_objects_and_fails_on_other_errors() {
-        let missing: Envelope<Value> = serde_json::from_str(
+        let missing: Envelope<Value> = parse(
             r#"{"data":{"a":1,"b":null},"errors":[{"type":"NOT_FOUND","message":"Could not resolve"}]}"#,
-        )
-        .expect("fixture");
+        );
         assert_eq!(into_found(missing).expect("found")["a"], 1);
-        let mixed: Envelope<Value> = serde_json::from_str(
+        let mixed: Envelope<Value> = parse(
             r#"{"data":{"a":1},"errors":[{"type":"NOT_FOUND","message":"gone"},{"type":"FORBIDDEN","message":"no"}]}"#,
-        )
-        .expect("fixture");
+        );
         assert!(matches!(into_found(mixed), Err(ProviderError::Status { status: 404, .. })));
-        let without_data: Envelope<Value> = serde_json::from_str(
-            r#"{"data":null,"errors":[{"type":"NOT_FOUND","message":"gone"}]}"#,
-        )
-        .expect("fixture");
+        let without_data: Envelope<Value> =
+            parse(r#"{"data":null,"errors":[{"type":"NOT_FOUND","message":"gone"}]}"#);
         assert!(matches!(into_found(without_data), Err(ProviderError::Status { status: 404, .. })));
     }
 
     #[test]
     fn a_check_hidden_from_the_token_keeps_the_listing() {
         let listing = |path: &str| -> Envelope<Value> {
-            serde_json::from_str(&format!(
+            parse(&format!(
                 r#"{{"data":{{"search":{{"nodes":[{{"number":1}}]}}}},"errors":[{{"type":"FORBIDDEN",
                 "message":"Resource not accessible by personal access token","path":{path}}}]}}"#
             ))
-            .expect("fixture")
         };
         let hidden = r#"["search","nodes",0,"commits","nodes",0,"commit","statusCheckRollup","contexts","nodes",0]"#;
         let partial = into_partial(listing(hidden).without_hidden_contexts(), Vec::new())
@@ -286,17 +282,14 @@ mod tests {
 
     #[test]
     fn data_without_errors_passes_through() {
-        let envelope: Envelope<Value> =
-            serde_json::from_str(r#"{"data":{"x":1}}"#).expect("fixture");
+        let envelope: Envelope<Value> = parse(r#"{"data":{"x":1}}"#);
         assert_eq!(into_data(envelope).expect("data")["x"], 1);
     }
 
     #[test]
     fn connection_drops_null_nodes() {
-        let connection: Connection<u32> = serde_json::from_str(
-            r#"{"pageInfo":{"hasNextPage":true,"endCursor":"c"},"nodes":[1,null,2]}"#,
-        )
-        .expect("fixture");
+        let connection: Connection<u32> =
+            parse(r#"{"pageInfo":{"hasNextPage":true,"endCursor":"c"},"nodes":[1,null,2]}"#);
         let (page, nodes) = connection.into_nodes();
         assert!(page.has_next_page);
         assert_eq!(page.end_cursor.as_deref(), Some("c"));

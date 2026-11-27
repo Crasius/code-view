@@ -82,16 +82,20 @@ impl Reason {
 /// When the next lines are due.
 struct Schedule {
     next_tick: Instant,
-    /// The first private bytes read; rises count from there.
-    base: Option<usize>,
-    /// The private bytes that write the next rise line.
-    next_rise: usize,
+    /// Set by the first reading of the private bytes.
+    rise: Option<Rise>,
     has_started: bool,
+}
+
+/// The private bytes rises count from, and those that write the next rise line.
+struct Rise {
+    base: usize,
+    next: usize,
 }
 
 impl Schedule {
     fn new(now: Instant) -> Self {
-        Self { next_tick: now + TICK, base: None, next_rise: usize::MAX, has_started: false }
+        Self { next_tick: now + TICK, rise: None, has_started: false }
     }
 
     /// The reason for a line at `now` with `private` bytes, if one is due.
@@ -113,14 +117,11 @@ impl Schedule {
     /// Whether `private` passed the next step; moves the step past it.
     fn is_rise(&mut self, private: Option<usize>) -> bool {
         let Some(private) = private else { return false };
-        let base = *self.base.get_or_insert(private);
-        if self.next_rise == usize::MAX {
-            self.next_rise = base + RISE_STEP;
-        }
-        if private < self.next_rise {
+        let rise = self.rise.get_or_insert(Rise { base: private, next: private + RISE_STEP });
+        if private < rise.next {
             return false;
         }
-        self.next_rise = base + ((private - base) / RISE_STEP + 1) * RISE_STEP;
+        rise.next = rise.base + ((private - rise.base) / RISE_STEP + 1) * RISE_STEP;
         true
     }
 }

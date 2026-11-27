@@ -28,13 +28,14 @@
 //!   only). An earlier attempt's records, with their logs, come from that attempt's own timeline,
 //!   read when the user opens it.
 
-// RS-DONT-03: no FFI here; unsafe belongs in the platform/ modules of review-store and review-app.
+// RS-DONT-03: no FFI in this crate.
 #![forbid(unsafe_code)]
 
 mod client;
 mod dto;
 mod identity;
 mod images;
+mod iterations;
 mod linked;
 mod pipelines;
 mod pull_requests;
@@ -266,7 +267,8 @@ impl Provider for AzureDevOpsProvider {
     }
 
     async fn available_labels(&self, _repo: &str) -> Result<Vec<Label>> {
-        Ok(labels::available())
+        // Free-text tags: no catalog (`has_label_catalog` is false).
+        Ok(Vec::new())
     }
 
     async fn set_labels(&self, repo: &str, number: u64, labels: &[String]) -> Result<()> {

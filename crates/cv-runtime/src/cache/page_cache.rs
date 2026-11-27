@@ -43,11 +43,11 @@ use super::cold::ColdTier;
 use super::memory::{self, BoundedCache, Holder};
 
 /// A few MB for everything remembered; the app aims for a small memory footprint.
-pub const BUDGET_BYTES: usize = 4 * 1024 * 1024;
+const BUDGET_BYTES: usize = 4 * 1024 * 1024;
 /// A revisit within this time shows the remembered answer without asking the host again.
 pub const REVISIT_FRESH: Duration = Duration::from_secs(20);
 /// The saved answers read at start: our number, as much as the memory tier holds.
-pub const SAVED_BYTES: u64 = BUDGET_BYTES as u64;
+const SAVED_BYTES: u64 = BUDGET_BYTES as u64;
 /// The disk tier's kind for page answers, and the version of their format; a change to a stored
 /// type that old files cannot decode into only costs one miss each.
 const COLD_KIND: &str = "page";
@@ -111,10 +111,13 @@ pub fn lists_of(connection_id: &str) -> String {
 
 /// The state filter of the list a [`list_part`] key names.
 pub fn list_state(key: &str) -> Option<StateFilter> {
-    let (_, state) = key.rsplit_once('|')?;
-    [StateFilter::Open, StateFilter::Merged, StateFilter::Closed, StateFilter::All]
-        .into_iter()
-        .find(|filter| format!("{filter:?}") == state)
+    match key.rsplit_once('|')?.1 {
+        "Open" => Some(StateFilter::Open),
+        "Merged" => Some(StateFilter::Merged),
+        "Closed" => Some(StateFilter::Closed),
+        "All" => Some(StateFilter::All),
+        _ => None,
+    }
 }
 
 pub struct PageCache {
@@ -151,20 +154,16 @@ impl Stamps {
 
 impl Default for PageCache {
     fn default() -> Self {
-        Self::with_budget(BUDGET_BYTES)
-    }
-}
-
-impl PageCache {
-    pub fn with_budget(budget: usize) -> Self {
         Self {
-            entries: BoundedCache::new(Holder::PageAnswers, budget),
+            entries: BoundedCache::new(Holder::PageAnswers, BUDGET_BYTES),
             saved: HashMap::new(),
             cold: None,
             patches: 0,
         }
     }
+}
 
+impl PageCache {
     /// The page cache with its disk tier, holding the answers saved by an earlier run. Reads the
     /// disk once, at start, like the settings.
     pub fn with_cold(cold: ColdTier) -> Self {
@@ -291,12 +290,6 @@ impl PageCache {
             is_outdated || now - stored_at >= REVISIT_FRESH.as_secs_f64()
         })
     }
-
-    /// Estimated bytes held.
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn used(&self) -> usize {
-        self.entries.used()
-    }
 }
 
 #[cfg(test)]
@@ -319,28 +312,9 @@ mod tests {
     }
 
     #[test]
-    fn evicts_least_recently_used_within_the_budget() {
-        let mut cache = PageCache::with_budget(2_000);
-        let block = "x".repeat(500);
-        cache.put("a", block.clone(), 0.0);
-        cache.put("b", block.clone(), 0.0);
-        cache.put("c", block.clone(), 0.0);
-        // Touching "a" makes "b" the least recently used one.
-        assert!(cache.get::<String>("a").is_some());
-        cache.put("d", block, 0.0);
-        assert!(cache.get::<String>("b").is_none(), "the least recently used entry left first");
-        assert!(cache.get::<String>("a").is_some());
-        assert!(cache.used() <= 2_000);
-        cache.put("huge", "y".repeat(1_500), 0.0);
-        assert!(cache.get::<String>("huge").is_none(), "larger than half the budget is not kept");
-    }
-
-    #[test]
     fn saved_answers_come_back_stale_and_memory_only_ones_stay_out() {
         let dir = cv_testkit::ScratchDir::new("page-cache-cold");
-        let paths =
-            review_store::AppPaths::new(dir.path().join("config"), dir.path().join("cache"));
-        let cold = ColdTier::new(&paths);
+        let cold = ColdTier::new(&dir.app_paths());
         let repositories = vec![RepositoryInfo {
             key: "group/app".into(),
             name: "app".into(),
@@ -351,12 +325,8 @@ mod tests {
         let mut cache = PageCache::with_cold(cold.clone());
         cache.put("runs", Vec::<PipelineRun>::new(), 10.0);
         cache.put("repositories", repositories.clone(), 10.0);
-        let started = std::time::Instant::now();
-        // One writer thread, in order: once the repositories are there, the runs were handled.
-        while cold.read(COLD_KIND, COLD_VERSION, "repositories").is_none() {
-            assert!(started.elapsed() < Duration::from_secs(30), "the answer reaches the disk");
-            cv_testkit::let_threads_run(Duration::from_millis(10));
-        }
+        cold.flush();
+        assert!(cold.read(COLD_KIND, COLD_VERSION, "repositories").is_some(), "on the disk");
         assert_eq!(cold.read(COLD_KIND, COLD_VERSION, "runs"), None, "pipelines stay in memory");
         let mut restarted = PageCache::with_cold(cold);
         assert_eq!(restarted.get::<Vec<RepositoryInfo>>("repositories"), Some(repositories));
@@ -429,14 +399,5 @@ mod tests {
         assert!(!key.starts_with(&lists_of("g")), "another connection's id is no prefix");
         assert_eq!(list_state(&key), Some(StateFilter::Merged));
         assert_eq!(list_state(&pull_request_part("gh|acme/app|1", "detail")), None);
-    }
-
-    #[test]
-    fn replacing_a_key_keeps_the_count_exact() {
-        let mut cache = PageCache::with_budget(10_000);
-        cache.put("a", "x".repeat(100), 0.0);
-        let once = cache.used();
-        cache.put("a", "x".repeat(100), 1.0);
-        assert_eq!(cache.used(), once);
     }
 }

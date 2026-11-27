@@ -234,7 +234,7 @@ mod tests {
 
     /// The frame reads trackpad fingers only; momentum and wheels pass by.
     #[test]
-    fn a_frame_reads_the_fingers_and_the_left_over() {
+    fn a_frame_reads_only_trackpad_fingers() {
         let wheel = |phase, delta, source| Event::MouseWheel {
             unit: MouseWheelUnit::Point,
             delta,
@@ -249,10 +249,10 @@ mod tests {
             wheel(TouchPhase::Move, vec2(500.0, 0.0), MouseWheelSource::Momentum),
         ];
         let mut frame = SwipeFrame::default();
-        let mut output = ctx.run_ui(RawInput { events, ..RawInput::default() }, |ui| {
+        ctx.run_ui(RawInput { events, ..RawInput::default() }, |ui| {
             frame = ui.input(SwipeFrame::read);
-        });
-        output.textures_delta.clear();
+        })
+        .drop_without_applying_deltas();
         assert!(frame.started && !frame.ended && !frame.has_modifiers);
         assert_eq!(frame.moved, vec2(30.0, 1.0));
     }

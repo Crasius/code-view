@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use review_core::{ItemRef, LinkedItem, Provider, ProviderError};
 
-use cv_runtime::background::{Background, Task, TaskPoll};
+use cv_runtime::background::{Background, TASK_LOST, Task, TaskPoll};
 use cv_runtime::load::Load;
 
 /// How long an answer counts as current.
@@ -148,7 +148,7 @@ impl LinkedCache {
                     continue;
                 }
                 TaskPoll::Done(result) => result.map_err(|error| error.to_string()),
-                TaskPoll::Lost => Err("The background task stopped unexpectedly.".to_owned()),
+                TaskPoll::Lost => Err(TASK_LOST.to_owned()),
             };
             let batch = self.batches.swap_remove(index);
             self.store(batch, outcome, now);

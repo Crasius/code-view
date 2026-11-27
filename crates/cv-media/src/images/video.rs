@@ -4,12 +4,11 @@
 //! picture and carries the [`video::Clip`] its player plays.
 
 use std::path::Path;
-use std::time::SystemTime;
 
 use egui::{Context, TextureOptions, vec2};
 use review_core::http::image::Validators;
 
-use super::{Fetch, Fetched, Loaded, Natural, Target, fetch_remote, git_body};
+use super::{Fetch, Fetched, Loaded, Natural, Target, disk, fetch_remote, git_body};
 use crate::image_state::ImageFailure;
 use crate::picture::Picture;
 use crate::video::{self, Tools};
@@ -30,7 +29,7 @@ pub(super) async fn load(
         return Err(ImageFailure { needs_ffmpeg: true, ..fail(video::MISSING.to_owned(), true) });
     };
     if is_kept(file) {
-        touch(file);
+        disk::touch(file);
     } else {
         let bytes = match &target.fetch {
             Fetch::Blocked(reason) => return Err(fail(reason.clone(), false)),
@@ -76,20 +75,5 @@ fn is_kept(file: &Path) -> bool {
 
 /// Writes the body whole or not at all.
 fn keep(file: &Path, bytes: &[u8]) -> Result<(), String> {
-    let partial = file.with_extension("part");
-    let written = file
-        .parent()
-        .map_or(Ok(()), std::fs::create_dir_all)
-        .and_then(|()| std::fs::write(&partial, bytes))
-        .and_then(|()| std::fs::rename(&partial, file));
-    written.map_err(|_| "The video could not be kept on disk".to_owned())
-}
-
-/// Marks the file as used now, for the retention sweep.
-fn touch(file: &Path) {
-    // A time that cannot be set only lets the sweep remove the file sooner.
-    let _sooner = std::fs::File::options()
-        .write(true)
-        .open(file)
-        .and_then(|file| file.set_modified(SystemTime::now()));
+    disk::write_whole(file, bytes).map_err(|_| "The video could not be kept on disk".to_owned())
 }

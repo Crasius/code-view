@@ -5,10 +5,10 @@ use review_core::{
     DiffSide, NewThread, ProviderError, Result, ReviewThread, ThreadAnchor, ThreadComment,
     ThreadStatus, http,
 };
-use serde::Deserialize;
+use serde::de::IgnoredAny;
 use serde_json::{Value, json};
 
-use super::{COMMENT_FRAGMENT, THREAD_FRAGMENT, review_threads_of};
+use super::{COMMENT_FRAGMENT, THREAD_FRAGMENT, parse_thread_id, review_threads_of};
 use crate::client::GitHubClient;
 use crate::dto::comment::{IssueCommentDto, ReviewCommentDto};
 use crate::dto::review_thread::{AddReplyData, RepositoryData, ReviewThreadsField};
@@ -35,9 +35,6 @@ const RESOLVE_MUTATION: &str =
     "mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }";
 const UNRESOLVE_MUTATION: &str =
     "mutation($id: ID!) { unresolveReviewThread(input: { threadId: $id }) { thread { id } } }";
-
-#[derive(Debug, Deserialize)]
-struct Ignored {}
 
 pub(crate) async fn create(
     client: &GitHubClient,
@@ -195,14 +192,9 @@ pub(crate) async fn set_status(
         ThreadStatus::Resolved => RESOLVE_MUTATION,
         ThreadStatus::Active => UNRESOLVE_MUTATION,
     };
-    let _: Ignored =
+    let _: IgnoredAny =
         graphql::execute(client, "Resolving threads", mutation, json!({ "id": node_id })).await?;
     Ok(())
-}
-
-fn parse_thread_id(thread_id: &str) -> Result<ThreadId<'_>> {
-    ThreadId::parse(thread_id)
-        .ok_or_else(|| ProviderError::Local(format!("'{thread_id}' is not a GitHub thread id.")))
 }
 
 #[cfg(test)]

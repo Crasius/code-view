@@ -16,8 +16,20 @@ use serde::Deserialize;
 /// The `{ "count": n, "value": [...] }` envelope of every Azure DevOps collection.
 #[derive(Debug, Deserialize)]
 pub(crate) struct ValueList<T> {
+    /// `default = "Vec::new"`, not `default`: the plain attribute would ask `T: Default`.
     #[serde(default = "Vec::new")]
     pub value: Vec<T>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CommitRef {
+    pub commit_id: String,
+}
+
+/// `#[serde(default = "...")]` of flags that are on unless the record says otherwise.
+pub(crate) fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Default, Deserialize)]

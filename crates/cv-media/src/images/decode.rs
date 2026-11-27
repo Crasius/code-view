@@ -306,8 +306,8 @@ fn draw_svg(
 }
 
 /// SVG options that never reach outside the document: `<image href>` to a file or an address is
-/// not loaded (only embedded `data:` images are drawn), and text is set in the system's fonts,
-/// loaded once.
+/// not loaded; embedded `data:` SVGs are drawn, raster images are not (resvg is built without
+/// `raster-images`). Text is set in the system's fonts, loaded once.
 pub fn svg_options() -> resvg::usvg::Options<'static> {
     static FONTS: OnceLock<Arc<resvg::usvg::fontdb::Database>> = OnceLock::new();
     let fonts = FONTS.get_or_init(|| {

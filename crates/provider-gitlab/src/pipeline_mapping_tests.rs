@@ -138,10 +138,8 @@ fn groups_jobs_into_stages_in_pipeline_order() {
     let stages = group_stages(99, 7, jobs, bridges, None);
     let names: Vec<&str> = stages.iter().map(|stage| stage.name.as_str()).collect();
     assert_eq!(names, vec!["build", "test", "deploy"]);
-    let dependencies: Vec<Vec<&str>> =
-        stages.iter().map(|stage| stage.depends_on.iter().map(String::as_str).collect()).collect();
     assert_eq!(
-        dependencies,
+        stage_dependencies(&stages),
         vec![vec![], vec!["stage:99:build"], vec!["stage:99:test"]],
         "no needs: one after another"
     );
@@ -188,7 +186,7 @@ fn stage_dependencies(stages: &[PipelineJob]) -> Vec<Vec<&str>> {
     stages.iter().map(|stage| stage.depends_on.iter().map(String::as_str).collect()).collect()
 }
 
-/// gitlab-org/cli: every job declares `needs: []`, so stages are lanes, not steps. The stages
+/// Every job declares `needs: []`, so stages are lanes, not steps. The stages
 /// still form the sequential stage graph; no job waits for another.
 #[test]
 fn stages_keep_their_order_when_every_job_needs_nothing() {
@@ -253,9 +251,8 @@ fn jobs_that_use_needs_list_the_jobs_they_need() {
     );
 }
 
-/// gitlab-org/gitlab pipeline 2943559618 (fetched anonymously on 2026-10-19 with
-/// `include_retried=true`, trimmed): `jest-integration` failed, was retried and runs again; the
-/// REST answer marks neither, both share name and stage.
+/// A jobs list with `include_retried=true`: `jest-integration` failed, was retried and runs again.
+/// A retried job shares name and stage with its retry, REST marks neither.
 #[test]
 fn retried_jobs_become_the_earlier_attempts_of_their_job() {
     let jobs: Vec<JobDto> =

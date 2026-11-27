@@ -408,7 +408,7 @@ mod tests {
         );
         assert_eq!(
             jobs[0].children[1].web_url.as_deref(),
-            Some("https://github.com/cli/cli/actions/runs/11/job/501#step:2:1")
+            Some("https://github.com/contoso/app/actions/runs/11/job/501#step:2:1")
         );
     }
 
@@ -473,7 +473,7 @@ mod tests {
         assert_eq!(needs, vec![vec![], vec![], vec!["group:unit", "group:lint"]]);
     }
 
-    /// microsoft/vscode run 39179055298 (fetched anonymously on 2026-10-19 with `filter=all`,
+    /// A public repository's run (fetched anonymously on 2026-10-19 with `filter=all`, renamed,
     /// trimmed): "Re-run failed jobs" made attempt 2. Two failed jobs ran again; the jobs that
     /// passed or were skipped were copied into attempt 2 with their old times.
     #[test]

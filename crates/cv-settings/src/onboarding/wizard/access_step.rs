@@ -7,16 +7,19 @@ use egui::{Frame, Margin, RichText, Stroke, Ui};
 use review_core::AccessReport;
 use review_core::setup::Access;
 
-use super::{Check, Failure, Step, Wizard, footer};
+use super::{Check, Fix, Step, Wizard, failed_callout, footer};
 use crate::onboarding::parts::{self, Tone};
+
+/// Above each note under the checklist.
+const NOTE_GAP: f32 = 6.0;
 
 pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
     let Ok(host) = wizard.resolved() else {
-        wizard.go(Step::Host);
+        wizard.step = Step::Host;
         return;
     };
     let host_label = host.display();
-    let fix_url = wizard.guide().map(|guide| guide.recommended.create_url).unwrap_or_default();
+    let fix_url = wizard.fix_url(&host);
     parts::headline(
         ui,
         "What this token can do",
@@ -26,17 +29,17 @@ pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
     let fix = match (&wizard.check, wizard.report()) {
         (_, Some(report)) => {
             signed_in(ui, report);
-            ui.add_space(16.0);
+            ui.add_space(theme::style::SPACE_L);
             let fix = report_callout(ui, report, &host_label, &fix_url);
             checklist(ui, report, &host_label, &fix_url);
             fix
         }
         (Check::Running { .. }, None) => {
-            ui.add_space(8.0);
+            ui.add_space(theme::style::SPACE_S);
             states::loading(ui, &format!("Checking the token with {host_label}…"));
             None
         }
-        (Check::Failed { failure, .. }, None) => failed_callout(ui, failure, &fix_url),
+        (Check::Failed { failure, .. }, None) => failed_callout(ui, failure, &fix_url, true),
         (Check::Idle | Check::Done { .. }, None) => {
             let mut fix = None;
             parts::callout(ui, Tone::Info, "The token has not been checked yet", "", |ui| {
@@ -55,14 +58,14 @@ pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
             buttons::primary_icon(ui, icons::ARROW_RIGHT, "Continue")
         });
         if next.inner.clicked() {
-            wizard.go(Step::Scope);
+            wizard.step = Step::Scope;
         }
         if !is_usable && wizard.report().is_some() {
             parts::small(ui, "Reading pull requests is required to continue.");
         }
     });
     if goes_back || fix == Some(Fix::NewToken) {
-        wizard.go(Step::Token);
+        wizard.step = Step::Token;
     }
     match fix {
         Some(Fix::NewToken) => {
@@ -72,15 +75,6 @@ pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
         Some(Fix::Recheck) => wizard.recheck(services),
         None => {}
     }
-}
-
-/// What the user asked for to fix the token.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Fix {
-    /// Check the same token again.
-    Recheck,
-    /// Back to the token step with an empty field.
-    NewToken,
 }
 
 /// The token's user with its login, token kind and expiry.
@@ -159,8 +153,8 @@ fn checklist(ui: &mut Ui, report: &AccessReport, host_label: &str, fix_url: &str
     let palette = theme::palette(ui.ctx());
     Frame::new()
         .stroke(Stroke::new(1.0, palette.border))
-        .corner_radius(4)
-        .inner_margin(Margin::symmetric(12, 4))
+        .corner_radius(theme::style::RADIUS_CONTROL)
+        .inner_margin(Margin::symmetric(theme::style::SPACE_M as i8, theme::style::SPACE_XS as i8))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             for (index, check) in report.checks.iter().enumerate() {
@@ -171,26 +165,7 @@ fn checklist(ui: &mut Ui, report: &AccessReport, host_label: &str, fix_url: &str
             }
         });
     for note in &report.notes {
-        ui.add_space(6.0);
+        ui.add_space(NOTE_GAP);
         parts::small_note(ui, note);
     }
-}
-
-/// Why the check failed, with a new token, a paste and a retry.
-fn failed_callout(ui: &mut Ui, failure: &Failure, fix_url: &str) -> Option<Fix> {
-    let mut fix = None;
-    let title = failure
-        .problem
-        .as_ref()
-        .map_or("The token could not be checked", |problem| problem.title.as_str());
-    parts::callout(ui, Tone::Error, title, &failure.message, |ui| {
-        parts::open_button(ui, true, "Create a new token", fix_url);
-        if buttons::secondary_icon(ui, icons::CLIPBOARD_TEXT, "Paste a new token").clicked() {
-            fix = Some(Fix::NewToken);
-        }
-        if buttons::secondary_icon(ui, icons::ARROW_CLOCKWISE, "Try again").clicked() {
-            fix = Some(Fix::Recheck);
-        }
-    });
-    fix
 }

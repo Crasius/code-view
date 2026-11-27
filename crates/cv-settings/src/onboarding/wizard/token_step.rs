@@ -8,24 +8,28 @@ use cv_widgets::{badges, buttons, checkbox, glyph, states};
 use egui::{RichText, TextEdit, Ui};
 use review_core::setup::TokenRecipe;
 
-use super::{Check, Step, Wizard, footer};
+use super::{Check, Fix, Step, Wizard, failed_callout, footer};
+use crate::onboarding::cli::CliLogin;
 use crate::onboarding::parts::{self, Tone};
 
 /// Lines a setting's reason up with its name, past the checkbox.
 const SETTING_INDENT: i8 = 22;
+/// Between the parts of a token recipe: its summary, its button, its checklist.
+const RECIPE_GAP: f32 = 6.0;
 
 pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
     let Ok(host) = wizard.resolved() else {
-        wizard.go(Step::Host);
+        wizard.step = Step::Host;
         return;
     };
     let host_label = host.display();
+    let fix_url = wizard.fix_url(&host);
     parts::headline(
         ui,
         &format!("Sign in to {host_label}"),
         "Code View needs a token to read and review pull requests for you.",
     );
-    if problem_or_stored(wizard, ui, &host_label) {
+    if problem_or_stored(wizard, ui, &host_label, &fix_url) {
         wizard.recheck(services);
     }
 
@@ -44,7 +48,7 @@ pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
         wizard.vault = super::VaultCheck::Idle;
     }
     token_field(wizard, ui, services.paths.token_vault().summary());
-    check_state(wizard, ui, services, &host_label);
+    check_state(wizard, ui, services, &host_label, &fix_url);
 
     let mut goes_back = false;
     footer(ui, Some(&mut goes_back), |ui| {
@@ -59,22 +63,21 @@ pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
         if wizard.report().is_some()
             && buttons::secondary_icon(ui, icons::LIST_CHECKS, "Show access").clicked()
         {
-            wizard.go(Step::Access);
+            wizard.step = Step::Access;
         }
     });
     if goes_back {
-        wizard.go(Step::Host);
+        wizard.step = Step::Host;
     }
 }
 
 /// The last check's problem with its fixes, else a note that a token is stored; true when the
 /// user asks to check the stored token again.
-fn problem_or_stored(wizard: &Wizard, ui: &mut Ui, host_label: &str) -> bool {
+fn problem_or_stored(wizard: &Wizard, ui: &mut Ui, host_label: &str, fix_url: &str) -> bool {
     let has_stored_token =
         wizard.existing.as_ref().is_some_and(|connection| connection.token().is_some())
             && wizard.token_input.trim().is_empty()
             && wizard.cli_token.is_none();
-    let fix_url = wizard.guide().map(|guide| guide.recommended.create_url).unwrap_or_default();
     let mut wants_recheck = false;
     if let Some(problem) = &wizard.problem {
         parts::callout(ui, Tone::Error, &problem.title, &problem.fix, |ui| {
@@ -85,7 +88,7 @@ fn problem_or_stored(wizard: &Wizard, ui: &mut Ui, host_label: &str) -> bool {
                 ui,
                 problem.actions.is_empty(),
                 &format!("Create token on {host_label}"),
-                &fix_url,
+                fix_url,
             );
             if has_stored_token
                 && buttons::secondary_icon(ui, icons::ARROW_CLOCKWISE, "Check stored token again")
@@ -111,12 +114,7 @@ fn problem_or_stored(wizard: &Wizard, ui: &mut Ui, host_label: &str) -> bool {
 }
 
 /// The recommended way to create a token, and the alternative behind a toggle.
-fn recipes(
-    wizard: &mut Wizard,
-    ui: &mut Ui,
-    cli_login: Option<&crate::onboarding::cli::CliLogin>,
-    host_label: &str,
-) {
+fn recipes(wizard: &mut Wizard, ui: &mut Ui, cli_login: Option<&CliLogin>, host_label: &str) {
     let Some(guide) = wizard.guide() else {
         return;
     };
@@ -138,7 +136,7 @@ fn recipes(
         wizard.shows_alternative = !wizard.shows_alternative;
     }
     if wizard.shows_alternative {
-        ui.add_space(4.0);
+        ui.add_space(theme::style::SPACE_XS);
         ui.indent("alternative_recipe", |ui| {
             let emphasis = Emphasis { is_recommended: false, is_primary: false };
             recipe(wizard, ui, alternative, emphasis, host_label);
@@ -146,12 +144,7 @@ fn recipes(
     }
 }
 
-fn cli_option(
-    wizard: &mut Wizard,
-    ui: &mut Ui,
-    services: &mut Services,
-    login: &crate::onboarding::cli::CliLogin,
-) {
+fn cli_option(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services, login: &CliLogin) {
     let tool = login.tool_name();
     let is_running = wizard.cli_fetch.is_some();
     let is_used = wizard.cli_token.as_ref().is_some_and(|(used, _)| used == login);
@@ -223,7 +216,7 @@ fn recipe(
         }
     });
     ui.label(RichText::new(&recipe.summary).color(palette.text_secondary));
-    ui.add_space(6.0);
+    ui.add_space(RECIPE_GAP);
     let button = if recipe.is_prefilled {
         format!("Create token on {host_label}")
     } else {
@@ -238,7 +231,7 @@ fn recipe(
         };
         parts::small(ui, hint);
     });
-    ui.add_space(6.0);
+    ui.add_space(RECIPE_GAP);
     if is_recommended && !recipe.is_prefilled {
         if wizard.ticked.len() != recipe.settings.len() {
             wizard.ticked = vec![false; recipe.settings.len()];
@@ -269,7 +262,7 @@ fn recipe(
     for caveat in &recipe.caveats {
         parts::small_note(ui, caveat);
     }
-    ui.add_space(8.0);
+    ui.add_space(theme::style::SPACE_S);
 }
 
 /// A setting's name (with its checkbox or check mark) and, right under it, why the app needs it.
@@ -283,7 +276,7 @@ fn setting_row(ui: &mut Ui, reason: &str, add_name: impl FnOnce(&mut Ui)) {
                 parts::small(ui, reason);
             });
     });
-    ui.add_space(6.0);
+    ui.add_space(RECIPE_GAP);
 }
 
 /// The token input, then `vault_summary`: where the token will rest.
@@ -331,29 +324,23 @@ fn token_field(wizard: &mut Wizard, ui: &mut Ui, vault_summary: &str) {
         }
     });
     parts::small(ui, vault_summary);
-    ui.add_space(8.0);
+    ui.add_space(theme::style::SPACE_S);
 }
 
-fn check_state(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services, host_label: &str) {
-    let fix_url = wizard.guide().map(|guide| guide.recommended.create_url).unwrap_or_default();
+fn check_state(
+    wizard: &mut Wizard,
+    ui: &mut Ui,
+    services: &mut Services,
+    host_label: &str,
+    fix_url: &str,
+) {
     let mut wants_retry = false;
     match &wizard.check {
         Check::Running { .. } => {
             states::loading(ui, &format!("Checking the token with {host_label}…"));
         }
         Check::Failed { failure, .. } => {
-            let (title, fix) = match &failure.problem {
-                Some(problem) => (problem.title.clone(), problem.fix.clone()),
-                None => ("The token could not be checked".to_owned(), failure.message.clone()),
-            };
-            let body =
-                if failure.problem.is_some() { format!("{fix}\n{}", failure.message) } else { fix };
-            parts::callout(ui, Tone::Error, &title, &body, |ui| {
-                parts::open_button(ui, true, "Create a new token", &fix_url);
-                if buttons::secondary_icon(ui, icons::ARROW_CLOCKWISE, "Try again").clicked() {
-                    wants_retry = true;
-                }
-            });
+            wants_retry = failed_callout(ui, failure, fix_url, false) == Some(Fix::Recheck);
         }
         Check::Done { .. } | Check::Idle => {}
     }

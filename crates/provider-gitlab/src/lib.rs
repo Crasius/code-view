@@ -3,7 +3,7 @@
 //! Repository keys are `path_with_namespace`; pull request numbers are merge request iids.
 //! Requests carry `PRIVATE-TOKEN` when the connection has a token; every write requires one.
 
-// RS-DONT-03: no FFI here; unsafe belongs in the platform/ modules of review-store and review-app.
+// RS-DONT-03: no FFI in this crate.
 #![forbid(unsafe_code)]
 
 mod client;

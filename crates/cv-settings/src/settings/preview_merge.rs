@@ -7,7 +7,8 @@ use cv_base::theme::{self, icons, style};
 use cv_pr_session::merge_choice::{self, Scope};
 use cv_pr_session::merge_paint::{self as paint, CHEVRON_WIDTH, ICON_GAP, Look, PADDING_X, Row};
 use cv_services::Services;
-use cv_widgets::tabs;
+use cv_widgets::elide;
+use cv_widgets::tabs::{self, Segment};
 use egui::{RichText, Sense, Stroke, Ui, vec2};
 use review_core::{MergePolicy, MergeStrategy, ProviderKind};
 
@@ -25,9 +26,9 @@ pub fn show(ui: &mut Ui, services: &Services, previewed: &mut Option<ProviderKin
     };
     let mut kind = previewed.filter(|kind| kinds.contains(kind)).unwrap_or(first);
     if kinds.len() > 1 {
-        let options: Vec<(ProviderKind, &str)> =
-            kinds.iter().map(|kind| (*kind, kind.label())).collect();
-        tabs::segmented(ui, &mut kind, &options);
+        let options: Vec<Segment<'_, ProviderKind>> =
+            kinds.iter().map(|kind| Segment::new(*kind, kind.label())).collect();
+        tabs::segments(ui, &mut kind, &options);
         ui.add_space(style::SPACE_M);
     }
     *previewed = Some(kind);
@@ -65,10 +66,7 @@ fn button(ui: &mut Ui, kind: ProviderKind, strategy: MergeStrategy) {
     let font = egui::FontId::proportional(style::BODY_SIZE);
     let reserved = merging::choices(kind)
         .iter()
-        .map(|choice| {
-            let text = merge_choice::button_label(*choice, kind).to_owned();
-            ui.painter().layout_no_wrap(text, font.clone(), egui::Color32::WHITE).size().x
-        })
+        .map(|choice| elide::text_width(ui, merge_choice::button_label(*choice, kind), &font))
         .fold(0.0, f32::max);
     let main_width = PADDING_X * 2.0 + icons::SIZE + ICON_GAP + reserved;
     let (rect, response) = ui.allocate_exact_size(

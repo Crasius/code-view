@@ -14,8 +14,8 @@
 //! Entries beyond [`MAX_ENTRIES`] are forgotten oldest first. The render thread, and with it the
 //! renderer process, ends after [`IDLE_EXIT`] without work and starts again on the next diagram.
 
-pub mod diagram;
-pub mod worker;
+mod diagram;
+mod worker;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};

@@ -113,36 +113,48 @@ fn pick_user(candidates: Vec<UserDto>, wanted: &str) -> Option<UserDto> {
 }
 
 /// Reviewers with votes. `reviewers` (from `/reviewers`) carries review states; when it is empty
-/// the merge request's plain `reviewers` list stands in. Approvers who are not reviewers are
-/// added, since an approval is a vote.
+/// the merge request's plain `reviewers` list stands in.
 pub(crate) fn combine_reviewers(
     reviewers: &[ReviewerDto],
     approvals: &ApprovalsDto,
     listed: &[UserDto],
 ) -> Vec<Reviewer> {
-    let mut combined: Vec<(UserDto, ReviewVote)> = if reviewers.is_empty() {
-        listed.iter().map(|user| (user.clone(), ReviewVote::None)).collect()
+    let mut combined: Vec<Reviewer> = if reviewers.is_empty() {
+        listed.iter().map(|user| reviewer(user, ReviewVote::None)).collect()
     } else {
         reviewers
             .iter()
-            .map(|reviewer| (reviewer.user.clone(), state_vote(reviewer.state.as_deref())))
+            .map(|entry| reviewer(&entry.user, state_vote(entry.state.as_deref())))
             .collect()
     };
-    for approval in &approvals.approved_by {
-        match combined.iter_mut().find(|(user, _)| user.id == approval.user.id) {
-            Some((_, vote)) => *vote = ReviewVote::Approved,
-            None => combined.push((approval.user.clone(), ReviewVote::Approved)),
+    let approvers =
+        approvals.approved_by.iter().map(|approval| reviewer(&approval.user, ReviewVote::Approved));
+    add_approvers(&mut combined, approvers);
+    combined
+}
+
+/// Approvers who are not reviewers are added, since an approval is a vote; a reviewer who
+/// approved gets the vote and, when it has none, the approval's avatar. The detail and the list
+/// rows show the same votes through this one rule.
+pub(crate) fn add_approvers(
+    voted: &mut Vec<Reviewer>,
+    approvers: impl IntoIterator<Item = Reviewer>,
+) {
+    for approved in approvers {
+        match voted.iter_mut().find(|known| known.identity.id == approved.identity.id) {
+            Some(known) => {
+                known.vote = ReviewVote::Approved;
+                if known.identity.avatar_url.is_none() {
+                    known.identity.avatar_url = approved.identity.avatar_url;
+                }
+            }
+            None => voted.push(approved),
         }
     }
-    combined
-        .into_iter()
-        .map(|(user, vote)| Reviewer {
-            identity: user.to_identity(),
-            vote,
-            is_required: false,
-            is_group: false,
-        })
-        .collect()
+}
+
+fn reviewer(user: &UserDto, vote: ReviewVote) -> Reviewer {
+    Reviewer { identity: user.to_identity(), vote, is_required: false, is_group: false }
 }
 
 fn state_vote(state: Option<&str>) -> ReviewVote {
@@ -191,6 +203,24 @@ mod tests {
                 ("Cy", ReviewVote::Approved),
                 ("dee", ReviewVote::Approved),
             ]
+        );
+    }
+
+    #[test]
+    fn a_reviewer_without_an_avatar_gets_the_approvals() {
+        let reviewers: Vec<ReviewerDto> =
+            serde_json::from_str(r#"[{"user":{"id":2,"username":"bob"},"state":"unreviewed"}]"#)
+                .expect("fixture");
+        let approvals: ApprovalsDto = serde_json::from_str(
+            r#"{"approved_by":[{"user":{"id":2,"username":"bob","avatar_url":"https://gitlab.example.com/bob.png"}}]}"#,
+        )
+        .expect("fixture");
+        let combined = combine_reviewers(&reviewers, &approvals, &[]);
+        assert_eq!(combined.len(), 1);
+        assert_eq!(combined[0].vote, ReviewVote::Approved);
+        assert_eq!(
+            combined[0].identity.avatar_url.as_deref(),
+            Some("https://gitlab.example.com/bob.png")
         );
     }
 

@@ -535,33 +535,6 @@ mod tests {
         assert!(sets.is_empty(), "unused for too long: {:?}", languages(&sets));
     }
 
-    #[test]
-    fn every_override_names_a_grammar() {
-        let grammars = grammars();
-        let names = [
-            "Dockerfile",
-            "Makefile",
-            "CMake",
-            "TOML",
-            "Groovy",
-            "Ruby",
-            "INI",
-            "XML",
-            "TypeScript",
-            "TypeScriptReact",
-            "JavaScript",
-            "JSON",
-            "PowerShell",
-            "HTML",
-            "C#",
-            "Kotlin",
-            "C++",
-        ];
-        for name in names {
-            assert!(find_by_name(grammars, name).is_some(), "missing grammar {name}");
-        }
-    }
-
     /// Ours take the place of bat's grammars of the same language: one grammar per language.
     #[test]
     fn holds_one_grammar_per_replaced_language() {
@@ -617,6 +590,14 @@ mod tests {
             ("scripts/build.ps1", "PowerShell"),
             ("docker/Dockerfile", "Dockerfile"),
             ("index.html", "HTML"),
+            ("Makefile", "Makefile"),
+            ("CMakeLists.txt", "CMake"),
+            ("Jenkinsfile", "Groovy"),
+            ("Gemfile", "Ruby"),
+            (".editorconfig", "INI"),
+            ("Cargo.lock", "TOML"),
+            ("Views/Index.cshtml", "HTML"),
+            ("settings.jsonc", "JSON"),
         ];
         for (path, expected) in cases {
             let grammar = for_path(path, "").unwrap_or_else(|| panic!("no grammar for {path}"));

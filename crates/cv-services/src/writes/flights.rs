@@ -77,7 +77,7 @@ impl Flights {
         self.on_the_way = board
             .flights
             .iter()
-            .map(|flight| OnTheWay { key: flight.key.clone(), doing: flight.effect.doing() })
+            .map(|flight| OnTheWay { key: flight.key.clone(), doing: doing(&flight.effect) })
             .collect();
         succeeded
     }
@@ -125,25 +125,23 @@ impl Drop for Ticket {
     }
 }
 
-impl Effect {
-    /// The write in progress, in words, as a pending row names it.
-    fn doing(&self) -> &'static str {
-        use review_core::{PullRequestState, ReviewVote};
-        match self {
-            Effect::State(PullRequestState::Merged) => "Merging…",
-            Effect::State(PullRequestState::Closed) => "Closing…",
-            Effect::State(PullRequestState::Open) => "Reopening…",
-            Effect::Draft(true) => "Drafting…",
-            Effect::Draft(false) => "Publishing…",
-            Effect::Vote(ReviewVote::None) => "Resetting vote…",
-            Effect::Vote(_) => "Voting…",
-            Effect::ReviewerAdded(_) => "Adding reviewer…",
-            Effect::ReviewerRemoved(_) => "Removing reviewer…",
-            Effect::Labels(_) => "Saving labels…",
-            Effect::ThreadStatus { .. } => "Saving thread…",
-            Effect::AutoComplete(Some(_)) => "Setting auto-complete…",
-            Effect::AutoComplete(None) => "Cancelling auto-complete…",
-        }
+/// The write in progress, in words, as a pending row names it.
+fn doing(effect: &Effect) -> &'static str {
+    use review_core::{PullRequestState, ReviewVote};
+    match effect {
+        Effect::State(PullRequestState::Merged) => "Merging…",
+        Effect::State(PullRequestState::Closed) => "Closing…",
+        Effect::State(PullRequestState::Open) => "Reopening…",
+        Effect::Draft(true) => "Drafting…",
+        Effect::Draft(false) => "Publishing…",
+        Effect::Vote(ReviewVote::None) => "Resetting vote…",
+        Effect::Vote(_) => "Voting…",
+        Effect::ReviewerAdded(_) => "Adding reviewer…",
+        Effect::ReviewerRemoved(_) => "Removing reviewer…",
+        Effect::Labels(_) => "Saving labels…",
+        Effect::ThreadStatus { .. } => "Saving thread…",
+        Effect::AutoComplete(Some(_)) => "Setting auto-complete…",
+        Effect::AutoComplete(None) => "Cancelling auto-complete…",
     }
 }
 

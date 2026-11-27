@@ -74,7 +74,7 @@ async fn look_up_login(client: &GitHubClient, id: u64) -> Result<String> {
 
 /// GitHub CLI and other OAuth app tokens are authorized by signing in to the organization's
 /// single sign-on; personal access tokens through "Configure SSO" on the token page.
-fn is_oauth_token(connection: &Connection) -> bool {
+pub(crate) fn is_oauth_token(connection: &Connection) -> bool {
     connection.token().is_some_and(|token| token.starts_with("gho_"))
 }
 
@@ -144,19 +144,11 @@ pub(crate) fn owner_of_path(path: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use review_core::ProviderKind;
-
     use super::*;
+    use crate::client::test_connection;
 
     fn connection(token: &str) -> Connection {
-        Connection {
-            id: "gh".to_owned(),
-            name: "GitHub".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: "https://github.com/".to_owned(),
-            organizations: Vec::new(),
-            token: Some(token.to_owned()),
-        }
+        test_connection("https://github.com/", Some(token))
     }
 
     #[test]

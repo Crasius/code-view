@@ -164,21 +164,22 @@ pub struct ImageStore {
     spawner: Spawner,
 }
 
-impl ImageStore {
-    pub fn new(spawner: Spawner) -> Self {
-        Self::with_memory_limit(spawner, MEMORY_LIMIT)
-    }
-
-    fn with_memory_limit(spawner: Spawner, memory_limit: usize) -> Self {
-        let inner = Inner {
+impl Inner {
+    fn new(memory_limit: usize) -> Self {
+        Self {
             entries: HashMap::new(),
             in_flight: 0,
             textures: TextureMemory::new(Holder::Images, memory_limit),
             denied: HashMap::new(),
             ahead: HashMap::new(),
             reading_ahead: HashSet::new(),
-        };
-        Self { inner: Arc::new(Mutex::new(inner)), spawner }
+        }
+    }
+}
+
+impl ImageStore {
+    pub fn new(spawner: Spawner) -> Self {
+        Self { inner: Arc::new(Mutex::new(Inner::new(MEMORY_LIMIT))), spawner }
     }
 
     /// The image's state; with `want`, one not loaded yet starts loading when the window is
@@ -299,12 +300,6 @@ impl ImageStore {
         }
     }
 
-    /// Loads running now.
-    #[cfg(test)]
-    fn in_flight(&self) -> usize {
-        self.lock().in_flight
-    }
-
     /// Loads `target`, from the body read `ahead` when there is one.
     fn start(
         &self,
@@ -316,12 +311,8 @@ impl ImageStore {
         let inner = self.inner.clone();
         let ctx = ctx.clone();
         self.spawner.spawn(async move {
-            let (result, stale) = match load(&ctx, &target, pixels_per_point, ahead).await {
-                Ok(Loaded { picture, natural, stale, clip }) => {
-                    (Ok((picture, natural, clip)), stale)
-                }
-                Err(failure) => (Err(failure), None),
-            };
+            let mut result = load(&ctx, &target, pixels_per_point, ahead).await;
+            let stale = result.as_mut().ok().and_then(|loaded| loaded.stale.take());
             settle(&inner, &target, result);
             bump_image_generation(&ctx);
             if let Some(kept) = stale
@@ -339,11 +330,7 @@ impl ImageStore {
 }
 
 /// Ends a load: the texture or the failure goes into the entry, and its slot frees up.
-fn settle(
-    inner: &Mutex<Inner>,
-    target: &Target,
-    result: Result<(Picture, Natural, Option<Arc<Clip>>), ImageFailure>,
-) {
+fn settle(inner: &Mutex<Inner>, target: &Target, result: Result<Loaded, ImageFailure>) {
     let key = target.key;
     let mut inner = inner.lock().unwrap_or_else(PoisonError::into_inner);
     inner.in_flight = inner.in_flight.saturating_sub(1);
@@ -351,7 +338,7 @@ fn settle(
     let Inner { entries, textures, .. } = &mut *inner;
     if let Some(entry) = entries.get_mut(&key) {
         match result {
-            Ok((picture, natural, clip)) => {
+            Ok(Loaded { picture, natural, clip, .. }) => {
                 hold(textures, &picture);
                 entry.natural = Some(natural);
                 entry.started = None;
@@ -506,7 +493,7 @@ async fn git_body(
     path: &str,
     limit: u64,
 ) -> Result<Vec<u8>, (String, bool)> {
-    let short = commit.get(..8).unwrap_or(commit);
+    let short = review_core::short_sha(commit);
     let entry = match git.file_entry(commit, path).await {
         Ok(Some(entry)) => entry,
         Ok(None) => return Err((format!("Not in the repository at {short}"), false)),
@@ -653,7 +640,7 @@ fn too_large(limit: u64) -> String {
 }
 
 /// The failure card's reason for an error; never the address or anything the request carried.
-pub fn reason_of(error: &ProviderError) -> String {
+fn reason_of(error: &ProviderError) -> String {
     match error {
         ProviderError::Status { status: 404, .. } => "Not found (404)".to_owned(),
         ProviderError::Status { status: 401, .. } => "Sign-in required (401)".to_owned(),

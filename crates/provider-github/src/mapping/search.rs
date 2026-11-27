@@ -6,7 +6,7 @@ use review_core::{
 };
 
 use crate::dto::search::SearchPullRequestDto;
-use crate::mapping::{checks, identity, reviewers};
+use crate::mapping::{checks, identity, reviewers, run_status};
 use crate::owners::SearchOwners;
 
 /// Issue-search queries for the cross-repository scopes, newest first; their results together
@@ -112,17 +112,6 @@ fn state_qualifier(state: StateFilter) -> &'static str {
     }
 }
 
-/// `StatusCheckRollup.state` to the app's run status.
-fn rollup_status(state: &str) -> RunStatus {
-    match state {
-        "SUCCESS" => RunStatus::Succeeded,
-        "FAILURE" | "ERROR" => RunStatus::Failed,
-        "PENDING" => RunStatus::Running,
-        "EXPECTED" => RunStatus::Queued,
-        _ => RunStatus::Neutral,
-    }
-}
-
 /// The row and its checks: the search brings the head commit's check rollup and the review
 /// decision, so the row's checks need no request of their own.
 pub(crate) fn summary(mut dto: SearchPullRequestDto) -> (PullRequestSummary, RowStatus) {
@@ -131,7 +120,7 @@ pub(crate) fn summary(mut dto: SearchPullRequestDto) -> (PullRequestSummary, Row
         .take()
         .and_then(|commits| commits.into_nodes().1.into_iter().next())
         .and_then(|node| node.commit.status_check_rollup);
-    let checks = rollup.as_ref().map(|rollup| rollup_status(&rollup.state));
+    let checks = rollup.as_ref().map(|rollup| run_status::from_rollup_state(&rollup.state));
     let status = checks::row_status(rollup, dto.review_decision.as_deref());
     (row(dto, checks), status)
 }
@@ -189,13 +178,13 @@ mod tests {
 
     #[test]
     fn everything_lists_all_pull_requests_of_the_user_and_their_organizations() {
-        let everything = owners(&["user:mona", "org:cli", "org:acme"], true);
+        let everything = owners(&["user:mona", "org:contoso", "org:acme"], true);
         assert_eq!(
             queries(PullRequestScope::Visible, StateFilter::Open, &everything),
             [
-                "is:pr is:open user:mona org:cli org:acme sort:created-desc",
-                "is:pr involves:@me is:open -user:mona -org:cli -org:acme sort:created-desc",
-                "is:pr review-requested:@me is:open -user:mona -org:cli -org:acme sort:created-desc",
+                "is:pr is:open user:mona org:contoso org:acme sort:created-desc",
+                "is:pr involves:@me is:open -user:mona -org:contoso -org:acme sort:created-desc",
+                "is:pr review-requested:@me is:open -user:mona -org:contoso -org:acme sort:created-desc",
             ]
         );
         assert_eq!(
@@ -211,18 +200,18 @@ mod tests {
 
     #[test]
     fn chosen_owners_narrow_every_scope() {
-        let chosen = owners(&["org:cli", "user:mona"], false);
+        let chosen = owners(&["org:contoso", "user:mona"], false);
         assert_eq!(
             queries(PullRequestScope::Visible, StateFilter::Open, &chosen),
-            ["is:pr is:open org:cli user:mona sort:created-desc"]
+            ["is:pr is:open org:contoso user:mona sort:created-desc"]
         );
         assert_eq!(
             queries(PullRequestScope::CreatedByMe, StateFilter::Open, &chosen),
-            ["is:pr author:@me is:open org:cli user:mona sort:created-desc"]
+            ["is:pr author:@me is:open org:contoso user:mona sort:created-desc"]
         );
         assert_eq!(
             queries(PullRequestScope::ReviewRequested, StateFilter::Merged, &chosen),
-            ["is:pr review-requested:@me is:merged org:cli user:mona sort:created-desc"]
+            ["is:pr review-requested:@me is:merged org:contoso user:mona sort:created-desc"]
         );
         let repository = queries(PullRequestScope::Repository, StateFilter::All, &chosen);
         assert!(repository.is_empty(), "{repository:?}");
@@ -274,14 +263,6 @@ mod tests {
     }
 
     #[test]
-    fn maps_check_rollups() {
-        assert_eq!(rollup_status("SUCCESS"), RunStatus::Succeeded);
-        assert_eq!(rollup_status("ERROR"), RunStatus::Failed);
-        assert_eq!(rollup_status("PENDING"), RunStatus::Running);
-        assert_eq!(rollup_status("EXPECTED"), RunStatus::Queued);
-    }
-
-    #[test]
     fn maps_search_rows() {
         let data: SearchData = parse(include_str!("../../tests/fixtures/search.json"));
         let (page, rows) = data.search.into_nodes();
@@ -291,7 +272,7 @@ mod tests {
         assert_eq!(summaries.len(), 1);
         let (row, status) = &summaries[0];
         assert_eq!(status.reported, Some(review_core::CheckState::Failed));
-        assert_eq!(row.repository_key, "cli/cli");
+        assert_eq!(row.repository_key, "contoso/app");
         assert_eq!(row.state, PullRequestState::Merged);
         assert_eq!(row.source_branch, "feature/y");
         assert_eq!(row.target_branch, "trunk");

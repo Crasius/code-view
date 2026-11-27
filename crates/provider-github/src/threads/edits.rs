@@ -8,6 +8,7 @@ use review_core::provider::CommentActions;
 use review_core::{ProviderError, Result, ReviewThread, ThreadComment, http};
 use serde_json::json;
 
+use super::parse_thread_id;
 use crate::client::GitHubClient;
 use crate::dto::comment::{IssueCommentDto, ReviewCommentDto};
 use crate::dto::review::ReviewDto;
@@ -90,8 +91,7 @@ enum Resource {
 }
 
 fn resource(thread_id: &str, comment_id: &str) -> Result<Resource> {
-    let thread = ThreadId::parse(thread_id)
-        .ok_or_else(|| ProviderError::Local(format!("'{thread_id}' is not a GitHub thread id.")))?;
+    let thread = parse_thread_id(thread_id)?;
     // GraphQL comments carry their REST database id; one without it cannot be addressed by REST.
     let id: u64 = comment_id.parse().map_err(|_| {
         ProviderError::Local(format!("'{comment_id}' is not a GitHub REST comment id."))

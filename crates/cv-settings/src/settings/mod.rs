@@ -43,6 +43,7 @@ use self::category::Category;
 pub use self::connections::take_removed as take_removed_connection;
 use self::connections::{ConnectionList, ListAction};
 use self::rows::{Placement, Row, RowId};
+use self::shortcuts::ShortcutGroup;
 use self::sidebar::Navigation;
 use crate::onboarding::parts::Tone;
 use crate::onboarding::{self, CliRenewal, CliTools, EditStart, Wizard, WizardOutcome};
@@ -80,7 +81,7 @@ pub struct SettingsPage {
     /// The platform the merge button preview shows.
     merge_preview: Option<ProviderKind>,
     /// The shortcut group Keyboard and mouse scrolls to once it is drawn.
-    scroll_to_group: Option<&'static str>,
+    scroll_to_group: Option<ShortcutGroup>,
 }
 
 /// The section of the sidebar a [`intents::request_settings_section`] opens.
@@ -91,15 +92,14 @@ fn category_of(section: SettingsSection) -> Category {
     }
 }
 
-/// The shortcut group of the page at `route`; on a pull request, of its `tab`. The names are the
-/// table's group constants; a test holds every page to a group the table has.
-fn shortcuts_group(route: &Route, tab: Option<PullRequestTab>) -> &'static str {
+/// The shortcut group of the page at `route`; on a pull request, of its `tab`.
+fn shortcuts_group(route: &Route, tab: Option<PullRequestTab>) -> ShortcutGroup {
     match (route, tab) {
-        (Route::MyPullRequests | Route::RepositoryPullRequests { .. }, _) => shortcuts::LIST,
-        (Route::PullRequest(_), Some(PullRequestTab::Files)) => shortcuts::FILES,
-        (Route::PullRequest(_), Some(PullRequestTab::Pipelines)) => shortcuts::PIPELINES,
-        (Route::PullRequest(_), _) => shortcuts::PULL_REQUEST,
-        (Route::Repositories | Route::Connection { .. } | Route::Settings, _) => shortcuts::APP,
+        (Route::MyPullRequests | Route::RepositoryPullRequests { .. }, _) => ShortcutGroup::List,
+        (Route::PullRequest(_), Some(PullRequestTab::Files)) => ShortcutGroup::Files,
+        (Route::PullRequest(_), Some(PullRequestTab::Pipelines)) => ShortcutGroup::Pipelines,
+        (Route::PullRequest(_), _) => ShortcutGroup::PullRequest,
+        (Route::Repositories | Route::Connection { .. } | Route::Settings, _) => ShortcutGroup::App,
     }
 }
 
@@ -184,7 +184,7 @@ impl SettingsPage {
 
     pub fn show(&mut self, ui: &mut Ui, services: &mut Services, navigator: &mut Navigator) {
         if self.wizard.is_none() && services.connections.all().is_empty() {
-            self.wizard = Some(Wizard::new(self.tools(), true));
+            self.wizard = Some(Wizard::first_run(self.tools()));
         }
         if let Some(wizard) = self.wizard.as_mut() {
             let outcome = scroll::page("settings", PAGE_PADDING)
@@ -216,7 +216,7 @@ impl SettingsPage {
         let mut side_ui = ui.new_child(UiBuilder::new().max_rect(side));
         egui::ScrollArea::vertical().id_salt("settings_sidebar").show(&mut side_ui, |ui| {
             egui::Frame::new()
-                .inner_margin(egui::Margin::symmetric(style::SPACE_M as i8, 20))
+                .inner_margin(egui::Margin::symmetric(style::SPACE_M as i8, style::SPACE_XL as i8))
                 .show(ui, |ui| self.navigation.show(ui, &categories, problems));
         });
         let palette = theme::palette(ui.ctx());
@@ -293,7 +293,14 @@ impl SettingsPage {
         ui.add_space(style::SPACE_S);
         match category {
             Category::Merging => preview_merge::show(ui, services, &mut self.merge_preview),
-            _ => preview_diff::show(ui, services),
+            Category::Appearance => preview_diff::show(ui, services),
+            Category::Connections
+            | Category::Assistant
+            | Category::LocalCheckouts
+            | Category::Links
+            | Category::Storage
+            | Category::Network
+            | Category::Keyboard => {}
         }
     }
 
@@ -437,7 +444,7 @@ impl SettingsPage {
                     rows::header(ui, first, query);
                     ui.add_space(style::SPACE_S);
                 }
-                self.control(ui, first.id, services);
+                self.control(ui, first, services);
                 at += 1;
                 continue;
             }
@@ -447,7 +454,7 @@ impl SettingsPage {
             {
                 let palette = theme::palette(ui.ctx());
                 let heading = ui.label(
-                    RichText::new(group)
+                    RichText::new(group.title())
                         .font(theme::fonts::semibold_font(style::BODY_SIZE))
                         .color(palette.text_secondary),
                 );
@@ -470,12 +477,12 @@ impl SettingsPage {
             rows::card(ui, |ui| {
                 for (index, row) in run_rows.iter().enumerate() {
                     if index > 0 {
-                        rows::divider(ui);
+                        onboarding::parts::divider(ui);
                     }
                     // While the assistant is off its other rows stay, read as inactive.
                     let is_active = assistant::is_active(row.id, services);
                     ui.add_enabled_ui(is_active, |ui| {
-                        rows::show(ui, row, query, |ui| self.control(ui, row.id, services));
+                        rows::show(ui, row, query, |ui| self.control(ui, row, services));
                     });
                 }
             });
@@ -483,38 +490,24 @@ impl SettingsPage {
         }
     }
 
-    /// The control of row `id`, from the module of its section.
-    fn control(&mut self, ui: &mut Ui, id: RowId, services: &mut Services) {
-        match id {
+    /// The control of `row`, from the module of its section.
+    fn control(&mut self, ui: &mut Ui, row: &Row, services: &mut Services) {
+        match row.id {
             RowId::ConnectionList => {
                 if let Some(action) = self.connections.show(ui, services) {
                     self.start(action);
                 }
             }
-            RowId::Favourites | RowId::Remembered => {
-                merging::control(ui, id, services, &mut self.merge_preview);
-            }
-            RowId::AssistantShown
-            | RowId::AssistantAgent
-            | RowId::AssistantClaudeModel
-            | RowId::AssistantCodexModel
-            | RowId::AssistantMiniChat => {
-                assistant::control(ui, id, services);
-            }
-            RowId::CheckoutClones
-            | RowId::CheckoutSearch
-            | RowId::CheckoutPattern
-            | RowId::CheckoutRemoval
-            | RowId::CheckoutOpen
-            | RowId::CheckoutTerminal
-            | RowId::CheckoutAgents => {
+            RowId::Appearance(id) => appearance::control(ui, id, row, services),
+            RowId::Merging(id) => merging::control(ui, id, services, &mut self.merge_preview),
+            RowId::Assistant(id) => assistant::control(ui, id, row, services),
+            RowId::Checkout(id) => {
                 if local_checkouts::control(ui, id, services) {
                     self.navigation.open(Category::Assistant);
                 }
             }
             RowId::ClipboardLinks => {
-                let name = "Open pull request links from the clipboard";
-                if rows::switch(ui, &mut services.settings.open_clipboard_links, name) {
+                if rows::switch(ui, &mut services.settings.open_clipboard_links, row) {
                     services.save_settings();
                 }
             }
@@ -528,7 +521,6 @@ impl SettingsPage {
                     self.navigation.open(Category::Assistant);
                 }
             }
-            _ => appearance::control(ui, id, services),
         }
     }
 
@@ -537,7 +529,7 @@ impl SettingsPage {
         let tools = self.tools();
         self.just_saved = None;
         self.wizard = Some(match action {
-            ListAction::Add => Wizard::new(tools, false),
+            ListAction::Add => Wizard::new(tools),
             ListAction::Edit(connection) => Wizard::edit(&connection, tools, EditStart::Token),
             ListAction::Check(connection) => Wizard::edit(&connection, tools, EditStart::Recheck),
         });
@@ -554,9 +546,8 @@ fn starts_group(row: &Row, query: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{SettingsPage, shortcuts, shortcuts_group};
+    use super::SettingsPage;
     use crate::onboarding::CliTools;
-    use cv_runtime::route::{PullRequestKey, PullRequestTab, Route};
 
     #[test]
     fn a_test_build_offers_no_sign_in_tools_until_a_test_sets_them() {
@@ -565,43 +556,5 @@ mod tests {
         let both = CliTools { github: true, azure: true };
         page.set_cli_tools(both);
         assert_eq!(page.tools(), both);
-    }
-
-    #[test]
-    fn every_page_leads_to_a_group_of_the_shortcut_table() {
-        let key = PullRequestKey {
-            connection_id: "gh".into(),
-            repository_key: "acme/widgets".into(),
-            number: 7,
-        };
-        let pull_request = Route::PullRequest(key);
-        let tabs = [
-            PullRequestTab::Overview,
-            PullRequestTab::Files,
-            PullRequestTab::Commits,
-            PullRequestTab::Pipelines,
-        ];
-        let mut places: Vec<(Route, Option<PullRequestTab>)> =
-            tabs.into_iter().map(|tab| (pull_request.clone(), Some(tab))).collect();
-        places.extend([
-            (Route::MyPullRequests, None),
-            (Route::Repositories, None),
-            (Route::Settings, None),
-            (
-                Route::RepositoryPullRequests {
-                    connection_id: "gh".into(),
-                    repository_key: "acme/widgets".into(),
-                },
-                None,
-            ),
-        ]);
-        for (route, tab) in places {
-            let group = shortcuts_group(&route, tab);
-            assert!(
-                shortcuts::SHORTCUTS.iter().any(|shortcut| shortcut.group == group),
-                "{route:?} leads to {group}, which the table lacks"
-            );
-        }
-        assert_eq!(shortcuts_group(&pull_request, Some(PullRequestTab::Files)), shortcuts::FILES);
     }
 }

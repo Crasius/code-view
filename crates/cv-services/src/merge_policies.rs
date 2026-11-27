@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use review_core::{MergePolicy, MergeStrategy, Provider, ProviderError, Unreported};
 
-use cv_runtime::background::{Background, Task, TaskPoll};
+use cv_runtime::background::{Background, TASK_LOST, Task, TaskPoll};
 
 /// Branch policies and merge settings change rarely.
 pub const FRESH_FOR: f64 = 30.0 * 60.0;
@@ -96,7 +96,7 @@ impl MergePolicies {
                 TaskPoll::Pending => continue,
                 TaskPoll::Done(Ok(policy)) => Ok(policy),
                 TaskPoll::Done(Err(error)) => Err(error.to_string()),
-                TaskPoll::Lost => Err("The background task stopped unexpectedly.".to_owned()),
+                TaskPoll::Lost => Err(TASK_LOST.to_owned()),
             };
             entry.task = None;
             let policy = match (failure, entry.shown.take()) {

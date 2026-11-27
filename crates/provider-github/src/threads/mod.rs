@@ -14,6 +14,7 @@ use crate::dto::review_thread::{
     NodeData, RepositoryData, ReviewThreadDto, ReviewThreadsField, ThreadCommentsField,
 };
 use crate::graphql::{self, ACTOR_FRAGMENT, Connection};
+use crate::mapping::thread_id::ThreadId;
 use crate::mapping::threads as mapping;
 use crate::pull_requests::reviews;
 use crate::repo_key::RepoKey;
@@ -119,6 +120,11 @@ async fn remaining_comments(
         }
     }
     Ok(comments)
+}
+
+pub(super) fn parse_thread_id(thread_id: &str) -> Result<ThreadId<'_>> {
+    ThreadId::parse(thread_id)
+        .ok_or_else(|| ProviderError::Local(format!("'{thread_id}' is not a GitHub thread id.")))
 }
 
 /// Unwraps `repository.pullRequest.reviewThreads`; a missing level means the pull request is not visible.

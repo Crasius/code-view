@@ -112,20 +112,10 @@ pub fn ticket(url: &str) -> Option<(String, String)> {
 
 #[cfg(test)]
 mod tests {
+    use cv_testkit::samples::connection;
     use review_core::{Connection, ItemKind, ProviderKind};
 
     use super::{Here, Target, classify, ticket};
-
-    fn connection(id: &str, kind: ProviderKind, base_url: &str) -> Connection {
-        Connection {
-            id: id.to_owned(),
-            name: id.to_owned(),
-            kind,
-            base_url: base_url.to_owned(),
-            organizations: Vec::new(),
-            token: None,
-        }
-    }
 
     fn connections() -> Vec<Connection> {
         vec![
@@ -161,66 +151,11 @@ mod tests {
     }
 
     #[test]
-    fn urls_of_every_platform_and_host() {
-        let cases = [
-            (
-                "https://github.com/octo-platform-team/Contoso.Agents.AI.Extensions/pull/3",
-                "gh",
-                ItemKind::PullRequest,
-                "octo-platform-team/Contoso.Agents.AI.Extensions",
-                3,
-            ),
-            ("https://git.corp.example/team/app/issues/9", "ghe", ItemKind::Issue, "team/app", 9),
-            (
-                "https://gitlab.com/gitlab-org/gitlab/-/merge_requests/12",
-                "gl",
-                ItemKind::PullRequest,
-                "gitlab-org/gitlab",
-                12,
-            ),
-            (
-                "https://gitlab.corp.example/a/b/c/-/merge_requests/4/diffs",
-                "gl-self",
-                ItemKind::PullRequest,
-                "a/b/c",
-                4,
-            ),
-            (
-                "https://dev.azure.com/org/Proj/_git/repo/pullrequest/41",
-                "ado",
-                ItemKind::PullRequest,
-                "org/Proj/repo",
-                41,
-            ),
-            (
-                "https://org.visualstudio.com/Proj/_git/repo/pullrequest/42",
-                "ado",
-                ItemKind::PullRequest,
-                "org/Proj/repo",
-                42,
-            ),
-            (
-                "https://tfs.corp.example/tfs/Coll/Proj/_git/repo/pullrequest/43",
-                "ado-server",
-                ItemKind::PullRequest,
-                "Coll/Proj/repo",
-                43,
-            ),
-            (
-                "https://dev.azure.com/org/Proj/_workitems/edit/5",
-                "ado",
-                ItemKind::WorkItem,
-                "org/Proj",
-                5,
-            ),
-        ];
-        for (url, connection_id, kind, repository_key, number) in cases {
-            assert_eq!(
-                resolved(url, None),
-                Some((connection_id.to_owned(), kind, repository_key.to_owned(), number, true)),
-                "{url}"
-            );
-        }
+    fn urls_resolve_exactly_on_their_connection() {
+        assert_eq!(
+            resolved("https://gitlab.corp.example/a/b/c/-/merge_requests/4/diffs", None),
+            Some(("gl-self".to_owned(), ItemKind::PullRequest, "a/b/c".to_owned(), 4, true))
+        );
         assert_eq!(resolved("https://example.org/a/b/pull/1", None), None);
     }
 

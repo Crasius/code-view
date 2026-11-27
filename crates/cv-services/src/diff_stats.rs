@@ -525,13 +525,13 @@ pub fn poll(services: &mut Services) {
     let Services { diff_stats, cache, writes, .. } = services;
     let mut index = 0;
     while index < diff_stats.running.len() {
-        if !diff_stats.running[index].load.poll() {
+        let Some(result) = diff_stats.running[index].load.take_finished() else {
             index += 1;
             continue;
-        }
-        let Running { rows, asked_at, load, .. } = diff_stats.running.swap_remove(index);
-        let (stats, is_skipped, failure) = match load {
-            Load::Ready(Outcome { stats, prepared, is_skipped }) => {
+        };
+        let Running { rows, asked_at, .. } = diff_stats.running.swap_remove(index);
+        let (stats, is_skipped, failure) = match result {
+            Ok(Outcome { stats, prepared, is_skipped }) => {
                 if let Some(Prepared { key, mut detail, files }) = prepared {
                     writes.settle_detail(&key, &mut detail, Answer::Host { asked_at }, now);
                     let part = |name: &str| pull_request_part(&key.storage_key(), name);
@@ -540,8 +540,7 @@ pub fn poll(services: &mut Services) {
                 }
                 (stats, is_skipped, None)
             }
-            Load::Failed(message) => (Vec::new(), false, Some(message)),
-            Load::Idle | Load::Loading(_) => continue,
+            Err(message) => (Vec::new(), false, Some(message)),
         };
         diff_stats.store(rows, &stats, is_skipped, failure.as_deref());
     }
@@ -556,6 +555,26 @@ pub fn bar_fraction(total: u64) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// How a count of a row arrives.
+    #[derive(Clone, Copy)]
+    enum Arrival<'a> {
+        Done(DiffStat),
+        Skipped(DiffStat),
+        Failed(&'a str),
+    }
+
+    /// `row`'s count starts and arrives as `how` says, the way a finished count lands.
+    fn arrived(stats: &mut DiffStats, row: &StatRow, how: Arrival<'_>) {
+        stats.start(&[row], true, 0.0, Load::Idle);
+        let (stat, is_skipped, failure) = match how {
+            Arrival::Done(stat) => (stat, false, None),
+            Arrival::Skipped(stat) => (stat, true, None),
+            Arrival::Failed(message) => (DiffStat::default(), false, Some(message)),
+        };
+        let rows = vec![(row.storage_key.clone(), row.number, row.revision.clone())];
+        stats.store(rows, &[(row.number, stat)], is_skipped, failure);
+    }
 
     fn row(kind: ProviderKind, has_token: bool, listed: DiffStat) -> StatRow {
         StatRow {
@@ -614,13 +633,7 @@ mod tests {
     fn counts_are_kept_per_revision() {
         let mut stats = DiffStats::default();
         let counted = row(ProviderKind::GitLab, true, DiffStat::default());
-        stats.entries.insert(
-            counted.storage_key.clone(),
-            Entry {
-                revision: counted.revision.clone(),
-                state: State::Done(DiffStat::new(5, 1, 2)),
-            },
-        );
+        arrived(&mut stats, &counted, Arrival::Done(DiffStat::new(5, 1, 2)));
         assert_eq!(stats.shown(&counted), Shown::Counted(DiffStat::new(5, 1, 2)));
         assert!(!stats.is_due(&counted), "an unchanged pull request is not asked again");
         let pushed = StatRow { revision: Some("head2".into()), ..counted.clone() };
@@ -628,22 +641,14 @@ mod tests {
         assert!(stats.is_due(&pushed));
 
         let files_only = StatRow { kind: ProviderKind::AzureDevOps, ..counted };
-        stats.entries.insert(
-            files_only.storage_key.clone(),
-            Entry {
-                revision: files_only.revision.clone(),
-                state: State::Skipped(DiffStat { lines: None, files: Some(40) }),
-            },
-        );
+        let forty_files = DiffStat { lines: None, files: Some(40) };
+        arrived(&mut stats, &files_only, Arrival::Skipped(forty_files));
         assert!(
             matches!(stats.shown(&files_only), Shown::Uncounted { files: Some(40), .. }),
             "too many files to count on its own"
         );
         assert!(!stats.is_due(&files_only), "a large pull request waits for Count lines");
-        stats.entries.insert(
-            files_only.storage_key.clone(),
-            Entry { revision: files_only.revision.clone(), state: State::Failed("offline".into()) },
-        );
+        arrived(&mut stats, &files_only, Arrival::Failed("offline"));
         assert!(
             matches!(stats.shown(&files_only), Shown::Uncounted { why, .. } if why.contains("offline"))
         );
@@ -691,25 +696,14 @@ mod tests {
 
         // Skipped as too large before the repository was starred: a favorite asks again, once.
         let large = favorite(ProviderKind::AzureDevOps, true);
-        stats.entries.insert(
-            large.storage_key.clone(),
-            Entry {
-                revision: large.revision.clone(),
-                state: State::Skipped(DiffStat { lines: None, files: Some(40) }),
-            },
-        );
+        let forty_files = DiffStat { lines: None, files: Some(40) };
+        arrived(&mut stats, &large, Arrival::Skipped(forty_files));
         assert!(stats.is_due(&large), "a favorite's lines are counted whatever the size");
         assert!(
             !stats.is_due(&StatRow { is_favorite: false, ..large.clone() }),
             "other rows keep Count lines"
         );
-        stats.entries.insert(
-            large.storage_key.clone(),
-            Entry {
-                revision: large.revision.clone(),
-                state: State::Done(DiffStat { lines: None, files: Some(40) }),
-            },
-        );
+        arrived(&mut stats, &large, Arrival::Done(forty_files));
         assert!(!stats.is_due(&large), "a platform that reported no lines is not asked again");
     }
 
@@ -718,28 +712,22 @@ mod tests {
         let mut stats = DiffStats::default();
         let other = row(ProviderKind::AzureDevOps, true, DiffStat::default());
         let starred = favorite(ProviderKind::AzureDevOps, true);
-        let running = |is_favorite: bool| Running {
+        let running = |is_automatic: bool, is_favorite: bool| Running {
             rows: Vec::new(),
-            is_automatic: true,
+            is_automatic,
             is_favorite,
             asked_at: 0.0,
             load: Load::Idle,
         };
-        stats.running.extend([running(true), running(true)]);
+        stats.running.extend([running(true, true), running(true, true)]);
         assert!(!stats.has_room(&starred), "favorites hold at most two counts");
         assert!(stats.has_room(&other), "the other cards keep theirs");
-        stats.running.push(Running {
-            rows: Vec::new(),
-            is_automatic: false,
-            is_favorite: false,
-            asked_at: 0.0,
-            load: Load::Idle,
-        });
+        stats.running.push(running(false, false));
         assert!(stats.has_room(&other), "a count the user asked for takes no automatic place");
-        stats.running.extend([running(false), running(false)]);
+        stats.running.extend([running(true, false), running(true, false)]);
         assert!(!stats.has_room(&other), "four automatic counts at most");
         stats.running.clear();
-        stats.running.extend([running(false), running(false), running(false)]);
+        stats.running.extend([running(true, false), running(true, false), running(true, false)]);
         assert!(stats.has_room(&starred), "a favorite still finds the last place");
     }
 }

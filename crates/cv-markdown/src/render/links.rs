@@ -24,7 +24,7 @@ pub(super) fn link_menu(ui: &mut Ui, target: &str, link: &ResolvedLink) {
     }
 }
 
-pub(super) fn is_url(target: &str) -> bool {
+pub(crate) fn is_url(target: &str) -> bool {
     target.starts_with("https://") || target.starts_with("http://")
 }
 

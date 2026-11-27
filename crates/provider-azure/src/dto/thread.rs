@@ -244,8 +244,8 @@ struct ThreadSpan {
     end: LineOffset,
 }
 
-/// Where a new thread sits. A single line spans offset 1 to 1, as before; a range uses the
-/// character offsets the diff picked.
+/// Where a new thread sits. A single line spans offset 1 to 1; a range uses the character offsets
+/// the diff picked.
 fn thread_span(anchor: &ThreadAnchor) -> Option<ThreadSpan> {
     let Some(range) = &anchor.range else {
         let line = |side, line| ThreadSpan { side, start: (line, 1), end: (line, 1) };

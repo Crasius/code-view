@@ -96,12 +96,8 @@ pub(crate) struct Identity {
     pub custom_display_name: Option<String>,
     #[serde(default)]
     pub properties: HashMap<String, PropertyValue>,
-    #[serde(default = "active_by_default")]
+    #[serde(default = "crate::dto::default_true")]
     pub is_active: bool,
-}
-
-fn active_by_default() -> bool {
-    true
 }
 
 impl Identity {

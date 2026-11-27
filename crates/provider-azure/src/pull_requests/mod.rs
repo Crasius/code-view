@@ -8,8 +8,7 @@ pub(crate) mod policies;
 pub(crate) mod reviews;
 pub(crate) mod revision;
 
-use std::task::Poll;
-
+use futures_util::future::try_join_all;
 use reqwest::Method;
 use review_core::{
     DiffStat, MergeOptions, ProviderError, PullRequestDetail, PullRequestQuery, PullRequestScope,
@@ -19,10 +18,11 @@ use serde_json::{Value, json};
 
 use crate::client::{Client, RepoKey};
 use crate::dto::ValueList;
-use crate::dto::iteration::{CHANGES_PAGE_SIZE, Iteration, IterationChanges, count_files};
+use crate::dto::iteration::count_files;
 use crate::dto::pull_request::{PullRequest, merge_strategy_to_ado, state_filter_to_ado};
 use crate::dto::repository::GitRef;
 use crate::identity::CurrentUsers;
+use crate::iterations;
 
 const PAGE_SIZE: usize = 100;
 /// The identity id that clears `autoCompleteSetBy`, which turns auto-complete off.
@@ -34,87 +34,61 @@ pub(crate) async fn list(
     query: &PullRequestQuery,
 ) -> Result<Vec<PullRequestSummary>> {
     let status = ("searchCriteria.status", state_filter_to_ado(query.state).to_owned());
-    let mut summaries = Vec::new();
-    match query.scope {
-        PullRequestScope::Repository => {
-            let key = query.repository_key.as_deref().ok_or_else(|| {
-                ProviderError::Local(
-                    "Listing a repository's pull requests needs a repository.".to_owned(),
-                )
-            })?;
-            let repo = RepoKey::parse(key)?;
-            let url = client.repository_api(repo, "pullrequests");
-            let pull_requests = fetch_pages(client, &url, &[status], query.top).await?;
-            summaries.extend(to_summaries(client, repo.organization, &pull_requests));
+    let criterion = match query.scope {
+        PullRequestScope::Repository | PullRequestScope::Visible => None,
+        PullRequestScope::CreatedByMe => Some("searchCriteria.creatorId"),
+        PullRequestScope::ReviewRequested => Some("searchCriteria.reviewerId"),
+    };
+    if criterion.is_some() {
+        client.require_token("Listing your pull requests")?;
+    }
+    let repository_key = match query.scope {
+        PullRequestScope::Repository => Some(query.repository_key.as_deref().ok_or_else(|| {
+            ProviderError::Local(
+                "Listing a repository's pull requests needs a repository.".to_owned(),
+            )
+        })?),
+        PullRequestScope::Visible => None,
+        PullRequestScope::CreatedByMe | PullRequestScope::ReviewRequested => {
+            query.repository_key.as_deref()
         }
+    };
+    let mut summaries = if let Some(key) = repository_key {
+        let repo = RepoKey::parse(key)?;
+        let url = client.repository_api(repo, "pullrequests");
+        let params = listing_params(client, users, repo.organization, &status, criterion).await?;
+        let pull_requests = fetch_pages(client, &url, &params, query.top).await?;
+        to_summaries(client, repo.organization, &pull_requests)
+    } else {
         // Organization-wide listing (`{org}/_apis/git/pullrequests`, the project segment left out):
         // one request per organization instead of one per project or repository, all at once.
-        PullRequestScope::Visible => {
-            let listings = client.organizations()?.iter().map(|organization| async {
-                let url = client.organization_api(organization, "git/pullrequests");
-                let pull_requests =
-                    fetch_pages(client, &url, std::slice::from_ref(&status), query.top).await?;
-                Ok::<_, ProviderError>(to_summaries(client, organization, &pull_requests))
-            });
-            summaries.extend(join_all(listings).await?.into_iter().flatten());
-        }
-        PullRequestScope::CreatedByMe | PullRequestScope::ReviewRequested => {
-            client.require_token("Listing your pull requests")?;
-            let criterion = if query.scope == PullRequestScope::CreatedByMe {
-                "searchCriteria.creatorId"
-            } else {
-                "searchCriteria.reviewerId"
-            };
-            // The user's part of one repository: its own listing with the same criterion.
-            if let Some(key) = query.repository_key.as_deref() {
-                let repo = RepoKey::parse(key)?;
-                let user = users.get(client, repo.organization).await?;
-                let url = client.repository_api(repo, "pullrequests");
-                let pull_requests =
-                    fetch_pages(client, &url, &[status, (criterion, user.id)], query.top).await?;
-                summaries.extend(to_summaries(client, repo.organization, &pull_requests));
-            } else {
-                let listings = client.organizations()?.iter().map(|organization| async {
-                    let user = users.get(client, organization).await?;
-                    let url = client.organization_api(organization, "git/pullrequests");
-                    let params = [status.clone(), (criterion, user.id)];
-                    let pull_requests = fetch_pages(client, &url, &params, query.top).await?;
-                    Ok::<_, ProviderError>(to_summaries(client, organization, &pull_requests))
-                });
-                summaries.extend(join_all(listings).await?.into_iter().flatten());
-            }
-        }
-    }
+        let listings = client.organizations()?.iter().map(|organization| async {
+            let url = client.organization_api(organization, "git/pullrequests");
+            let params = listing_params(client, users, organization, &status, criterion).await?;
+            let pull_requests = fetch_pages(client, &url, &params, query.top).await?;
+            Ok::<_, ProviderError>(to_summaries(client, organization, &pull_requests))
+        });
+        // On the calling task, not spawned, so the connection's scopes stay in force.
+        try_join_all(listings).await?.into_iter().flatten().collect()
+    };
     summaries.sort_by(|a, b| b.created_at.cmp(&a.created_at).then_with(|| b.number.cmp(&a.number)));
     summaries.truncate(query.top);
     Ok(summaries)
 }
 
-/// Runs `futures` at the same time on the calling task and returns their outputs in order, or the
-/// first error. On the calling task, not spawned: its scopes (the connection's request counter,
-/// whether to wait out rate limits) stay in force, and the per-host budget still caps the requests
-/// in flight.
-async fn join_all<T>(
-    futures: impl IntoIterator<Item = impl Future<Output = Result<T>>>,
-) -> Result<Vec<T>> {
-    let mut pending: Vec<_> = futures.into_iter().map(Box::pin).collect();
-    let mut outputs: Vec<Option<T>> = pending.iter().map(|_| None).collect();
-    std::future::poll_fn(|context| {
-        let mut is_done = true;
-        for (future, output) in pending.iter_mut().zip(outputs.iter_mut()) {
-            if output.is_some() {
-                continue;
-            }
-            match future.as_mut().poll(context) {
-                Poll::Ready(Ok(value)) => *output = Some(value),
-                Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
-                Poll::Pending => is_done = false,
-            }
-        }
-        if is_done { Poll::Ready(Ok(())) } else { Poll::Pending }
-    })
-    .await?;
-    Ok(outputs.into_iter().flatten().collect())
+/// The query of a listing in `organization`: the state, and with a criterion the signed-in user.
+async fn listing_params(
+    client: &Client,
+    users: &CurrentUsers,
+    organization: &str,
+    status: &(&'static str, String),
+    criterion: Option<&'static str>,
+) -> Result<Vec<(&'static str, String)>> {
+    let mut params = vec![status.clone()];
+    if let Some(criterion) = criterion {
+        params.push((criterion, users.get(client, organization).await?.id));
+    }
+    Ok(params)
 }
 
 fn to_summaries(
@@ -156,8 +130,9 @@ async fn fetch_pages(
 
 /// The changed files of each pull request: the latest iteration's changes against the common
 /// commit (`$compareTo` left at its default, 0), two requests per pull request below
-/// [`CHANGES_PAGE_SIZE`] files. Azure DevOps counts no lines. Iterations need sign-in even on
-/// public projects, so an anonymous connection learns nothing here.
+/// [`CHANGES_PAGE_SIZE`](crate::dto::iteration::CHANGES_PAGE_SIZE) files. Azure DevOps counts
+/// no lines. Iterations need sign-in even on public projects, so an anonymous connection learns
+/// nothing here.
 pub(crate) async fn diff_stats(
     client: &Client,
     repo: &str,
@@ -169,23 +144,15 @@ pub(crate) async fn diff_stats(
     let key = RepoKey::parse(repo)?;
     let mut stats = Vec::new();
     for &number in numbers {
-        let params = [("includeCommits", "false".to_owned())];
-        let iterations: ValueList<Iteration> =
-            client.get(&client.pull_request_api(key, number, "iterations"), &params).await?;
-        let Some(latest) = iterations.value.iter().map(|iteration| iteration.id).max() else {
+        let Some(latest) = iterations::latest(&iterations::list(client, key, number).await?) else {
             continue;
         };
-        let url = client.pull_request_api(key, number, &format!("iterations/{latest}/changes"));
-        let (mut files, mut skip) = (0, 0);
-        loop {
-            let params = [("$top", CHANGES_PAGE_SIZE.to_string()), ("$skip", skip.to_string())];
-            let changes: IterationChanges = client.get(&url, &params).await?;
-            files += count_files(&changes.change_entries);
-            match changes.next_skip {
-                Some(next) if next > skip && !changes.change_entries.is_empty() => skip = next,
-                _ => break,
-            }
-        }
+        let mut files = 0;
+        iterations::changes_until(client, key, number, latest, |entries| {
+            files += count_files(entries);
+            None::<()>
+        })
+        .await?;
         stats.push((number, DiffStat { lines: None, files: Some(files) }));
     }
     Ok(stats)

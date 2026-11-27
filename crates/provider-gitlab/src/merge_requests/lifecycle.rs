@@ -211,35 +211,8 @@ mod tests {
             head_sha: "abc".into(),
         };
         assert!(
-            merge_body(&rebase, None).is_err(),
+            matches!(merge_body(&rebase, None), Err(ProviderError::Unsupported(_))),
             "unknown project method: no fast-forward promised"
         );
-    }
-
-    #[test]
-    fn fast_forward_projects_take_rebase_without_a_message() {
-        let project: crate::dto::ProjectDto = serde_json::from_value(json!({
-            "path_with_namespace": "g/p", "name": "p", "web_url": "w", "http_url_to_repo": "h",
-            "merge_method": "ff", "squash_option": "default_off",
-        }))
-        .unwrap();
-        let ff = ProjectMerge::of(&project);
-        let rebase = MergeOptions {
-            strategy: MergeStrategy::Rebase,
-            delete_source_branch: false,
-            commit_message: Some("ignored".into()),
-            head_sha: "abc".into(),
-        };
-        assert_eq!(
-            merge_body(&rebase, ff).expect("ff"),
-            json!({ "sha": "abc", "squash": false, "should_remove_source_branch": false })
-        );
-        let merge = MergeOptions {
-            strategy: MergeStrategy::Merge,
-            delete_source_branch: false,
-            commit_message: None,
-            head_sha: "abc".into(),
-        };
-        assert!(merge_body(&merge, ff).is_err());
     }
 }

@@ -1,17 +1,17 @@
 //! Pull request statuses and the builds of the pull request's merge ref, their timelines and logs.
 
 use reqwest::Method;
-use review_core::{PipelineJob, PipelineRun, ProviderError, RerunAction, RerunKind, Result};
+use review_core::{PipelineJob, PipelineRun, ProviderError, RerunAction, RerunKind, Result, http};
 use serde_json::json;
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::io::AsyncWrite;
 
 use crate::client::{Client, RepoKey};
 use crate::dto::ValueList;
-use crate::dto::iteration::Iteration;
 use crate::dto::pipeline::{Build, PullRequestStatus, latest_builds, latest_statuses};
 use crate::dto::timeline::{
     Timeline, attempt_node, build_job_tree, parse_attempt_target, parse_log_id, parse_stage_target,
 };
+use crate::iterations;
 
 const BUILD_PREFIX: &str = "build:";
 const STATUS_PREFIX: &str = "status:";
@@ -43,10 +43,7 @@ async fn statuses(client: &Client, repo: RepoKey<'_>, number: u64) -> Result<Vec
         Err(error) => return Err(error),
     };
     let latest_iteration = if statuses.iter().any(|status| status.iteration_id.is_some()) {
-        let params = [("includeCommits", "false".to_owned())];
-        let iterations: ValueList<Iteration> =
-            client.get(&client.pull_request_api(repo, number, "iterations"), &params).await?;
-        iterations.value.iter().map(|iteration| iteration.id).max()
+        iterations::latest(&iterations::list(client, repo, number).await?)
     } else {
         None
     };
@@ -65,7 +62,7 @@ pub(crate) async fn jobs(client: &Client, repo: &str, run_id: &str) -> Result<Ve
     let key = RepoKey::parse(repo)?;
     let url = client.project_api(key, &format!("build/builds/{build_id}/timeline"));
     let timeline: Timeline = client.get_or_default(&url).await?;
-    let web_url = format!("{}/_build/results?buildId={build_id}", client.project_root(key));
+    let web_url = client.build_web_url(key, build_id);
     Ok(build_job_tree(build_id, &timeline.records, Some(&web_url)))
 }
 
@@ -83,7 +80,7 @@ pub(crate) async fn attempt(client: &Client, repo: &str, target: &str) -> Result
         &format!("build/builds/{build_id}/timeline/{}", urlencoding::encode(timeline_id)),
     );
     let timeline: Timeline = client.get(&url, &[]).await?;
-    let web_url = format!("{}/_build/results?buildId={build_id}", client.project_root(key));
+    let web_url = client.build_web_url(key, build_id);
     attempt_node(build_id, &timeline.records, record_id, Some(&web_url)).ok_or_else(|| {
         ProviderError::Local(format!(
             "Azure DevOps no longer reports attempt {record_id} of build {build_id}."
@@ -130,10 +127,5 @@ pub(crate) async fn download_log(
     let key = RepoKey::parse(repo)?;
     let url = client.project_api(key, &format!("build/builds/{build_id}/logs/{log}"));
     let request = client.request(Method::GET, &url).header(reqwest::header::ACCEPT, "text/plain");
-    let mut response = client.send(request).await?;
-    while let Some(chunk) = response.chunk().await? {
-        sink.write_all(&chunk).await?;
-    }
-    sink.flush().await?;
-    Ok(())
+    http::copy_body(client.send(request).await?, sink).await
 }

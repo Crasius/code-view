@@ -15,7 +15,7 @@ mod banner;
 mod cli;
 mod guides;
 mod host;
-pub mod parts;
+pub(crate) mod parts;
 mod renewal;
 mod wizard;
 

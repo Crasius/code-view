@@ -1,7 +1,8 @@
 //! "Use my GitHub CLI / Azure CLI sign-in": asks an installed command-line tool for the token it
 //! already holds. Runs only when the user clicks the option. The token goes straight from the
-//! tool's stdout into the connection (and from there into the DPAPI-protected store); it is never
-//! printed or logged, and error messages only carry the tool's stderr.
+//! tool's stdout into the connection (and from there into the token vault,
+//! `review_store::token_vault`); it is never printed or logged, and error messages only carry the
+//! tool's stderr.
 
 use std::path::Path;
 use std::process::Stdio;
@@ -9,6 +10,8 @@ use std::time::Duration;
 
 use cv_base::platform;
 use review_core::ProviderKind;
+
+use super::host::Hosting;
 
 /// The Azure DevOps resource id that Microsoft Entra tokens for Azure DevOps are issued for.
 const AZURE_DEVOPS_RESOURCE: &str = "499b84ac-1321-427f-aa17-267ca6975798";
@@ -23,7 +26,7 @@ pub struct CliTools {
 
 impl CliTools {
     pub fn detect() -> Self {
-        Self { github: on_path(&["gh.exe", "gh"]), azure: on_path(&["az.cmd", "az"]) }
+        Self { github: on_path(&["gh.exe", "gh"]), azure: on_path(&[platform::AZURE_CLI]) }
     }
 
     /// The sign-in this platform and host can use, if its tool is installed.
@@ -31,14 +34,16 @@ impl CliTools {
         self,
         kind: ProviderKind,
         host_name: &str,
-        is_cloud: bool,
+        hosting: Hosting,
     ) -> Option<CliLogin> {
         match kind {
             ProviderKind::GitHub if self.github && is_host_name(host_name) => {
                 Some(CliLogin::GitHub { host: host_name.to_owned() })
             }
             // Entra tokens exist for Azure DevOps Services only, not for on-premises servers.
-            ProviderKind::AzureDevOps if self.azure && is_cloud => Some(CliLogin::Azure),
+            ProviderKind::AzureDevOps if self.azure && hosting == Hosting::Cloud => {
+                Some(CliLogin::Azure)
+            }
             _ => None,
         }
     }
@@ -94,7 +99,7 @@ impl CliLogin {
             }
             CliLogin::Azure => {
                 "Code View asks az for a Microsoft Entra token with your own permissions. It lasts up to an hour; \
-                 Review renews it from the Azure CLI while the app runs."
+                 Code View renews it from the Azure CLI while the app runs."
             }
         }
     }
@@ -165,17 +170,23 @@ mod tests {
     fn offers_only_matching_installed_tools() {
         let both = CliTools { github: true, azure: true };
         assert_eq!(
-            both.login_for(ProviderKind::GitHub, "github.com", true),
+            both.login_for(ProviderKind::GitHub, "github.com", Hosting::Cloud),
             Some(CliLogin::GitHub { host: "github.com".into() })
         );
         assert_eq!(
-            both.login_for(ProviderKind::AzureDevOps, "dev.azure.com", true),
+            both.login_for(ProviderKind::AzureDevOps, "dev.azure.com", Hosting::Cloud),
             Some(CliLogin::Azure)
         );
-        assert_eq!(both.login_for(ProviderKind::AzureDevOps, "tfs.example.com", false), None);
-        assert_eq!(both.login_for(ProviderKind::GitLab, "gitlab.com", true), None);
-        assert_eq!(CliTools::default().login_for(ProviderKind::GitHub, "github.com", true), None);
-        assert_eq!(both.login_for(ProviderKind::GitHub, "--evil", false), None);
+        assert_eq!(
+            both.login_for(ProviderKind::AzureDevOps, "tfs.example.com", Hosting::SelfHosted),
+            None
+        );
+        assert_eq!(both.login_for(ProviderKind::GitLab, "gitlab.com", Hosting::Cloud), None);
+        assert_eq!(
+            CliTools::default().login_for(ProviderKind::GitHub, "github.com", Hosting::Cloud),
+            None
+        );
+        assert_eq!(both.login_for(ProviderKind::GitHub, "--evil", Hosting::SelfHosted), None);
     }
 
     #[test]
