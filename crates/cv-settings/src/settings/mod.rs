@@ -68,7 +68,7 @@ const PAGE_PADDING: egui::Margin = egui::Margin::symmetric(32, 24);
 #[derive(Default)]
 pub struct SettingsPage {
     wizard: Option<Wizard>,
-    /// Detected on first use; tests set it so they never depend on the machine's tools.
+    /// Filled on first use by `tools()`.
     pub cli_tools: Option<CliTools>,
     renewal: CliRenewal,
     just_saved: Option<String>,
@@ -165,8 +165,21 @@ impl SettingsPage {
         self.wizard.is_some()
     }
 
+    /// The sign-in tools the setup offers: the ones on this system's `PATH`, or in test builds
+    /// (this crate's tests, and the tests of crates that turn on its `test-support` feature) none,
+    /// so no test depends on the machine's tools.
     fn tools(&mut self) -> CliTools {
-        *self.cli_tools.get_or_insert_with(CliTools::detect)
+        #[cfg(any(test, feature = "test-support"))]
+        let found = CliTools::default;
+        #[cfg(not(any(test, feature = "test-support")))]
+        let found = CliTools::detect;
+        *self.cli_tools.get_or_insert_with(found)
+    }
+
+    /// The sign-in tools a test's setup offers in place of none.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_cli_tools(&mut self, tools: CliTools) {
+        self.cli_tools = Some(tools);
     }
 
     pub fn show(&mut self, ui: &mut Ui, services: &mut Services, navigator: &mut Navigator) {
@@ -541,8 +554,18 @@ fn starts_group(row: &Row, query: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{shortcuts, shortcuts_group};
+    use super::{SettingsPage, shortcuts, shortcuts_group};
+    use crate::onboarding::CliTools;
     use cv_runtime::route::{PullRequestKey, PullRequestTab, Route};
+
+    #[test]
+    fn a_test_build_offers_no_sign_in_tools_until_a_test_sets_them() {
+        let mut page = SettingsPage::default();
+        assert_eq!(page.tools(), CliTools::default());
+        let both = CliTools { github: true, azure: true };
+        page.set_cli_tools(both);
+        assert_eq!(page.tools(), both);
+    }
 
     #[test]
     fn every_page_leads_to_a_group_of_the_shortcut_table() {
