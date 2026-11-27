@@ -15,7 +15,9 @@ use review_store::{DiffLayout, ThemePreference};
 use super::SummaryEvent;
 use super::bodies::MAX_BODIES;
 use super::loads::{MAX_RUNNING, MAX_WANTED};
-use super::testing::{Scene, card_of, file, harness, key, settle, shop_files, ten_thousand_files};
+use super::testing::{
+    SIZE, Scene, card_of, cards_shown, file, harness, key, settle, shop_files, ten_thousand_files,
+};
 use cv_runtime::background::Background;
 use cv_testkit::frame_bench::{Bench, PATTERNS, SCALES};
 
@@ -23,7 +25,7 @@ use cv_testkit::frame_bench::{Bench, PATTERNS, SCALES};
 fn folder_summary_walkthrough() {
     let mut scene = Scene::new(shop_files(), ThemePreference::Light);
     scene.thread_counts.insert("src/app/checkout.rs".into(), 2);
-    let mut harness = harness(scene, [1180.0, 860.0]);
+    let mut harness = harness(scene, SIZE);
     settle(&mut harness);
     assert!(harness.query_by_label("9 changed files").is_some());
     assert!(harness.query_by_label("View src/app/cart.rs").is_some());
@@ -95,13 +97,13 @@ fn folder_summary_walkthrough() {
 fn settle_fails_when_a_load_never_finishes() {
     let mut scene = Scene::new(shop_files(), ThemePreference::Light);
     scene.source.hangs_on = Some(Background::new(egui::Context::default()));
-    let mut harness = harness(scene, [1180.0, 860.0]);
+    let mut harness = harness(scene, SIZE);
     settle(&mut harness);
 }
 
 #[test]
 fn collapse_lasts_for_the_session_and_is_exactly_the_header() {
-    let mut harness = harness(Scene::new(shop_files(), ThemePreference::Light), [1180.0, 860.0]);
+    let mut harness = harness(Scene::new(shop_files(), ThemePreference::Light), SIZE);
     settle(&mut harness);
     harness.click_at(harness.get_by_label("Collapse src/app/cart.rs").rect());
     harness.run_steps(3);
@@ -153,7 +155,7 @@ fn only_the_cards_near_the_view_load() {
     if let Some(viewport) = harness.input_mut().viewports.get_mut(&ViewportId::ROOT) {
         viewport.focused = Some(true);
     }
-    harness.run_steps(30);
+    settle(&mut harness);
     let assert_near_view = |harness: &Harness<'_, Scene>, started: &[String]| {
         let summary = &harness.state().summary;
         let (top, bottom) = (summary.viewport.top(), summary.viewport.bottom());
@@ -168,7 +170,7 @@ fn only_the_cards_near_the_view_load() {
         }
     };
     let first = harness.state().source.started.clone();
-    let on_screen = harness.state().summary.stats().cards_shown;
+    let on_screen = cards_shown(&harness.state().summary);
     assert!(first.len() >= on_screen, "every card on screen loads: {} of {on_screen}", first.len());
     assert!(
         first.len() <= MAX_WANTED && first.len() < 20,
@@ -176,14 +178,10 @@ fn only_the_cards_near_the_view_load() {
         first.len()
     );
     assert_near_view(&harness, &first);
-    println!(
-        "opening the summary: {} of 400 diffs loaded, {on_screen} cards on screen",
-        first.len()
-    );
 
     // A jump to the end loads the end, once the view has settled there.
     key(&mut harness, Key::End);
-    harness.run_steps(30);
+    settle(&mut harness);
     let started = harness.state().source.started.clone();
     let after_jump = &started[first.len()..];
     assert_ne!(after_jump, [] as [String; 0]);
@@ -193,7 +191,6 @@ fn only_the_cards_near_the_view_load() {
         "a jump loads the screen it lands on, not the way there: {}",
         started.len()
     );
-    println!("after a jump to the end: {} more", after_jump.len());
 }
 
 /// 10,000 files with about 250,000 changed lines (and one 20,000-line file): every frame looks at
@@ -201,7 +198,10 @@ fn only_the_cards_near_the_view_load() {
 /// bodies kept never pass their cap.
 #[test]
 fn ten_thousand_files_cost_what_is_on_screen() {
-    let files = ten_thousand_files();
+    let mut files = ten_thousand_files();
+    // The fourth file becomes the one with 20,000 added lines.
+    files[3].additions = Some(20_000);
+    files[3].kind = ChangeKind::Added;
     let total: u64 = files
         .iter()
         .map(|file| u64::from(file.additions.unwrap_or(0) + file.deletions.unwrap_or(0)))
@@ -209,25 +209,24 @@ fn ten_thousand_files_cost_what_is_on_screen() {
     assert!(total > 200_000, "{total} changed lines");
 
     let mut harness = harness(Scene::new(files, ThemePreference::Light), [1280.0, 900.0]);
-    harness.run_steps(40);
-    let (mut most_cards, mut most_rows, mut most_bodies) = (0, 0, 0);
+    settle(&mut harness);
+    let (mut most_cards, mut most_rows) = (0, 0);
     let mut check = |harness: &Harness<'_, Scene>| {
         let summary = &harness.state().summary;
-        let stats = summary.stats();
-        most_cards = most_cards.max(stats.cards_shown);
-        most_rows = most_rows.max(stats.rows_painted);
-        most_bodies = most_bodies.max(summary.bodies_kept());
-        assert!(stats.wanted <= MAX_WANTED);
+        most_cards = most_cards.max(cards_shown(summary));
+        most_rows = most_rows.max(summary.rows_painted);
+        assert!(summary.loads.wanted().len() <= MAX_WANTED);
         assert!(summary.bodies_kept() <= MAX_BODIES, "{} bodies kept", summary.bodies_kept());
         assert!(summary.loads.running() <= MAX_RUNNING);
     };
     // The 20,000-line card fills the screen: it paints the rows in view, not its 20,000.
     let inside = harness.state().summary.index.top(3) + 5_000.0;
     harness.state_mut().summary.scroll_to = Some(inside);
-    harness.run_steps(30);
+    settle(&mut harness);
     check(&harness);
-    let tall = harness.state().summary.stats();
-    assert!(tall.cards_shown == 1 && tall.rows_painted <= 50, "inside the tall card: {tall:?}");
+    let summary = &harness.state().summary;
+    let (shown, rows) = (cards_shown(summary), summary.rows_painted);
+    assert!(shown == 1 && rows <= 50, "inside the tall card: {shown} cards, {rows} rows");
 
     let before = harness.state().source.started.len();
     let pointer = pos2(640.0, 500.0);
@@ -259,9 +258,6 @@ fn ten_thousand_files_cost_what_is_on_screen() {
     assert!(
         most_cards < 30 && most_rows < 120,
         "per frame at most {most_cards} cards and {most_rows} rows"
-    );
-    println!(
-        "10k files, {total} lines: fling of {travelled:.0} pt loaded {during} diffs, {settled} after settling; per frame <= {most_cards} cards, {most_rows} rows; bodies <= {most_bodies}"
     );
 }
 

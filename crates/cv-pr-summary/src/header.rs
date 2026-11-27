@@ -20,7 +20,10 @@ const LAYOUT_LABELS_SPARE: f32 = 160.0;
 const PREVIEW_HINT: &str = "Show the Markdown files rendered";
 /// Narrowest a middle level of the folder trail is cut to before levels fold into "…".
 const CRUMB_SHORT_WIDTH: f32 = 96.0;
-const CRUMB_PADDING: egui::Vec2 = vec2(4.0, 2.0);
+const CRUMB_PADDING: egui::Vec2 = vec2(style::SPACE_XS, 2.0);
+const PADDING_Y: i8 = 10;
+/// The horizontal gap between the header's items.
+const ITEM_GAP: f32 = 6.0;
 
 /// What the user did in the header.
 pub enum HeaderAction {
@@ -45,11 +48,11 @@ pub fn show(ui: &mut Ui, inputs: &SummaryInputs<'_>, counts: &Counts<'_>) -> Opt
     let mut action = None;
     egui::Frame::new()
         .fill(palette.surface)
-        .inner_margin(egui::Margin::symmetric(16, 10))
+        .inner_margin(egui::Margin::symmetric(style::SPACE_L as i8, PADDING_Y))
         .stroke(egui::Stroke::new(1.0, palette.border))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.spacing_mut().item_spacing = vec2(6.0, 4.0);
+            ui.spacing_mut().item_spacing = vec2(ITEM_GAP, style::SPACE_XS);
             ui.horizontal(|ui| {
                 title(ui, counts);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -80,7 +83,7 @@ fn title(ui: &mut Ui, counts: &Counts<'_>) {
     );
     let lines = counts.breakdown.total();
     if lines.changed() > 0 {
-        ui.add_space(4.0);
+        ui.add_space(style::SPACE_XS);
         let added = format!("+{}", group_digits(lines.added as usize));
         let deleted = format!("−{}", group_digits(lines.deleted as usize));
         let added_label =
@@ -195,7 +198,7 @@ fn breadcrumbs(ui: &mut Ui, folder: &str) -> Option<String> {
             CrumbWidth { full, short: if is_middle { full.min(CRUMB_SHORT_WIDTH) } else { full } }
         })
         .collect();
-    let separator = FontId::proportional(11.0);
+    let separator = FontId::proportional(style::TINY_SIZE);
     let spacing = Spacing {
         separator: ui
             .painter()

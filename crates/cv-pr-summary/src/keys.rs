@@ -79,7 +79,7 @@ pub fn apply(summary: &mut FolderSummary, ui: &Ui, geometry: &Geometry) -> Optio
     let pressed = read(ui)?;
     let ctx = ui.ctx();
     let viewport = summary.viewport;
-    let limit = (summary.index.total() + 2.0 * MARGIN - viewport.height()).max(0.0);
+    let limit = summary.scroll_limit();
     if let Some(scroll) = pressed.scroll {
         let top = viewport.top() + MARGIN;
         let page = (viewport.height() - geometry.header).max(geometry.line);

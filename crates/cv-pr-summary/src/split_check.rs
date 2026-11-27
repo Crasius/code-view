@@ -8,23 +8,22 @@ use cv_testkit::Clicks;
 use egui::Rect;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_core::ThreadAnchor;
 use review_git::{ChangeKind, ChangedFile};
 use review_store::{DiffLayout, ThemePreference};
 
 use super::bodies::MAX_BODIES;
 use super::loads::{MAX_RUNNING, MAX_WANTED};
-use super::testing::{Scene, card_of, file, harness, settle};
+use super::testing::{
+    SIZE, Scene, card_of, cards_shown, file, harness, press, row_of, scroll_to_card, settle,
+    ten_thousand_files, thread_at, view_of,
+};
 use super::{MARGIN, SummaryEvent};
 use cv_code::line_source::Pane;
-use cv_pr_diff::diff_view::DiffView;
-use cv_pr_diff::testing::thread_on_old_line;
 
 /// Six hunks of three deleted and five added lines, each with three unchanged lines around them:
 /// inline a hunk takes 14 rows, side by side 11, so the lines further down move up when it splits.
 const PATH: &str = "src/app/cart.rs";
 const ADDED: &str = "src/app/promo.rs";
-const SIZE: [f32; 2] = [1180.0, 860.0];
 
 fn files() -> Vec<ChangedFile> {
     vec![
@@ -42,26 +41,9 @@ fn split_scene(theme: ThemePreference) -> Scene {
     scene
 }
 
-fn view_of<'a>(scene: &'a Scene, path: &str) -> &'a DiffView {
-    &scene.summary.bodies.get(path).expect("the card's diff is loaded").view
-}
-
-/// The card's row showing head line `new_line` (old line `old_line` when there is no head line).
-fn row_of(scene: &Scene, path: &str, old_line: Option<u32>, new_line: Option<u32>) -> usize {
-    let body = scene.summary.bodies.get(path).expect("the card's diff is loaded");
-    body.view.row_of(&body.diff, old_line, new_line)
-}
-
 /// Where the code of head line `new_line` of [`PATH`] shows: the right pane side by side.
 fn head_line(scene: &Scene, new_line: u32, pane: Pane) -> Rect {
     view_of(scene, PATH).text_area(pane, row_of(scene, PATH, None, Some(new_line))).rect
-}
-
-fn scroll_to_card(harness: &mut Harness<'_, Scene>, path: &str, below_top: f32) {
-    let card = card_of(harness.state(), path);
-    let top = harness.state().summary.index.top(card);
-    harness.state_mut().summary.scroll_to = Some(top + MARGIN + below_top);
-    settle(harness);
 }
 
 /// Side by side, a changed file's card shows the old lines in the left pane and the new ones in
@@ -109,24 +91,8 @@ fn split_cards_show_both_sides_and_whole_files_one_pane() {
 #[test]
 fn threads_sit_under_their_side_in_a_split_card() {
     let mut scene = split_scene(ThemePreference::Light);
-    let mut on_new = thread_on_old_line(0, "Round before the tax.");
-    on_new.id = "on-new".into();
-    on_new.anchor = Some(ThreadAnchor {
-        path: PATH.into(),
-        old_path: None,
-        old_line: None,
-        new_line: Some(6),
-        range: None,
-    });
-    let mut on_old = thread_on_old_line(0, "Why did the old check go?");
-    on_old.id = "on-old".into();
-    on_old.anchor = Some(ThreadAnchor {
-        path: PATH.into(),
-        old_path: None,
-        old_line: Some(5),
-        new_line: None,
-        range: None,
-    });
+    let on_new = thread_at("on-new", "Round before the tax.", PATH, None, Some(6));
+    let on_old = thread_at("on-old", "Why did the old check go?", PATH, Some(5), None);
     scene.threads.extend([on_new, on_old]);
     let mut harness = harness(scene, SIZE);
     settle(&mut harness);
@@ -244,23 +210,13 @@ fn the_boundary_between_the_sides_moves_in_every_card() {
     let edge = egui::pos2(left.right(), left.top() + 4.0);
     harness.hover_at(edge);
     harness.step();
-    harness.event(egui::Event::PointerButton {
-        pos: edge,
-        button: egui::PointerButton::Primary,
-        pressed: true,
-        modifiers: egui::Modifiers::NONE,
-    });
+    harness.event(press(edge, true));
     harness.step();
     for step in 1..=6 {
         harness.hover_at(edge + egui::vec2(20.0 * step as f32, 0.0));
         harness.step();
     }
-    harness.event(egui::Event::PointerButton {
-        pos: edge + egui::vec2(120.0, 0.0),
-        button: egui::PointerButton::Primary,
-        pressed: false,
-        modifiers: egui::Modifiers::NONE,
-    });
+    harness.event(press(edge + egui::vec2(120.0, 0.0), false));
     settle(&mut harness);
     let share = harness.state().split;
     assert!(share > 0.55, "the old side grew: {share}");
@@ -291,64 +247,33 @@ fn the_boundary_between_the_sides_moves_in_every_card() {
 /// switching layouts in the middle of it costs one frame of the cards on screen.
 #[test]
 fn ten_thousand_files_side_by_side_cost_what_is_on_screen() {
-    let files: Vec<ChangedFile> = (0..10_000)
-        .map(|index| {
-            let kind = [
-                ChangeKind::Modified,
-                ChangeKind::Modified,
-                ChangeKind::Added,
-                ChangeKind::Deleted,
-            ][index % 4];
-            let counts = match kind {
-                ChangeKind::Added => (10 + (index % 30) as u32, 0),
-                ChangeKind::Deleted => (0, 8 + (index % 20) as u32),
-                _ => (8 + (index % 25) as u32, 4 + (index % 15) as u32),
-            };
-            file(
-                &format!(
-                    "src/area_{}/module_{}/file_{index:05}.rs",
-                    index / 1000,
-                    index / 100 % 10
-                ),
-                kind,
-                Some(counts),
-            )
-        })
-        .collect();
-    let mut scene = Scene::new(files, ThemePreference::Light);
+    let mut scene = Scene::new(ten_thousand_files(), ThemePreference::Light);
     scene.layout = DiffLayout::SideBySide;
     let mut harness = harness(scene, [1280.0, 900.0]);
-    harness.run_steps(40);
+    settle(&mut harness);
     let mut most = (0, 0);
     let mut check = |harness: &Harness<'_, Scene>| {
         let summary = &harness.state().summary;
-        let stats = summary.stats();
-        most = (most.0.max(stats.cards_shown), most.1.max(stats.rows_painted));
-        assert!(stats.wanted <= MAX_WANTED);
+        most = (most.0.max(cards_shown(summary)), most.1.max(summary.rows_painted));
+        assert!(summary.loads.wanted().len() <= MAX_WANTED);
         assert!(summary.bodies_kept() <= MAX_BODIES, "{} bodies kept", summary.bodies_kept());
         assert!(summary.loads.running() <= MAX_RUNNING);
     };
     let before = harness.state().source.started.len();
     let middle = harness.state().summary.index.total() / 2.0;
     harness.state_mut().summary.scroll_to = Some(middle);
-    harness.run_steps(40);
+    settle(&mut harness);
     check(&harness);
     let settled = harness.state().source.started.len() - before;
     assert!(settled < 30, "the screen it lands on loads: {settled}");
 
     let loads = harness.state().source.started.len();
-    let started = std::time::Instant::now();
     harness.click_at(harness.get_by_label("Inline").rect());
     harness.run_steps(1);
-    let switch = started.elapsed();
     check(&harness);
     harness.run_steps(10);
     check(&harness);
     assert_eq!(harness.state().source.started.len(), loads, "the switch loads nothing");
-    println!(
-        "10k files side by side: per frame <= {} cards, {} rows; switching took {switch:?} (debug build)",
-        most.0, most.1
-    );
     assert!(most.0 < 30 && most.1 < 120, "per frame at most {} cards and {} rows", most.0, most.1);
 }
 
@@ -428,21 +353,11 @@ fn split_card_scrollbar_drags_at_the_visible_bottom() {
     let start = egui::pos2(right.left() + 12.0, harness.state().summary.screen.bottom() - 4.0);
     harness.hover_at(start);
     harness.step();
-    harness.event(egui::Event::PointerButton {
-        pos: start,
-        button: egui::PointerButton::Primary,
-        pressed: true,
-        modifiers: egui::Modifiers::NONE,
-    });
+    harness.event(press(start, true));
     harness.step();
     harness.hover_at(start + egui::vec2(60.0, 0.0));
     harness.step();
-    harness.event(egui::Event::PointerButton {
-        pos: start + egui::vec2(60.0, 0.0),
-        button: egui::PointerButton::Primary,
-        pressed: false,
-        modifiers: egui::Modifiers::NONE,
-    });
+    harness.event(press(start + egui::vec2(60.0, 0.0), false));
     settle(&mut harness);
     assert!(
         painted_code_x(&harness, right) < before - 40.0,

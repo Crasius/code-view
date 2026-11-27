@@ -6,22 +6,28 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use egui::Key;
+use egui::{Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
-use review_core::{FileCategory, ProviderKind, ReviewThread};
+use review_core::{FileCategory, ProviderKind, ReviewThread, ThreadAnchor};
 use review_git::{ChangeKind, ChangedFile, DiffOptions, FileDiff};
 use review_store::{AppSettings, DiffLayout, ThemePreference};
 
-use super::{DiffSource, FolderSummary, SummaryEvent, SummaryInputs};
+use super::{DiffSource, FolderSummary, MARGIN, SummaryEvent, SummaryInputs};
 use cv_base::theme;
+use cv_pr_diff::diff_view::DiffView;
+use cv_pr_diff::testing::thread_on_old_line;
 use cv_pr_rendered::preview::Loaded;
 use cv_pr_threads::ThreadsUi;
 use cv_runtime::background::Background;
 use cv_runtime::load::Load;
 use cv_shell::zoom::Zoom;
 use cv_syntax::color_worker::observe_repaints;
+use cv_syntax::highlight::LineSpans;
 use cv_testkit::WAIT_LIMIT;
 use cv_widgets::{focus, surfaces};
+
+/// The window most walkthroughs show the summary in.
+pub(super) const SIZE: [f32; 2] = [1180.0, 860.0];
 
 pub(super) fn file(path: &str, kind: ChangeKind, counts: Option<(u32, u32)>) -> ChangedFile {
     ChangedFile {
@@ -168,6 +174,10 @@ impl DiffSource for FakeSource {
         self.rendered.push(file.path.clone());
         let (old, new) = self.versions.clone().unwrap_or_else(|| markdown_versions(40));
         Some(Load::Ready(Arc::new(Loaded::markdown(Some(&old), Some(&new)))))
+    }
+
+    fn spans(&mut self, _: &ChangedFile) -> Option<Arc<LineSpans>> {
+        None
     }
 }
 
@@ -396,9 +406,64 @@ pub(super) fn key(harness: &mut Harness<'_, Scene>, key: Key) {
     harness.run_steps(2);
 }
 
-/// 10,000 files in 100 folders, a quarter each added and deleted, and one 20,000-line file.
+/// Scrolls the card of `path` to the top of the view, `below_top` points into it, and settles.
+pub(super) fn scroll_to_card(harness: &mut Harness<'_, Scene>, path: &str, below_top: f32) {
+    let card = card_of(harness.state(), path);
+    let top = harness.state().summary.index.top(card);
+    harness.state_mut().summary.scroll_to = Some(top + MARGIN + below_top);
+    settle(harness);
+}
+
+/// The diff view of the loaded card of `path`.
+pub(super) fn view_of<'a>(scene: &'a Scene, path: &str) -> &'a DiffView {
+    &scene.summary.bodies.get(path).expect("the card's diff is loaded").view
+}
+
+/// The row of the card of `path` showing head line `new_line` (old line `old_line` when there is
+/// no head line).
+pub(super) fn row_of(
+    scene: &Scene,
+    path: &str,
+    old_line: Option<u32>,
+    new_line: Option<u32>,
+) -> usize {
+    let body = scene.summary.bodies.get(path).expect("the card's diff is loaded");
+    body.view.row_of(&body.diff, old_line, new_line)
+}
+
+/// The primary button going down (`pressed`) or up at `pos`.
+pub(super) fn press(pos: Pos2, pressed: bool) -> Event {
+    Event::PointerButton {
+        pos,
+        button: PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::NONE,
+    }
+}
+
+/// The thread `id` saying `body` on the old line `old_line` or the head line `new_line` of `path`.
+pub(super) fn thread_at(
+    id: &str,
+    body: &str,
+    path: &str,
+    old_line: Option<u32>,
+    new_line: Option<u32>,
+) -> ReviewThread {
+    let mut thread = thread_on_old_line(0, body);
+    thread.id = id.into();
+    thread.anchor =
+        Some(ThreadAnchor { path: path.into(), old_path: None, old_line, new_line, range: None });
+    thread
+}
+
+/// The cards the last pass showed.
+pub(super) fn cards_shown(summary: &FolderSummary) -> usize {
+    summary.index.overlapping(summary.viewport.top(), summary.viewport.bottom()).len()
+}
+
+/// 10,000 files in 100 folders, a quarter each added and deleted.
 pub(super) fn ten_thousand_files() -> Vec<ChangedFile> {
-    let mut files: Vec<ChangedFile> = (0..10_000)
+    (0..10_000)
         .map(|index| {
             let kind = [
                 ChangeKind::Modified,
@@ -421,8 +486,5 @@ pub(super) fn ten_thousand_files() -> Vec<ChangedFile> {
                 Some(counts),
             )
         })
-        .collect();
-    files[3].additions = Some(20_000);
-    files[3].kind = ChangeKind::Added;
-    files
+        .collect()
 }

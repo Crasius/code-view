@@ -17,6 +17,16 @@ const TEXT_ASSET_EXTENSIONS: &[&str] = &["svg"];
 /// Changed lines per hunk, on average, for the estimate of how many hunks a change has.
 const LINES_PER_HUNK: u32 = 12;
 const MAX_ESTIMATED_HUNKS: u32 = 400;
+/// Height changes up to this are rounding, not a new layout.
+pub const HEIGHT_EPSILON: f32 = 0.5;
+
+/// Keeps `height` as the body height of the card of `path`; true when it is new or changed by more
+/// than [`HEIGHT_EPSILON`], so the index needs a rebuild.
+pub fn note_height(heights: &mut HashMap<String, f32>, path: &str, height: f32) -> bool {
+    heights
+        .insert(path.to_owned(), height)
+        .is_none_or(|previous| (previous - height).abs() > HEIGHT_EPSILON)
+}
 
 /// The fixed sizes of a card, from the code font's line height.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -284,17 +294,6 @@ mod tests {
             estimate(&svg, 3, false),
             Shape::Rows { lines: 12, separators: 0 },
             "an svg diffs as text"
-        );
-    }
-
-    #[test]
-    fn collapsed_cards_are_exactly_their_header() {
-        let geometry = Geometry::new(20.0);
-        let shape = Shape::Rows { lines: 10, separators: 2 };
-        assert_eq!(geometry.slot(shape, true), geometry.header + geometry.gap);
-        assert_eq!(
-            geometry.slot(shape, false),
-            geometry.header + 200.0 + 2.0 * geometry.separator + geometry.gap
         );
     }
 
