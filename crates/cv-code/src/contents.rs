@@ -347,7 +347,7 @@ fn start(
             }
             is_open
         };
-        color_worker::submit(move |_| highlight_sides(&loaded, &cancel, send));
+        color_worker::submit(move || highlight_sides(&loaded, &cancel, send));
     });
     receiver
 }
