@@ -12,7 +12,6 @@ use std::fmt::Write as _;
 use egui::{Key, Modifiers, Rect, Role, pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
 use super::github_mock::{ExtraFile, FILE, GitHubHost, open_pull_request};
@@ -74,20 +73,10 @@ fn app(name: &str) -> (ScratchDir, GitHubHost, Harness<'static, ReviewApp>) {
     (scratch, host, harness)
 }
 
-fn has(harness: &Harness<'_, ReviewApp>, label: &str) -> bool {
-    harness.query_by_label(label).is_some()
-}
-
 /// The system's focus mode key: F11, ⌃⌘F on macOS.
 fn toggle(harness: &mut Harness<'_, ReviewApp>) {
     let key = platform::FOCUS_MODE_KEY;
     harness.key_press_modifiers(key.modifiers, key.logical_key);
-}
-
-fn pump(harness: &mut Harness<'_, ReviewApp>, frames: usize) {
-    for _ in 0..frames {
-        harness.step();
-    }
 }
 
 fn rect_of(harness: &Harness<'_, ReviewApp>, role: Role, label: &str) -> Rect {
@@ -172,45 +161,25 @@ fn assert_stable(harness: &mut Harness<'_, ReviewApp>, labels: &[&str]) {
     }
 }
 
-fn saved(scratch: &ScratchDir) -> AppSettings {
-    AppSettings::load(
-        &AppPaths::new(scratch.path().join("config"), scratch.path().join("cache")).settings_file(),
-    )
-    .expect("saved settings")
-}
-
 #[test]
-#[expect(clippy::too_many_lines, reason = "one walkthrough scenario, told step by step")]
 fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
-    let (scratch, _host, mut harness) = app("focus-files");
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
-    wait_until(&mut harness, "the file tree", |harness| {
-        harness.query_by_role_and_label(Role::TreeItem, LONG_FILE).is_some()
-    });
-    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, LONG_FILE).rect());
-    wait_until(&mut harness, "the long diff", |harness| {
-        walkthrough::shows_file_view(harness, LONG_FILE)
-    });
+    let (_scratch, _host, mut harness) = app("focus-files");
+    walkthrough::files_tab(&mut harness);
+    walkthrough::open_in_tree(&mut harness, LONG_FILE);
+    walkthrough::wait_for_diff(&mut harness, LONG_FILE);
     // N steps through the changes: the diff scrolls well into the file.
     for _ in 0..20 {
         harness.key_press(Key::N);
         harness.step();
     }
-    pump(&mut harness, 10);
+    harness.run_steps(10);
     assert_eq!(chrome_visible(&harness), [true; 4], "the page shows its chrome");
     let before = top_line(&harness, Surface::Files);
     assert!(before.0 > 50, "the diff scrolled into the file: {before:?}");
 
     // F11: the diff takes the window; the line at the top stays.
     toggle(&mut harness);
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [false; 4], "title bar, rail, tabs and header leave");
     assert_eq!(top_line(&harness, Surface::Files), before, "the top line stays exactly in place");
     assert_strip(&harness, 1440.0, EXIT_HINT);
@@ -221,7 +190,7 @@ fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
     // The header had no room for the change counter beside the tree; the strip has. N, one of
     // the diff's keys, names the change it steps to there.
     harness.key_press(Key::N);
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     let change = change_in_focus(&harness);
     assert!(change > 10, "the counter names the change in focus: {change}");
     let position = format!("{change} of 75");
@@ -232,21 +201,24 @@ fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
 
     // The diff's keys keep working.
     harness.key_press(Key::N);
-    pump(&mut harness, 3);
-    assert!(has(&harness, &format!("{} of 75", change + 1)), "N steps to the next change");
+    harness.run_steps(3);
+    assert!(
+        walkthrough::shows(&harness, &format!("{} of 75", change + 1)),
+        "N steps to the next change"
+    );
     let in_focus = top_line(&harness, Surface::Files);
     harness.key_press_modifiers(Modifiers::ALT, Key::V);
-    pump(&mut harness, 3);
-    assert!(has(&harness, UNMARK_VIEWED), "Alt+V marks the file viewed");
+    harness.run_steps(3);
+    assert!(walkthrough::shows(&harness, UNMARK_VIEWED), "Alt+V marks the file viewed");
 
     // Ctrl+B shows the file tree and remembers it; the diff narrows without losing its line.
     harness.key_press_modifiers(Modifiers::COMMAND, Key::B);
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert!(
         harness.query_by_role_and_label(Role::TreeItem, LONG_FILE).is_some(),
         "Ctrl+B shows the tree"
     );
-    assert!(saved(&scratch).focus_file_tree, "the choice is saved");
+    assert!(walkthrough::saved_settings(&harness).focus_file_tree, "the choice is saved");
     assert_eq!(top_line(&harness, Surface::Files), in_focus);
     let tree_row = harness.get_by_role_and_label(Role::TreeItem, LONG_FILE).rect();
     // On the left by default; tree_side_walkthrough moves it right.
@@ -254,38 +226,38 @@ fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
     let switch = harness.get_by_label_contains("Hide the file tree").rect();
     assert!(switch.right() < 360.0, "its switch sits at the strip's left end: {switch:?}");
     harness.key_press_modifiers(Modifiers::COMMAND, Key::B);
-    pump(&mut harness, 3);
-    assert!(!saved(&scratch).focus_file_tree);
+    harness.run_steps(3);
+    assert!(!walkthrough::saved_settings(&harness).focus_file_tree);
 
     // Esc gives the window back, with the line still on top.
     harness.key_press(Key::Escape);
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [true; 4], "Esc brings the chrome back");
     assert_eq!(top_line(&harness, Surface::Files), in_focus, "and the top line stays");
 
     // The toolbar's focus button and the strip's exit button.
     harness.click_at(harness.get_by_label(ENTER_HINT).rect());
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [false; 4], "the toolbar button enters focus mode");
     assert_eq!(top_line(&harness, Surface::Files), in_focus);
     harness.click_at(harness.get_by_label(EXIT_HINT).rect());
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [true; 4], "the strip's button leaves it");
 
     // The Ctrl+K search offers the command; Ctrl+K in focus mode brings the search back.
     harness.key_press_modifiers(Modifiers::COMMAND, Key::K);
     harness.event(egui::Event::Text("focus".to_owned()));
-    pump(&mut harness, 3);
-    assert!(has(&harness, "Toggle focus mode"), "the search offers the command");
+    harness.run_steps(3);
+    assert!(walkthrough::shows(&harness, "Toggle focus mode"), "the search offers the command");
     harness.key_press(Key::Enter);
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [false; 4], "the command enters focus mode");
     harness.key_press_modifiers(Modifiers::COMMAND, Key::K);
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [true; 4], "Ctrl+K leaves focus mode");
     assert!(harness.ctx.text_edit_focused(), "with the search box taking the keys");
     harness.key_press(Key::Escape);
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [true; 4], "Esc closes the search, nothing else");
 }
 
@@ -308,7 +280,7 @@ fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
             })
             .rect(),
     );
-    wait_until(&mut harness, "the log", |harness| has(harness, "Copy log"));
+    wait_until(&mut harness, "the log", |harness| walkthrough::shows(harness, "Copy log"));
     // A search scrolls well into the log.
     let search = harness
         .query_all_by_role(Role::TextInput)
@@ -317,8 +289,8 @@ fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
     harness.click_at(search.rect());
     harness.event(egui::Event::Text("step 1800:".to_owned()));
     harness.key_press(Key::Enter);
-    wait_until(&mut harness, "the match", |harness| has(harness, "1 / 1"));
-    pump(&mut harness, 5);
+    wait_until(&mut harness, "the match", |harness| walkthrough::shows(harness, "1 / 1"));
+    harness.run_steps(5);
     // A rerun the host refuses: its failure shows above the log with its ways out.
     harness.click_at(
         harness
@@ -331,7 +303,7 @@ fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
     wait_until(&mut harness, "the refused rerun", |harness| {
         harness.query_by_label_contains(RERUN_REFUSED).is_some()
     });
-    pump(&mut harness, 5);
+    harness.run_steps(5);
     let before = top_line(&harness, Surface::Log);
     assert!(before.0 > 1000, "the log scrolled to the match: {before:?}");
     assert!(
@@ -341,7 +313,7 @@ fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
 
     // F11 while the search box has the keys: the log takes the window, the search stays.
     toggle(&mut harness);
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [false; 4], "title bar, rail, tabs and header leave");
     assert!(
         harness.query_by_label("Stages").is_none(),
@@ -355,10 +327,13 @@ fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
         "the search box fits the strip: {field:?}"
     );
     assert!(
-        has(&harness, "1 / 1") && has(&harness, COPY_LOG),
+        walkthrough::shows(&harness, "1 / 1") && walkthrough::shows(&harness, COPY_LOG),
         "search and copy moved into the strip"
     );
-    assert!(has(&harness, JOB) && has(&harness, "Failed"), "the strip names the job and its state");
+    assert!(
+        walkthrough::shows(&harness, JOB) && walkthrough::shows(&harness, "Failed"),
+        "the strip names the job and its state"
+    );
     let bar = rect_of(&harness, Role::Toolbar, strip::LABEL);
     let switcher = harness.get_by_label_contains(SWITCH_ATTEMPT).rect();
     assert!(bar.contains_rect(switcher), "the attempt switcher moved into the strip: {switcher:?}");
@@ -373,29 +348,29 @@ fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
     assert!(dismiss.right() <= 1440.0 && failure.left() > 720.0, "at the right end: {failure:?}");
     assert_stable(&mut harness, &[EXIT_HINT, NEXT_MATCH, COPY_LOG, "Close", SWITCH_ATTEMPT]);
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Dismiss").rect());
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert!(harness.query_by_label_contains(RERUN_REFUSED).is_none(), "Dismiss closes it");
     assert_eq!(top_line(&harness, Surface::Log), before, "the log did not move under it");
     harness.click_at(harness.get_by_role(Role::TextInput).rect());
-    pump(&mut harness, 2);
+    harness.run_steps(2);
 
     // The first Esc only takes the keys from the search box; the next one leaves focus mode.
     harness.key_press(Key::Escape);
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [false; 4], "Esc in the search box stays in focus mode");
     harness.key_press(Key::Escape);
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [true; 4], "the next Esc gives the window back");
-    assert!(has(&harness, "Stages"), "the log page is back as it was");
+    assert!(walkthrough::shows(&harness, "Stages"), "the log page is back as it was");
     assert_eq!(top_line(&harness, Surface::Log), before, "and the top line stays");
 
     // The log toolbar's focus button.
     harness.click_at(harness.get_by_label(ENTER_HINT).rect());
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [false; 4]);
     assert_eq!(top_line(&harness, Surface::Log), before);
     harness.click_at(harness.get_by_label(EXIT_HINT).rect());
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [true; 4]);
 }
 
@@ -415,23 +390,13 @@ fn focus_mode_folds_the_original_versions_banner_into_its_strip() {
     let mut harness = walkthrough::app(&scratch, &[host.connection("gh", "Acme")]);
     harness.state_mut().title_bar.integrate_for_test();
     open_pull_request(&mut harness);
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
-    wait_until(&mut harness, "the file tree", |harness| {
-        harness.query_by_role_and_label(Role::TreeItem, FILE).is_some()
-    });
-    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, FILE).rect());
+    walkthrough::files_tab(&mut harness);
+    walkthrough::open_in_tree(&mut harness, FILE);
     open_origin(&mut harness, &banner);
 
     // F11: the banner's words, Back to latest and Open on GitHub move into the strip.
     toggle(&mut harness);
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [false; 4], "title bar, rail, tabs and header leave");
     assert_strip(&harness, 1440.0, EXIT_HINT);
     let bar = rect_of(&harness, Role::Toolbar, strip::LABEL);
@@ -453,16 +418,16 @@ fn focus_mode_folds_the_original_versions_banner_into_its_strip() {
 
     // Esc goes back to the latest version first; focus mode stays.
     harness.key_press(Key::Escape);
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert!(harness.query_by_label_contains(&banner).is_none(), "Esc left the original version");
     assert_eq!(chrome_visible(&harness), [false; 4], "and stayed in focus mode");
-    assert!(has(&harness, "Next change (N or F7)"), "the file's own strip is back");
+    assert!(walkthrough::shows(&harness, "Next change (N or F7)"), "the file's own strip is back");
 
     // Back to latest in the strip does the same.
     open_origin(&mut harness, &banner);
     assert_eq!(chrome_visible(&harness), [false; 4]);
     harness.click_at(harness.get_by_role_and_label(Role::Button, BACK_LABEL).rect());
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert!(
         harness.query_by_label_contains(&banner).is_none(),
         "Back to latest left the original version"
@@ -471,7 +436,7 @@ fn focus_mode_folds_the_original_versions_banner_into_its_strip() {
 
     // The next Esc leaves focus mode.
     harness.key_press(Key::Escape);
-    pump(&mut harness, 3);
+    harness.run_steps(3);
     assert_eq!(chrome_visible(&harness), [true; 4], "the second Esc gives the window back");
 }
 
@@ -492,5 +457,5 @@ fn open_origin(harness: &mut Harness<'_, ReviewApp>, banner: &str) {
     wait_until(harness, "the original version", |harness| {
         harness.query_by_label_contains(banner).is_some()
     });
-    pump(harness, 5);
+    harness.run_steps(5);
 }

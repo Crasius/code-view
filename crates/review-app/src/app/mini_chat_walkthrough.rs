@@ -19,7 +19,9 @@ use review_agent::{AgentEvent, AgentKind, FakeAgent, ModelInfo, Usage};
 
 use super::ReviewApp;
 use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
-use super::walkthrough::{app, shows_file_view, type_into, wait_for, wait_for_link, wait_until};
+use super::walkthrough::{
+    app, click_now, shows_file_view, type_into, wait_for, wait_for_link, wait_until,
+};
 use cv_code::diff_paint::flashed_lines;
 use cv_pr_assistant::mini::{
     self, ANSWERING, CARD_LABEL, FOLLOW_UP, NEXT, OPEN, OPEN_AT_HEAD, PREVIOUS, SHRINK, SKIP_NEXT,
@@ -103,7 +105,7 @@ fn mini_chat_keeps_the_answer_beside_the_code() {
 /// tab's content, which is returned.
 fn open_from_the_citation(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
     let center = harness.get_by_label(FIRST).rect().center();
-    primary_click(harness, center);
+    click_now(harness, center);
     wait_until(harness, "the cited file with the mini chat", |harness| {
         shows_file_view(harness, "src/lib.rs") && has_card(harness)
     });
@@ -234,7 +236,7 @@ fn mini_chat_off_leaves_the_citation_as_it_was() {
     harness.key_press(Key::Escape);
     harness.run_steps(4);
     let center = harness.get_by_label(FIRST).rect().center();
-    primary_click(&mut harness, center);
+    click_now(&mut harness, center);
     wait_until(&mut harness, "the cited file", |harness| shows_file_view(harness, "src/lib.rs"));
     harness.run_steps(4);
     assert!(!has_card(&harness) && mini::drawn(&harness.ctx).is_none(), "no mini chat");
@@ -303,9 +305,4 @@ fn answer(agent: &FakeAgent, text: &str) {
     agent.emit(AgentEvent::Started { session_id: "s-1".into(), model: "claude-haiku".into() });
     agent.emit(AgentEvent::Text(text.to_owned()));
     agent.emit(AgentEvent::TurnDone(Usage::default()));
-}
-
-pub(super) fn primary_click(harness: &mut Harness<'_, ReviewApp>, position: Pos2) {
-    harness.click_point(position, PointerButton::Primary);
-    harness.step();
 }

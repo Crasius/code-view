@@ -15,8 +15,8 @@ use super::github_mock::{
     open_pull_request,
 };
 use super::walkthrough::{
-    app, press, press_button, secondary_click, settle_background, shows_file_view,
-    shows_folder_view, type_into, wait_until, wait_until_found,
+    app, files_tab, hover_until_add_comment, press, press_button, secondary_click,
+    settle_background, shows_file_view, shows_folder_view, type_into, wait_until, wait_until_found,
 };
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -29,18 +29,8 @@ fn action_line_comment_via_hover_button() {
     open_pull_request(&mut harness);
     let diff = open_diff(&mut harness);
 
-    // The "+" only exists while a line is hovered; move down the right (head) pane until it shows.
-    let x = diff.left() + diff.width() * 0.75;
-    let mut y = diff.top() + 2.0;
-    while harness.query_by_label("Add comment").is_none() {
-        assert!(
-            y < diff.top() + 120.0,
-            "no comment button appeared while hovering the first lines"
-        );
-        harness.hover_at(pos2(x, y));
-        harness.step();
-        y += 3.0;
-    }
+    // Down the right (head) pane.
+    hover_until_add_comment(&mut harness, diff, &[0.75]);
     harness.click_at(harness.get_by_label("Add comment").rect());
     wait_until(&mut harness, "the comment composer", |harness| {
         harness.query_by_label("Comment on line 1").is_some()
@@ -305,17 +295,6 @@ fn with_first_file(scratch: &ScratchDir) -> GitHubHost {
         head: b"pub fn first() -> u32 {\n    1\n}\n".to_vec(),
     };
     GitHubHost::with_pull_request_files(scratch.path(), &[first])
-}
-
-fn files_tab(harness: &mut Harness<'_, ReviewApp>) {
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
 }
 
 /// With "First file" chosen, the Files tab opens on the first file of the tree straight away: the

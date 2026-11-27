@@ -21,7 +21,7 @@ use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
 use super::navigation_walkthrough::{Fixture, create_origin};
-use super::walkthrough::wait_until;
+use super::walkthrough::{files_tab, has, opened_urls, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
@@ -193,14 +193,7 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
     assert!(has(harness, "Right-click for more links"), "the mark's tooltip");
 
     // On the Files tab the menu also offers the shown file.
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(harness);
     // The tab opens on the summary of the changed files;
     // the card's View opens the file.
     wait_until(harness, "the changed files", |harness| has(harness, "README.md"));
@@ -232,19 +225,6 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
     settle(harness);
 }
 
-fn opened_urls(harness: &Harness<'_, ReviewApp>) -> Vec<String> {
-    harness
-        .output()
-        .platform_output
-        .commands
-        .iter()
-        .filter_map(|command| match command {
-            egui::OutputCommand::OpenUrl(open) => Some(open.url.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
 fn title(kind: ProviderKind, number: u64) -> String {
     format!("{} change {number}", kind.label())
 }
@@ -253,10 +233,6 @@ fn isolated_paths() -> AppPaths {
     let root = std::env::temp_dir().join(format!("review-provider-icons-{}", std::process::id()));
     cv_testkit::remove_dir(&root);
     AppPaths::new(root.join("config"), root.join("cache"))
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

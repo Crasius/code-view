@@ -12,7 +12,7 @@
 use std::fmt::Write as _;
 use std::path::Path;
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use async_trait::async_trait;
 use egui::{Modifiers, Role, Vec2, vec2};
@@ -30,7 +30,9 @@ use review_store::{AppPaths, ConnectionStore};
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use super::walkthrough::{settle_background, shows_file_view, wait_until};
+use super::walkthrough::{
+    files_tab, has, pump, settle_background, shows_file_view, tab_rect, wait_until, wheel,
+};
 use super::{ReviewApp, clip_check};
 use cv_base::platform::FOCUS_MODE_KEY;
 use cv_pr_diff::find::bar::last_bar as last_find_bar;
@@ -194,13 +196,7 @@ impl Audit {
         // Over the main column, below the header.
         harness.hover_at(egui::pos2(BASE_SIZE.x * 0.35, BASE_SIZE.y * 0.6));
         for _ in 0..12 {
-            harness.event(egui::Event::MouseWheel {
-                unit: egui::MouseWheelUnit::Point,
-                delta: vec2(0.0, -400.0),
-                phase: egui::TouchPhase::Move,
-                modifiers: Modifiers::NONE,
-                source: egui::MouseWheelSource::Wheel,
-            });
+            harness.event(wheel(-400.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
             harness.step();
         }
         settle(harness);
@@ -215,7 +211,7 @@ impl Audit {
 
     fn walk_files(&mut self) {
         let harness = &mut self.harness;
-        harness.click_at(tab(harness, "Files"));
+        files_tab(harness);
         wait_until(harness, "the file tree", |harness| {
             harness.query_by_label("File categories").is_some()
         });
@@ -283,7 +279,7 @@ impl Audit {
             self.check(state);
         }
         let harness = &mut self.harness;
-        harness.click_at(tab(harness, "Commits"));
+        harness.click_at(tab_rect(harness, "Commits").expect("the Commits tab"));
         wait_until(harness, "the commits", |harness| has(harness, "Keep the composition keyed"));
         self.check("16-commits");
     }
@@ -388,14 +384,9 @@ impl Audit {
         let harness = &mut self.harness;
         open(harness, CONNECTION, SLOW_REPOSITORY);
         wait_until(harness, "the slow pull request", |harness| {
-            harness
-                .query_by(|node| {
-                    node.role() == Role::Tab
-                        && node.label().is_some_and(|label| label.starts_with("Files"))
-                })
-                .is_some()
+            tab_rect(harness, "Files").is_some()
         });
-        harness.click_at(tab(harness, "Files"));
+        files_tab(harness);
         pump(harness, 2.0);
         self.check("26-files-preparing");
         let harness = &mut self.harness;
@@ -429,10 +420,6 @@ fn resize(harness: &mut Harness<'_, ReviewApp>, size: Vec2, pixels_per_point: f3
         harness.step();
     }
     harness.set_size(size);
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
 }
 
 /// The file tree's row whose path ends with `name`.
@@ -508,15 +495,6 @@ fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {
     harness.run_steps(12);
-}
-
-/// Advances simulated time; each frame gives background work a moment of real time.
-fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
-    let end = harness.ctx.input(|input| input.time) + seconds;
-    while harness.ctx.input(|input| input.time) < end {
-        harness.step();
-        cv_testkit::let_threads_run(Duration::from_millis(2));
-    }
 }
 
 fn write(root: &Path, path: &str, bytes: &[u8]) {
@@ -1339,13 +1317,4 @@ impl Provider for ScriptedProvider {
     ) -> Result<()> {
         Ok(())
     }
-}
-
-/// The pull request tab whose label starts with `name` ("Files (12)").
-fn tab(harness: &Harness<'_, ReviewApp>, name: &str) -> egui::Rect {
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with(name))
-        })
-        .rect()
 }

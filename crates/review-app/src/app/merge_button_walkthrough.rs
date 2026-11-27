@@ -13,7 +13,6 @@ mod auto_complete;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
-use std::time::Duration;
 
 use async_trait::async_trait;
 use egui::Role;
@@ -25,11 +24,11 @@ use review_core::{
     ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestState, PullRequestSummary,
     RepositoryInfo, Result, ReviewThread, ReviewVote, ThreadComment, ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, AppSettings, ConnectionStore};
+use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::walkthrough::wait_until;
+use super::walkthrough::{has, opened_urls, press, pump, saved_settings, set_focus, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
@@ -57,7 +56,7 @@ static CALLS: LazyLock<Mutex<HashMap<String, Arc<Calls>>>> =
 
 #[test]
 fn merge_button_confirms_in_place_and_remembers_the_choice() {
-    let (mut harness, paths, calls) = start("confirm");
+    let (mut harness, _, calls) = start("confirm");
     open(&mut harness, "confirm", 1);
     wait_until(&mut harness, "the preselected default", |harness| button(harness, "Squash merge"));
     assert!(
@@ -123,7 +122,7 @@ fn merge_button_confirms_in_place_and_remembers_the_choice() {
     assert_eq!(merged.strategy, MergeStrategy::Merge);
     assert_eq!(merged.commit_message.as_deref(), Some("Merged PR 1: Speed up login"));
     assert!(merged.delete_source_branch);
-    let saved = AppSettings::load(&paths.settings_file()).expect("saved settings");
+    let saved = saved_settings(&harness);
     assert_eq!(
         saved.merge.last_used("confirm", REPOSITORY),
         Some(MergeStrategy::Merge),
@@ -145,7 +144,7 @@ fn merge_button_confirms_in_place_and_remembers_the_choice() {
     press(&mut harness, "Click again to merge");
     wait_until(&mut harness, "the second merge", |_| calls.merges.lock().unwrap().len() == 2);
     assert!(!calls.merges.lock().unwrap()[1].delete_source_branch, "the unticked box is sent");
-    let saved = AppSettings::load(&paths.settings_file()).expect("saved settings");
+    let saved = saved_settings(&harness);
     assert_eq!(saved.merge.delete_source_branch("confirm", REPOSITORY), Some(false));
 }
 
@@ -272,47 +271,6 @@ fn radio(harness: &Harness<'_, ReviewApp>, label: &str, is_checked: bool) -> boo
         let toggled = node.accesskit_node().toggled() == Some(egui::accesskit::Toggled::True);
         toggled == is_checked
     })
-}
-
-/// Moves the pointer onto the labelled widget first, as a mouse does, then clicks it.
-fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    harness.get_by_label(label).hover();
-    harness.step();
-    harness.click_at(harness.get_by_label(label).rect());
-    harness.run_steps(4);
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
-}
-
-fn opened_urls(harness: &Harness<'_, ReviewApp>) -> Vec<String> {
-    harness
-        .output()
-        .platform_output
-        .commands
-        .iter()
-        .filter_map(|command| match command {
-            egui::OutputCommand::OpenUrl(open) => Some(open.url.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
-fn set_focus(harness: &mut Harness<'_, ReviewApp>, is_focused: bool) {
-    let viewport = harness.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default();
-    viewport.focused = Some(is_focused);
-    harness.input_mut().focused = is_focused;
-    harness.step();
-}
-
-/// Advances simulated time; each frame also gives background work a moment of real time.
-fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
-    let end = harness.ctx.input(|input| input.time) + seconds;
-    while harness.ctx.input(|input| input.time) < end {
-        harness.step();
-        cv_testkit::let_threads_run(Duration::from_millis(2));
-    }
 }
 
 fn web_url(number: u64) -> String {

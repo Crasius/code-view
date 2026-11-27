@@ -10,7 +10,7 @@ use review_store::{AppPaths, AppSettings, LastPlace, LastTab, PullRequestStart, 
 
 use super::ReviewApp;
 use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
-use super::walkthrough::{app, shows_file_view, shows_folder_view, wait_until};
+use super::walkthrough::{app, files_tab, shows_file_view, shows_folder_view, wait_until};
 use cv_runtime::route::{PullRequestTab, Route};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -101,14 +101,7 @@ fn open_resume_files_option_and_the_place_left_survive_a_restart() {
     let mut harness = app(&scratch, std::slice::from_ref(&connection));
     open_pull_request(&mut harness);
     assert_eq!(tab(&harness), Some(PullRequestTab::Overview), "the tab left on");
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(&mut harness);
     wait_until(&mut harness, "the file left open", |harness| shows_file_view(harness, LAST));
     assert!(!shows_file_view(&harness, FIRST));
 }

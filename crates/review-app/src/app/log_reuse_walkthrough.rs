@@ -20,7 +20,7 @@ use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::ReviewApp;
-use super::walkthrough::wait_until;
+use super::walkthrough::{has, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
@@ -168,10 +168,6 @@ fn count_whole(dir: &Path) -> usize {
             .filter(|entry| entry.file_name().to_string_lossy().ends_with(".whole.log"))
             .count()
     })
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_by_label_contains(text).is_some()
 }
 
 fn person(id: &str, name: &str, login: &str) -> UserIdentity {

@@ -15,7 +15,7 @@ use super::ReviewApp;
 use super::github_mock::GitHubHost;
 use super::provider_icons_walkthrough::scripted_provider;
 use super::tree_side_walkthrough as tree_side;
-use super::walkthrough::{app, wait_until};
+use super::walkthrough::{app, has, saved_settings, wait_until};
 use cv_runtime::route::Route;
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
@@ -182,7 +182,7 @@ fn settings_walkthrough_file_tree_side_moves_the_tree() {
     settle(&mut harness);
     harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "Right").rect());
     settle(&mut harness);
-    assert_eq!(tree_side::saved(&scratch).file_tree_side, TreeSide::Right, "Right is saved");
+    assert_eq!(saved_settings(&harness).file_tree_side, TreeSide::Right, "Right is saved");
 
     harness.key_press_modifiers(Modifiers::ALT, Key::ArrowLeft);
     wait_until(&mut harness, "the pull request list", |harness| {
@@ -240,10 +240,6 @@ fn assert_only(harness: &Harness<'_, ReviewApp>, shown: &str) {
 fn open(harness: &mut Harness<'_, ReviewApp>, title: &str) {
     harness.click_at(harness.get_by_role_and_label(Role::Tab, title).rect());
     settle(harness);
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
 }
 
 fn harness(paths: AppPaths, width: f32) -> Harness<'static, ReviewApp> {

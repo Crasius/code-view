@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
-use super::walkthrough::wait_until_unsettled;
+use super::walkthrough::{has, press, pump, saved_settings, wait_until_unsettled};
 use cv_lists::pull_request_list::{GROUP_BY_REPOSITORY, LIST_INTERVAL, SEARCH_TOOLTIP};
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
@@ -132,7 +132,7 @@ fn overview_collapsed_group_is_remembered_and_loads_nothing_until_expanded() {
         "a collapsed header keeps its count"
     );
     assert!(!has(&harness, "Change 2"), "the rows are gone once closed");
-    let saved = AppSettings::load(&paths.settings_file()).expect("saved settings");
+    let saved = saved_settings(&harness);
     assert!(saved.collapsed_connections.contains("collapse"), "the choice is saved at once");
     drop(harness);
 
@@ -158,12 +158,7 @@ fn overview_collapsed_group_is_remembered_and_loads_nothing_until_expanded() {
     wait_until_unsettled(&mut harness, "the refresh after expanding", |_| {
         host.count(LISTING) == listings + 1
     });
-    assert!(
-        !AppSettings::load(&paths.settings_file())
-            .expect("saved settings")
-            .collapsed_connections
-            .contains("collapse")
-    );
+    assert!(!saved_settings(&harness).collapsed_connections.contains("collapse"));
 }
 
 /// The overview groups its rows under a header per repository by default. The header closes its
@@ -177,7 +172,6 @@ fn overview_groups_rows_by_repository_and_saves_the_choices() {
     let mut harness = start_app(&paths);
     wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 2"));
     let section = |state: &str| format!("{PROJECT}, 2 pull requests, {state}");
-    let saved = || AppSettings::load(&paths.settings_file()).expect("saved settings");
 
     press(&mut harness, &section("expanded"));
     assert!(has(&harness, &section("collapsed")), "a closed section keeps its header and count");
@@ -189,16 +183,22 @@ fn overview_groups_rows_by_repository_and_saves_the_choices() {
             PROJECT,
         )
     };
-    assert!(closed(&saved()), "the closed section is saved at once");
+    assert!(closed(&saved_settings(&harness)), "the closed section is saved at once");
     press(&mut harness, &section("collapsed"));
-    assert!(has(&harness, "Change 2") && !closed(&saved()), "and opens again");
+    assert!(has(&harness, "Change 2") && !closed(&saved_settings(&harness)), "and opens again");
 
     press(&mut harness, GROUP_BY_REPOSITORY);
     assert!(!has(&harness, &section("expanded")), "without grouping no section headers");
     assert!(has(&harness, "Change 2"), "the rows stay");
-    assert!(!saved().repository_sections.is_grouped, "the choice is saved at once");
+    assert!(
+        !saved_settings(&harness).repository_sections.is_grouped,
+        "the choice is saved at once"
+    );
     press(&mut harness, GROUP_BY_REPOSITORY);
-    assert!(has(&harness, &section("expanded")) && saved().repository_sections.is_grouped);
+    assert!(
+        has(&harness, &section("expanded"))
+            && saved_settings(&harness).repository_sections.is_grouped
+    );
 }
 
 /// The overview's side column keeps the same right edge whether the page overflows (scroll bar
@@ -506,15 +506,6 @@ fn open_side_column(harness: &mut Harness<'_, ReviewApp>, connection_id: &str) {
     pump(harness, 1.0);
 }
 
-/// Moves the pointer onto the labelled widget first, as a mouse does, then clicks it.
-fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    harness.get_by_label(label).hover();
-    harness.step();
-    harness.click_at(harness.get_by_label(label).rect());
-    // The accessibility tree trails the click by a frame; settle before looking again.
-    harness.run_steps(4);
-}
-
 /// The label of the pull request tab shown, without its count.
 fn selected_tab(harness: &Harness<'_, ReviewApp>) -> String {
     let tab = harness
@@ -698,19 +689,6 @@ fn open(harness: &mut Harness<'_, ReviewApp>, number: u64) {
 fn go(harness: &mut Harness<'_, ReviewApp>, route: Route) {
     harness.state_mut().navigator.go(route);
     harness.step();
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
-}
-
-/// Advances simulated time; each frame also gives background work a moment of real time.
-fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
-    let end = harness.ctx.input(|input| input.time) + seconds;
-    while harness.ctx.input(|input| input.time) < end {
-        harness.step();
-        cv_testkit::let_threads_run(Duration::from_millis(2));
-    }
 }
 
 /// The key of pull request `number` of the mock project.

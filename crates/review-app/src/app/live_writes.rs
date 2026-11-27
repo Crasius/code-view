@@ -31,6 +31,7 @@ use serde_json::{Value, json};
 
 use self::hosts::{FILE, Released, State, TestPullRequest};
 use super::ReviewApp;
+use super::walkthrough::{files_tab, has, hover_until_add_comment, set_focus, wheel};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -146,14 +147,7 @@ fn released_paths(scratch: &ScratchDir, released: &Released) -> AppPaths {
 
 /// Opens [`FILE`] in the Files tab and comments on one of its lines.
 fn comment_on_a_line(harness: &mut Harness<'_, ReviewApp>) {
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(harness);
     wait_until(harness, "the file tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, FILE).is_some()
     });
@@ -164,18 +158,7 @@ fn comment_on_a_line(harness: &mut Harness<'_, ReviewApp>) {
     });
     settle(harness, Duration::from_millis(500));
     let diff = harness.query_all_by_label_contains(&diff_label).next().expect("the diff").rect();
-    // The "+" shows only while a line is hovered.
-    'search: for x in [0.5, 0.75, 0.25] {
-        let mut y = diff.top() + 2.0;
-        while y < diff.top() + 160.0 {
-            harness.hover_at(egui::pos2(diff.left() + diff.width() * x, y));
-            harness.step();
-            if harness.query_by_label("Add comment").is_some() {
-                break 'search;
-            }
-            y += 3.0;
-        }
-    }
+    hover_until_add_comment(harness, diff, &[0.5, 0.75, 0.25]);
     harness.click_at(harness.get_by_label("Add comment").rect());
     wait_until(harness, "the line composer", |harness| {
         harness.query_by_label_contains("Comment on line").is_some()
@@ -336,7 +319,7 @@ fn merge_guard_then_merge(harness: &mut Harness<'_, ReviewApp>, pull_request: &T
     let commits_before = commits_tab(harness);
     show_header(harness);
     wait_until(harness, "the merge button", |harness| merge_button(harness).is_some());
-    set_window_focus(harness, false);
+    set_focus(harness, false);
     pull_request.push_commit();
     merge(harness);
     wait_until(harness, "the merge's answer", |harness| {
@@ -349,7 +332,7 @@ fn merge_guard_then_merge(harness: &mut Harness<'_, ReviewApp>, pull_request: &T
     );
     assert_eq!(state, State::Open, "the guarded merge merged nothing");
     assert_eq!(commits_tab(harness), commits_before, "the page still shows the reviewed head");
-    set_window_focus(harness, true);
+    set_focus(harness, true);
     let reload = harness.get_by_role_and_label(Role::Button, "Reload").rect();
     click(harness, reload);
     wait_until(harness, "the pushed commit", |harness| commits_tab(harness) != commits_before);
@@ -395,23 +378,10 @@ fn show_header(harness: &mut Harness<'_, ReviewApp>) {
     harness.hover_at(egui::pos2(500.0, window.center().y));
     harness.step();
     for _ in 0..10 {
-        harness.event(egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Point,
-            delta: egui::vec2(0.0, 4000.0),
-            phase: egui::TouchPhase::Move,
-            modifiers: egui::Modifiers::NONE,
-            source: egui::MouseWheelSource::Wheel,
-        });
+        harness.event(wheel(4000.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
         harness.step();
     }
     settle(harness, Duration::from_secs(1));
-}
-
-fn set_window_focus(harness: &mut Harness<'_, ReviewApp>, is_focused: bool) {
-    harness.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().focused =
-        Some(is_focused);
-    harness.input_mut().focused = is_focused;
-    harness.step();
 }
 
 fn tab(harness: &mut Harness<'_, ReviewApp>, label: &str) {
@@ -433,13 +403,7 @@ fn reveal(harness: &mut Harness<'_, ReviewApp>, text: &str) -> Rect {
         harness.step();
         let delta =
             if shown.is_some_and(|body| body.top() < window.top() + 80.0) { 120.0 } else { -120.0 };
-        harness.event(egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Point,
-            delta: egui::vec2(0.0, delta),
-            phase: egui::TouchPhase::Move,
-            modifiers: egui::Modifiers::NONE,
-            source: egui::MouseWheelSource::Wheel,
-        });
+        harness.event(wheel(delta, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
         for _ in 0..3 {
             harness.step();
         }
@@ -511,10 +475,6 @@ fn type_into(harness: &mut Harness<'_, ReviewApp>, placeholder: &'static str, te
 fn hinted<'h>(harness: &'h Harness<'_, ReviewApp>, placeholder: &'static str) -> Option<Node<'h>> {
     harness
         .query_by(move |node| node.placeholder().is_some_and(|hint| hint.starts_with(placeholder)))
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
 }
 
 fn wait_for_toast(harness: &mut Harness<'_, ReviewApp>, text: &str) {

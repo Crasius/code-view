@@ -1428,9 +1428,7 @@ fn an_unfocused_overview_holds_its_skeletons_still() {
     wait_until_unsettled(&mut harness, "the merge request list", |harness| {
         has(harness, "Change 30")
     });
-    if let Some(viewport) = harness.input_mut().viewports.get_mut(&egui::ViewportId::ROOT) {
-        viewport.focused = Some(false);
-    }
+    walkthrough::set_focus(&mut harness, false);
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(IDLE_MERGE_REQUEST)));
     wait_until_unsettled(&mut harness, "the overview", |harness| {
         has(harness, &title(IDLE_MERGE_REQUEST))

@@ -12,7 +12,7 @@ use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, open_pull_request};
-use super::walkthrough::{app, wait_idle, wait_until};
+use super::walkthrough::{app, pump, set_focus, wait_idle, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::ScratchDir;
 
@@ -107,28 +107,6 @@ fn click_as_first_active_frame(harness: &mut Harness<'_, ReviewApp>, role: Role,
     };
     harness.event(button(true));
     harness.step();
-    focus_input(harness, true);
     harness.event(button(false));
-    harness.step();
-}
-
-fn set_focus(harness: &mut Harness<'_, ReviewApp>, is_focused: bool) {
-    focus_input(harness, is_focused);
-    harness.step();
-}
-
-fn focus_input(harness: &mut Harness<'_, ReviewApp>, is_focused: bool) {
-    harness.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().focused =
-        Some(is_focused);
-    harness.input_mut().focused = is_focused;
-}
-
-/// Advances simulated time; each frame also gives background work a moment of real time.
-fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
-    let time = |harness: &Harness<'_, ReviewApp>| harness.ctx.input(|input| input.time);
-    let end = time(harness) + seconds;
-    while time(harness) < end {
-        harness.step();
-        cv_testkit::let_threads_run(std::time::Duration::from_millis(3));
-    }
+    set_focus(harness, true);
 }

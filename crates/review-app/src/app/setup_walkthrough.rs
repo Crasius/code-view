@@ -18,7 +18,7 @@ use review_store::{AppPaths, ConnectionStore, LINUX_HELP_URL, TokenVault, VaultP
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::walkthrough::wait_until;
+use super::walkthrough::{press, wait_until};
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
 
@@ -282,14 +282,6 @@ pub(super) fn isolated_paths(name: &str) -> AppPaths {
     let root = std::env::temp_dir().join(format!("review-setup-{name}-{}", std::process::id()));
     cv_testkit::remove_dir(&root);
     AppPaths::new(root.join("config"), root.join("cache"))
-}
-
-/// Scrolls the labelled widget into view, then clicks it like a pointer would.
-pub(super) fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    harness.get_by_label(label).scroll_to_me();
-    settle(harness);
-    harness.click_at(harness.get_by_label(label).rect());
-    harness.step();
 }
 
 fn type_token(harness: &mut Harness<'_, ReviewApp>, token: &str) {

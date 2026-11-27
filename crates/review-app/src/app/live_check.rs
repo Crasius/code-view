@@ -24,6 +24,7 @@ use review_core::{Connection, ProviderKind};
 use review_store::{AppPaths, ConnectionStore, DiffLayout, FilesStart};
 
 use super::ReviewApp;
+use super::walkthrough::wheel;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::Clicks;
 
@@ -701,13 +702,7 @@ fn scroll(
     harness.hover_at(at);
     frames.step(harness);
     for _ in 0..notches {
-        harness.event(egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Point,
-            delta: egui::vec2(0.0, delta),
-            phase: egui::TouchPhase::Move,
-            modifiers: egui::Modifiers::NONE,
-            source: egui::MouseWheelSource::Wheel,
-        });
+        harness.event(wheel(delta, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
         frames.step(harness);
     }
     for _ in 0..30 {

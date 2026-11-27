@@ -10,14 +10,15 @@ use std::time::{Duration, Instant};
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
 use super::github_mock::{
     FAILING_NUMBER, FORBIDDEN_NUMBER, GitHubHost, HIDDEN_NUMBER, NUMBER, READABLE_NUMBER,
     REPOSITORY, SLOW_NUMBER, TITLE, open_pull_request,
 };
-use super::walkthrough::{app, press, settle_background, type_into, wait_until};
+use super::walkthrough::{
+    app, opened_urls, press, saved_settings, set_focus, settle_background, type_into, wait_until,
+};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_shell::links::clipboard_links::ClipboardSource;
 use cv_shell::links::link_access::BUDGET;
@@ -64,7 +65,7 @@ fn clipboard_link_opens_once_with_back_and_not_again_after_a_restart() {
         "the toast offers to turn it off"
     );
     assert_eq!(
-        saved_settings(&scratch).last_clipboard_link.as_deref(),
+        saved_settings(&harness).last_clipboard_link.as_deref(),
         Some(link.as_str()),
         "the canonical link is saved"
     );
@@ -256,7 +257,7 @@ fn clipboard_links_respect_the_setting_and_unknown_hosts() {
     wait_until(&mut harness, "the setting off", |harness| {
         !harness.state().services.settings.open_clipboard_links
     });
-    assert!(!saved_settings(&scratch).open_clipboard_links, "saved");
+    assert!(!saved_settings(&harness).open_clipboard_links, "saved");
     harness.state_mut().services.settings.open_clipboard_links = true;
 
     // A pull request on a host no connection knows does nothing.
@@ -300,12 +301,8 @@ fn fake_clipboard(harness: &mut Harness<'_, ReviewApp>) -> Arc<FakeClipboard> {
 /// it comes back in starts the clipboard read as background work, so [`settle_background`] after
 /// it waits for the read and for what the read started.
 fn come_back(harness: &mut Harness<'_, ReviewApp>) {
-    for is_focused in [false, true] {
-        harness.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().focused =
-            Some(is_focused);
-        harness.input_mut().focused = is_focused;
-        harness.step();
-    }
+    set_focus(harness, false);
+    set_focus(harness, true);
 }
 
 /// The host's answers to `GET /pulls/{number}`.
@@ -319,17 +316,7 @@ fn step_collecting_urls(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
     let mut opened = Vec::new();
     for _ in 0..3 {
         harness.step();
-        opened.extend(harness.output().platform_output.commands.iter().filter_map(|command| {
-            match command {
-                egui::OutputCommand::OpenUrl(open) => Some(open.url.clone()),
-                _ => None,
-            }
-        }));
+        opened.extend(opened_urls(harness));
     }
     opened
-}
-
-fn saved_settings(scratch: &ScratchDir) -> AppSettings {
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    AppSettings::load(&paths.settings_file()).expect("settings")
 }

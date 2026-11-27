@@ -12,7 +12,9 @@ use review_store::FilesStart;
 
 use super::ReviewApp;
 use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
-use super::walkthrough::{app, has_cached_diff, settle_background, wait_for, wait_until};
+use super::walkthrough::{
+    app, files_tab, has_cached_diff, settle_background, wait_for, wait_until,
+};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -57,14 +59,7 @@ fn opened_on_first_file(scratch: &ScratchDir) -> (GitHubHost, Harness<'static, R
     let mut harness = app(scratch, &[host.connection("gh", "Acme")]);
     harness.state_mut().services.settings.files_start = FilesStart::FirstFile;
     open_pull_request(&mut harness);
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(&mut harness);
     wait_until(&mut harness, "the first file's diff", |harness| shows_diff(harness, A));
     (host, harness)
 }

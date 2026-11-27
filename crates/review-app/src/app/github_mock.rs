@@ -23,7 +23,7 @@ use wiremock::matchers::{body_string_contains, header, method, path, path_regex}
 use wiremock::{Mock, MockBuilder, MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
-use super::walkthrough::{shows_file_view, wait_until};
+use super::walkthrough::{files_tab, open_in_tree, shows_file_view, wait_until};
 
 pub const TOKEN: &str = "test-token";
 /// `Basic base64("x-access-token:test-token")`, how the provider hands the token to git.
@@ -52,19 +52,8 @@ pub fn open_pull_request(harness: &mut Harness<'_, ReviewApp>) {
 
 /// Opens [`FILE`] in the Files tab once the mirror fetched it; returns the diff's area.
 pub fn open_diff(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
-    // "Files" gains its count once the file list is in.
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
-    wait_until(harness, "the file tree", |harness| {
-        harness.query_by_role_and_label(Role::TreeItem, FILE).is_some()
-    });
-    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, FILE).rect());
+    files_tab(harness);
+    open_in_tree(harness, FILE);
     // The existing thread's card sits under line 3 once the diff rows are built.
     wait_until(harness, "the diff", |harness| {
         shows_file_view(harness, FILE) && harness.query_by_label(THREAD_TEXT).is_some()

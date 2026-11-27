@@ -22,7 +22,7 @@ use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 use super::ReviewApp;
 use super::startup;
 use super::walkthrough::{
-    self, LIMIT, click_first, has, pump, set_focus, wait_idle, wait_until_unsettled,
+    self, LIMIT, click_first, has, pump, set_focus, wait_idle, wait_until_unsettled, wheel,
 };
 use cv_lists::pull_request_list::LIST_INTERVAL;
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
@@ -73,7 +73,7 @@ fn request_budget_files_tab_opening_on_the_first_file() {
     wait_until_unsettled(&mut harness, "a live-update probe", |_| {
         fixture.recorder.endpoints("Until a probe").contains_key(PROBE_APPROVALS)
     });
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     fixture.recorder.enter("Files, first file (30 s)");
     let started = harness_time(&harness);
     harness.click_at(harness.get_by_label(&files_label).rect());
@@ -84,7 +84,7 @@ fn request_budget_files_tab_opening_on_the_first_file() {
     let shown_after = harness_time(&harness) - started;
     assert!(shown_after < 30.0, "the first file's diff took {shown_after} s of the 30 s window");
     pump(&mut harness, 30.0 - shown_after);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let hits = fixture.recorder.endpoints("Files, first file (30 s)");
     assert_eq!(
         hits.get(PROBE_APPROVALS).copied(),
@@ -116,13 +116,13 @@ fn request_budget_unfocused_window_is_silent_and_catches_up_once() {
     set_focus(&mut harness, false);
     fixture.recorder.enter("unfocused");
     pump_live(&mut harness, 300.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     assert_eq!(fixture.recorder.count("unfocused"), 0, "an unfocused window sends nothing");
 
     fixture.recorder.enter("refocused");
     set_focus(&mut harness, true);
     pump(&mut harness, 2.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let hits = fixture.recorder.endpoints("refocused");
     let pipelines = "GET /api/v4/projects/:project/merge_requests/:id/pipelines".to_owned();
     let jobs = "GET /api/v4/projects/:id/pipelines/:id/jobs".to_owned();
@@ -148,7 +148,7 @@ fn request_budget_unfocused_window_is_silent_and_catches_up_once() {
     harness.step();
     set_focus(&mut harness, false);
     pump(&mut harness, 1.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let hits = fixture.recorder.endpoints("user refresh");
     assert_eq!(hits.get("GET /api/v4/groups/group/merge_requests").copied(), Some(1), "{hits:?}");
 }
@@ -169,12 +169,12 @@ fn request_budget_a_return_after_a_pause_refreshes_ahead() {
     wait_idle(&mut harness);
     // No input for longer than a pause; the probe goes on meanwhile, the list asks nothing.
     pump(&mut harness, PAUSE.as_secs_f64() + 5.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     fixture.recorder.enter("returned");
     harness.input_mut().events.push(egui::Event::PointerMoved(egui::pos2(400.0, 300.0)));
     pump(&mut harness, 1.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let hits = fixture.recorder.endpoints("returned");
     assert_eq!(hits.get(PROBE_APPROVALS).copied(), Some(1), "the probe at once: {hits:?}");
     assert_eq!(hits.get(listing).copied(), Some(1), "the overview ahead: {hits:?}");
@@ -182,7 +182,7 @@ fn request_budget_a_return_after_a_pause_refreshes_ahead() {
     fixture.recorder.enter("back to the list");
     harness.state_mut().navigator.go(Route::MyPullRequests);
     pump(&mut harness, 1.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let hits = fixture.recorder.endpoints("back to the list");
     assert_eq!(hits.get(listing), None, "the warmed rows are current: {hits:?}");
 }
@@ -554,23 +554,23 @@ fn request_budget_the_overview_asks_only_for_cards_on_screen() {
         has(harness, "Favorites (1 repository), 30 pull requests, expanded")
     });
     wait_idle(&mut harness);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     fixture.recorder.enter("refresh");
     harness.click_at(harness.get_by_label("Refresh (F5)").rect());
     pump(&mut harness, 2.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     harness.state_mut().navigator.go(Route::Settings);
     pump(&mut harness, REVISIT_FRESH.as_secs_f64() + 5.0);
     fixture.recorder.enter("revisit");
     harness.state_mut().navigator.go(Route::MyPullRequests);
     pump(&mut harness, 5.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     fixture.recorder.enter("periodic");
     pump(&mut harness, LIST_INTERVAL.as_secs_f64());
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     // A return on a merge request page warms the overview ahead.
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
@@ -579,11 +579,11 @@ fn request_budget_the_overview_asks_only_for_cards_on_screen() {
     });
     harness.state_mut().attention = Attention::default();
     pump(&mut harness, PAUSE.as_secs_f64() + 5.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     fixture.recorder.enter("warm");
     harness.input_mut().events.push(egui::Event::PointerMoved(egui::pos2(400.0, 300.0)));
     pump(&mut harness, 2.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     harness.state_mut().attention = Attention::without_pauses();
 
     harness.state_mut().navigator.go(Route::MyPullRequests);
@@ -591,12 +591,12 @@ fn request_budget_the_overview_asks_only_for_cards_on_screen() {
     fixture.recorder.enter("scrolled");
     scroll_list(&mut harness, 20_000.0);
     pump(&mut harness, 2.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     fixture.recorder.enter("refresh below");
     harness.click_at(harness.get_by_label("Refresh (F5)").rect());
     pump(&mut harness, 2.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     let phases = ["opened", "refresh", "revisit", "periodic", "warm", "scrolled", "refresh below"];
     let mut report = String::from("\n=== Overview listings (starred project, connections) ===\n");
@@ -633,7 +633,7 @@ fn request_budget_an_answer_that_lands_on_another_page_ages_from_its_arrival() {
         has(harness, "Change 27")
     });
     wait_idle(&mut harness);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     // Long enough for the three frames below on a busy machine.
     fixture.delay_listing(Duration::from_secs(2));
@@ -644,7 +644,7 @@ fn request_budget_an_answer_that_lands_on_another_page_ages_from_its_arrival() {
     harness.step();
     assert!(harness.state().services.background.running() > 0, "Refresh's answer is on its way");
     // It arrives while Settings shows, between two frames.
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let refresh = fixture.recorder.endpoints("refresh");
     assert_eq!(refresh.get(GROUP_LISTING).copied(), Some(1), "Refresh asked: {refresh:?}");
     fixture.delay_listing(Duration::ZERO);
@@ -653,7 +653,7 @@ fn request_budget_an_answer_that_lands_on_another_page_ages_from_its_arrival() {
     fixture.recorder.enter("revisit");
     harness.state_mut().navigator.go(Route::MyPullRequests);
     pump(&mut harness, 5.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let revisit = fixture.recorder.endpoints("revisit");
     assert_eq!(revisit.get(GROUP_LISTING).copied(), Some(1), "the revisit asks again: {revisit:?}");
 }
@@ -669,7 +669,7 @@ fn request_budget_a_return_to_the_window_refreshes_the_overview() {
         has(harness, "Change 27")
     });
     wait_idle(&mut harness);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     harness.state_mut().attention = Attention::default();
     pump(&mut harness, 5.0);
     set_focus(&mut harness, false);
@@ -679,9 +679,9 @@ fn request_budget_a_return_to_the_window_refreshes_the_overview() {
     set_focus(&mut harness, true);
     harness.input_mut().time = None;
     pump(&mut harness, 2.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     pump(&mut harness, 1.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let hits = fixture.recorder.endpoints("restored");
     assert_eq!(hits.get(GROUP_LISTING).copied(), Some(1), "the listing at once: {hits:?}");
     assert_eq!(hits.get(STATUSES).copied(), Some(1), "the rows' checks and votes: {hits:?}");
@@ -719,7 +719,7 @@ fn request_budget_line_counts_are_one_graphql_request_per_project() {
         has(harness, "297 lines changed in 2 files: 270 added, 27 deleted")
     });
     pump(&mut harness, 30.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let refocused = fixture.recorder.endpoints("refocused");
     assert_eq!(
         graphql("refocused"),
@@ -746,7 +746,7 @@ fn request_budget_line_counts_are_one_graphql_request_per_project() {
     fixture.recorder.enter("revisit");
     harness.state_mut().navigator.go(Route::MyPullRequests);
     pump(&mut harness, 60.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let revisit = fixture.recorder.endpoints("revisit");
     assert_eq!(
         revisit.get("GET /api/v4/groups/group/merge_requests").copied(),
@@ -769,7 +769,7 @@ fn request_budget_azure_devops_sizes_are_asked_for_the_rows_on_screen() {
         has(harness, "Change 40")
     });
     pump(&mut harness, 30.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let listed = asked_pull_requests(&fixture.recorder, "listed");
     let on_screen = uncounted_rows(&harness);
     let endpoints = fixture.recorder.endpoints("listed");
@@ -812,7 +812,7 @@ fn request_budget_azure_devops_sizes_are_asked_for_the_rows_on_screen() {
     fixture.recorder.enter("refocused");
     set_focus(&mut harness, true);
     pump(&mut harness, 30.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let refocused = asked_pull_requests(&fixture.recorder, "refocused");
     assert!(!refocused.is_empty(), "the rows that scrolled in are asked once the window is active");
     assert!(
@@ -829,7 +829,7 @@ fn request_budget_azure_devops_sizes_are_asked_for_the_rows_on_screen() {
     fixture.recorder.enter("revisit");
     harness.state_mut().navigator.go(Route::MyPullRequests);
     pump(&mut harness, 30.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let revisit = fixture.recorder.endpoints("revisit");
     assert_eq!(
         revisit.get("GET /north/_apis/git/pullrequests").copied(),
@@ -863,7 +863,7 @@ fn request_budget_favorites_always_count_their_lines() {
     wait_until_unsettled(&mut harness, "every favorite on screen counted", |harness| {
         !has(harness, "Counting the lines of !")
     });
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     assert!(!has(&harness, "not counted"), "no favorite waits for Count lines");
     let endpoints = fixture.recorder.endpoints("listed");
     assert!(
@@ -884,19 +884,13 @@ fn request_budget_favorites_always_count_their_lines() {
 /// Wheels the list down by `points` from over its rows.
 pub(super) fn scroll_list(harness: &mut Harness<'_, ReviewApp>, points: f32) {
     harness.hover_at(egui::pos2(720.0, 600.0));
-    let wheel = |delta: f32, phase| egui::Event::MouseWheel {
-        unit: egui::MouseWheelUnit::Point,
-        delta: egui::vec2(0.0, delta),
-        phase,
-        modifiers: egui::Modifiers::NONE,
-        source: egui::MouseWheelSource::Wheel,
-    };
-    harness.event(wheel(0.0, egui::TouchPhase::Start));
+    let mouse = |delta: f32, phase| wheel(delta, phase, egui::MouseWheelSource::Wheel);
+    harness.event(mouse(0.0, egui::TouchPhase::Start));
     for _ in 0..4 {
-        harness.event(wheel(-points / 4.0, egui::TouchPhase::Move));
+        harness.event(mouse(-points / 4.0, egui::TouchPhase::Move));
         harness.step();
     }
-    harness.event(wheel(0.0, egui::TouchPhase::End));
+    harness.event(mouse(0.0, egui::TouchPhase::End));
     pump(harness, 2.0);
 }
 
@@ -1096,17 +1090,17 @@ fn open_pipelines(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture) {
     pump(harness, 20.0);
 }
 
-/// Starts `phase` once the background work in flight has finished ([`settle`]): what the last
+/// Starts `phase` once the background work in flight has finished ([`wait_background_idle_without_frames`]): what the last
 /// phase started (a job log's download, a probe) reaches the host in that phase, however long a
 /// loaded machine takes to send it.
 fn enter_phase(recorder: &Recorder, harness: &Harness<'_, ReviewApp>, phase: &str) {
-    settle(harness);
+    wait_background_idle_without_frames(harness);
     recorder.enter(phase);
 }
 
 /// Waits in real time, without a frame, until the background work in flight has finished, so the
 /// requests it sends land in the current phase and no simulated time passes.
-pub(super) fn settle(harness: &Harness<'_, ReviewApp>) {
+fn wait_background_idle_without_frames(harness: &Harness<'_, ReviewApp>) {
     let _step = cv_testkit::step("waiting without a frame for the background work to end");
     let started = Instant::now();
     while harness.state().services.background.running() > 0 {

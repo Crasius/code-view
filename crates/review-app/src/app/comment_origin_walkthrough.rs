@@ -7,13 +7,13 @@
 
 use std::fmt::Write as _;
 
-use egui::{Event, Modifiers, MouseWheelSource, MouseWheelUnit, Rect, Role, TouchPhase, vec2};
+use egui::{Rect, Role, TouchPhase};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::github_mock::{CURRENT_TEXT, FILE, GitHubHost, THREAD_TEXT, open_pull_request};
-use super::walkthrough::{app, shows_file_view, wait_until};
+use super::walkthrough::{app, files_tab, shows_file_view, wait_until, wheel};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -161,14 +161,7 @@ fn comment_origin_falls_back_to_the_comments_lines_when_the_commit_is_gone() {
 
 /// Opens [`FILE`] in the Files tab and the section with its outdated thread.
 fn open_latest_diff(harness: &mut Harness<'_, ReviewApp>) {
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(harness);
     wait_until(harness, "the file tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, FILE).is_some()
     });
@@ -185,17 +178,11 @@ fn open_latest_diff(harness: &mut Harness<'_, ReviewApp>) {
 
 /// Wheel-scrolls the diff down by `points` and lets the smooth scroll arrive.
 fn scroll(harness: &mut Harness<'_, ReviewApp>, points: f32) {
-    let wheel = |delta: f32, phase| Event::MouseWheel {
-        unit: MouseWheelUnit::Point,
-        delta: vec2(0.0, delta),
-        phase,
-        modifiers: Modifiers::NONE,
-        source: MouseWheelSource::Wheel,
-    };
+    let mouse = |delta: f32, phase| wheel(delta, phase, egui::MouseWheelSource::Wheel);
     harness.hover_at(rect_of_diff(harness).center());
-    harness.event(wheel(0.0, TouchPhase::Start));
-    harness.event(wheel(-points, TouchPhase::Move));
-    harness.event(wheel(0.0, TouchPhase::End));
+    harness.event(mouse(0.0, TouchPhase::Start));
+    harness.event(mouse(-points, TouchPhase::Move));
+    harness.event(mouse(0.0, TouchPhase::End));
     for _ in 0..60 {
         harness.step();
     }

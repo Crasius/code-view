@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, OwnComment, REPOSITORY, THREAD_TEXT, open_pull_request};
-use super::walkthrough::{app, press_button, settle_background, wait_until};
+use super::walkthrough::{app, press_button, settle_background, wait_until, wheel};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -146,13 +146,7 @@ fn reveal(harness: &mut Harness<'_, ReviewApp>, text: &str) {
         harness.step();
         let delta =
             if shown.is_some_and(|body| body.top() < window.top() + 40.0) { 120.0 } else { -120.0 };
-        harness.event(egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Point,
-            delta: egui::vec2(0.0, delta),
-            phase: egui::TouchPhase::Move,
-            modifiers: egui::Modifiers::NONE,
-            source: egui::MouseWheelSource::Wheel,
-        });
+        harness.event(wheel(delta, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
         for _ in 0..3 {
             harness.step();
         }

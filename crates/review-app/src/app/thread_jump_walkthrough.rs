@@ -12,7 +12,9 @@ use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
 use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread, open_pull_request};
-use super::walkthrough::{app, settle_background, shows_file_view, wait_until};
+use super::walkthrough::{
+    app, files_tab, open_in_tree, settle_background, shows_file_view, wait_until,
+};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -75,14 +77,7 @@ fn a_thread_in_a_file_never_opened_comes_into_view() {
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     harness.state_mut().services.settings.threads_panel.is_open = true;
     open_pull_request(&mut harness);
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(&mut harness);
 
     // A text diff is open; the code thread's file was never opened.
     open_in_tree(&mut harness, FILE);
@@ -108,14 +103,6 @@ fn a_thread_in_a_file_never_opened_comes_into_view() {
     // A thread inside the collapsed run of the same file: the run opens and the thread shows.
     click_row(&mut harness, FOLDED_THREAD);
     wait_for_card(&mut harness, FOLDED_THREAD);
-}
-
-fn open_in_tree(harness: &mut Harness<'_, ReviewApp>, path: &str) {
-    wait_until(harness, "the file's row in the tree", |harness| {
-        harness.query_by_role_and_label(Role::TreeItem, path).is_some()
-    });
-    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
-    harness.step();
 }
 
 /// Clicks the threads panel's row of the thread reading `text`.

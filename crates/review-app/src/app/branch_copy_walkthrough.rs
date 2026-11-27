@@ -17,7 +17,7 @@ use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, TITLE, open_pull_request};
-use super::walkthrough::{app, wait_until};
+use super::walkthrough::{app, secondary_press, wait_until};
 use cv_runtime::route::Route;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -37,7 +37,7 @@ fn branch_copy_from_the_row_menu_and_the_header_chips() {
     wait_until(&mut harness, "the pull request row", |harness| {
         harness.query_by_label(&row).is_some()
     });
-    secondary_click(&mut harness, &row);
+    secondary_press(&mut harness, &row);
     wait_until(&mut harness, "the menu entry", |harness| {
         harness.query_by_role_and_label(Role::MenuItem, "Copy source branch").is_some()
     });
@@ -90,7 +90,7 @@ fn number_copy_from_the_row_menu_and_the_header_number() {
     wait_until(&mut harness, "the pull request row", |harness| {
         harness.query_by_label(&row).is_some()
     });
-    secondary_click(&mut harness, &row);
+    secondary_press(&mut harness, &row);
     wait_until(&mut harness, "the menu entry", |harness| {
         harness.query_by_role_and_label(Role::MenuItem, "Copy link").is_some()
     });
@@ -136,11 +136,4 @@ fn copied(harness: &mut Harness<'_, ReviewApp>) -> Option<String> {
             _ => None,
         })
     })
-}
-
-fn secondary_click(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    harness.get_by_label(label).hover();
-    harness.step();
-    harness.secondary_click_at(harness.get_by_label(label).rect());
-    harness.step();
 }

@@ -7,11 +7,11 @@ use egui::{Rect, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{Connection, ProviderKind};
-use review_store::{AppPaths, AppSettings, ConnectionStore, FrameRateLimit};
+use review_store::{AppPaths, ConnectionStore, FrameRateLimit};
 
 use super::ReviewApp;
 use super::provider_icons_walkthrough::scripted_provider;
-use super::walkthrough::wait_until;
+use super::walkthrough::{saved_settings, wait_until};
 use cv_runtime::route::Route;
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
@@ -71,7 +71,7 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
         harness.click_at(harness.get_by_role_and_label(Role::RadioButton, label).rect());
         settle(&mut harness);
         assert_eq!(harness.state().services.settings.frame_rate, limit, "{label} applies live");
-        assert_eq!(saved(&paths).frame_rate, limit, "{label} is saved");
+        assert_eq!(saved_settings(&harness).frame_rate, limit, "{label} is saved");
         assert!(is_selected(&harness, label), "{label} shows as selected");
         assert_eq!(rect_of(&harness, NEXT_ROW), next_row, "choosing {label} moves nothing below");
         assert_eq!(segments_rect(&harness), control, "choosing {label} keeps the control's size");
@@ -88,7 +88,7 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
     // Back to the default, as the next start would load it.
     harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "45").rect());
     settle(&mut harness);
-    assert_eq!(saved(&paths).frame_rate, FrameRateLimit::DEFAULT);
+    assert_eq!(saved_settings(&harness).frame_rate, FrameRateLimit::DEFAULT);
     drop(harness);
     cv_testkit::remove_dir(paths.config_dir().parent().expect("scratch root"));
 }
@@ -106,10 +106,6 @@ fn rect_of(harness: &Harness<'_, ReviewApp>, label: &str) -> Rect {
 fn segments_rect(harness: &Harness<'_, ReviewApp>) -> Rect {
     rect_of(harness, "30")
         .union(harness.get_by_role_and_label(Role::RadioButton, "Match display").rect())
-}
-
-fn saved(paths: &AppPaths) -> AppSettings {
-    AppSettings::load(&paths.settings_file()).expect("settings file")
 }
 
 fn isolated_paths() -> AppPaths {

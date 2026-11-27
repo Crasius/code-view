@@ -25,7 +25,7 @@ use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::walkthrough::{settle_background, wait_until};
+use super::walkthrough::{has, settle_background, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -227,10 +227,6 @@ fn open_linked(harness: &mut Harness<'_, ReviewApp>, row: &str, number: u64) {
 
 fn is_on(harness: &Harness<'_, ReviewApp>, number: u64) -> bool {
     harness.state().route == pull_request(number)
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
 }
 
 fn start(scratch: &ScratchDir) -> Harness<'static, ReviewApp> {

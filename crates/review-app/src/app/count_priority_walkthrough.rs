@@ -23,7 +23,7 @@ use super::github_mock::{
     ExtraFile, FILE, GitHubHost, MockThread, REPOSITORY, THREAD_TEXT, open_pull_request,
 };
 use super::walkthrough::{
-    app, has_cached_diff, settle_background, shows_file_view, wait_for, wait_until,
+    app, files_tab, has_cached_diff, settle_background, shows_file_view, wait_for, wait_until,
     wait_until_unsettled,
 };
 use cv_testkit::Clicks;
@@ -108,17 +108,6 @@ fn filter_tree(harness: &mut Harness<'_, ReviewApp>, text: &str) {
         .get_by(|node| node.placeholder().is_some_and(|hint| hint.ends_with(HINT)))
         .type_text(text);
     harness.step();
-}
-
-fn files_tab(harness: &mut Harness<'_, ReviewApp>) {
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
 }
 
 #[test]

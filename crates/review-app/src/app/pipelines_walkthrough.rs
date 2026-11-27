@@ -19,12 +19,14 @@ use review_core::{
     Result, ReviewThread, ReviewVote, Reviewer, RunStatus, RunningLogs, ThreadComment,
     ThreadStatus, Timestamp, UserIdentity,
 };
-use review_store::{AppPaths, AppSettings, CheckFilter, ConnectionStore};
+use review_store::{AppPaths, CheckFilter, ConnectionStore};
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::ReviewApp;
-use super::walkthrough::{opened_urls, settle_background, wait_for, wait_until};
+use super::walkthrough::{
+    has, opened_urls, saved_settings, settle_background, wait_for, wait_until, wheel,
+};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
@@ -88,7 +90,7 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
     wait_until(&mut harness, "the pipelines", |harness| {
         harness.query_by_role_and_label(Role::Link, "Pipeline #2279, Succeeded").is_some()
     });
-    assert!(saved(&app.paths).pipelines.is_overview_expanded, "the open card is remembered");
+    assert!(saved_settings(&harness).pipelines.is_overview_expanded, "the open card is remembered");
     assert!(
         harness.query_by_role_and_label(Role::Link, "Security scan #88, Succeeded").is_none(),
         "status checks stay in the Pipelines tab"
@@ -208,7 +210,7 @@ fn pipelines_overview_card_remembers_open_or_closed_across_restarts() {
     harness.click_at(harness.get_by_label("All pipelines succeeded").rect());
     wait_until(&mut harness, "the pipelines", is_listed);
     assert!(has(&harness, "Hide pipelines"));
-    assert!(saved(&paths).pipelines.is_overview_expanded, "the open card is saved");
+    assert!(saved_settings(&harness).pipelines.is_overview_expanded, "the open card is saved");
     assert_eq!(
         harness.get_by_label("2 pipelines · 2 succeeded").rect(),
         summary,
@@ -222,7 +224,7 @@ fn pipelines_overview_card_remembers_open_or_closed_across_restarts() {
     wait_until(&mut harness, "the collapsed card", |harness| {
         !is_listed(harness) && has(harness, "Show pipelines")
     });
-    assert!(!saved(&paths).pipelines.is_overview_expanded, "the closed card is saved");
+    assert!(!saved_settings(&harness).pipelines.is_overview_expanded, "the closed card is saved");
     drop(harness);
 
     let mut harness = App::reopen(ID, paths, SIZE).harness;
@@ -269,13 +271,13 @@ fn pipelines_checks_table_sorts_filters_steps_and_reruns_failed() {
     settle(&mut harness);
     assert_eq!(row_labels(&harness).len(), 5, "chips add up");
     assert_eq!(
-        saved(&app.paths).pipelines.status_filter,
+        saved_settings(&harness).pipelines.status_filter,
         [CheckFilter::Failed, CheckFilter::Running].into()
     );
     harness.click_at(harness.get_by_label("All, 20 checks").rect());
     settle(&mut harness);
     assert_eq!(row_labels(&harness)[..7], rows[..7]);
-    assert!(saved(&app.paths).pipelines.status_filter.is_empty());
+    assert!(saved_settings(&harness).pipelines.status_filter.is_empty());
 
     // ↓ ↓ ↓ Enter opens the third row.
     harness.key_press(egui::Key::ArrowDown);
@@ -515,13 +517,7 @@ fn pipelines_gitlab_running_job_log_follows_the_job() {
 
     // Scrolled up, the log keeps its place while it grows.
     harness.get_by_role(Role::Document).hover();
-    harness.event(egui::Event::MouseWheel {
-        unit: egui::MouseWheelUnit::Point,
-        delta: egui::vec2(0.0, 2000.0),
-        phase: egui::TouchPhase::Move,
-        modifiers: egui::Modifiers::NONE,
-        source: egui::MouseWheelSource::Wheel,
-    });
+    harness.event(wheel(2000.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
     // The wheel scrolls smoothly; once it settled the view stays where it went.
     step_frames(&mut harness, 60);
     let scrolled = top_line(&harness);
@@ -754,14 +750,6 @@ impl App {
         }));
         Self { harness, paths, calls }
     }
-}
-
-fn saved(paths: &AppPaths) -> AppSettings {
-    AppSettings::load(&paths.settings_file()).expect("settings file")
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_by_label_contains(text).is_some()
 }
 
 /// The checks table's rows, top to bottom.

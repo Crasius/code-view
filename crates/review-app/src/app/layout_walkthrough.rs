@@ -24,7 +24,9 @@ use review_store::{AppPaths, AppSettings, ConnectionStore, DiffLayout, PaneSizes
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::walkthrough::{settle_background, shows_file_view, shows_folder_view, wait_until};
+use super::walkthrough::{
+    saved_settings, settle_background, shows_file_view, shows_folder_view, wait_until,
+};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::Clicks;
 use cv_testkit::{ScratchDir, git};
@@ -59,7 +61,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         .insert(CONNECTION_ID.to_owned(), fixture);
     let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
     save_connection(&paths, CONNECTION_ID);
-    let mut harness = harness(paths.clone());
+    let mut harness = harness(paths);
 
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: CONNECTION_ID.to_owned(),
@@ -82,7 +84,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         (side - (PaneSizes::DEFAULT.overview_side + 120.0)).abs() < 1.0,
         "side column is {side}"
     );
-    assert_eq!(saved(&paths).panes.overview_side, side, "persisted on release");
+    assert_eq!(saved_settings(&harness).panes.overview_side, side, "persisted on release");
     let handle = center(&harness, "Resize side column");
     double_click(&mut harness, handle);
     assert_eq!(
@@ -90,7 +92,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         PaneSizes::DEFAULT.overview_side
     );
     assert_eq!(
-        saved(&paths).panes.overview_side,
+        saved_settings(&harness).panes.overview_side,
         PaneSizes::DEFAULT.overview_side,
         "the reset is saved too"
     );
@@ -103,7 +105,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         (1.1, AppSettings::DEFAULT_CODE_FONT_SIZE)
     );
     assert!(harness.query_by_label("Zoom 110 %").is_some(), "the overlay names the level");
-    assert_eq!(saved(&paths).ui_scale, 1.1);
+    assert_eq!(saved_settings(&harness).ui_scale, 1.1);
     harness.click_at(harness.get_by_label("Reset").rect());
     settle(&mut harness);
     assert_eq!(harness.state().services.settings.ui_scale, 1.0);
@@ -164,7 +166,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         (tree_width - (PaneSizes::DEFAULT.file_tree + 100.0)).abs() < 1.0,
         "file tree is {tree_width}"
     );
-    assert_eq!(saved(&paths).panes.file_tree, tree_width);
+    assert_eq!(saved_settings(&harness).panes.file_tree, tree_width);
 
     // The tree can be dragged almost across the whole window and back: the handle stays reachable.
     let window_width = harness.ctx.content_rect().width();
@@ -184,13 +186,13 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         (restored - tree_width).abs() < 1.0,
         "dragged back to {restored}, expected {tree_width}"
     );
-    assert_eq!(saved(&paths).panes.file_tree, restored);
+    assert_eq!(saved_settings(&harness).panes.file_tree, restored);
 
     let split = center(&harness, "Resize diff sides");
     drag(&mut harness, split, vec2(-160.0, 0.0));
     let diff_split = harness.state().services.settings.panes.diff_split;
     assert!(diff_split < 0.45, "old side share is {diff_split}");
-    assert_eq!(saved(&paths).panes.diff_split, diff_split);
+    assert_eq!(saved_settings(&harness).panes.diff_split, diff_split);
 
     // Ctrl+wheel over the diff changes the code size only.
     let diff = harness.get_by_label(&format!("Diff of {CODE_PATH}")).rect().center();
@@ -201,7 +203,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         (AppSettings::DEFAULT_CODE_FONT_SIZE + 2.0, 1.0)
     );
     assert!(harness.query_by_label("Code 15 px").is_some());
-    assert_eq!(saved(&paths).code_font_size, 15.0);
+    assert_eq!(saved_settings(&harness).code_font_size, 15.0);
 
     // Middle click in the diff, pointer below the origin: the diff scrolls down.
     let origin = diff + vec2(-200.0, 0.0);
@@ -272,7 +274,7 @@ fn folder_view_zooms_the_code_over_cards_and_the_app_elsewhere() {
     FIXTURES.lock().unwrap().get_or_insert_with(HashMap::new).insert(FOLDER_ID.to_owned(), fixture);
     let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
     save_connection(&paths, FOLDER_ID);
-    let mut harness = harness(paths.clone());
+    let mut harness = harness(paths);
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: FOLDER_ID.to_owned(),
         repository_key: REPOSITORY.to_owned(),
@@ -300,7 +302,7 @@ fn folder_view_zooms_the_code_over_cards_and_the_app_elsewhere() {
     );
     assert_eq!(harness.ctx.pixels_per_point(), scale, "the app keeps its scale");
     assert!(harness.query_by_label("Code 14 px").is_some(), "the overlay names the code size");
-    assert_eq!(saved(&paths).code_font_size, 14.0);
+    assert_eq!(saved_settings(&harness).code_font_size, 14.0);
 
     let header = harness.get_by_label("4 changed files").rect().center();
     ctrl_wheel(&mut harness, header, 1.0);
@@ -441,10 +443,6 @@ fn rects(controls: &[(String, egui::Rect)]) -> Vec<egui::Rect> {
 fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
     let builder = Harness::builder().with_size([1440.0, 900.0]).with_step_dt(1.0 / 60.0);
     super::startup::start(builder, |creation| ReviewApp::new(creation, paths, local_provider))
-}
-
-fn saved(paths: &AppPaths) -> AppSettings {
-    AppSettings::load(&paths.settings_file()).expect("settings file")
 }
 
 fn center(harness: &Harness<'_, ReviewApp>, label: &str) -> Pos2 {

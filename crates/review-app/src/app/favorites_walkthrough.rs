@@ -2,7 +2,6 @@
 //! against a mock GitLab and a mock GitHub Enterprise Server. No network, no real token.
 
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
 
 use egui::accesskit::{Role, Toggled};
 use egui_kittest::Harness;
@@ -14,7 +13,7 @@ use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
 use super::github_mock::GitHubHost;
-use super::walkthrough::wait_until_unsettled;
+use super::walkthrough::{has, press, pump, saved_settings, secondary_press, wait_until_unsettled};
 use cv_runtime::route::Route;
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
@@ -42,7 +41,7 @@ fn favorites_star_in_the_repository_browser_persists() {
     press(&mut harness, "Favorite team/api");
     assert_eq!(toggled(&harness, "Favorite team/api"), Some(Toggled::True), "the star fills");
     assert_eq!(
-        saved_favorites(&paths),
+        saved_favorites(&harness),
         [("gitlab".to_owned(), "team/api".to_owned())],
         "saved at once"
     );
@@ -50,7 +49,7 @@ fn favorites_star_in_the_repository_browser_persists() {
     harness.get_by_label("Favorite team/app").focus();
     harness.key_press(egui::Key::Space);
     pump(&mut harness, 0.5);
-    assert_eq!(saved_favorites(&paths).len(), 2);
+    assert_eq!(saved_favorites(&harness).len(), 2);
     drop(harness);
 
     let mut harness = start_app(&paths);
@@ -75,7 +74,7 @@ fn favorites_star_in_the_repository_browser_persists() {
     );
     press(&mut harness, "Favorite team/api");
     assert_eq!(toggled(&harness, "Favorite team/api"), Some(Toggled::False));
-    assert_eq!(saved_favorites(&paths), [("gitlab".to_owned(), "team/app".to_owned())]);
+    assert_eq!(saved_favorites(&harness), [("gitlab".to_owned(), "team/app".to_owned())]);
 }
 
 /// One card lists the starred repositories of GitLab and GitHub together, grouped by repository,
@@ -282,14 +281,14 @@ fn favorites_empty_card_leads_to_the_repositories_and_rows_star_from_their_menu(
     assert!(has(&harness, "Star a repository to see its pull requests here"));
     assert_eq!(gitlab.count(APP_LISTING), 0, "nothing starred, nothing asked");
 
-    secondary_click(&mut harness, "1 Team change 1");
+    secondary_press(&mut harness, "1 Team change 1");
     press(&mut harness, "Add team/app to favorites");
     wait_until_unsettled(&mut harness, "the starred project's rows", |harness| {
         has(harness, "Favorites (1 repository), 2 pull requests, expanded")
     });
-    assert_eq!(saved_favorites(&paths), [("gitlab".to_owned(), "team/app".to_owned())]);
+    assert_eq!(saved_favorites(&harness), [("gitlab".to_owned(), "team/app".to_owned())]);
 
-    secondary_click(&mut harness, "5 App: retry uploads");
+    secondary_press(&mut harness, "5 App: retry uploads");
     press(&mut harness, "Remove team/app from favorites");
     wait_until_unsettled(&mut harness, "the empty card again", |harness| {
         has(harness, "Star a repository")
@@ -314,13 +313,13 @@ fn favorites_lane_hidden_lifts_starred_rows_and_asks_nothing() {
     press_lane_tool(&mut harness);
     assert!(!has(&harness, "Favorites ("), "the card leaves");
     assert_eq!(lane_tool(&harness), Some(Toggled::False));
-    assert!(!saved_lane(&paths), "saved at once");
+    assert!(!saved_lane(&harness), "saved at once");
     assert!(first_top(&harness, "2 API change 2") < first_top(&harness, "1 Team change 1"));
 
-    secondary_click(&mut harness, "1 Team change 1");
+    secondary_press(&mut harness, "1 Team change 1");
     press(&mut harness, "Add team/app to favorites");
     pump(&mut harness, 1.0);
-    assert_eq!(saved_favorites(&paths), [("gitlab".to_owned(), "team/app".to_owned())]);
+    assert_eq!(saved_favorites(&harness), [("gitlab".to_owned(), "team/app".to_owned())]);
     assert!(
         first_top(&harness, "1 Team change 1") < first_top(&harness, "2 API change 2"),
         "the starred repository's row leads its card"
@@ -344,7 +343,7 @@ fn favorites_lane_hidden_lifts_starred_rows_and_asks_nothing() {
     wait_until_unsettled(&mut harness, "the lane again", |harness| {
         has(harness, "Favorites (1 repository), 2 pull requests, expanded")
     });
-    assert!(saved_lane(&paths));
+    assert!(saved_lane(&harness));
     assert_eq!(gitlab.count(APP_LISTING), 1, "the lane asks once it is back");
     assert!(!has(&harness, "is a favorite"), "with the lane shown rows carry no mark");
     assert!(
@@ -352,10 +351,10 @@ fn favorites_lane_hidden_lifts_starred_rows_and_asks_nothing() {
         "with the lane shown the cards keep their own order"
     );
 
-    secondary_click(&mut harness, "Favorites (1 repository), 2 pull requests, expanded");
+    secondary_press(&mut harness, "Favorites (1 repository), 2 pull requests, expanded");
     press(&mut harness, "Hide the Favorites lane");
     pump(&mut harness, 0.5);
-    assert!(!has(&harness, "Favorites (") && !saved_lane(&paths), "the card's menu hides it");
+    assert!(!has(&harness, "Favorites (") && !saved_lane(&harness), "the card's menu hides it");
 }
 
 /// The overview's star tool: whether it is on.
@@ -369,8 +368,8 @@ fn press_lane_tool(harness: &mut Harness<'_, ReviewApp>) {
     pump(harness, 1.0);
 }
 
-fn saved_lane(paths: &AppPaths) -> bool {
-    AppSettings::load(&paths.settings_file()).expect("saved settings").favorites.is_lane_shown
+fn saved_lane(harness: &Harness<'_, ReviewApp>) -> bool {
+    saved_settings(harness).favorites.is_lane_shown
 }
 
 fn github_rows() -> Vec<Value> {
@@ -529,9 +528,8 @@ fn store(paths: &AppPaths, connections: &[Connection]) {
     }
 }
 
-fn saved_favorites(paths: &AppPaths) -> Vec<(String, String)> {
-    let settings = AppSettings::load(&paths.settings_file()).expect("saved settings");
-    settings
+fn saved_favorites(harness: &Harness<'_, ReviewApp>) -> Vec<(String, String)> {
+    saved_settings(harness)
         .favorites
         .repositories()
         .iter()
@@ -569,36 +567,7 @@ fn start_app(paths: &AppPaths) -> Harness<'static, ReviewApp> {
     harness
 }
 
-/// Moves the pointer onto the labelled widget first, as a mouse does, then clicks it.
-fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    harness.get_by_label(label).hover();
-    harness.step();
-    harness.click_at(harness.get_by_label(label).rect());
-    harness.run_steps(4);
-}
-
-/// A right click on the labelled widget, the pointer resting there first.
-fn secondary_click(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    harness.get_by_label(label).hover();
-    harness.step();
-    harness.secondary_click_at(harness.get_by_label(label).rect());
-    harness.run_steps(2);
-}
-
 fn go(harness: &mut Harness<'_, ReviewApp>, route: Route) {
     harness.state_mut().navigator.go(route);
     harness.step();
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
-}
-
-/// Advances simulated time; each frame also gives background work a moment of real time.
-fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
-    let end = harness.ctx.input(|input| input.time) + seconds;
-    while harness.ctx.input(|input| input.time) < end {
-        harness.step();
-        cv_testkit::let_threads_run(Duration::from_millis(2));
-    }
 }

@@ -6,8 +6,8 @@ use egui_kittest::kittest::Queryable;
 use review_core::{Connection, ProviderKind};
 use review_store::{ConnectionStore, stable_hash};
 
-use super::setup_walkthrough::{harness, isolated_paths, press};
-use super::walkthrough::wait_until;
+use super::setup_walkthrough::{harness, isolated_paths};
+use super::walkthrough::{press, wait_until};
 use cv_runtime::route::Route;
 use cv_testkit::Clicks;
 

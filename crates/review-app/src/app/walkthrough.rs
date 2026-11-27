@@ -18,11 +18,14 @@
 use std::cell::Cell;
 use std::time::{Duration, Instant};
 
-use egui::{CursorIcon, PointerButton, Pos2, Role};
+use egui::{
+    CursorIcon, Event, Modifiers, MouseWheelSource, MouseWheelUnit, PointerButton, Pos2, Rect,
+    Role, TouchPhase, pos2, vec2,
+};
 use egui_kittest::kittest::{AccessKitNode, NodeT, Queryable};
 use egui_kittest::{Harness, HarnessBuilder};
 use review_core::Connection;
-use review_store::{AppPaths, ConnectionStore, DiffLayout};
+use review_store::{AppPaths, AppSettings, ConnectionStore, DiffLayout};
 
 use super::{ReviewApp, startup};
 use cv_services::connection::providers::ProviderFactory;
@@ -203,16 +206,28 @@ pub(super) fn wait_for_link(harness: &mut Harness<'_, ReviewApp>, label: &str) -
 }
 
 /// Scrolls the labelled widget into view, then clicks it like a pointer would (see
-/// [`click_when_ready`]).
+/// [`when_ready`]) and runs the four frames of [`wait_until`]: the press, the release, and the
+/// accessibility tree, which trails the click by a frame, showing what it did.
 pub(super) fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    click_when_ready(harness, label, None);
+    let rect = when_ready(harness, label, None);
+    harness.click_at(rect);
+    settle(harness);
 }
 
 /// [`press`] for the button labelled `label`: for a submit button that is enabled only with text,
 /// and where another widget carries the same label (a composer's text area is named after its
 /// submit button).
 pub(super) fn press_button(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    click_when_ready(harness, label, Some(Role::Button));
+    let rect = when_ready(harness, label, Some(Role::Button));
+    harness.click_at(rect);
+    settle(harness);
+}
+
+/// [`press`] with the secondary button: the labelled widget's context menu.
+pub(super) fn secondary_press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
+    let rect = when_ready(harness, label, None);
+    harness.secondary_click_at(rect);
+    settle(harness);
 }
 
 /// The widget labelled `label`, of `role` where one is given.
@@ -227,17 +242,18 @@ fn labelled<'h>(
     }
 }
 
-/// Scrolls the widget labelled `label` into view, waits until it is enabled with its centre inside
-/// the window (scrolling again where late content pushed it out), then clicks it at its place in
-/// that frame ([`Clicks::click_at`]). A fixed number of frames after the scroll proves none of
-/// that: the click would land on a disabled button, or past the window's edge where nothing takes
-/// it, and the test would wait for a request that never comes.
-fn click_when_ready(harness: &mut Harness<'_, ReviewApp>, label: &str, role: Option<Role>) {
+/// Scrolls the widget labelled `label` into view and waits until it is enabled with its centre
+/// inside the window (scrolling again where late content pushed it out), the pointer resting on
+/// it as a mouse's does; returns its place in that frame, for the click. A fixed number of frames
+/// after the scroll proves none of that: the click would land on a disabled button, or past the
+/// window's edge where nothing takes it, and the test would wait for a request that never comes.
+/// The pointer moves before each frame, so the place is read from the frame the hover was in.
+fn when_ready(harness: &mut Harness<'_, ReviewApp>, label: &str, role: Option<Role>) -> Rect {
     wait_until(harness, label, |harness| labelled(harness, label, role).is_some());
     labelled(harness, label, role).expect("just found").scroll_to_me();
     settle(harness);
     let window = harness.ctx.content_rect();
-    let rect = wait_for(
+    wait_for(
         harness,
         &format!("{label} to take a click"),
         |harness| {
@@ -247,15 +263,17 @@ fn click_when_ready(harness: &mut Harness<'_, ReviewApp>, label: &str, role: Opt
             (is_enabled && window.contains(rect.center())).then_some(rect)
         },
         |harness| {
-            if let Some(node) = labelled(harness, label, role)
-                && !window.contains(node.rect().center())
-            {
+            let Some(node) = labelled(harness, label, role) else {
+                return;
+            };
+            let center = node.rect().center();
+            if window.contains(center) {
+                harness.hover_at(center);
+            } else {
                 node.scroll_to_me();
             }
         },
-    );
-    harness.click_at(rect);
-    harness.step();
+    )
 }
 
 /// A right click at `position`, the pointer resting there first: the menu is the hovered line's.
@@ -299,9 +317,87 @@ pub(super) fn type_into(harness: &mut Harness<'_, ReviewApp>, placeholder: &str,
     });
 }
 
+/// A primary click at `at`, and the frame that takes it.
+pub(super) fn click_now(harness: &mut Harness<'_, ReviewApp>, at: Pos2) {
+    harness.click_point(at, PointerButton::Primary);
+    harness.step();
+}
+
+/// A wheel event of `delta_y` points; the caller hovers first and steps the frames its gesture
+/// needs between the phases.
+pub(super) fn wheel(delta_y: f32, phase: TouchPhase, source: MouseWheelSource) -> Event {
+    Event::MouseWheel {
+        unit: MouseWheelUnit::Point,
+        delta: vec2(0.0, delta_y),
+        phase,
+        modifiers: Modifiers::NONE,
+        source,
+    }
+}
+
+/// Whether a pull request tab is labelled `name` or `name` with its count ("Files (12)": the
+/// count comes once the list is in).
+fn is_tab(node: &AccessKitNode<'_>, name: &str) -> bool {
+    node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with(name))
+}
+
+/// Where the pull request tab named `name` is, once it shows (see [`is_tab`]).
+pub(super) fn tab_rect(harness: &Harness<'_, ReviewApp>, name: &str) -> Option<Rect> {
+    harness.query_by(|node| is_tab(node, name)).map(|node| node.rect())
+}
+
+/// Clicks the Files tab of the open pull request.
+pub(super) fn files_tab(harness: &mut Harness<'_, ReviewApp>) {
+    harness.click_at(harness.get_by(|node| is_tab(node, "Files")).rect());
+}
+
+/// Clicks `path`'s row in the file tree once the tree lists it.
+pub(super) fn open_in_tree(harness: &mut Harness<'_, ReviewApp>, path: &str) {
+    wait_until(harness, &format!("{path} in the file tree"), |harness| {
+        harness.query_by_role_and_label(Role::TreeItem, path).is_some()
+    });
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
+    harness.step();
+}
+
+/// Waits until the file view shows `path`'s diff ([`shows_file_view`]).
+pub(super) fn wait_for_diff(harness: &mut Harness<'_, ReviewApp>, path: &str) {
+    wait_until(harness, &format!("the diff of {path}"), |harness| shows_file_view(harness, path));
+}
+
+/// Moves the pointer down the first lines of `diff`, in each of `columns` (fractions of its width)
+/// in turn, until a line's "Add comment" button shows: it exists only while its line is hovered.
+pub(super) fn hover_until_add_comment(
+    harness: &mut Harness<'_, ReviewApp>,
+    diff: Rect,
+    columns: &[f32],
+) {
+    for column in columns {
+        let x = diff.left() + diff.width() * column;
+        let mut y = diff.top() + 2.0;
+        while y < diff.top() + 160.0 {
+            if harness.query_by_label("Add comment").is_some() {
+                return;
+            }
+            harness.hover_at(pos2(x, y));
+            harness.step();
+            y += 3.0;
+        }
+    }
+    assert!(
+        harness.query_by_label("Add comment").is_some(),
+        "no comment button appeared while hovering the first lines"
+    );
+}
+
 /// Whether a label contains `text`; any number of matches.
 pub(super) fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
     harness.query_all_by_label_contains(text).next().is_some()
+}
+
+/// Whether a label is `label`; any number of matches.
+pub(super) fn shows(harness: &Harness<'_, ReviewApp>, label: &str) -> bool {
+    harness.query_all_by_label(label).next().is_some()
 }
 
 /// The file view shows `path`'s diff. Its label alone does not tell: a card of the folder view
@@ -358,6 +454,11 @@ pub(super) fn opened_urls(harness: &Harness<'_, ReviewApp>) -> Vec<String> {
             _ => None,
         })
         .collect()
+}
+
+/// The settings file the app saved below its data folders.
+pub(super) fn saved_settings(harness: &Harness<'_, ReviewApp>) -> AppSettings {
+    AppSettings::load(&harness.state().services.paths.settings_file()).expect("saved settings")
 }
 
 /// Whether an open pull request holds `path`'s diff in its cache.

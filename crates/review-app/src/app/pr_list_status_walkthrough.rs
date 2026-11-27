@@ -23,7 +23,7 @@ use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
-use super::walkthrough::{wait_idle, wait_until_unsettled};
+use super::walkthrough::{opened_urls, wait_idle, wait_until_unsettled};
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
 use cv_widgets::numbers::number_prefix;
@@ -803,17 +803,4 @@ fn template(path: &str) -> String {
 fn refresh(harness: &mut Harness<'_, ReviewApp>) {
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Refresh (F5)").rect());
     harness.step();
-}
-
-fn opened_urls(harness: &Harness<'_, ReviewApp>) -> Vec<String> {
-    harness
-        .output()
-        .platform_output
-        .commands
-        .iter()
-        .filter_map(|command| match command {
-            egui::OutputCommand::OpenUrl(open) => Some(open.url.clone()),
-            _ => None,
-        })
-        .collect()
 }
