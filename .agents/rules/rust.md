@@ -97,7 +97,7 @@ The contract lives in two files; never loosen either without the owner (RS-AGENT
 
 ## Rules for agents
 
-**RS-AGENT-01** Never report done after `cargo check` or `cargo build`. Done is: `sh scripts/check.sh` clean (format, hygiene, repo-lint, the clippy passes of Lints, the dependency bans, rustdoc), the tests of the changed crates pass, and the release build was shipped and started (Ship). Mark what you could not check (Linux, macOS) NOT-VERIFIED.
+**RS-AGENT-01** Never report done after `cargo check` or `cargo build`. Done is: `sh scripts/check.sh` clean (`--list` names its steps), the tests of the changed crates pass, and the release build was shipped and started (Ship). Mark what you could not check (Linux, macOS) NOT-VERIFIED.
 - Why: LLM-written Rust has the most compile and runtime failures of four measured languages (arXiv 2608.00661); runtime failures survive compilation.
 - Enforced by: `.agents/hooks/rust-stop-gate.sh` (the Stop hook of the main session, over `sh scripts/check.sh --changed`, which lanes run by hand, rule `lanes`), CI, AGENTS.md (Done).
 
@@ -159,7 +159,7 @@ The contract lives in two files; never loosen either without the owner (RS-AGENT
 - Why: in-source deny turns every new compiler or clippy release into a build break.
 - Enforced by: repo-lint RL009.
 
-**RS-DONT-08** Never name a type `*Manager`, `*Service`, `*Helper` or `*Handler`, or a module `utils`, `helpers`, `common` or `misc`. Name the work (`DiffLoader`, `TokenVault`, `ThreadAnchor`). The `cv-services` crate (the app's connections, writes, checkouts and agents) is a named topic.
+**RS-DONT-08** Never name a type `*Manager`, `*Service`, `*Helper` or `*Handler`, or a module `utils`, `util`, `helpers`, `helper`, `common` or `misc` (RL004). Name the work (`DiffLoader`, `TokenVault`, `ThreadAnchor`). The `cv-services` crate (the app's connections, writes, checkouts and agents) is a named topic.
 - Why: a role suffix names no responsibility, so the type grows without a boundary.
 - Enforced by: repo-lint RL003, RL004.
 
@@ -184,7 +184,7 @@ The contract lives in two files; never loosen either without the owner (RS-AGENT
 ## Errors and platform code
 - Libraries return typed errors (`thiserror`, `review_core::ProviderError`) or `io::Error` with context. `expect` only for true invariants, naming the invariant ("tokio runtime must start").
 - Platform code lives in `platform/` modules behind `cfg(target_os = ...)`, one file per system. Shared code never branches on the OS inline.
-- After a change to platform code or dependencies, also check the other systems: `cargo clippy --workspace --all-targets --target x86_64-unknown-linux-gnu -- -D warnings` (needs the target installed and a C cross compiler, see `docs/linux.md`) and both clippy passes with `--target aarch64-apple-darwin` (needs only `rustup target add aarch64-apple-darwin`; clippy links nothing, so it runs on Windows and Linux too). Where a target is not installed, say NOT-VERIFIED for that system. Why: code behind `cfg(target_os = "macos")` is compiled by no other check on this host, so a finding there stayed unseen until the macOS workflow ran.
+- After a change to platform code or dependencies, also check the other systems: the Linux clippy pass in the container of `docs/linux.md` (Tests in a container); a `--target x86_64-unknown-linux-gnu` run on Windows or macOS would also need a C cross compiler for aws-lc-sys; and both clippy passes with `--target aarch64-apple-darwin` (needs only `rustup target add aarch64-apple-darwin`; clippy links nothing, so it runs on Windows and Linux too). Where a target is not installed, say NOT-VERIFIED for that system. Why: code behind `cfg(target_os = "macos")` is compiled by no other check on this host, so a finding there stayed unseen until the macOS workflow ran.
 - Comments say why, not what. Module docs (`//!`) explain the design and its trade-offs; keep them true when you change the behaviour.
 
 ## Readability

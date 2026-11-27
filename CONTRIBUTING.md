@@ -23,7 +23,7 @@ The tests never reach the network or your token store (AGENTS.md, Invariants), s
 
 ## Before you open a pull request
 
-- Run `sh scripts/check.sh` and fix every finding (`sh scripts/check.sh --list` names its steps: format, hygiene, repo-lint, the clippy passes, the dependency bans, rustdoc), then the tests of the crates you changed ([AGENTS.md](AGENTS.md#commands), Commands). Clippy and rustdoc run with `-D warnings`, so a warning or a broken link in a doc comment fails the check. The dependency bans need cargo-deny; without it the step says SKIPPED with the install command.
+- Run `sh scripts/check.sh` and fix every finding (`sh scripts/check.sh --list` names its steps), then run `sh scripts/check.sh test` (the tests your change affects) ([AGENTS.md](AGENTS.md#commands), Commands). Clippy and rustdoc run with `-D warnings`, so a warning or a broken link in a doc comment fails the check. The dependency bans need cargo-deny; without it the step says SKIPPED with the install command.
 - Add tests as [.agents/rules/testing.md](.agents/rules/testing.md) says: a regression test for every bug you fix. UI changes are proven by kittest tests that assert state, not by screenshots ([.agents/rules/ui.md](.agents/rules/ui.md)).
 - Write commit subjects in the imperative mood, in English, and put what you checked in the body (AGENTS.md, Git).
 - Keep one topic per pull request.

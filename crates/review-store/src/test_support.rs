@@ -65,21 +65,22 @@ pub fn write_file(path: &Path, bytes: &[u8]) -> PathBuf {
     path.to_owned()
 }
 
-/// Polls `condition` until it holds or ten seconds pass; true when it held.
+/// The same limit as `cv_testkit::WAIT_LIMIT`, which this crate cannot name: review-store sits
+/// below cv-testkit.
+const WAIT_LIMIT: Duration = Duration::from_secs(180);
+
+/// Polls `condition` until it holds; panics naming `what` when [`WAIT_LIMIT`] runs out first.
 #[expect(
     clippy::disallowed_methods,
     reason = "waits for a background thread that reports to nobody; returns as soon as the \
               condition holds"
 )]
-pub fn wait_for(condition: impl Fn() -> bool) -> bool {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline {
-        if condition() {
-            return true;
-        }
+pub fn wait_until(what: &str, condition: impl Fn() -> bool) {
+    let deadline = Instant::now() + WAIT_LIMIT;
+    while !condition() {
+        assert!(Instant::now() < deadline, "{what} did not happen within {WAIT_LIMIT:?}");
         std::thread::sleep(Duration::from_millis(10));
     }
-    condition()
 }
 
 /// What a Linux session without a keyring answers, for [`crate::TokenVault::Refusing`].

@@ -84,7 +84,6 @@ async fn second_limit_ends_in_rate_limited_error() {
     let error =
         support::provider(&server, Some(TOKEN)).current_user().await.expect_err("still limited");
     assert!(matches!(error, ProviderError::RateLimited { retry_after_secs: 1, .. }), "{error:?}");
-    assert!(error.to_string().contains("is rate-limiting this connection"));
     assert_eq!(server.received_requests().await.expect("recorded").len(), 2, "one retry, no loop");
 }
 

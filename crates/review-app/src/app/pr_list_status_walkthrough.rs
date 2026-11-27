@@ -5,8 +5,8 @@
 //! for the author, changes requested or rejected; a required review or approval rule, met or
 //! missing). The indicators and the status pill ("Approved" or "Active") are asserted through
 //! their accessible names, which carry the tooltip's full text; a required review never counts as
-//! a check. A refresh after the running checks
-//! finished shows their outcome, and asks again only for what was running or failed.
+//! a check. A refresh after the running checks finished shows their outcome, and asks again only
+//! for what was running or failed.
 //!
 //! `cargo test -p review-app --bin CodeView app::pr_list_status_walkthrough -- --nocapture` prints the requests of each listing.
 

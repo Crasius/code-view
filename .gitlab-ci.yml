@@ -56,8 +56,9 @@ include:
 # ---------------- build ----------------
 # After the test stage, so that a red commit spends no build time. Every platform on a tag and by
 # hand; a merge request builds Linux x64 by itself only when what a release build adds to the checks
-# changed (.release-inputs), and every platform on a manual start; a push to main builds nothing,
-# since the release tag's pipeline builds and publishes its own (docs/release.md, Cut a release).
+# changed (.release-inputs), and offers every platform for a manual start when a cargo or release
+# input changed; a push to main builds nothing, since the release tag's pipeline builds and
+# publishes its own (docs/release.md, Cut a release).
 # What a release build checks beyond lint and test: the dependency set and its licenses
 # (cargo-about stops on a license outside ci/about.toml), the release profile, the build scripts,
 # the files ci/build-release.sh reads and the code only a release build compiles. A code change
@@ -101,6 +102,12 @@ include:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths: !reference [.rust-inputs]
+        compare_to: refs/heads/main
+      when: manual
+      allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths: !reference [.release-inputs]
         compare_to: refs/heads/main
       when: manual
       allow_failure: true

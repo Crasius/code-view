@@ -180,7 +180,11 @@ fn maps_resolved_inline_thread_with_rename() {
     );
     assert_eq!(inline.comments.len(), 2);
     assert_eq!(inline.comments[0].updated_at, None, "unchanged update time is dropped");
-    assert!(inline.comments[1].updated_at.is_some());
+    assert_eq!(
+        inline.comments[1].updated_at,
+        Some(time::macros::datetime!(2026-01-02 10:00 UTC)),
+        "the edit time, offset applied"
+    );
 }
 
 #[test]

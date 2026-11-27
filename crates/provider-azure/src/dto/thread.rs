@@ -376,7 +376,10 @@ mod tests {
             mapped.comments.iter().map(|comment| comment.body.as_str()).collect::<Vec<_>>(),
             ["first", "reply"]
         );
-        assert!(mapped.comments[0].updated_at.is_some());
+        assert_eq!(
+            mapped.comments[0].updated_at,
+            Some(time::macros::datetime!(2026-01-01 10:30 UTC))
+        );
         assert!(mapped.comments[1].updated_at.is_none());
         assert_eq!(thread.first_comment_id(), Some(1));
     }

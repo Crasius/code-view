@@ -8,7 +8,7 @@
 
 use review_core::{
     Connection, DiffStat, MergeStatus, ProviderKind, PullRequestDetail, PullRequestState,
-    PullRequestSummary, UserIdentity,
+    PullRequestSummary, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus, UserIdentity,
 };
 
 /// Open, not a draft, by [`author`], `feature/{number}` into `main`, created 2026-10-16 09:30 UTC,
@@ -59,6 +59,26 @@ pub fn connection(id: &str, kind: ProviderKind, base_url: &str) -> Connection {
         base_url: base_url.to_owned(),
         organizations: Vec::new(),
         token: None,
+    }
+}
+
+/// A thread a user wrote, current, with no origin, that the user may reply to and resolve.
+pub fn thread(
+    id: &str,
+    status: ThreadStatus,
+    anchor: Option<ThreadAnchor>,
+    comments: Vec<ThreadComment>,
+) -> ReviewThread {
+    ReviewThread {
+        id: id.to_owned(),
+        status,
+        anchor,
+        is_outdated: false,
+        origin: None,
+        is_system: false,
+        can_reply: true,
+        can_resolve: true,
+        comments,
     }
 }
 

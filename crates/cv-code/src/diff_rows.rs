@@ -1081,22 +1081,13 @@ mod tests {
     }
 
     fn anchored(old_line: Option<u32>, new_line: Option<u32>) -> ReviewThread {
-        ReviewThread {
-            id: "t".into(),
-            status: review_core::ThreadStatus::Active,
-            anchor: Some(ThreadAnchor {
-                path: "a.rs".into(),
-                old_path: None,
-                old_line,
-                new_line,
-                range: None,
-            }),
-            is_outdated: false,
-            origin: None,
-            is_system: false,
-            can_reply: true,
-            can_resolve: true,
-            comments: Vec::new(),
-        }
+        let anchor =
+            ThreadAnchor { path: "a.rs".into(), old_path: None, old_line, new_line, range: None };
+        cv_testkit::samples::thread(
+            "t",
+            review_core::ThreadStatus::Active,
+            Some(anchor),
+            Vec::new(),
+        )
     }
 }

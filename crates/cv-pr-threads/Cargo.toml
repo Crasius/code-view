@@ -17,6 +17,7 @@ doctest = false
 # Test helpers other crates' tests name (`samples`, `ThreadsUi::for_tests` and the other
 # `*_for_tests` drivers, `Delivery`); forwards to the cv crates below.
 test-support = [
+    "dep:cv-testkit",
     "cv-base/test-support",
     "cv-code/test-support",
     "cv-editor/test-support",
@@ -38,6 +39,8 @@ cv-runtime.workspace = true
 cv-services.workspace = true
 cv-syntax.workspace = true
 cv-widgets.workspace = true
+# Only with test-support: `samples::thread` builds on cv-testkit's thread.
+cv-testkit = { workspace = true, optional = true }
 review-core.workspace = true
 review-git.workspace = true
 review-store.workspace = true

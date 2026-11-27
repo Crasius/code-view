@@ -202,8 +202,10 @@ fn time_blobs(concurrent: bool) -> f64 {
     let paths = ["crates/cv-pr-diff/src/diff_view.rs", "Cargo.lock"];
     let start = Instant::now();
     if concurrent {
-        let children: Vec<_> =
-            paths.iter().filter_map(|path| git_cat_file(path).spawn().ok()).collect();
+        let children: Vec<_> = paths
+            .iter()
+            .map(|path| git_cat_file(path).spawn().expect("git cat-file starts"))
+            .collect();
         for mut child in children {
             child.wait().expect("git cat-file ran");
         }

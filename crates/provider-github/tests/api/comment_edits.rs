@@ -26,7 +26,11 @@ async fn edits_a_review_thread_comment_by_its_database_id() {
     assert_eq!(comment.id, "1001");
     assert_eq!(comment.body, "Use a slice here.");
     assert_eq!(comment.author.id, "9");
-    assert!(comment.updated_at.is_some(), "the edit shows as edited");
+    assert_eq!(
+        comment.updated_at,
+        Some(time::macros::datetime!(2024-06-01 11:30 UTC)),
+        "the edit shows as edited"
+    );
 }
 
 #[tokio::test]
@@ -43,7 +47,7 @@ async fn edits_a_general_comment_as_an_issue_comment() {
         .await
         .expect("edited");
     assert_eq!((comment.id.as_str(), comment.body.as_str()), ("5", "Ready for another look."));
-    assert!(comment.updated_at.is_some());
+    assert_eq!(comment.updated_at, Some(time::macros::datetime!(2024-06-01 11:30 UTC)));
 }
 
 #[tokio::test]

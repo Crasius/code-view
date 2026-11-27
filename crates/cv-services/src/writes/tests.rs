@@ -42,17 +42,7 @@ fn detail(number: u64) -> PullRequestDetail {
 }
 
 fn thread(id: &str) -> ReviewThread {
-    ReviewThread {
-        id: id.into(),
-        status: ThreadStatus::Active,
-        anchor: None,
-        is_outdated: false,
-        origin: None,
-        is_system: false,
-        can_reply: true,
-        can_resolve: true,
-        comments: Vec::new(),
-    }
+    samples::thread(id, ThreadStatus::Active, None, Vec::new())
 }
 
 /// A host answer asked for at `asked_at`.

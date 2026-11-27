@@ -62,5 +62,5 @@ body:
     id: log
     attributes:
       label: Log lines
-      description: The relevant lines of the log file in Code View's cache folder, with any private names removed.
+      description: 'The relevant lines of a log file in the logs folder of Code View''s cache folder (Windows: `%LOCALAPPDATA%\ReviewApp\logs`, macOS: `~/Library/Caches/ReviewApp/logs`, Linux: `$XDG_CACHE_HOME/ReviewApp/logs`, by default `~/.cache/ReviewApp/logs`), with any private names removed.'
       render: text

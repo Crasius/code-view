@@ -364,17 +364,7 @@ impl Script for LaggingHost {
     }
 
     async fn threads(&self, _repo: &str, _number: u64) -> Result<Vec<ReviewThread>> {
-        Ok(vec![ReviewThread {
-            id: "t1".to_owned(),
-            status: ThreadStatus::Active,
-            anchor: None,
-            is_outdated: false,
-            origin: None,
-            is_system: false,
-            can_reply: true,
-            can_resolve: true,
-            comments: Vec::new(),
-        }])
+        Ok(vec![samples::thread("t1", ThreadStatus::Active, None, Vec::new())])
     }
 
     async fn set_thread_status(

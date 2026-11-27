@@ -7,7 +7,7 @@
 <!-- The checks of AGENTS.md (Commands) you ran and their results, and the tests you added. -->
 
 - [ ] `sh scripts/check.sh` (`--list` names its steps)
-- [ ] the tests of the crates I changed
+- [ ] `sh scripts/check.sh test` (the tests the change affects)
 
 ## Contributor license agreement
 

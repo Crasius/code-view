@@ -990,6 +990,7 @@ dependencies = [
  "cv-runtime",
  "cv-services",
  "cv-syntax",
+ "cv-testkit",
  "cv-widgets",
  "egui",
  "review-core",

@@ -78,7 +78,17 @@ fn maps_pipeline_run() {
         run.description.as_deref(),
         Some("#42 · merge_request_event on refs/merge-requests/1/head")
     );
-    assert!(run.has_jobs && run.started_at.is_some() && run.finished_at.is_some());
+    assert!(run.has_jobs);
+    assert_eq!(
+        run.started_at,
+        Some(time::macros::datetime!(2026-10-16 02:00:31.422 UTC)),
+        "without started_at the run starts at created_at"
+    );
+    assert_eq!(
+        run.finished_at,
+        Some(time::macros::datetime!(2026-10-16 02:08:45.909 UTC)),
+        "a finished pipeline ends at updated_at"
+    );
     let running = to_run(&pipeline(43, "head", "running"), true);
     assert_eq!(running.finished_at, None, "updated_at is no finish time while running");
 }
