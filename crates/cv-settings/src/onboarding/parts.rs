@@ -7,7 +7,6 @@ use review_core::setup::{Access, FeatureCheck};
 
 const HEADLINE_SIZE: f32 = 22.0;
 const STEP_DOT: f32 = 22.0;
-const ROW_HEIGHT: f32 = 56.0;
 const CALLOUT_PADDING: Margin = Margin::symmetric(14, 12);
 const SHEET_PADDING: Margin = Margin::symmetric(32, 28);
 
@@ -133,7 +132,8 @@ pub(crate) fn choice_row(
 ) -> Response {
     let palette = theme::palette(ui.ctx());
     let width = ui.available_width();
-    let (rect, response) = ui.allocate_exact_size(vec2(width, ROW_HEIGHT), Sense::click());
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(width, theme::style::ROW_TWO_LINE), Sense::click());
     let fill = if is_selected {
         palette.selection
     } else if response.hovered() {
@@ -193,8 +193,11 @@ pub(crate) fn choice_row(
         }
     }
     let label = format!("{title}. {detail}");
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::Role::RadioButton, true, is_selected, &label)
+    response.widget_info(|| match mark {
+        Mark::Radio => {
+            egui::WidgetInfo::selected(egui::Role::RadioButton, true, is_selected, &label)
+        }
+        Mark::Chevron => egui::WidgetInfo::labeled(egui::Role::Button, true, &label),
     });
     focus::ring(ui, &response, rect);
     response

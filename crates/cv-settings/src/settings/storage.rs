@@ -9,7 +9,7 @@ use cv_base::theme::{self, FileHue, icons, style};
 use cv_runtime::toasts::ToastAction;
 use cv_services::Services;
 use cv_widgets::numbers::format_bytes;
-use cv_widgets::{buttons, row, skeleton};
+use cv_widgets::{buttons, glyph, row, skeleton};
 use egui::{Align, Color32, Layout, Rect, RichText, Sense, Ui, vec2};
 use review_store::retention::{
     LOG_LIMITS, MIRROR_LIMITS, Outcome, StorageStatus, StorageUsage, VIEWED_LIMITS,
@@ -317,7 +317,12 @@ fn summary(ui: &mut Ui, services: &Services, status: &StorageStatus) {
             }
         }
         Some(cleared) => {
-            decorative_icon(ui, icons::CHECK_CIRCLE, icons::SIZE, palette.success);
+            glyph::decorative(
+                ui,
+                RichText::new(icons::CHECK_CIRCLE)
+                    .font(icons::rest_font(&palette, icons::SIZE))
+                    .color(palette.success),
+            );
             let freed = format!("Freed {}.", format_bytes(cleared.freed));
             let text = match total {
                 Some(total) => format!("{freed} {total}."),
@@ -353,19 +358,6 @@ fn kept_message(cleared: Outcome) -> String {
 fn swatch(ui: &mut Ui, color: Color32) {
     let (slot, _) = ui.allocate_exact_size(vec2(icons::SIZE, icons::SIZE), Sense::hover());
     ui.painter().rect_filled(Rect::from_center_size(slot.center(), vec2(SWATCH, SWATCH)), 2, color);
-}
-
-/// A glyph painted without a widget, so screen readers skip it; the text next to it says it all.
-fn decorative_icon(ui: &mut Ui, glyph: &str, size: f32, color: egui::Color32) {
-    let palette = theme::palette(ui.ctx());
-    let (rect, _) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
-    ui.painter().text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        glyph,
-        icons::rest_font(&palette, size),
-        color,
-    );
 }
 
 /// Creates the cache folder before "Open folder" opens it. A failure is not dropped

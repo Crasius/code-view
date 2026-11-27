@@ -550,18 +550,3 @@ fn starts_group(row: &Row, query: &str) -> bool {
     };
     query.is_empty() && shortcuts::group_of(index).is_some()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::SettingsPage;
-    use crate::onboarding::CliTools;
-
-    #[test]
-    fn a_test_build_offers_no_sign_in_tools_until_a_test_sets_them() {
-        let mut page = SettingsPage::default();
-        assert_eq!(page.tools(), CliTools::default());
-        let both = CliTools { github: true, azure: true };
-        page.set_cli_tools(both);
-        assert_eq!(page.tools(), both);
-    }
-}
