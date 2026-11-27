@@ -27,7 +27,8 @@ struct Node {
     file_count: u32,
 }
 
-/// The rows of the files `paths` yields as (file index, path), and every file in the order the rows would list them with no folder collapsed.
+/// The rows of the files `paths` yields as (file index, path), and every file in the order the
+/// rows would list them with no folder collapsed.
 pub fn build_with_order<'a>(
     paths: impl Iterator<Item = (usize, &'a str)>,
     collapsed: &HashSet<String>,

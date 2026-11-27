@@ -80,10 +80,10 @@ impl Metrics {
     /// New only: where the removal wedge between two rows sits, its point on the boundary `y`.
     /// The hit area is larger than the wedge, so it is easy to hover.
     pub fn wedge_rect(&self, pane_left: f32, y: f32) -> Rect {
-        let left = self.focus_bar_left(pane_left) - FOCUS_BAR_INSET;
+        let bar = self.focus_bar_left(pane_left);
         Rect::from_min_max(
-            pos2(left - 4.0, y - self.line_height * 0.4),
-            pos2(left + FOCUS_BAR_INSET + WEDGE_WIDTH + 6.0, y + self.line_height * 0.4),
+            pos2(bar - FOCUS_BAR_INSET - 4.0, y - self.line_height * 0.4),
+            pos2(bar + WEDGE_WIDTH + 6.0, y + self.line_height * 0.4),
         )
     }
 

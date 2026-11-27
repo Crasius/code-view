@@ -358,7 +358,7 @@ mod tests {
         assert_eq!(file_icon(path), FileIcon { glyph, hue }, "{path}");
     }
 
-    /// One case per rule that runs before the extension table, named after the rule.
+    /// One case per lookup rule, named after the rule.
     #[test]
     fn special_file_names_win_over_extensions() {
         let cases: &[(&str, &str, &str, FileHue)] = &[
