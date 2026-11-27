@@ -233,7 +233,7 @@ fn blob_ids<'f>(files: &'f [ChangedFile], indexes: &[usize]) -> Vec<&'f str> {
     ids
 }
 
-/// The ones of the blobs `ids` that the mirror does not have, asked without fetching:
+/// The blobs among `ids` that the mirror does not have, asked without fetching:
 /// `git rev-list --objects --no-walk --ignore-missing --missing=print` lists the blobs it has and
 /// skips the others. Not `git cat-file --batch-check`: offline, git 2.47 answers `<id> missing`,
 /// but git 2.39.5 (Debian 12) stops at the first missing blob with "could not fetch … from

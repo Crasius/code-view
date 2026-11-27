@@ -64,6 +64,7 @@ pub struct Made {
 pub struct MadeWorktree {
     /// The clone it is registered in.
     pub clone: PathBuf,
+    /// The worktree's folder.
     pub path: PathBuf,
 }
 
@@ -72,6 +73,7 @@ pub struct MadeWorktree {
 pub struct MadeBranch {
     /// The repository it is in.
     pub repo: PathBuf,
+    /// The branch's short name.
     pub name: String,
     /// The commit it was created at.
     pub tip: String,
