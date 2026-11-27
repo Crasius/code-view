@@ -60,7 +60,8 @@ impl ConnectionStore {
         &self.connections
     }
 
-    /// Starts at 0 and grows by one with every change the store saves.
+    /// Starts at 0 and grows by one with every upsert or remove the store saves, also a remove of
+    /// an id it does not hold.
     pub fn revision(&self) -> u64 {
         self.revision
     }
