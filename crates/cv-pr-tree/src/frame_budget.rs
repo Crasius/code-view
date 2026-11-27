@@ -1,4 +1,4 @@
-//! Frame-budget benchmark of the Files tab's tree at 4K: a 10k-file tree. `#[ignore]`d; see
+//! Frame-budget benchmark of the file tree at 4K: a 10k-file tree. `#[ignore]`d; see
 //! `cv_testkit::frame_bench` for how to run it.
 
 use std::collections::{HashMap, HashSet};
@@ -8,7 +8,7 @@ use egui::{pos2, vec2};
 use review_core::FileCategory;
 use review_git::{ChangeKind, ChangedFile};
 
-use cv_pr_tree::{FileTree, TreeInputs, side_panel};
+use crate::{FileTree, TreeInputs, VoteOffer, side_panel};
 use cv_testkit::frame_bench::{Bench, Report, SCALES, finish};
 
 const TREE_FILES: usize = 10_000;
@@ -71,7 +71,7 @@ fn bench_tree(pixels_per_point: f32, reports: &mut Vec<Report>) {
             selected_folder: None,
             is_viewed: &is_viewed,
             thread_counts: &state.thread_counts,
-            vote: cv_pr_tree::VoteOffer::None,
+            vote: VoteOffer::None,
         };
         side_panel::show(ui, 340.0, &mut state.tree, &inputs, false);
     });

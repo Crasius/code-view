@@ -3,6 +3,9 @@
 //! their durations, the remote, the mirror, the git command and git's own progress lines). The
 //! log itself, and its redaction, is [`progress_log`].
 
+#[cfg(test)]
+mod loading_walkthrough;
+
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 

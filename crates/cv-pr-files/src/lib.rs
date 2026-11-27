@@ -12,13 +12,7 @@
 
 #[cfg(test)]
 mod diff_selection_check;
-#[cfg(test)]
-mod file_header_check;
 mod focus_strip;
-#[cfg(test)]
-mod frame_budget;
-#[cfg(test)]
-mod loading_walkthrough;
 mod origin_view;
 mod prefetch;
 mod tab;

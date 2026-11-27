@@ -9,11 +9,10 @@ use review_core::{DiffSide, FileCategory};
 use review_git::{ChangeKind, ChangedFile, FULL_FILE_CONTEXT};
 use review_store::{DiffLayout, ThemePreference};
 
-use crate::tests::services_in;
+use crate::file_header::{self, ChangePosition, HeaderInputs};
+use crate::preview::Preview;
 use cv_base::theme;
 use cv_pr_diff::testing::settle;
-use cv_pr_rendered::file_header::{self, ChangePosition, HeaderInputs};
-use cv_pr_rendered::preview::Preview;
 use cv_services::Services;
 use cv_testkit::ScratchDir;
 
@@ -63,8 +62,24 @@ fn focused(index: usize, total: usize) -> ChangePosition {
     ChangePosition { current: Some(index), total }
 }
 
+fn services_in(scratch: &ScratchDir) -> Services {
+    Services::new(egui::Context::default(), scratch.app_paths(), cv_providers::create_provider)
+}
+
+/// The side the Files tab shows whole: the new one of an added file, the old one of a deleted.
+fn whole_file_side(file: &ChangedFile) -> Option<DiffSide> {
+    match file.kind {
+        ChangeKind::Added => Some(DiffSide::New),
+        ChangeKind::Deleted => Some(DiffSide::Old),
+        ChangeKind::Modified
+        | ChangeKind::Renamed
+        | ChangeKind::Copied
+        | ChangeKind::TypeChanged => None,
+    }
+}
+
 fn scene(file: ChangedFile, changes: Option<ChangePosition>, services: Services) -> Scene {
-    let whole_file = super::whole_file_side(&file);
+    let whole_file = whole_file_side(&file);
     Scene {
         services,
         preview: Preview::default(),
@@ -179,7 +194,7 @@ fn show_file(
     changes: Option<ChangePosition>,
 ) -> Vec<(String, Rect)> {
     let scene = harness.state_mut();
-    scene.whole_file = super::whole_file_side(&file);
+    scene.whole_file = whole_file_side(&file);
     scene.file = file;
     scene.changes = changes;
     redraw(harness, width)
