@@ -25,15 +25,15 @@ fn provider_icons_name_the_platform_everywhere() {
     let origin = origin(&scratch);
     let connections: Vec<Connection> = HOSTS
         .iter()
-        .map(|&(id, name, kind, base_url, _, _)| Connection {
-            name: name.to_owned(),
-            organizations: if kind == ProviderKind::AzureDevOps {
+        .map(|host| Connection {
+            name: host.name.to_owned(),
+            organizations: if host.kind == ProviderKind::AzureDevOps {
                 vec!["contoso".to_owned()]
             } else {
                 Vec::new()
             },
             token: Some("scripted".to_owned()),
-            ..samples::connection(id, kind, base_url)
+            ..samples::connection(host.id, host.kind, host.base_url)
         })
         .collect();
     let builder = Harness::builder().with_size([1280.0, 1080.0]).with_step_dt(1.0 / 60.0);
@@ -41,41 +41,45 @@ fn provider_icons_name_the_platform_everywhere() {
         app_with(builder, saved_paths(&scratch, &connections), platforms(Some(origin)));
 
     wait_until(&mut harness, "every card", |harness| {
-        HOSTS.iter().all(|(_, _, kind, ..)| has(harness, &title(*kind, 1)))
+        HOSTS.iter().all(|host| has(harness, &title(host.kind, 1)))
     });
-    for (_, _, _, _, _, mark) in HOSTS {
+    for host in &HOSTS {
         // Card header plus one per row: never a mark without its platform and host.
         assert!(
-            harness.query_all_by_role_and_label(Role::Image, mark).count() >= 3,
-            "{mark} on the card and its rows"
+            harness.query_all_by_role_and_label(Role::Image, host.mark).count() >= 3,
+            "{} on the card and its rows",
+            host.mark
         );
     }
     harness.state_mut().navigator.go(Route::MyPullRequests);
     settle_background(&mut harness);
-    for (id, connection_name, kind, _, repository, mark) in HOSTS {
+    for host in &HOSTS {
         // As from outside: the trail is the structure, with the connection's crumb.
         harness.state_mut().navigator.jump(Route::RepositoryPullRequests {
-            connection_id: id.to_owned(),
-            repository_key: repository.to_owned(),
+            connection_id: host.id.to_owned(),
+            repository_key: host.repository.to_owned(),
         });
-        wait_until(&mut harness, "the repository's rows", |harness| has(harness, &title(kind, 1)));
+        wait_until(&mut harness, "the repository's rows", |harness| {
+            has(harness, &title(host.kind, 1))
+        });
         assert!(
-            harness.query_by_role_and_label(Role::Link, connection_name).is_some(),
-            "{connection_name} crumb"
+            harness.query_by_role_and_label(Role::Link, host.name).is_some(),
+            "{} crumb",
+            host.name
         );
-        if kind == ProviderKind::AzureDevOps {
-            crumb_tooltip(&mut harness, connection_name, mark);
+        if host.kind == ProviderKind::AzureDevOps {
+            crumb_tooltip(&mut harness, host.name, host.mark);
         }
     }
-    for (id, _, kind, _, repository, _) in HOSTS {
+    for host in &HOSTS {
         let key = PullRequestKey {
-            connection_id: id.to_owned(),
-            repository_key: repository.to_owned(),
+            connection_id: host.id.to_owned(),
+            repository_key: host.repository.to_owned(),
             number: 1,
         };
         harness.state_mut().navigator.go(Route::PullRequest(key));
         // The page keeps the tab it showed last; its header names it on every tab.
-        let shown = title(kind, 1);
+        let shown = title(host.kind, 1);
         wait_until(&mut harness, "the pull request header", |harness| {
             harness.query_by_role_and_label(Role::Tab, "Overview").is_some() && has(harness, &shown)
         });
@@ -163,7 +167,7 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
             && opened[0].ends_with("/README.md"),
         "the menu opens the file at the head commit: {opened:?}"
     );
-    // The file header no longer offers a platform link beside its toggles.
+    // The file header carries no platform link; the mark's menu above is the one way out.
     assert!(
         harness.query_by_label("Open on GitHub").is_none(),
         "no platform button in the file header"

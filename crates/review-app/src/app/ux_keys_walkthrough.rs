@@ -25,17 +25,18 @@ fn ux_keys_pick_tabs_and_open_the_shortcuts() {
     let connection = host.connection("gh", "Acme");
     let mut harness = app(&scratch, std::slice::from_ref(&connection));
     open_pull_request(&mut harness);
-    assert!(
-        tab(&harness) == Some(PullRequestTab::Overview),
+    assert_eq!(
+        tab(&harness),
+        Some(PullRequestTab::Overview),
         "a pull request opens on the Overview"
     );
 
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Num2);
     harness.run_steps(4);
-    assert!(tab(&harness) == Some(PullRequestTab::Files), "Ctrl+2 shows the Files tab");
+    assert_eq!(tab(&harness), Some(PullRequestTab::Files), "Ctrl+2 shows the Files tab");
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Num4);
     harness.run_steps(4);
-    assert!(tab(&harness) == Some(PullRequestTab::Pipelines), "Ctrl+4 shows the Pipelines tab");
+    assert_eq!(tab(&harness), Some(PullRequestTab::Pipelines), "Ctrl+4 shows the Pipelines tab");
 
     // The tooltip names the key.
     harness
@@ -50,7 +51,7 @@ fn ux_keys_pick_tabs_and_open_the_shortcuts() {
     });
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Num1);
     harness.run_steps(4);
-    assert!(tab(&harness) == Some(PullRequestTab::Overview), "Ctrl+1 goes back to the Overview");
+    assert_eq!(tab(&harness), Some(PullRequestTab::Overview), "Ctrl+1 goes back to the Overview");
 
     // `?` opens the one list of shortcuts, at the pull request's.
     harness.event(Event::Text("?".to_owned()));

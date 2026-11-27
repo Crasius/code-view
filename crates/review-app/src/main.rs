@@ -41,7 +41,7 @@ const WINDOW_ICON_PNG: &[u8] = include_bytes!("../assets/icon/codeview-macos-512
 const WINDOW_ICON_PNG: &[u8] = include_bytes!("../assets/icon/codeview-64.png");
 
 fn main() -> eframe::Result<()> {
-    // Started by the app itself to draw Mermaid diagrams (cv_media::mermaid::worker): no window.
+    // Started by the app itself to draw Mermaid diagrams (cv_media::mermaid::serve_if_asked): no window.
     if cv_media::mermaid::serve_if_asked() {
         return Ok(());
     }

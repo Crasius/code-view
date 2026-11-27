@@ -172,9 +172,9 @@ fn setup_token_pages_offer_cli_and_checklists() {
     });
     assert!(harness.query_by_label_contains("Create token on github.com").is_some());
 
-    press(&mut harness, &back());
-    wait_until(&mut harness, "the host step", |harness| harness.query_by_label(&back()).is_some());
-    press(&mut harness, &back());
+    press(&mut harness, BACK);
+    wait_until(&mut harness, "the host step", |harness| harness.query_by_label(BACK).is_some());
+    press(&mut harness, BACK);
     wait_until(&mut harness, "the platforms", |harness| {
         harness.query_by_label_contains("Azure DevOps Services or").is_some()
     });
@@ -219,9 +219,7 @@ fn setup_fix_token_from_a_denied_request() {
 }
 
 /// The wizard's Back button (its arrow icon is painted, not part of the name).
-fn back() -> String {
-    "Back".to_owned()
-}
+const BACK: &str = "Back";
 
 pub(super) fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
     super::startup::start(Harness::builder().with_size([1280.0, 1000.0]), |creation| {
