@@ -56,7 +56,7 @@ impl ColdTier {
     /// Waits until the writer thread has handled every write queued before; returns at once when
     /// it never started. Writes run in order on one thread, so a marker write behind them is
     /// handled last.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn flush(&self) {
         let (done, handled) = mpsc::channel::<()>();
         let marker = move |_: &ColdCache| {

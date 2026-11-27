@@ -302,7 +302,7 @@ impl<K: Eq + Hash + Clone, V> BoundedCache<K, V> {
     }
 
     /// Bytes held.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn used(&self) -> usize {
         self.used
     }

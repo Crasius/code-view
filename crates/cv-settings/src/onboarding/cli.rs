@@ -4,7 +4,6 @@
 //! `review_store::token_vault`); it is never printed or logged, and error messages only carry the
 //! tool's stderr.
 
-use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -25,6 +24,7 @@ pub struct CliTools {
 }
 
 impl CliTools {
+    #[cfg(not(any(test, feature = "test-support")))]
     pub(crate) fn detect() -> Self {
         Self { github: on_path(&["gh.exe", "gh"]), azure: on_path(&[platform::AZURE_CLI]) }
     }
@@ -49,6 +49,7 @@ impl CliTools {
     }
 }
 
+#[cfg(not(any(test, feature = "test-support")))]
 fn on_path(file_names: &[&str]) -> bool {
     let Some(path) = std::env::var_os("PATH") else {
         return false;
@@ -57,7 +58,8 @@ fn on_path(file_names: &[&str]) -> bool {
         .any(|directory| file_names.iter().any(|name| is_file(&directory.join(name))))
 }
 
-fn is_file(path: &Path) -> bool {
+#[cfg(not(any(test, feature = "test-support")))]
+fn is_file(path: &std::path::Path) -> bool {
     path.metadata().is_ok_and(|metadata| metadata.is_file())
 }
 

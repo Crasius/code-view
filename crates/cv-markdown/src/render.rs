@@ -95,12 +95,7 @@ pub(crate) struct Renderer {
 }
 
 impl Renderer {
-    pub(crate) fn new(
-        palette: Palette,
-        id: Id,
-        scale: f32,
-        links: Option<Arc<dyn LinkResolver>>,
-    ) -> Self {
+    pub fn new(palette: Palette, id: Id, scale: f32, links: Option<Arc<dyn LinkResolver>>) -> Self {
         Self {
             palette,
             id,

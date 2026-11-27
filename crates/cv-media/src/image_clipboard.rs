@@ -102,6 +102,7 @@ impl FakeClipboard {
     }
 
     /// Every copy from now on fails with `reason`.
+    #[cfg(test)]
     pub(crate) fn fail_with(&self, reason: &str) {
         *self.failure.lock().unwrap_or_else(PoisonError::into_inner) = Some(reason.to_owned());
     }
