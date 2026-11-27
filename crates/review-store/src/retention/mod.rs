@@ -32,13 +32,12 @@ mod sweep_tests;
 use std::time::Duration;
 
 pub use leases::Lease;
-pub(crate) use leases::Leases;
 pub use mirror_stamp::{MirrorUse, record_use as record_mirror_use};
 pub use mirrors::MirrorGuard;
 pub(crate) use policy::Limits;
 pub use policy::Outcome;
 pub use usage::StorageUsage;
-pub use worker::{Notify, Retention, Schedule, StorageStatus};
+pub use worker::{Retention, Schedule, StorageStatus};
 
 pub(crate) use sweep::connection_ids;
 #[cfg(test)]

@@ -25,7 +25,7 @@ pub use assistant::chats::{
     AssistantChats, Chat, ChatQuote, ChatStep, ChatStepKind, ChatTurn, ChatUsage, ChatsSnapshot,
     TurnEnd, TurnKind, agent_checkouts_dir, chats_dir,
 };
-pub(crate) use assistant::settings::{AssistantSettings, MiniChatCorner};
+pub(crate) use assistant::settings::AssistantSettings;
 pub use atomic_file::write_bytes;
 pub use cold_cache::{BUDGET_BYTES as COLD_CACHE_BUDGET_BYTES, ColdCache};
 pub use connections::ConnectionStore;
@@ -39,7 +39,6 @@ pub use settings::{
     ThemePreference, ThreadFilters, TreeSide, WindowPlacement,
 };
 pub use settings::{HeaderMode, HeaderModes};
-pub(crate) use settings::{PipelineSettings, ThreadsPanel};
 pub use threads::{Draft, DraftAnchor, DraftRange, ThreadStore};
 pub use token_vault::{LINUX_HELP_URL, TokenVault, VaultProblem};
 pub use viewed::{LastPlace, PullRequestTab, ViewedFiles};

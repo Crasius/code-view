@@ -40,7 +40,7 @@ impl TreeState {
 
 /// One working tree of a clone, the clone's own among them.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Worktree {
+pub(crate) struct Worktree {
     pub path: PathBuf,
     /// The branch checked out there; `None` when detached.
     pub branch: Option<String>,

@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use super::leases::Leases;
 use super::mirrors::{MirrorGuard, NothingInUse};
 use super::sweep::{CacheLimits, Sweeper};
-use super::{DAY, Leases, Limits, MirrorUse, mirror_stamp};
+use super::{DAY, Limits, MirrorUse, mirror_stamp};
 use crate::flat_layout::{FlatLayout, pull_request_file};
 use crate::test_support::{TestDir, wait_for, write_connections, write_file};
 use crate::{AppPaths, Draft, ThreadStore, ViewedFiles, stable_hash};

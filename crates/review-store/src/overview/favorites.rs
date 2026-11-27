@@ -32,10 +32,6 @@ impl Favorites {
         &self.repositories
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.repositories.is_empty()
-    }
-
     pub fn contains(&self, connection_id: &str, repository_key: &str) -> bool {
         self.position(connection_id, repository_key).is_ok()
     }

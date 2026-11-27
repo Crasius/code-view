@@ -6,11 +6,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use super::leases::Leases;
 use super::mirrors::NothingInUse;
 use super::refs::{self, test_repo};
 use super::sweep::{CacheLimits, FinishedPullRequest};
 use super::sweep_tests::{Cache, InUse};
-use super::{Leases, MirrorUse, Retention, Schedule, mirror_stamp};
+use super::{MirrorUse, Retention, Schedule, mirror_stamp};
 use crate::flat_layout::pull_request_file;
 use crate::test_support::{wait_for, write_file};
 use crate::{AppPaths, stable_hash};

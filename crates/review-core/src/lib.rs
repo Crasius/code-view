@@ -21,4 +21,4 @@ pub use error::{ProviderError, Result};
 // The model is the crate's surface: re-exported whole, like a prelude (RS-READ-08 exempts it).
 pub use model::*;
 pub use provider::{Capabilities, Provider};
-pub use setup::{AccessProblem, AccessReport, Feature, ProblemAction, ScopeCandidate, TokenGuide};
+pub use setup::{AccessProblem, AccessReport, ProblemAction, ScopeCandidate, TokenGuide};
