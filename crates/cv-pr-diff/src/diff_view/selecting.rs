@@ -135,11 +135,11 @@ impl Selecting {
         // `track_pointer`): sensing drags here would take them from splitters along the edges of
         // the diff.
         let area = ui.interact(rect, ui.scope_id().with("diff_area"), Sense::click());
-        let selected = self
-            .target
-            .as_ref()
-            .map_or_else(String::new, |target| format!(", {} selected", target.label));
         area.widget_info(|| {
+            let selected = self
+                .target
+                .as_ref()
+                .map_or_else(String::new, |target| format!(", {} selected", target.label));
             egui::WidgetInfo::labeled(
                 egui::Role::Document,
                 true,

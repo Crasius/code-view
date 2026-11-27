@@ -8,14 +8,13 @@ use std::sync::Arc;
 use cv_base::theme;
 use cv_code::contents::{Coloring, FileContents, SideContents};
 use cv_code::diff_rows::Layout;
-use cv_pr_threads::ThreadsUi;
+use cv_pr_threads::{ThreadsUi, samples};
 use cv_syntax::blob_text::BlobText;
 use cv_syntax::grammar;
 use cv_syntax::highlight::{self, LineSpans};
 use egui_kittest::Harness;
 use review_core::{
     DiffSide, NewThread, ProviderKind, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus,
-    UserIdentity,
 };
 use review_git::FileDiff;
 use review_store::{PaneSizes, ThemePreference};
@@ -313,32 +312,20 @@ pub fn line_of(text: &str, needle: &str) -> u32 {
 }
 
 pub fn thread_on_old_line(old_line: u32, body: &str) -> ReviewThread {
-    ReviewThread {
-        id: "removed-line-thread".into(),
-        status: ThreadStatus::Active,
-        anchor: Some(ThreadAnchor {
-            path: PATH.into(),
-            old_path: None,
-            old_line: Some(old_line),
-            new_line: None,
-            range: None,
-        }),
-        is_outdated: false,
-        origin: None,
-        is_system: false,
-        can_reply: true,
-        can_resolve: true,
-        comments: vec![ThreadComment {
-            id: "c1".into(),
-            author: UserIdentity {
-                id: "u1".into(),
-                display_name: "Mara Schulz".into(),
-                login: Some("mschulz".into()),
-                avatar_url: None,
-            },
-            body: body.into(),
+    let anchor = ThreadAnchor {
+        path: PATH.into(),
+        old_path: None,
+        old_line: Some(old_line),
+        new_line: None,
+        range: None,
+    };
+    samples::thread(
+        "removed-line-thread",
+        ThreadStatus::Active,
+        Some(anchor),
+        vec![ThreadComment {
             created_at: time::OffsetDateTime::UNIX_EPOCH,
-            updated_at: None,
+            ..samples::comment("c1", &samples::mara(), 0, body)
         }],
-    }
+    )
 }

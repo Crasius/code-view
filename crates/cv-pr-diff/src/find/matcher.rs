@@ -90,32 +90,35 @@ mod tests {
     const CASE: MatchOptions = MatchOptions { match_case: true, ..ANY };
     const WORD: MatchOptions = MatchOptions { whole_word: true, ..ANY };
 
-    /// The one match expected.
-    fn only(range: Range<usize>) -> Vec<Range<usize>> {
-        vec![range]
-    }
-
     #[test]
     fn finds_every_occurrence_without_overlap() {
         assert_eq!(find_all("value = value + 1", "value", ANY), [0..5, 8..13]);
         assert_eq!(find_all("aaaa", "aa", ANY), [0..2, 2..4], "no overlapping matches");
-        assert_eq!(find_all("abc", "abcd", ANY), [] as [Range<usize>; 0], "longer than the line");
+        assert!(find_all("abc", "abcd", ANY).is_empty(), "longer than the line");
     }
 
     #[test]
     fn an_empty_needle_matches_nothing() {
-        assert_eq!(find_all("anything", "", ANY), [] as [Range<usize>; 0]);
-        assert_eq!(find_all("", "", CASE), [] as [Range<usize>; 0]);
+        assert!(find_all("anything", "", ANY).is_empty(), "an empty needle in a line");
+        assert!(find_all("", "", CASE).is_empty(), "an empty needle in an empty line");
     }
 
     #[test]
+    #[expect(
+        clippy::single_range_in_vec_init,
+        reason = "one match: a list of one range, not a range of indices"
+    )]
     fn ignores_case_unless_asked() {
         assert_eq!(find_all("Value VALUE value", "value", ANY), [0..5, 6..11, 12..17]);
-        assert_eq!(find_all("Value VALUE value", "value", CASE), only(12..17));
-        assert_eq!(find_all("Value", "VALUE", CASE), [] as [Range<usize>; 0]);
+        assert_eq!(find_all("Value VALUE value", "value", CASE), [12..17]);
+        assert!(find_all("Value", "VALUE", CASE).is_empty(), "no match of another case");
     }
 
     #[test]
+    #[expect(
+        clippy::single_range_in_vec_init,
+        reason = "one match: a list of one range, not a range of indices"
+    )]
     fn whole_words_skip_matches_inside_longer_words() {
         assert_eq!(
             find_all("count counter recount count_x (count)", "count", WORD),
@@ -123,20 +126,24 @@ mod tests {
         );
         assert_eq!(
             find_all("countcount count", "count", WORD),
-            only(11..16),
+            [11..16],
             "retries after a partial hit"
         );
     }
 
     #[test]
+    #[expect(
+        clippy::single_range_in_vec_init,
+        reason = "one match: a list of one range, not a range of indices"
+    )]
     fn matches_multi_byte_text_by_its_byte_ranges() {
         let text = "größe Größe GRÖSSE";
         assert_eq!(find_all(text, "größe", ANY), [0..7, 8..15]);
-        assert_eq!(find_all(text, "Ö", CASE), only(18..20), "only the upper case one");
+        assert_eq!(find_all(text, "Ö", CASE), [18..20], "only the upper case one");
         assert_eq!(find_all("日本語の日本", "日本", ANY), [0..6, 12..18]);
         assert_eq!(
             find_all("über_über über", "über", WORD),
-            only(12..17),
+            [12..17],
             "letters beyond ASCII are word characters"
         );
     }

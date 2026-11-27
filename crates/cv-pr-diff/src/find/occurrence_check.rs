@@ -3,8 +3,6 @@
 //! collapsed unchanged lines; blanks, several lines and the setting turned off mark none. A query
 //! in the find widget leaves them be: its hits show beside them in another colour.
 
-use std::time::{Duration, Instant};
-
 use egui::{Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
 use review_store::ThemePreference;
@@ -75,15 +73,10 @@ fn drag(harness: &mut Harness<'_, Fixture>, from: Pos2, to: Pos2) {
 
 /// Steps until the occurrences are found; their rows and overview ticks.
 fn wait_for_occurrences(harness: &mut Harness<'_, Fixture>) -> OccurrenceRows {
-    let started = Instant::now();
-    loop {
+    test_support::poll_for("the occurrences", || {
         harness.step();
-        if let Some(found) = harness.state().view.occurrences() {
-            return found;
-        }
-        assert!(started.elapsed() < Duration::from_secs(10), "timed out waiting for occurrences");
-        test_support::let_threads_run(Duration::from_millis(10));
-    }
+        harness.state().view.occurrences()
+    })
 }
 
 fn has_occurrences(harness: &Harness<'_, Fixture>) -> bool {
@@ -141,20 +134,14 @@ fn a_selected_word_marks_its_other_occurrences_in_the_whole_file() {
 
 /// Steps until the find widget's count passes `is_expected`.
 fn wait_for_count(harness: &mut Harness<'_, Fixture>, is_expected: impl Fn(&str) -> bool) {
-    let started = Instant::now();
-    loop {
+    test_support::poll_until("the find count", || {
         harness.step();
-        if last_bar(&harness.ctx).is_some_and(|shown| is_expected(&shown.count)) {
-            return;
-        }
-        let count = last_bar(&harness.ctx).map(|shown| shown.count);
-        assert!(started.elapsed() < Duration::from_secs(10), "timed out at {count:?}");
-        test_support::let_threads_run(Duration::from_millis(10));
-    }
+        last_bar(&harness.ctx).is_some_and(|shown| is_expected(&shown.count))
+    });
 }
 
-/// C#, as the owner met it: `endsTheContract` declared on line 28 and tested on line 29, both
-/// unchanged and shown as context around the change on line 31.
+/// C#-like lines (highlighted as Rust): `endsTheContract` declared on line 28 and tested on
+/// line 29, both unchanged and shown as context around the change on line 31.
 fn contract_fixture() -> Fixture {
     let text = |result: &str| -> String {
         let line = |number: u32| match number {
@@ -163,13 +150,7 @@ fn contract_fixture() -> Fixture {
             31 => format!("            return {result};"),
             number => format!("        int filler{number} = {number};"),
         };
-        (1..=60)
-            .map(|number| {
-                line(number)
-                    + "
-"
-            })
-            .collect()
+        (1..=60).map(|number| line(number) + "\n").collect()
     };
     let (old, new) = (text("1"), text("2"));
     fixture_of(Layout::SideBySide, Some(&old), Some(&new))

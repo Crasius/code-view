@@ -109,10 +109,11 @@ impl TextFind {
         let side = self.bar.follow_focus(ui, &rows.panes, selected_side);
         self.focus = Some((rows.panes, side));
         let (source, start) = searcher(inputs);
-        self.bar.refresh(ui.ctx(), side, source, |query| spawn(ui.ctx(), move || start(query)));
+        let start_find = start.clone();
+        self.bar
+            .refresh(ui.ctx(), side, source, |query| spawn(ui.ctx(), move || start_find(query)));
         let arrived = self.bar.poll();
         let wanted = occurrence_query(inputs, rows.selected.take());
-        let (_, start) = searcher(inputs);
         let occurred =
             self.occurrences.follow(wanted, source, |query| spawn(ui.ctx(), move || start(query)));
         let is_stale = self.rows_generation != Some(rows.generation);
@@ -217,7 +218,7 @@ impl TextFind {
         if self.bar.hits().is_none() && self.occurrences.hits().is_none() {
             return;
         }
-        let lines = LineRows::of(rows, diff);
+        let lines = LineRows::of(rows.rows, rows.gaps, diff);
         let place = |hits: Option<&Hits>| -> Vec<Option<u32>> {
             hits.map_or_else(Vec::new, |hits| {
                 hits.list.iter().map(|hit| lines.row_of(hit)).collect()
@@ -315,11 +316,11 @@ struct LineRows {
 }
 
 impl LineRows {
-    fn of(rows: &TextRows<'_>, diff: &FileDiff) -> Self {
+    fn of(rows: &[Row], gaps: &[Gap], diff: &FileDiff) -> Self {
         let lines = diff.lines();
         let line = |index: Option<u32>| index.and_then(|index| lines.get(index as usize));
         let mut found = Self { old: HashMap::new(), new: HashMap::new(), gaps: Vec::new() };
-        for (index, row) in rows.rows.iter().enumerate() {
+        for (index, row) in rows.iter().enumerate() {
             let index = index as u32;
             match row.kind {
                 RowKind::Line => {
@@ -342,7 +343,7 @@ impl LineRows {
                     found.new.extend(row.right.map(|line| (line, index)));
                 }
                 RowKind::Gap(gap) => {
-                    found.gaps.extend(rows.gaps.get(gap as usize).map(|gap| (*gap, index)));
+                    found.gaps.extend(gaps.get(gap as usize).map(|gap| (*gap, index)));
                 }
                 RowKind::Thread(_) | RowKind::Composer | RowKind::Separator => {}
             }
@@ -364,7 +365,9 @@ impl LineRows {
 
 /// What the search of `inputs` runs over: an id of the text (the diff, the file's two versions
 /// and whether replaced lines pair up), and the search itself, to run off the UI thread.
-fn searcher(inputs: &DiffInputs<'_>) -> (u64, impl FnOnce(Query) -> Found + Send + 'static) {
+fn searcher(
+    inputs: &DiffInputs<'_>,
+) -> (u64, impl FnOnce(Query) -> Found + Send + Clone + 'static) {
     let diff = inputs.diff.clone();
     let blob = |side: Option<&cv_code::contents::SideContents>| side.map(|side| side.text.clone());
     let old = blob(inputs.contents.and_then(|contents| contents.old.as_ref()));
@@ -488,4 +491,187 @@ fn occurrence_query(inputs: &DiffInputs<'_>, selected: Option<Selected>) -> Opti
         .filter(|selected| inputs.find.highlight_occurrences && !selected.text.trim().is_empty())?;
     let options = MatchOptions { match_case: true, whole_word: selected.is_word };
     Some(Query { text: selected.text, options, side: HitSide::Both })
+}
+
+#[cfg(test)]
+mod tests {
+    use cv_code::diff_rows::{self, RowInputs};
+
+    use super::*;
+
+    /// Lines 5 and 6 of ten replaced by three, with one line of context around them: three
+    /// unchanged lines above the hunk and three below it stay out of the diff.
+    const PATCH: &[u8] = b"@@ -4,4 +4,5 @@\n line 4\n-old five\n-old six\n+new five a\n+new five b\n+new five c\n line 7\n";
+
+    fn versions() -> (BlobText, BlobText) {
+        let line = |number: u32| format!("line {number}\n");
+        let old: String = (1..=10)
+            .map(|number| match number {
+                5 => "old five\n".to_owned(),
+                6 => "old six\n".to_owned(),
+                number => line(number),
+            })
+            .collect();
+        let replaced = ["new five a\n", "new five b\n", "new five c\n"].map(str::to_owned);
+        let new: String =
+            (1..=4).map(line).chain(replaced).chain((7..=10).map(line)).collect::<String>();
+        (BlobText::from_bytes(old.into_bytes()), BlobText::from_bytes(new.into_bytes()))
+    }
+
+    /// Each entry's old and new number and whether it is unchanged.
+    fn shape(entries: &[Entry<'_>]) -> Vec<(Option<u32>, Option<u32>, bool)> {
+        let number = |side: Option<(u32, &str)>| side.map(|(number, _)| number);
+        entries
+            .iter()
+            .map(|entry| (number(entry.old), number(entry.new), entry.is_unchanged))
+            .collect()
+    }
+
+    #[test]
+    fn entries_follow_the_rows_with_the_hidden_lines_around_the_hunks() {
+        let diff = FileDiff::parse_unified(PATCH);
+        let (old, new) = versions();
+        let above = [(Some(1), Some(1), true), (Some(2), Some(2), true), (Some(3), Some(3), true)];
+        let below =
+            [(Some(8), Some(9), true), (Some(9), Some(10), true), (Some(10), Some(11), true)];
+        let paired = [
+            (Some(4), Some(4), true),
+            (Some(5), Some(5), false),
+            (Some(6), Some(6), false),
+            (None, Some(7), false),
+            (Some(7), Some(8), true),
+        ];
+        let inline = [
+            (Some(4), Some(4), true),
+            (Some(5), None, false),
+            (Some(6), None, false),
+            (None, Some(5), false),
+            (None, Some(6), false),
+            (None, Some(7), false),
+            (Some(7), Some(8), true),
+        ];
+        let cases = [
+            (
+                "side by side: each deleted line beside the added line that replaced it",
+                true,
+                Some((&old, &new)),
+                [&above[..], &paired[..], &below[..]].concat(),
+            ),
+            (
+                "in one pane: every changed line alone",
+                false,
+                Some((&old, &new)),
+                [&above[..], &inline[..], &below[..]].concat(),
+            ),
+            ("without both versions: no hidden lines", true, None, paired.to_vec()),
+        ];
+        for (case, is_paired, versions, expected) in cases {
+            let (old, new) = (versions.map(|(old, _)| old), versions.map(|(_, new)| new));
+            assert_eq!(shape(&entries(&diff, old, new, is_paired)), expected, "{case}");
+        }
+    }
+
+    #[test]
+    fn a_hit_finds_its_line_row_or_the_gap_hiding_it() {
+        let diff = FileDiff::parse_unified(PATCH);
+        let gaps = gaps::find(&diff, Some(11));
+        let hit =
+            |side: HitSide, old: Option<u32>, new: Option<u32>| Hit { side, old, new, bytes: 0..4 };
+        let cases = [
+            (
+                "a context line",
+                Layout::Inline,
+                hit(HitSide::Both, Some(4), Some(4)),
+                RowKind::Line,
+                Some(1),
+            ),
+            (
+                "a deleted line in one pane",
+                Layout::Inline,
+                hit(HitSide::Old, Some(5), None),
+                RowKind::Line,
+                Some(2),
+            ),
+            (
+                "a deleted line in New only",
+                Layout::NewOnly,
+                hit(HitSide::Old, Some(5), None),
+                RowKind::Removal,
+                None,
+            ),
+            (
+                "a line hidden above the hunk",
+                Layout::Inline,
+                hit(HitSide::Both, Some(2), Some(2)),
+                RowKind::Gap(0),
+                None,
+            ),
+            (
+                "a line hidden below it",
+                Layout::Inline,
+                hit(HitSide::New, None, Some(10)),
+                RowKind::Gap(1),
+                None,
+            ),
+        ];
+        for (case, layout, hit, kind, diff_line) in cases {
+            let inputs = RowInputs {
+                diff: &diff,
+                layout,
+                gaps: &gaps,
+                reveals: &[],
+                threads: &[],
+                composer: None,
+            };
+            let rows = diff_rows::build(&inputs).rows;
+            let row = LineRows::of(&rows, &gaps, &diff).row_of(&hit).expect(case);
+            let row = &rows[row as usize];
+            assert_eq!(row.kind, kind, "{case}");
+            if let Some(diff_line) = diff_line {
+                assert!([row.left, row.right].contains(&Some(diff_line)), "{case}: {row:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn each_pane_paints_the_hits_of_the_version_it_shows() {
+        let hits = Hits::new(vec![
+            Hit { side: HitSide::Old, old: Some(5), new: None, bytes: 0..3 },
+            Hit { side: HitSide::New, old: None, new: Some(5), bytes: 0..3 },
+            Hit { side: HitSide::New, old: Some(4), new: Some(4), bytes: 5..6 },
+        ]);
+        let line = |kind: LineKind, old_line: u32, new_line: u32| CodeLine {
+            text: "old five",
+            kind,
+            old_line,
+            new_line,
+            number: new_line.max(old_line),
+            spans: &[],
+            has_file_spans: false,
+        };
+        let cases = [
+            (
+                "one pane reads a deleted line's old hits",
+                Pane::Inline,
+                line(LineKind::Deleted, 5, 0),
+                vec![(0, 0..3)],
+            ),
+            (
+                "and an added line's new ones",
+                Pane::Inline,
+                line(LineKind::Added, 0, 5),
+                vec![(1, 0..3)],
+            ),
+            (
+                "the right pane paints a hit of the new version",
+                Pane::Right,
+                line(LineKind::Context, 4, 4),
+                vec![(2, 5..6)],
+            ),
+            ("the left pane leaves it out", Pane::Left, line(LineKind::Context, 4, 4), vec![]),
+        ];
+        for (case, pane, line, expected) in cases {
+            assert_eq!(on_line(&hits, pane, &line), expected, "{case}");
+        }
+    }
 }

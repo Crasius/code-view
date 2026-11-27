@@ -83,21 +83,15 @@ fn line_endings(summary: &WhitespaceSummary) -> Option<Part> {
         (0, 0) => return None,
         (count, 0) | (0, count) => {
             let (from, to) = if summary.to_crlf > 0 { ("LF", "CRLF") } else { ("CRLF", "LF") };
-            let scope = if all {
-                format!("(all {})", lines(count))
+            let counted = lines(count);
+            let (scope, fragment_scope) = if all {
+                (format!("(all {counted})"), format!("in all {counted}"))
             } else {
-                format!("in {}", lines(count))
+                (format!("in {counted}"), format!("in {counted}"))
             };
             Part::Endings {
                 sentence: format!("Line endings changed from {from} to {to} {scope}"),
-                fragment: format!(
-                    "line endings {from} → {to} {}",
-                    if all {
-                        format!("in all {}", lines(count))
-                    } else {
-                        format!("in {}", lines(count))
-                    }
-                ),
+                fragment: format!("line endings {from} → {to} {fragment_scope}"),
             }
         }
         (to_crlf, to_lf) => Part::Endings {

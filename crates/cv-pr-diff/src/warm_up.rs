@@ -129,7 +129,7 @@ pub fn path_now(path: String) {
 mod tests {
     use super::*;
 
-    fn changed(files: &[(&str, u64)]) -> Vec<Changed> {
+    fn files_of(files: &[(&str, u64)]) -> Vec<Changed> {
         files
             .iter()
             .map(|(path, lines)| Changed { path: (*path).to_owned(), lines: *lines })
@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn warms_every_language_most_changed_lines_first() {
-        let grammars = order(&changed(FILES), None);
+        let grammars = order(&files_of(FILES), None);
         // Rust 150 lines, TypeScript 120, C# and YAML 10 each (in list order), Markdown 4, SQL 1.
         assert_eq!(
             names(&grammars),
@@ -165,15 +165,15 @@ mod tests {
 
     #[test]
     fn the_file_opened_first_goes_first() {
-        let grammars = order(&changed(FILES), Some("db/schema.sql"));
+        let grammars = order(&files_of(FILES), Some("db/schema.sql"));
         assert_eq!(names(&grammars), ["SQL", "Rust", "TypeScript", "C#", "YAML", "Markdown"]);
-        let grammars = order(&changed(FILES), Some("notes.zzqq"));
+        let grammars = order(&files_of(FILES), Some("notes.zzqq"));
         assert_eq!(names(&grammars)[0], "Rust", "a first file without a grammar changes nothing");
     }
 
     #[test]
     fn more_files_win_a_tie_in_lines() {
-        let grammars = order(&changed(&[("a.py", 0), ("b.go", 0), ("c.go", 0)]), None);
+        let grammars = order(&files_of(&[("a.py", 0), ("b.go", 0), ("c.go", 0)]), None);
         assert_eq!(names(&grammars), ["Go", "Python"]);
     }
 
@@ -187,7 +187,7 @@ mod tests {
         }
         // Held here, so the process budget never drops them while other tests compile theirs.
         let _held: Vec<_> = grammars.iter().map(|grammar| grammar::compiled(*grammar)).collect();
-        let _warm_up = start(changed(&paths.map(|path| (path, 1))), Some("d.toml".into()));
+        let _warm_up = start(files_of(&paths.map(|path| (path, 1))), Some("d.toml".into()));
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
         while !grammars.iter().all(|grammar| grammar::is_warmed(*grammar)) {
             assert!(std::time::Instant::now() < deadline, "every language warms within a minute");
