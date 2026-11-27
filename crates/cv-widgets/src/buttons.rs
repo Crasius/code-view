@@ -283,6 +283,13 @@ pub fn icon_button_width(ui: &Ui, text: &str) -> f32 {
     width(true, Some(label.size().x), style::CONTROL_HEIGHT)
 }
 
+/// Width of a [`subtle`] button with an icon and `text`, for layouts that plan their room before
+/// drawing.
+pub fn subtle_width(ui: &Ui, text: &str) -> f32 {
+    let label = label_galley(ui, text, Kind::Subtle);
+    width(true, Some(label.size().x), SUBTLE_HEIGHT)
+}
+
 /// The width an [`icon`] or [`icon_toggle`] button takes, for layouts that plan their room before
 /// drawing. Every glyph sits in the same fixed slot, so this does not depend on the icon.
 pub fn icon_width() -> f32 {
@@ -424,7 +431,7 @@ fn paint_content(
         );
         let color = icon_color(kind, look.is_enabled, look.active, palette);
         if content.is_busy {
-            egui::Spinner::new().size(icons::SIZE - 2.0).color(color).paint_at(ui, slot);
+            super::states::spinner(ui, slot, color);
         } else {
             let font = icons::state_font(palette, icons::SIZE, content.is_active);
             // Platform marks keep their brand color, except on filled or disabled buttons.
@@ -453,5 +460,28 @@ fn icon_color(kind: Kind, is_enabled: bool, active: f32, palette: &theme::Palett
         Kind::Danger => palette.on_accent,
         _ if !is_enabled => palette.text_disabled,
         _ => motion::mix(palette.text, palette.accent_text, active),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cv_base::theme::{self, icons};
+    use egui::{Context, RawInput};
+
+    #[test]
+    fn a_planned_subtle_width_is_the_painted_one() {
+        let ctx = Context::default();
+        theme::fonts::install(&ctx);
+        let mut widths = Vec::new();
+        let mut output = ctx.run_ui(RawInput::default(), |ui| {
+            for text in ["Copy log", "First error"] {
+                let painted = super::subtle(ui, icons::COPY, text).rect.width();
+                widths.push((painted, super::subtle_width(ui, text)));
+            }
+        });
+        output.textures_delta.clear();
+        for (painted, planned) in widths {
+            assert!((painted - planned).abs() < 0.01, "painted {painted}, planned {planned}");
+        }
     }
 }

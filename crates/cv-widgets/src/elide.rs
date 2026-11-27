@@ -1,20 +1,44 @@
-//! Text cut to fit a width with an ellipsis. References (`owner/repo#59`, `group/project!12`)
+//! Text cut to fit a width with an ellipsis, and the width a text takes. Plain lines are cut at
+//! the end ([`line`], [`job`]). References (`owner/repo#59`, `group/project!12`)
 //! are cut in the middle so the number stays readable: `owner…/repo#59`, then `re…#59`.
 //!
 //! Rows lay out their trailing parts (pills, durations, buttons) first and hand the remaining
 //! width to these helpers; the full text belongs in the row's tooltip.
 
-use egui::{FontId, Ui};
+use std::sync::Arc;
+
+use egui::text::{LayoutJob, TextWrapping};
+use egui::{Color32, FontId, Galley, Painter, Ui};
 
 const ELLIPSIS: &str = "…";
 
+/// One line of `text`, cut with … at `max_width`. `galley.elided` says whether it was cut.
+pub fn line(
+    painter: &Painter,
+    text: &str,
+    font: FontId,
+    color: Color32,
+    max_width: f32,
+) -> Arc<Galley> {
+    job(painter, LayoutJob::simple_singleline(text.to_owned(), font, color), max_width)
+}
+
+/// The same for a prepared job.
+pub fn job(painter: &Painter, mut job: LayoutJob, max_width: f32) -> Arc<Galley> {
+    job.wrap = TextWrapping::truncate_at_width(max_width.max(1.0));
+    painter.layout_job(job)
+}
+
+/// The width of `text` laid out on one unwrapped line in `font`.
+pub fn text_width(ui: &Ui, text: &str, font: &FontId) -> f32 {
+    ui.fonts_mut(|fonts| {
+        fonts.layout_no_wrap(text.to_owned(), font.clone(), Color32::PLACEHOLDER).size().x
+    })
+}
+
 /// `reference` cut to fit `width` when painted in `font`.
 pub fn reference(ui: &Ui, reference: &str, font: &FontId, width: f32) -> String {
-    fit_reference(reference, width, |text| {
-        ui.fonts_mut(|fonts| {
-            fonts.layout_no_wrap(text.to_owned(), font.clone(), egui::Color32::PLACEHOLDER).size().x
-        })
-    })
+    fit_reference(reference, width, |text| text_width(ui, text, font))
 }
 
 /// The longest form of `text` that `measure` says fits `width`, in this order of preference:
@@ -74,7 +98,47 @@ fn longest(
 
 #[cfg(test)]
 mod tests {
-    use super::fit_reference;
+    use egui::{Color32, FontId};
+
+    use super::{fit_reference, line, text_width};
+
+    /// Runs `check` in one frame of a fresh context.
+    fn in_a_frame(check: impl FnOnce(&egui::Ui)) {
+        let ctx = egui::Context::default();
+        let mut check = Some(check);
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            if let Some(check) = check.take() {
+                check(ui);
+            }
+        });
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn a_long_line_is_cut_to_fit_and_a_short_one_stays_whole() {
+        in_a_frame(|ui| {
+            let font = FontId::proportional(14.0);
+            let text = "a branch name far too long for the room it is given";
+            let long = line(ui.painter(), text, font.clone(), Color32::WHITE, 80.0);
+            assert!(long.elided);
+            assert!(long.size().x <= 80.0, "{}", long.size().x);
+            assert_eq!(long.rows.len(), 1);
+            let short = line(ui.painter(), "main", font.clone(), Color32::WHITE, 80.0);
+            assert!(!short.elided);
+            assert_eq!(short.size().x, text_width(ui, "main", &font));
+        });
+    }
+
+    #[test]
+    fn a_text_is_as_wide_as_its_length_and_the_empty_text_has_none() {
+        in_a_frame(|ui| {
+            let font = FontId::proportional(14.0);
+            let short = text_width(ui, "main", &font);
+            assert!(short > 0.0);
+            assert!(text_width(ui, "main and more", &font) > short);
+            assert_eq!(text_width(ui, "", &font), 0.0);
+        });
+    }
 
     /// One unit per character.
     fn fit(text: &str, width: usize) -> String {

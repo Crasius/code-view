@@ -420,6 +420,27 @@ mod tests {
     }
 
     #[test]
+    fn selects_rows_in_its_pane_only() {
+        let mut selection = Selection::caret(0, Caret::new(1, 2));
+        selection.extend_to(Caret::new(3, 1));
+        assert_eq!(selection.on_row(2, 1, 5), None, "side by side keeps one pane");
+        assert_eq!(
+            selection.on_row(1, 0, 5),
+            Some(RowSelection::Text { columns: 2..5, through_end: true })
+        );
+        assert_eq!(
+            selection.on_row(2, 0, 5),
+            Some(RowSelection::Text { columns: 0..5, through_end: true })
+        );
+        assert_eq!(
+            selection.on_row(3, 0, 5),
+            Some(RowSelection::Text { columns: 0..1, through_end: false })
+        );
+        assert_eq!(selection.on_row(4, 0, 5), None);
+        assert_eq!(Selection::line(0, 3).on_row(3, 0, 0), Some(RowSelection::Line));
+    }
+
+    #[test]
     fn presses_drags_and_shift_clicks() {
         let caret = Selection::press(None, (), Caret::new(4, 3), false, false);
         assert_eq!(caret, Selection::caret((), Caret::new(4, 3)));

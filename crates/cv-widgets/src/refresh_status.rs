@@ -4,6 +4,8 @@
 use cv_base::theme::{self, icons, motion, style};
 use egui::{Rect, Sense, Ui, pos2, vec2};
 
+use crate::states;
+
 pub const WIDTH: f32 = 168.0;
 const HEIGHT: f32 = 28.0;
 const SPINNER: f32 = 12.0;
@@ -58,21 +60,7 @@ pub fn show(ui: &mut Ui, status: RefreshStatus<'_>) -> bool {
             palette.text_secondary.gamma_multiply(alpha),
         );
         if status == RefreshStatus::Updating {
-            if motion::is_reduced(ui.ctx()) {
-                let font = egui::FontId::proportional(SPINNER);
-                painter.text(
-                    spinner.center(),
-                    egui::Align2::CENTER_CENTER,
-                    icons::CIRCLE_NOTCH,
-                    font,
-                    palette.text_secondary,
-                );
-            } else {
-                egui::Spinner::new()
-                    .size(SPINNER)
-                    .color(palette.text_secondary)
-                    .paint_at(ui, spinner);
-            }
+            states::spinner(ui, spinner, palette.text_secondary);
             let response = ui.interact(rect, id.with("label"), Sense::hover());
             response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Status, true, text));
         }
@@ -117,18 +105,7 @@ pub fn show_compact(ui: &mut Ui, status: RefreshStatus<'_>) -> bool {
             if updating > 0.0 {
                 let spinner = Rect::from_center_size(rect.center(), vec2(SPINNER, SPINNER));
                 let color = palette.text_secondary.gamma_multiply(updating);
-                if motion::is_reduced(ui.ctx()) {
-                    let font = egui::FontId::proportional(SPINNER);
-                    ui.painter().text(
-                        spinner.center(),
-                        egui::Align2::CENTER_CENTER,
-                        icons::CIRCLE_NOTCH,
-                        font,
-                        color,
-                    );
-                } else {
-                    egui::Spinner::new().size(SPINNER).color(color).paint_at(ui, spinner);
-                }
+                states::spinner(ui, spinner, color);
             }
             if status == RefreshStatus::Updating {
                 let response = ui.interact(rect, id.with("label"), Sense::hover());

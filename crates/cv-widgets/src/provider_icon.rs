@@ -232,7 +232,7 @@ pub fn describe(kind: ProviderKind, url: &str) -> String {
 }
 
 /// The host of `url`, without scheme, credentials, port or path.
-fn host(url: &str) -> &str {
+pub fn host(url: &str) -> &str {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
     let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
     let host = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
@@ -332,6 +332,16 @@ mod tests {
             "Azure DevOps Server · tfs.example.com"
         );
         assert_eq!(describe(ProviderKind::GitLab, ""), "GitLab");
+    }
+
+    #[test]
+    fn a_host_drops_scheme_credentials_port_and_path() {
+        assert_eq!(
+            host("https://user:secret@jira.example.com:8443/browse/PROJ-1"),
+            "jira.example.com"
+        );
+        assert_eq!(host("jira.example.com/browse/PROJ-1?focus#top"), "jira.example.com");
+        assert_eq!(host("https://jira.example.com#PROJ-1"), "jira.example.com");
     }
 
     /// A host typed with non-ASCII letters, where the suffix would start inside a letter.

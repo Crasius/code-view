@@ -3,7 +3,7 @@
 //! rows: [`with_trailing`] for text that shares the line with buttons, [`centered_lines`] for a
 //! name with a line below it beside a centered mark.
 
-use cv_base::theme::{self, motion};
+use cv_base::theme::{self, Palette, motion};
 use egui::{Align, Color32, Layout, Rect, Response, Ui, UiBuilder, pos2, vec2};
 
 /// Width of the accent bar marking the selected row in a list.
@@ -53,6 +53,29 @@ pub fn state_fill(ui: &Ui, response: &Response, rest: Color32) -> Color32 {
         motion::mix(rest, palette.hover, hover)
     };
     if hover == 0.0 { rest } else { target }
+}
+
+/// How far `response`'s toggle is on, eased (0.0 to 1.0).
+pub fn toggle_on(ui: &Ui, response: &Response, is_on: bool) -> f32 {
+    motion::toggle(ui.ctx(), response.id.with("toggle_on"), is_on, motion::FAST)
+}
+
+/// The toggle's background in `rect` at `on`.
+pub fn paint_toggle_fill(ui: &Ui, response: &Response, rect: Rect, on: f32) {
+    let palette = theme::palette(ui.ctx());
+    let fill = motion::mix(state_fill(ui, response, Color32::TRANSPARENT), palette.selection, on);
+    if fill != Color32::TRANSPARENT {
+        ui.painter().rect_filled(rect, theme::style::RADIUS_CONTROL, fill);
+    }
+}
+
+/// The toggle's icon and text colour at `on`; the disabled colour when the response is disabled.
+pub fn toggle_color(palette: &Palette, response: &Response, on: f32) -> Color32 {
+    if response.enabled() {
+        motion::mix(palette.text, palette.accent_text, on)
+    } else {
+        palette.text_disabled
+    }
 }
 
 /// A row whose `trailing` part (buttons, counts; added right to left, the first one rightmost) is
@@ -244,5 +267,58 @@ mod tests {
                 "{count} lines: box at {control}, block at {block}"
             );
         }
+    }
+
+    /// One frame at `time` with a toggle that is `is_on`: how far it is on, and its colour
+    /// enabled and disabled.
+    fn toggle_frame(
+        ctx: &egui::Context,
+        time: f64,
+        is_on: bool,
+    ) -> (f32, egui::Color32, egui::Color32) {
+        let mut seen = (0.0, egui::Color32::PLACEHOLDER, egui::Color32::PLACEHOLDER);
+        let input = egui::RawInput { time: Some(time), ..egui::RawInput::default() };
+        let mut output = ctx.run_ui(input, |ui| {
+            let palette = theme::palette(ui.ctx());
+            let rect = Rect::from_min_size(egui::pos2(0.0, 0.0), vec2(28.0, 28.0));
+            let response = ui.interact(rect, egui::Id::unique("toggle"), Sense::click());
+            let on = super::toggle_on(ui, &response, is_on);
+            let disabled = ui
+                .add_enabled_ui(false, |ui| {
+                    ui.interact(rect, egui::Id::unique("disabled"), Sense::click())
+                })
+                .inner;
+            seen = (
+                on,
+                super::toggle_color(&palette, &response, on),
+                super::toggle_color(&palette, &disabled, on),
+            );
+        });
+        output.textures_delta.clear();
+        seen
+    }
+
+    #[test]
+    fn a_toggle_eases_on_and_a_disabled_one_takes_the_disabled_colour() {
+        let ctx = egui::Context::default();
+        theme::activate(&ctx, ThemePreference::Light);
+        let palette = theme::palette(&ctx);
+        let (off, off_color, disabled) = toggle_frame(&ctx, 0.0, false);
+        assert_eq!((off, off_color), (0.0, palette.text));
+        assert_eq!(disabled, palette.text_disabled);
+        // egui eases by at most one frame's time per frame, so the clock runs at 60 frames a second.
+        let frame = 1.0 / 60.0;
+        let (easing, ..) = toggle_frame(&ctx, frame, true);
+        assert!(0.0 < easing && easing < 1.0, "one frame in it is {easing}");
+        let mut time = frame;
+        let (on, on_color, disabled) = loop {
+            time += frame;
+            let seen = toggle_frame(&ctx, time, true);
+            if time > frame + f64::from(theme::motion::FAST) {
+                break seen;
+            }
+        };
+        assert_eq!((on, on_color), (1.0, palette.accent_text));
+        assert_eq!(disabled, palette.text_disabled);
     }
 }

@@ -14,8 +14,9 @@ use egui::{Align2, Color32, CornerRadius, FontId, Rect, Response, Sense, Ui, pos
 use review_core::{ChangeBreakdown, ChangeGroup, GroupChanges};
 use review_git::ChangedFile;
 
+use crate::elide::text_width;
 use crate::focus;
-use crate::numbers::group_digits;
+use crate::numbers::{group_digits, zeroed};
 
 /// Tall enough that a row's text keeps at least `style::SPACE_S` above and below it.
 const ROW_HEIGHT: f32 = 36.0;
@@ -76,17 +77,15 @@ struct Columns {
 
 impl Columns {
     fn measure(ui: &Ui, total: &GroupChanges) -> Self {
-        let text = |text: String, font: FontId| {
-            ui.painter().layout_no_wrap(text, font, Color32::WHITE).size().x
-        };
+        let text = |text: &str, font: FontId| text_width(ui, text, &font);
         let label = ChangeGroup::ALL
             .iter()
-            .map(|group| text(group.label().to_owned(), label_font()))
-            .fold(text("Total".to_owned(), total_font()), f32::max);
-        let files = text(files_text(total.files.max(10)), count_font());
-        let added = text(template('+', total.added), count_font());
-        let deleted = text(template('−', total.deleted), count_font());
-        let counting = text("counting…".to_owned(), count_font());
+            .map(|group| text(group.label(), label_font()))
+            .fold(text("Total", total_font()), f32::max);
+        let files = text(&files_text(total.files.max(10)), count_font());
+        let added = text(&format!("+{}", zeroed(total.added)), count_font());
+        let deleted = text(&format!("−{}", zeroed(total.deleted)), count_font());
+        let counting = text("counting…", count_font());
         let lines = (added + COUNT_GAP + deleted).max(counting);
         let label_left = SWATCH + SWATCH_GAP;
         let files_right = label_left + label + COLUMN_GAP + files;
@@ -112,15 +111,6 @@ fn total_font() -> FontId {
 
 fn count_font() -> FontId {
     FontId::proportional(style::SMALL_SIZE)
-}
-
-/// "+0,000" for 1,270: as wide as the count (digits are tabular).
-fn template(sign: char, value: u64) -> String {
-    let digits: String = group_digits(value as usize)
-        .chars()
-        .map(|c| if c.is_ascii_digit() { '0' } else { c })
-        .collect();
-    format!("{sign}{digits}")
 }
 
 fn files_text(files: u32) -> String {
