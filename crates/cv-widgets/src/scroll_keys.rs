@@ -70,14 +70,14 @@ mod tests {
         let events = std::iter::once(Event::ModifiersChanged(modifiers)).chain(presses).collect();
         let input = RawInput { events, ..RawInput::default() };
         let mut seen = (None, 0);
-        let mut output = ctx.run_ui(input, |ui| {
+        let output = ctx.run_ui(input, |ui| {
             seen = ui.input_mut(|input| {
                 let scroll = ScrollKey::consume(input);
                 let left = input.events.iter().filter(|event| matches!(event, Event::Key { .. }));
                 (scroll, left.count())
             });
         });
-        output.textures_delta.clear();
+        output.drop_without_applying_deltas();
         seen
     }
 

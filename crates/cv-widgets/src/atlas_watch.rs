@@ -56,7 +56,7 @@ mod tests {
                 fonts.families.insert(FontFamily::Name("extra".into()), vec!["Hack".to_owned()]);
                 ctx.set_fonts(fonts);
             }
-            let mut output = ctx.run_ui(RawInput::default(), |ui| {
+            let output = ctx.run_ui(RawInput::default(), |ui| {
                 let text = "Pull requests › contoso/app › !42".to_owned();
                 ui.fonts_mut(|fonts| {
                     fonts.layout_no_wrap(text, FontId::proportional(14.0), Color32::WHITE)
@@ -69,8 +69,7 @@ mod tests {
                 fills.push(ui.ctx().fonts(|fonts| fonts.font_atlas_fill_ratio()));
                 rebuilt.push(watch.is_rebuilt(ui.ctx()));
             });
-            // No renderer here to take the atlas.
-            output.textures_delta.clear();
+            output.drop_without_applying_deltas();
         }
         assert_eq!(rebuilt, [true, false, true], "first look, steady frame, new atlas");
         assert!(
