@@ -57,7 +57,7 @@ pub enum RunningLogs {
 /// definition's latest build of an earlier push, a GitHub workflow run triggered again since).
 /// GitHub workflow runs / check runs / commit statuses, GitLab pipelines / external statuses,
 /// Azure DevOps builds / PR statuses all map here.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct PipelineRun {
     pub id: String,
     pub name: String,
