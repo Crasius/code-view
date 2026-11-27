@@ -92,8 +92,6 @@ mod comment_origin_walkthrough;
 #[cfg(test)]
 mod count_priority_walkthrough;
 #[cfg(test)]
-mod counting_walkthrough;
-#[cfg(test)]
 mod crumb_drag_walkthrough;
 #[cfg(test)]
 mod crumb_trail_walkthrough;
