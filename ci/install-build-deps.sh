@@ -1,8 +1,9 @@
 #!/bin/sh
 # Unpacks the named tools into $BUILD_DEPS/usr/bin, each pinned by version and checksum:
-# cargo-about writes the license notices of a release build, cargo-nextest runs the tests. The
+# cargo-about writes the license notices of a release build, cargo-nextest runs the tests,
+# cargo-deny checks the dependency graph and cargo-shear finds unused dependencies. The
 # runner drops every capability, so nothing can be installed system-wide (docs/release.md, Runner).
-# Usage: install-build-deps.sh cargo-about|cargo-nextest ...
+# Usage: install-build-deps.sh cargo-about|cargo-nextest|cargo-deny|cargo-shear ...
 set -eu
 root="${BUILD_DEPS:?Name the folder to unpack into.}"
 [ "$#" -gt 0 ] || { echo "Name the tools to install." >&2; exit 2; }
@@ -42,6 +43,20 @@ for tool in "$@"; do
                     ;;
             esac
             tar --no-same-owner -xzf "$file" -C "$root/usr/bin" cargo-nextest
+            ;;
+        cargo-deny)
+            # scripts/check.sh reads the version= lines of this entry and the next one.
+            version=0.22.1
+            name="cargo-deny-$version-x86_64-unknown-linux-musl"
+            file="$(fetch "https://github.com/EmbarkStudios/cargo-deny/releases/download/$version/$name.tar.gz" \
+                13f7e825e9cb811c2f8de63f29b0f45851dfb53004029f0f2501af524728364d)"
+            tar --no-same-owner -xzf "$file" -C "$root/usr/bin" --strip-components=1 "$name/cargo-deny"
+            ;;
+        cargo-shear)
+            version=1.14.1
+            file="$(fetch "https://github.com/Boshen/cargo-shear/releases/download/v$version/cargo-shear-x86_64-unknown-linux-musl.tar.gz" \
+                7b4cec5ec12e22717670721ace1edbd97a65cb9e08864466d292a3009bb85d1a)"
+            tar --no-same-owner -xzf "$file" -C "$root/usr/bin" cargo-shear
             ;;
         *)
             echo "install-build-deps: unknown tool $tool" >&2

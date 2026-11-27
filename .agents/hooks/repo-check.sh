@@ -4,7 +4,7 @@
 #   1. Untracked, not-ignored junk files outside tmp/ and runtime/ (screenshots, logs, merge leftovers).
 #      Why: they get swept into a commit or hide in the tree. Keep captures in tmp/.
 #   2. Tracked files with secret-like names. Why: a committed secret stays in history.
-#   3. Every .agents/hooks/check-*.sh (0 = ok, 1 = finding).
+# repo-lint runs on its own, as the step repo-lint of scripts/check.sh.
 # POSIX sh; works from any directory inside the repository.
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || {
@@ -46,13 +46,5 @@ if [ -n "$secrets" ]; then
   printf '%s\n' "$secrets"
   found=1
 fi
-
-for check in .agents/hooks/check-*.sh; do
-  [ -f "$check" ] || continue
-  if ! sh "$check"; then
-    echo "repo-check: $check reported findings"
-    found=1
-  fi
-done
 
 exit "$found"
