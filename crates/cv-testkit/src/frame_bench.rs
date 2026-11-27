@@ -22,13 +22,13 @@ use egui::{
 use review_store::ThemePreference;
 
 /// The physical size of the target monitors' largest mode.
-pub const PHYSICAL_4K: Vec2 = vec2(3840.0, 2160.0);
+const PHYSICAL_4K: Vec2 = vec2(3840.0, 2160.0);
 /// Typical Windows scaling on a 4K monitor: 150 % and 200 %.
 pub const SCALES: [f32; 2] = [1.5, 2.0];
 /// Targets for UI build + tessellation, leaving the rest of the 4.17 ms (240 Hz) frame to the GPU submit.
-pub const TARGET_P95_MS: f32 = 3.0;
-pub const TARGET_P99_MS: f32 = 4.0;
-const STEP_SECONDS: f64 = 1.0 / 240.0;
+const TARGET_P95_MS: f32 = 3.0;
+const TARGET_P99_MS: f32 = 4.0;
+const STEP_SECONDS: f32 = 1.0 / 240.0;
 const WARMUP_FRAMES: usize = 30;
 
 /// The view a bench draws each frame.
@@ -156,11 +156,11 @@ impl<'a, State> Bench<'a, State> {
     fn step(&mut self, events: Vec<Event>) -> Sample {
         let input = RawInput {
             time: Some(self.time),
-            predicted_dt: STEP_SECONDS as f32,
+            predicted_dt: STEP_SECONDS,
             events,
             ..self.input.clone()
         };
-        self.time += STEP_SECONDS;
+        self.time += f64::from(STEP_SECONDS);
         let Self { ctx, state, app, ui_time, .. } = self;
         let mut output = ctx.run_ui(input, |ui| {
             // The margin kittest's harness and eframe's central panel give a view.
@@ -173,10 +173,11 @@ impl<'a, State> Bench<'a, State> {
                 },
             );
         });
-        output.textures_delta.clear();
+        let shapes = std::mem::take(&mut output.shapes);
         let started = Instant::now();
-        let primitives = self.ctx.tessellate(output.shapes, output.pixels_per_point);
+        let primitives = self.ctx.tessellate(shapes, output.pixels_per_point);
         let tessellate_ms = started.elapsed().as_secs_f32() * 1000.0;
+        output.drop_without_applying_deltas();
         let vertices = primitives
             .iter()
             .map(|primitive| match &primitive.primitive {
@@ -198,7 +199,7 @@ impl<'a, State> Bench<'a, State> {
     /// `frames` frames, each scrolled by `delta` points (negative scrolls down) with the pointer at
     /// `pointer`. The direction flips every [`SWEEP_FRAMES`] frames, so even a fling through a
     /// short list keeps showing new rows instead of resting at its end.
-    pub fn scroll(&mut self, name: &str, pointer: Pos2, delta: Vec2, frames: usize) -> Report {
+    fn scroll(&mut self, name: &str, pointer: Pos2, delta: Vec2, frames: usize) -> Report {
         let wheel = |delta: Vec2, phase: TouchPhase| Event::MouseWheel {
             unit: MouseWheelUnit::Point,
             delta,
@@ -217,7 +218,7 @@ impl<'a, State> Bench<'a, State> {
         self.report(name, &samples)
     }
 
-    /// [`Self::scroll`] [`RUNS`] times; keeps the run with the lowest p95. Other processes on the
+    /// `RUNS` scroll runs of `FRAMES` frames; keeps the run with the lowest p95. Other processes on the
     /// machine (compilers, indexers) only ever add time, so the best run is the closest to what
     /// the view itself costs.
     pub fn scroll_best(&mut self, name: &str, pointer: Pos2, delta: Vec2) -> Report {
@@ -288,9 +289,9 @@ pub fn finish(reports: &[Report]) {
 }
 
 /// Frames per scroll run: two seconds at 240 Hz.
-pub const FRAMES: usize = 480;
+const FRAMES: usize = 480;
 /// Runs per scroll pattern.
-pub const RUNS: usize = 3;
+const RUNS: usize = 3;
 /// Frames before a scroll run turns around.
 const SWEEP_FRAMES: usize = 120;
 
