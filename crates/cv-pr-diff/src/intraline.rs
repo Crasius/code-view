@@ -18,7 +18,7 @@ pub fn compute(old: &str, new: &str) -> Highlights {
     if is_too_long || old == new {
         return Highlights::default();
     }
-    // The shortest edit script: `Algorithm::Myers` splits some edits Git-style into other words.
+    // The shortest edit script: `Algorithm::Myers` may give it up on expensive searches.
     let diff = TextDiff::configure().algorithm(Algorithm::RawMyers).diff_unicode_words(old, new);
     let mut highlights = Highlights::default();
     let mut old_offset = 0;
