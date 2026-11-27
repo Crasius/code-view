@@ -1,5 +1,5 @@
 use super::*;
-use review_core::RangeDetail;
+use review_core::{RangeDetail, UserIdentity};
 
 const HEAD: &str = "4803c71e";
 
@@ -229,4 +229,33 @@ fn outdated_notes_keep_the_diff_they_were_written_on() {
         !current.is_outdated && current.origin.is_none(),
         "a note on the current head is where it was written"
     );
+}
+
+fn discussion(note_ids: &[&str]) -> ReviewThread {
+    let note = |note_id: &&str| ThreadComment {
+        id: (*note_id).to_owned(),
+        author: UserIdentity::default(),
+        body: String::new(),
+        created_at: time::OffsetDateTime::UNIX_EPOCH,
+        updated_at: None,
+    };
+    ReviewThread {
+        id: "6a9c1750b37d513a43987b574953fceb50b03ce7".to_owned(),
+        status: ThreadStatus::Active,
+        anchor: None,
+        is_outdated: false,
+        origin: None,
+        is_system: false,
+        can_reply: true,
+        can_resolve: true,
+        comments: note_ids.iter().map(note).collect(),
+    }
+}
+
+#[test]
+fn links_the_first_note() {
+    let cases = [(&["301", "302"][..], Some("#note_301")), (&[][..], None)];
+    for (note_ids, expected) in cases {
+        assert_eq!(page_suffix(&discussion(note_ids)).as_deref(), expected, "{note_ids:?}");
+    }
 }

@@ -93,10 +93,12 @@ fn panel_harness(scene: PanelScene) -> Harness<'static, PanelScene> {
             focus::track_modality(ui.ctx());
             let palette = theme::activate(ui.ctx(), ThemePreference::Light);
             ui.painter().rect_filled(ui.max_rect(), 0, palette.ground);
-            let file_order = ["src/cart.rs", "src/checkout/payment.rs", "src/lib.rs"];
+            let mut file_order =
+                ["src/cart.rs", "src/checkout/payment.rs", "src/lib.rs"].iter().copied();
             let inputs = PanelInputs {
                 threads: &scene.threads,
-                file_order: &file_order,
+                file_order: &mut file_order,
+                file_order_version: 0,
                 filters: &mut scene.filters,
                 width: 380.0,
             };
@@ -193,10 +195,10 @@ fn harness() -> Harness<'static, Scene> {
         .build_ui_state(
             |ui, scene: &mut Scene| {
                 theme::activate(ui.ctx(), ThemePreference::Light);
-                let file_order: Vec<&str> = scene.files.iter().map(String::as_str).collect();
                 let inputs = PanelInputs {
                     threads: &scene.threads,
-                    file_order: &file_order,
+                    file_order: &mut scene.files.iter().map(String::as_str),
+                    file_order_version: 0,
                     filters: &mut scene.filters,
                     width: 380.0,
                 };

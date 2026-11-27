@@ -28,7 +28,7 @@ pub(crate) mod tests {
     use super::*;
     use crate::samples;
 
-    /// A GitHub provider that never sends: only its thread anchors are asked.
+    /// A GitHub provider that never sends: only its thread links and comment actions are asked.
     pub(crate) fn github() -> Arc<dyn Provider> {
         let connection = Connection {
             id: "test".into(),

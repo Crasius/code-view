@@ -1,9 +1,13 @@
-//! Which threads the panel lists under which filters, and the counts of its toggles.
+//! Which threads the panel lists under which filters, the order of their groups, and the counts of
+//! its toggles.
 
 use review_core::{ReviewThread, ThreadStatus};
 use review_store::ThreadFilters;
 
-use super::{ToggleCounts, is_listed, toggle_counts};
+use super::{
+    PanelInputs, ToggleCounts, is_listed, read_file_ranks, toggle_counts, visible_entries,
+};
+use crate::ThreadsUi;
 use crate::samples::{self, comment, erika, lines, mara, thread};
 
 const NONE: ThreadFilters = ThreadFilters::ALL;
@@ -62,6 +66,46 @@ fn the_filters_decide_which_threads_are_listed() {
         let (_, thread) = variants.iter().find(|(variant, _)| *variant == name).unwrap();
         assert_eq!(is_listed(thread, filters, &ui), expected, "{name} under {filters:?}");
     }
+}
+
+/// The groups the panel lists for `threads` with the files in `order`, given as of `version`.
+fn groups(
+    ui: &mut ThreadsUi,
+    threads: &[ReviewThread],
+    order: [&str; 2],
+    version: u64,
+) -> Vec<String> {
+    let mut filters = NONE;
+    let mut order = order.iter().copied();
+    let mut inputs = PanelInputs {
+        threads,
+        file_order: &mut order,
+        file_order_version: version,
+        filters: &mut filters,
+        width: 0.0,
+    };
+    read_file_ranks(&mut ui.panel, &mut inputs);
+    let visible = visible_entries(ui, threads, NONE, &[]);
+    visible.into_iter().map(|entry| entry.group.to_owned()).collect()
+}
+
+#[test]
+fn the_groups_follow_the_tree_order_read_only_when_it_changed() {
+    let mut ui = samples::page_ui();
+    let on = |path: &str| {
+        let comments = vec![comment(&format!("{path}-1"), &mara(), 900, "Why?")];
+        thread(path, ThreadStatus::Active, Some(lines(path, 1, 1)), comments)
+    };
+    let general =
+        thread("general", ThreadStatus::Active, None, vec![comment("g-1", &mara(), 900, "Hi")]);
+    let threads = vec![on("b.rs"), general, on("a.rs")];
+    assert_eq!(groups(&mut ui, &threads, ["a.rs", "b.rs"], 1), ["a.rs", "b.rs", "General"]);
+    assert_eq!(
+        groups(&mut ui, &threads, ["b.rs", "a.rs"], 1),
+        ["a.rs", "b.rs", "General"],
+        "the same version: the order is not read again"
+    );
+    assert_eq!(groups(&mut ui, &threads, ["b.rs", "a.rs"], 2), ["b.rs", "a.rs", "General"]);
 }
 
 #[test]

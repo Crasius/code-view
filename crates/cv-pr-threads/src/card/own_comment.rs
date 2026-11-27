@@ -167,16 +167,15 @@ pub(super) fn delete_question(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use cv_base::theme;
     use cv_testkit::Clicks;
     use egui::accesskit::Role;
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
-    use review_core::{Connection, Provider, ProviderKind, ReviewThread, ThreadStatus};
+    use review_core::{ProviderKind, ReviewThread, ThreadStatus};
     use review_store::ThemePreference;
 
+    use super::super::super::links::tests::github;
     use super::super::super::samples::{self, comment, erika, jonas};
     use super::super::super::{CardOptions, ThreadEvent, ThreadsUi, show_card};
 
@@ -184,19 +183,6 @@ mod tests {
         thread: ReviewThread,
         threads: ThreadsUi,
         events: Vec<ThreadEvent>,
-    }
-
-    /// A GitHub provider that never sends: only its `comment_actions` are asked.
-    fn github() -> Arc<dyn Provider> {
-        let connection = Connection {
-            id: "test".into(),
-            name: "test".into(),
-            kind: ProviderKind::GitHub,
-            base_url: "http://127.0.0.1:9".into(),
-            organizations: Vec::new(),
-            token: Some("token".into()),
-        };
-        Arc::new(provider_github::GitHubProvider::new(connection, reqwest::Client::new()))
     }
 
     fn harness() -> Harness<'static, Scene> {
