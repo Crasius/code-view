@@ -409,3 +409,45 @@ fn switching_comments_keeps_the_view_in_place() {
         );
     }
 }
+
+/// A comment request for a range of head lines (what a rendered block's comment button sends)
+/// selects them and opens a new comment on them, also when they sit in collapsed unchanged lines
+/// (shown first).
+#[test]
+fn a_comment_request_selects_its_lines_and_opens_the_composer_also_in_collapsed_lines() {
+    use crate::diff_view::LineRequest;
+    use crate::testing::show_diff;
+    use cv_base::theme;
+    use cv_code::diff_rows::RangeOwner;
+    for (what, needle) in [
+        ("changed lines", "pub fn is_empty(&self) -> bool {"),
+        ("collapsed lines", "pub struct Item {"),
+    ] {
+        let first = line_of(NEW, needle);
+        let mut harness = Harness::builder()
+            .with_size([1180.0, 760.0])
+            .with_context_setup(theme::fonts::install)
+            .build_ui_state(
+                |ui, state: &mut Fixture| {
+                    theme::activate(ui.ctx(), state.theme);
+                    show_diff(ui, state);
+                },
+                fixture(Layout::SideBySide),
+            );
+        harness.run();
+        harness
+            .state_mut()
+            .view
+            .request_lines(LineRequest::Comment { side: DiffSide::New, lines: first..first + 3 });
+        harness.run();
+        let view = &harness.state().view;
+        assert!(view.composer().is_some(), "{what}: a new comment opened");
+        let draft = view
+            .range_rows()
+            .iter()
+            .find(|range| range.owner == RangeOwner::Draft)
+            .unwrap_or_else(|| panic!("{what}: the draft marks its lines"));
+        assert_eq!(draft.side, DiffSide::New, "{what}");
+        assert!(draft.end > draft.start, "{what}: several lines, {draft:?}");
+    }
+}

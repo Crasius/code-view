@@ -12,21 +12,36 @@
     clippy::cast_sign_loss,
     reason = "egui pixel math converts between f32 points and usize indices"
 )]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::cast_possible_wrap,
+        reason = "the tests' pixel probes and synthetic threads convert indices to i64"
+    )
+)]
 
 #[cfg(test)]
 mod coloring_latency;
+#[cfg(test)]
+mod comment_handoff_check;
 mod detached_threads;
 pub mod diff_cache;
 pub mod diff_composer;
 pub mod diff_overview;
+#[cfg(test)]
+mod diff_selection_check;
 pub mod diff_skeleton;
 mod diff_status;
 pub mod diff_view;
 #[cfg(test)]
 mod diff_view_check;
 pub mod find;
+#[cfg(test)]
+mod frame_budget;
 pub mod gap_bar;
 mod h_scroll;
+#[cfg(test)]
+mod instant_colors_check;
 mod intraline;
 mod line_anchor;
 pub mod notice;
@@ -35,6 +50,8 @@ mod removal_popover;
 pub mod selection;
 #[cfg(any(test, feature = "test-support"))]
 pub mod testing;
+#[cfg(test)]
+mod thread_cards_check;
 pub mod warm_up;
 pub mod whitespace_notice;
 mod word_highlights;

@@ -3,34 +3,15 @@
 //! collapsed to one line, and the new-thread composer with its kept draft.
 
 use cv_testkit::Clicks;
-use egui::{Event, Modifiers, PointerButton, Pos2};
+use egui::{Event, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_core::{ReviewThread, ThreadStatus};
 
+use crate::testing::{self as check, Fixture, NEW, PATH, click_with, line_of, settle};
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
-use cv_pr_diff::testing::{self as check, Fixture, NEW, PATH, line_of, settle};
 use cv_pr_threads::samples::{self, comment, jonas, lines};
-
-fn click(harness: &mut Harness<'_, Fixture>, pos: Pos2, modifiers: Modifiers) {
-    harness.hover_at(pos);
-    harness.event(Event::ModifiersChanged(modifiers));
-    harness.event(Event::PointerButton {
-        pos,
-        button: PointerButton::Primary,
-        pressed: true,
-        modifiers,
-    });
-    harness.event(Event::PointerButton {
-        pos,
-        button: PointerButton::Primary,
-        pressed: false,
-        modifiers,
-    });
-    harness.event(Event::ModifiersChanged(Modifiers::NONE));
-    harness.step();
-}
 
 /// The discussion on `total`, a resolved thread on the end of `add` and a fresh one on `add`.
 fn threads() -> Vec<ReviewThread> {
@@ -112,8 +93,8 @@ fn a_new_thread_on_picked_lines_keeps_its_draft() {
     let (first_row, last_row) = (row(&harness, first), row(&harness, last));
     let first_number = harness.state().view.gutter_point(Pane::Right, first_row);
     let last_number = harness.state().view.gutter_point(Pane::Right, last_row);
-    click(&mut harness, first_number, Modifiers::NONE);
-    click(&mut harness, last_number, Modifiers::SHIFT);
+    click_with(&mut harness, first_number, Modifiers::NONE);
+    click_with(&mut harness, last_number, Modifiers::SHIFT);
     harness.click_at(harness.get_by_label(&format!("Comment on lines {first}–{last}")).rect());
     settle(&mut harness);
     harness

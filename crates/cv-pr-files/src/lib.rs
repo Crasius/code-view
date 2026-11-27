@@ -1,20 +1,15 @@
 //! Files tab: changed-file tree with category filters and viewed marks, and the diff or preview of one file.
 #![forbid(unsafe_code)]
-// RS-LINT-02: the shipped code converts no numbers; the tests' synthetic diffs and pixel probes
-// convert between f32 points, line numbers and indices.
+// RS-LINT-02: the shipped code converts no numbers; the tests' synthetic files count their lines
+// as u32.
 #![cfg_attr(
     test,
     expect(
         clippy::cast_possible_truncation,
-        clippy::cast_possible_wrap,
-        clippy::cast_precision_loss,
-        clippy::cast_sign_loss,
-        reason = "test fixtures convert between f32 points, line numbers and indices"
+        reason = "test fixtures count lines and changes of synthetic files as u32"
     )
 )]
 
-#[cfg(test)]
-mod comment_handoff_check;
 #[cfg(test)]
 mod diff_selection_check;
 #[cfg(test)]
@@ -23,14 +18,10 @@ mod focus_strip;
 #[cfg(test)]
 mod frame_budget;
 #[cfg(test)]
-mod instant_colors_check;
-#[cfg(test)]
 mod loading_walkthrough;
 mod origin_view;
 mod prefetch;
 mod tab;
-#[cfg(test)]
-mod threads_shots;
 
 #[cfg(any(test, feature = "test-support"))]
 pub use self::tab::probe;

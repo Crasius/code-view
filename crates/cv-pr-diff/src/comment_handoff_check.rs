@@ -10,11 +10,11 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_core::{NewThread, ReviewThread, ThreadStatus};
 
+use crate::diff_view::DiffEvent;
+use crate::testing::{Fixture, NEW, PATH, fixture, line_of};
 use cv_base::theme;
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
-use cv_pr_diff::diff_view::DiffEvent;
-use cv_pr_diff::testing::{Fixture, NEW, PATH, fixture, line_of};
 use cv_pr_threads::{Delivery, ThreadEvent, new_thread_key, samples};
 
 const FRAME: f32 = 1.0 / 120.0;

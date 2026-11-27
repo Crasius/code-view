@@ -1,28 +1,25 @@
-//! Frame-budget benchmarks of the Files tab's worst cases at 4K: a 100k-line diff with syntax
-//! colors and a 10k-file tree. `#[ignore]`d; see `cv_testkit::frame_bench` for how to run them.
+//! Frame-budget benchmarks of the diff view's worst case at 4K: a 100k-line diff with syntax
+//! colors. `#[ignore]`d; see `cv_testkit::frame_bench` for how to run them.
 
-use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use egui::{Pos2, pos2, vec2};
-use review_core::{FileCategory, ProviderKind, ReviewThread, ThreadAnchor, ThreadStatus};
-use review_git::{ChangeKind, ChangedFile, FileDiff};
+use egui::{Pos2, vec2};
+use review_core::{ProviderKind, ReviewThread, ThreadAnchor, ThreadStatus};
+use review_git::FileDiff;
 
+use crate::diff_view::{DiffInputs, DiffView};
+use crate::find::FindInputs;
 use cv_base::theme::syntax::TokenKind;
 use cv_code::contents::{Coloring, FileContents, SideContents};
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
-use cv_pr_diff::diff_view::{DiffInputs, DiffView};
-use cv_pr_diff::find::FindInputs;
 use cv_pr_threads::{ThreadsUi, samples};
-use cv_pr_tree::{FileTree, TreeInputs, side_panel};
 use cv_syntax::blob_text::BlobText;
 use cv_syntax::highlight::{LineSpans, Span};
 use cv_testkit::frame_bench::{Bench, Report, SCALES, finish};
 
 const DIFF_LINES: usize = 100_000;
-const TREE_FILES: usize = 10_000;
 /// A thread every this many diff blocks of ten lines, so a screen always shows a few cards.
 const THREAD_EVERY_BLOCKS: usize = 12;
 
@@ -206,6 +203,27 @@ struct DiffState {
     wrap: bool,
 }
 
+/// The huge diff with its threads, in `layout`, before any frame.
+fn diff_state(
+    diff: FileDiff,
+    contents: Option<FileContents>,
+    line_spans: Option<LineSpans>,
+    layout: Layout,
+    wrap: bool,
+) -> DiffState {
+    DiffState {
+        view: DiffView::default(),
+        diff: Arc::new(diff),
+        contents,
+        line_spans,
+        threads: bench_threads(),
+        threads_ui: ThreadsUi::for_tests(ProviderKind::GitHub),
+        split: 0.5,
+        layout,
+        wrap,
+    }
+}
+
 /// `selected`: every line's text selected, so each visible line also paints its selection.
 fn bench_diff(
     pixels_per_point: f32,
@@ -216,17 +234,7 @@ fn bench_diff(
 ) {
     let (diff, contents) = huge_diff();
     assert!(diff.lines().len() >= DIFF_LINES, "the diff has {} lines", diff.lines().len());
-    let state = DiffState {
-        view: DiffView::default(),
-        diff: Arc::new(diff),
-        contents: Some(contents),
-        line_spans: None,
-        threads: bench_threads(),
-        threads_ui: ThreadsUi::for_tests(ProviderKind::GitHub),
-        split: 0.5,
-        layout,
-        wrap,
-    };
+    let state = diff_state(diff, Some(contents), None, layout, wrap);
     let mut bench = Bench::new(pixels_per_point, state, show_diff);
     let pointer = center_of(&bench);
     if selected {
@@ -257,17 +265,7 @@ fn bench_diff(
 fn bench_zoom(pixels_per_point: f32, reports: &mut Vec<Report>) {
     const FRAMES_PER_STEP: usize = 4;
     let (diff, contents) = huge_diff();
-    let state = DiffState {
-        view: DiffView::default(),
-        diff: Arc::new(diff),
-        contents: Some(contents),
-        line_spans: None,
-        threads: bench_threads(),
-        threads_ui: ThreadsUi::for_tests(ProviderKind::GitHub),
-        split: 0.5,
-        layout: Layout::SideBySide,
-        wrap: false,
-    };
+    let state = diff_state(diff, Some(contents), None, Layout::SideBySide, false);
     let mut bench = Bench::new(pixels_per_point, state, show_diff);
     let pointer = center_of(&bench);
     bench.warm_up(pointer);
@@ -289,17 +287,7 @@ fn bench_patch_colors(pixels_per_point: f32, layout: Layout, reports: &mut Vec<R
     for line in diff.lines() {
         line_spans.push_line(&spans_of(diff.text(line)));
     }
-    let state = DiffState {
-        view: DiffView::default(),
-        diff: Arc::new(diff),
-        contents: None,
-        line_spans: Some(line_spans),
-        threads: bench_threads(),
-        threads_ui: ThreadsUi::for_tests(ProviderKind::GitHub),
-        split: 0.5,
-        layout,
-        wrap: false,
-    };
+    let state = diff_state(diff, None, Some(line_spans), layout, false);
     let mut bench = Bench::new(pixels_per_point, state, show_diff);
     let pointer = center_of(&bench);
     bench.warm_up(pointer);
@@ -333,74 +321,6 @@ fn center_of<State>(bench: &Bench<'_, State>) -> Pos2 {
     bench.ctx.content_rect().center()
 }
 
-fn many_files() -> Vec<ChangedFile> {
-    let categories = [
-        FileCategory::Code,
-        FileCategory::Code,
-        FileCategory::Tests,
-        FileCategory::Docs,
-        FileCategory::Config,
-    ];
-    let kinds = [
-        ChangeKind::Modified,
-        ChangeKind::Added,
-        ChangeKind::Modified,
-        ChangeKind::Deleted,
-        ChangeKind::Renamed,
-    ];
-    (0..TREE_FILES)
-        .map(|index| {
-            let path = format!(
-                "src/area_{}/module_{}/feature_{}/component_with_a_longer_name_{index}.rs",
-                index % 7,
-                index / 7 % 13,
-                index / 91 % 11
-            );
-            ChangedFile {
-                old_path: (index % 5 == 4).then(|| format!("src/old/place_{index}.rs")),
-                old_oid: format!("{index:040x}"),
-                new_oid: format!("{:040x}", index + 1),
-                additions: Some((index * 7 % 400) as u32),
-                deletions: Some((index * 3 % 200) as u32),
-                category: categories[index % categories.len()],
-                ..ChangedFile::sample(&path, kinds[index % kinds.len()])
-            }
-        })
-        .collect()
-}
-
-struct TreeState {
-    tree: FileTree,
-    files: Arc<Vec<ChangedFile>>,
-    viewed: HashSet<String>,
-    thread_counts: HashMap<String, usize>,
-}
-
-fn bench_tree(pixels_per_point: f32, reports: &mut Vec<Report>) {
-    let files = Arc::new(many_files());
-    let viewed = files.iter().step_by(3).map(|file| file.path.clone()).collect();
-    let thread_counts = files.iter().step_by(17).map(|file| (file.path.clone(), 2)).collect();
-    let state = TreeState { tree: FileTree::default(), files, viewed, thread_counts };
-    let mut bench = Bench::new(pixels_per_point, state, |ui, state: &mut TreeState| {
-        let viewed = &state.viewed;
-        let is_viewed = |file: &ChangedFile| viewed.contains(&file.path);
-        state.tree.refresh(&state.files, &is_viewed, 0);
-        let inputs = TreeInputs {
-            files: &state.files,
-            selected: Some(5),
-            selected_folder: None,
-            is_viewed: &is_viewed,
-            thread_counts: &state.thread_counts,
-            vote: cv_pr_tree::VoteOffer::None,
-        };
-        side_panel::show(ui, 340.0, &mut state.tree, &inputs, false);
-    });
-    let rect = bench.ctx.content_rect();
-    let pointer = pos2(rect.left() + 150.0, rect.center().y);
-    bench.warm_up(pointer);
-    reports.extend(bench.scroll_patterns("tree 10k files", pointer, vec2(0.0, -1.0)));
-}
-
 #[test]
 #[ignore = "release-mode frame budget benchmark; see cv_testkit::frame_bench"]
 fn frame_budget_diff() {
@@ -423,16 +343,6 @@ fn frame_budget_diff_patch_colors() {
     for pixels_per_point in SCALES {
         bench_patch_colors(pixels_per_point, Layout::SideBySide, &mut reports);
         bench_patch_colors(pixels_per_point, Layout::Inline, &mut reports);
-    }
-    finish(&reports);
-}
-
-#[test]
-#[ignore = "release-mode frame budget benchmark; see cv_testkit::frame_bench"]
-fn frame_budget_tree() {
-    let mut reports = Vec::new();
-    for pixels_per_point in SCALES {
-        bench_tree(pixels_per_point, &mut reports);
     }
     finish(&reports);
 }

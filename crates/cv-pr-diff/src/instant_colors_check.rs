@@ -12,16 +12,16 @@ use review_core::{ProviderKind, ReviewThread};
 use review_git::{DiffOptions, FileDiff, LineKind};
 use review_store::{PaneSizes, ThemePreference};
 
+use crate::diff_cache::DiffKey;
+use crate::diff_view::{DiffInputs, DiffView};
+use crate::find::FindInputs;
+use crate::patch_colors::PatchColors;
+use crate::testing::{NEW, OLD, PATH, diff_of, side};
 use cv_base::theme::syntax::{self, TokenKind};
 use cv_base::theme::{self, Palette};
 use cv_code::contents::{Coloring, FileContents};
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::{self, Pane};
-use cv_pr_diff::diff_cache::DiffKey;
-use cv_pr_diff::diff_view::{DiffInputs, DiffView};
-use cv_pr_diff::find::FindInputs;
-use cv_pr_diff::patch_colors::PatchColors;
-use cv_pr_diff::testing::{NEW, OLD, PATH, diff_of, side};
 use cv_pr_threads::ThreadsUi;
 use cv_syntax::color_worker::observe_repaints;
 use cv_syntax::grammar;
@@ -93,15 +93,19 @@ fn opening(layout: Layout) -> (Opening, Sender<Arc<FileDiff>>, Sender<FileConten
     (opening, diff_sender, contents_sender)
 }
 
-/// Starts the diff load in the background, as a click on the file does.
-fn start(harness: &Harness<'_, Opening>, diff_sender: Sender<Arc<FileDiff>>) {
+/// Starts the load of `diff` under `key` in the background, as a click on the file does.
+fn start(
+    harness: &Harness<'_, Opening>,
+    diff_sender: Sender<Arc<FileDiff>>,
+    key: DiffKey,
+    diff: Arc<FileDiff>,
+) {
     let ctx = harness.ctx.clone();
     let colorer = harness.state().colors.colorer(&ctx);
     std::thread::spawn(move || {
         let runtime =
             tokio::runtime::Builder::new_current_thread().enable_time().build().expect("a runtime");
-        let diff = fixture_diff();
-        runtime.block_on(colorer.color(key(), diff.clone(), Priority::Urgent));
+        runtime.block_on(colorer.color(key, diff.clone(), Priority::Urgent));
         // The harness keeps the receiver for the whole test.
         diff_sender.send(diff).expect("the view listens");
         ctx.request_repaint();
@@ -150,7 +154,7 @@ fn harness(layout: Layout) -> (Harness<'static, Opening>, Sender<FileContents>) 
             theme::motion::set_reduced(ctx, false);
         })
         .build_ui_state(show, state);
-    start(&harness, diff_sender);
+    start(&harness, diff_sender, key(), fixture_diff());
     (harness, contents_sender)
 }
 
@@ -358,16 +362,7 @@ fn a_file_opened_right_after_the_pull_request_is_colored_in_its_first_frame() {
         })
         .build_ui_state(show, state);
     // The file opens at once.
-    let ctx = harness.ctx.clone();
-    let colorer = harness.state().colors.colorer(&ctx);
-    std::thread::spawn(move || {
-        let runtime =
-            tokio::runtime::Builder::new_current_thread().enable_time().build().expect("a runtime");
-        let diff = diff_of(TS_OLD, TS_NEW);
-        runtime.block_on(colorer.color(key_for(TS_PATH), diff.clone(), Priority::Urgent));
-        diff_sender.send(diff).expect("the view listens");
-        ctx.request_repaint();
-    });
+    start(&harness, diff_sender, key_for(TS_PATH), diff_of(TS_OLD, TS_NEW));
     let (keyword, string) = (
         syntax::color(TokenKind::Keyword, &Palette::LIGHT),
         syntax::color(TokenKind::String, &Palette::LIGHT),
