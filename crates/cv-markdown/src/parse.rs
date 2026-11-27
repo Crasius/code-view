@@ -547,10 +547,10 @@ mod tests {
     #[test]
     fn bare_urls_become_links_without_trailing_punctuation() {
         assert_eq!(
-            linkify("see https://aka.ms/x. and (http://a.b/c)"),
+            linkify("see https://example.com/x. and (http://a.b/c)"),
             [
                 ("see ", None),
-                ("https://aka.ms/x", Some("https://aka.ms/x")),
+                ("https://example.com/x", Some("https://example.com/x")),
                 (". and (", None),
                 ("http://a.b/c", Some("http://a.b/c")),
                 (")", None),
