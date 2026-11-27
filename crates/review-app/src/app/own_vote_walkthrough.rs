@@ -11,7 +11,7 @@ use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, open_pull_request};
-use super::walkthrough::{app, press, settle_background, wait_until};
+use super::walkthrough::{app, has, hover_until, press, settle_background, wait_until};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -30,14 +30,10 @@ fn own_vote_author_on_github_cannot_vote_and_sees_why() {
     wait_until(&mut harness, "Approve off for the author", |harness| {
         approve_buttons(harness).is_some_and(|enabled| enabled.iter().all(|is_on| !is_on))
     });
-    harness.get_by_role_and_label(Role::Button, APPROVE).hover();
-    wait_until(&mut harness, "the reason in the tooltip", |harness| {
-        harness.query_all_by_label_contains(REASON).next().is_some()
+    hover_until(&mut harness, Role::Button, APPROVE, "the reason in the tooltip", |harness| {
+        has(harness, REASON)
     });
-    assert!(
-        harness.query_all_by_label_contains("Comments and replies still work").next().is_some(),
-        "the tooltip says what still works"
-    );
+    assert!(has(&harness, "Comments and replies still work"), "the tooltip says what still works");
     harness.click_at(harness.get_by_role_and_label(Role::Button, APPROVE).rect());
 
     press(&mut harness, "More votes");

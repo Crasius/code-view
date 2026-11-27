@@ -206,6 +206,47 @@ pub(super) fn wait_for_link(harness: &mut Harness<'_, ReviewApp>, label: &str) -
     )
 }
 
+/// How much older than the pointer's last move the last click must be before egui shows a
+/// tooltip: a pointer resting where it clicked shows none.
+const CLICK_HIDES_TOOLTIP_SECS: f32 = 0.1;
+
+/// Rests the pointer on the widget of `role` labelled `label` until `is_shown` holds (`what`: the
+/// tooltip it waits for), then runs the four frames of [`wait_until`] with the pointer still
+/// there, so the tooltip has its place before a click inside it. The pointer moves again when a
+/// late layout moved the widget, and after a click until it moved [`CLICK_HIDES_TOOLTIP_SECS`]
+/// past it: resting alone would leave the tooltip hidden for good.
+pub(super) fn hover_until(
+    harness: &mut Harness<'_, ReviewApp>,
+    role: Role,
+    label: &str,
+    what: &str,
+    is_shown: impl Fn(&Harness<'_, ReviewApp>) -> bool,
+) {
+    wait_for(
+        harness,
+        &format!("{what} on hovering {label}"),
+        |harness| is_shown(harness).then_some(()),
+        |harness| {
+            let center =
+                harness.query_by_role_and_label(role, label).map(|node| node.rect().center());
+            let is_resting = |center| {
+                harness.ctx.input(|input| {
+                    let pointer = &input.pointer;
+                    pointer.hover_pos() == Some(center)
+                        && pointer.time_since_last_click()
+                            >= pointer.time_since_last_movement() + CLICK_HIDES_TOOLTIP_SECS
+                })
+            };
+            if let Some(center) = center
+                && !is_resting(center)
+            {
+                harness.hover_at(center);
+            }
+        },
+    );
+    settle(harness);
+}
+
 /// Scrolls the labelled widget into view, then clicks it like a pointer would (see
 /// [`when_ready`]) and runs the four frames of [`wait_until`]: the press, the release, and the
 /// accessibility tree, which trails the click by a frame, showing what it did.

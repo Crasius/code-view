@@ -11,7 +11,7 @@ use review_store::FrameRateLimit;
 
 use super::ReviewApp;
 use super::scripted_platforms::platforms;
-use super::walkthrough::{app_with, saved_paths, saved_settings, wait_until};
+use super::walkthrough::{app_with, hover_until, saved_paths, saved_settings, wait_until};
 use cv_runtime::route::Route;
 use cv_testkit::{Clicks, ScratchDir, samples};
 
@@ -65,13 +65,12 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
         assert_eq!(rect_of(&harness, NEXT_ROW), next_row, "choosing {label} moves nothing below");
         assert_eq!(segments_rect(&harness), control, "choosing {label} keeps the control's size");
     }
-    harness.get_by_role_and_label(Role::RadioButton, "Match display").hover();
-    for _ in 0..60 {
-        harness.step();
-    }
-    assert!(
-        harness.query_by_label_contains("as the monitor refreshes").is_some(),
-        "the option explains itself"
+    hover_until(
+        &mut harness,
+        Role::RadioButton,
+        "Match display",
+        "the option's explanation",
+        |harness| harness.query_by_label_contains("as the monitor refreshes").is_some(),
     );
 
     // Back to the default, as the next start would load it.
