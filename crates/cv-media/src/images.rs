@@ -449,7 +449,9 @@ async fn load(
                     .await
                     .map_err(|failure| failure.card(&target.place))?;
                 match fetched {
-                    Fetched::Changed { bytes, content_type } => (bytes, content_type, None, None),
+                    Fetched::Changed { bytes, content_type } => {
+                        (bytes, content_type, disk.as_deref(), None)
+                    }
                     Fetched::Unchanged => {
                         return Err(fail("The host's answer could not be read".to_owned(), true));
                     }
