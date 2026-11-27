@@ -6,7 +6,7 @@ use egui::{Align, Layout, Rect, Sense, Ui, UiBuilder, pos2};
 
 /// Lays out `first | second` over the remaining space of `ui`; `width` is the left pane's width,
 /// at least `min` and at most what leaves the right pane its grab strip. Returns true when the user finished resizing, the moment to persist it.
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     splitter: Splitter,
     min: f32,
@@ -28,7 +28,7 @@ pub fn show(
 
 /// Only the second pane, over the remaining space of `ui` (focus mode folds the first away). It
 /// keeps the `Ui` ids it has beside the first, so its scroll positions stay.
-pub fn show_second(ui: &mut Ui, second: impl FnOnce(&mut Ui)) {
+pub(crate) fn show_second(ui: &mut Ui, second: impl FnOnce(&mut Ui)) {
     let rect = ui.available_rect_before_wrap();
     pane(ui, "second", rect, second);
     ui.allocate_rect(rect, Sense::hover());

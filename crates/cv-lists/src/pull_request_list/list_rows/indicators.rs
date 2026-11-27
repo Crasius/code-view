@@ -41,7 +41,7 @@ const CHECKS_ICON: f32 = 16.0;
 const MUTED: f32 = 0.45;
 
 /// Where one row's indicators go and what they name.
-pub struct Indicators<'a> {
+pub(crate) struct Indicators<'a> {
     pub id: Id,
     /// The row's middle.
     pub y: f32,
@@ -53,7 +53,7 @@ pub struct Indicators<'a> {
 
 /// The checks indicator in `(left, right)`; with `with_count` it adds "passed/all". A click opens
 /// the checks on the platform.
-pub fn paint_checks(
+pub(crate) fn paint_checks(
     ui: &Ui,
     painter: &Painter,
     palette: &Palette,
@@ -191,14 +191,14 @@ fn state_word(state: CheckState) -> &'static str {
 
 /// A row's reviewers with their votes, and the approvals its platform requires.
 #[derive(Clone, Copy)]
-pub struct Votes<'a> {
+pub(crate) struct Votes<'a> {
     pub reviewers: &'a [Reviewer],
     pub required: Option<&'a Check>,
 }
 
 /// The approvals indicator, right-aligned at `right` so the stacks end in one column. `ring`
 /// separates overlapping avatars in the row's own fill. True when clicked.
-pub fn paint_approvals(
+pub(crate) fn paint_approvals(
     ui: &Ui,
     painter: &Painter,
     palette: &Palette,

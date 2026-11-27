@@ -35,7 +35,7 @@ use review_git::{ChangeKind, ChangedFile, DiffOptions, FileDiff, GitMirror, Want
 use review_store::AppSettings;
 
 use self::code_file::CodeFile;
-pub use self::view::show;
+pub(crate) use self::view::show;
 use self::window::{Extra, Known, Mode, Shape};
 
 /// The commits and file one excerpt reads.
@@ -74,7 +74,6 @@ struct LastShape {
 
 /// The mirror's commits for current threads.
 struct Mirror {
-    git: Option<Arc<GitMirror>>,
     merge_base: String,
     head: String,
     /// The pull request's target commit, for the merge base of an outdated thread without a base.
@@ -82,7 +81,7 @@ struct Mirror {
 }
 
 /// Every excerpt of one pull request: the files loaded for them and each card's mode and size.
-pub struct CodeContexts {
+pub(crate) struct CodeContexts {
     font_size: f32,
     now: f64,
     mirror: Option<Mirror>,
@@ -124,7 +123,7 @@ fn last_mode_id() -> egui::Id {
 impl CodeContexts {
     /// Takes the mirror and the code font from this frame, applies finished loads and starts the
     /// ones cards asked for.
-    pub fn begin_frame(
+    pub(crate) fn begin_frame(
         &mut self,
         ctx: &egui::Context,
         session: &mut PullRequestSession,
@@ -134,7 +133,6 @@ impl CodeContexts {
         self.font_size = services.settings.code_font_size;
         let target = session.detail.ready().map(|detail| detail.target_sha.clone());
         self.mirror = session.mirror.ready().map(|mirror| Mirror {
-            git: Some(mirror.git.clone()),
             merge_base: mirror.merge_base.clone(),
             head: mirror.head.clone(),
             target,
@@ -153,7 +151,7 @@ impl CodeContexts {
         for file in self.files.values_mut() {
             file.poll();
         }
-        let Some(git) = &mirror.git else {
+        let Some(git) = session.mirror.ready().map(|ready| &ready.git) else {
             return;
         };
         for key in self.wanted.drain() {
@@ -194,7 +192,7 @@ impl CodeContexts {
     }
 
     /// The changed file at `path`, when the pull request's change has it.
-    pub fn changed_file(&self, path: &str) -> Option<&ChangedFile> {
+    pub(crate) fn changed_file(&self, path: &str) -> Option<&ChangedFile> {
         self.changed.as_ref()?.iter().find(|file| file.path == path)
     }
 
@@ -287,8 +285,8 @@ impl CodeContexts {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    /// The mirror at (`merge_base`, `head`) without a repository, and `file` loaded for `thread`.
-    pub fn insert_for_tests(
+    /// The mirror at (`merge_base`, `head`), and `file` loaded for `thread`.
+    pub(crate) fn insert_for_tests(
         &mut self,
         thread: &ReviewThread,
         merge_base: &str,
@@ -296,12 +294,8 @@ impl CodeContexts {
         diff: &str,
         text: &str,
     ) {
-        self.mirror = Some(Mirror {
-            git: None,
-            merge_base: merge_base.to_owned(),
-            head: head.to_owned(),
-            target: None,
-        });
+        self.mirror =
+            Some(Mirror { merge_base: merge_base.to_owned(), head: head.to_owned(), target: None });
         let (key, _) = self.source(thread).expect("a thread with lines");
         let file = CodeFile::build(&FileDiff::parse_unified(diff.as_bytes()), text.into());
         self.files.insert(key, Load::Ready(Arc::new(file)));

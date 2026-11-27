@@ -13,7 +13,7 @@ use super::super::job_tree::{self, LogTarget};
 use super::super::rerun::{Picked, RerunButton, TOKEN_ROW_HEIGHT};
 
 /// Padding 12 above and below, the name line and the summary line between.
-pub const HEADER_HEIGHT: f32 = 68.0;
+pub(crate) const HEADER_HEIGHT: f32 = 68.0;
 const HEADER_PADDING_Y: f32 = style::SPACE_M;
 const JOB_ROW_HEIGHT: f32 = style::ROW_COMPACT;
 const FOOTER_PADDING: f32 = style::SPACE_M;
@@ -21,7 +21,7 @@ const TOGGLE_SIZE: f32 = 28.0;
 const SIDE: f32 = style::SPACE_ROW_X;
 
 #[derive(Clone, Copy)]
-pub struct CardContext<'a> {
+pub(crate) struct CardContext<'a> {
     pub platform: ProviderKind,
     pub has_token: bool,
     pub is_busy: bool,
@@ -31,7 +31,7 @@ pub struct CardContext<'a> {
     pub known: Known<'a>,
 }
 
-pub enum CardAction {
+pub(crate) enum CardAction {
     Toggle,
     /// The header was clicked: show the stage's log.
     OpenStage,
@@ -46,7 +46,7 @@ pub enum CardAction {
 }
 
 /// Height of the card fully expanded.
-pub fn expanded_height(stage: &PipelineJob, context: &CardContext) -> f32 {
+pub(crate) fn expanded_height(stage: &PipelineJob, context: &CardContext) -> f32 {
     let list = stage.children.len() as f32 * JOB_ROW_HEIGHT;
     let footer = if stage.reruns.is_empty() {
         0.0
@@ -58,12 +58,12 @@ pub fn expanded_height(stage: &PipelineJob, context: &CardContext) -> f32 {
 }
 
 /// `opening` is 0 when collapsed, 1 when expanded, in between while animating.
-pub fn height(stage: &PipelineJob, context: &CardContext, opening: f32) -> f32 {
+pub(crate) fn height(stage: &PipelineJob, context: &CardContext, opening: f32) -> f32 {
     HEADER_HEIGHT + (expanded_height(stage, context) - HEADER_HEIGHT) * opening
 }
 
 /// `visible` is the part of the canvas on screen; rows outside it are skipped.
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     rect: Rect,
     stage: &PipelineJob,
@@ -446,7 +446,7 @@ fn waits_for(job: &PipelineJob, stages: &[PipelineJob]) -> Option<String> {
 }
 
 /// "N jobs completed" and its variants, as the card's second line.
-pub fn summary(stage: &PipelineJob, platform: ProviderKind) -> String {
+pub(crate) fn summary(stage: &PipelineJob, platform: ProviderKind) -> String {
     let total = stage.children.len();
     let finished = stage.children.iter().filter(|job| job.status.is_finished()).count();
     let failed = stage.children.iter().filter(|job| job.status == RunStatus::Failed).count();

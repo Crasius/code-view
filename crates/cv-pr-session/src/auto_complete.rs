@@ -65,7 +65,7 @@ pub fn is_waiting(
 }
 
 /// "Auto-complete" or "Auto-merge".
-pub fn noun(kind: ProviderKind) -> &'static str {
+pub(crate) fn noun(kind: ProviderKind) -> &'static str {
     match kind {
         ProviderKind::AzureDevOps => "Auto-complete",
         ProviderKind::GitHub | ProviderKind::GitLab => "Auto-merge",
@@ -91,7 +91,7 @@ pub fn cancel_label(kind: ProviderKind) -> &'static str {
 }
 
 /// The armed button's label in `mode`, e.g. "Click again to set auto-complete".
-pub fn confirm_label(mode: Mode, kind: ProviderKind) -> Option<String> {
+pub(crate) fn confirm_label(mode: Mode, kind: ProviderKind) -> Option<String> {
     let label = match mode {
         Mode::Now => return None,
         Mode::SetAutoComplete => set_label(kind),
@@ -144,7 +144,7 @@ pub fn choice_label(kind: ProviderKind) -> &'static str {
 }
 
 /// The toast once the write succeeded.
-pub fn done_text(mode: Mode, kind: ProviderKind) -> &'static str {
+pub(crate) fn done_text(mode: Mode, kind: ProviderKind) -> &'static str {
     match (mode, kind) {
         (Mode::CancelAutoComplete, ProviderKind::AzureDevOps) => "Auto-complete cancelled.",
         (Mode::CancelAutoComplete, ProviderKind::GitHub) => "Auto-merge disabled.",
@@ -186,7 +186,7 @@ pub fn waits_for(kind: ProviderKind) -> &'static str {
 }
 
 /// The strategy the platform will show for an auto-complete set with `strategy`.
-pub fn set_strategy(strategy: MergeStrategy, kind: ProviderKind) -> Option<MergeStrategy> {
+pub(crate) fn set_strategy(strategy: MergeStrategy, kind: ProviderKind) -> Option<MergeStrategy> {
     match kind {
         ProviderKind::GitLab => (strategy == MergeStrategy::Squash).then_some(strategy),
         ProviderKind::AzureDevOps | ProviderKind::GitHub => Some(strategy),

@@ -21,19 +21,19 @@ use super::window::{Focus, Mode, Shown};
 const MIN_SPLIT_COLUMNS: f32 = 40.0;
 
 /// Whether rows `width` wide fit Split's two sides with [`MIN_SPLIT_COLUMNS`] of code each.
-pub fn fits_split(metrics: &Metrics, width: f32) -> bool {
+pub(crate) fn fits_split(metrics: &Metrics, width: f32) -> bool {
     let code = width / 2.0 - metrics.text_inset(false) - TEXT_END_PADDING;
     code / metrics.char_width >= MIN_SPLIT_COLUMNS
 }
 
 /// The number a row shows in New only and in the excerpt's caption: removed lines count in the
 /// base, the others in the head.
-pub fn number(row: &CodeRow) -> u32 {
+pub(crate) fn number(row: &CodeRow) -> u32 {
     if row.kind == LineKind::Deleted { row.old_line } else { row.new_line }
 }
 
 /// The excerpt's code rows.
-pub struct Rows<'a> {
+pub(crate) struct Rows<'a> {
     pub file: &'a CodeFile,
     pub shown: Shown<'a>,
     pub focus: &'a Focus,
@@ -43,7 +43,7 @@ pub struct Rows<'a> {
 
 impl Rows<'_> {
     /// Paints the rows at `lines` of the shown ones; true when a line number was clicked.
-    pub fn show(&self, ui: &mut Ui, lines: &Range<usize>) -> bool {
+    pub(crate) fn show(&self, ui: &mut Ui, lines: &Range<usize>) -> bool {
         let palette = theme::palette(ui.ctx());
         let metrics = Metrics::new(ui, self.font, self.file.max_line());
         let line_height = metrics.line_height;

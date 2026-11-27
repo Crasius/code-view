@@ -7,6 +7,8 @@ use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use cv_runtime::load::Load;
+use cv_testkit::ScratchDir;
 use cv_testkit::frame_bench::{self, Bench, Report, SCALES};
 use cv_widgets::text_selection::{Caret, Selection};
 use egui::{Event, pos2, vec2};
@@ -18,7 +20,7 @@ use super::fetch::LogFetch;
 use super::selecting::Selecting;
 use crate::graph::stage_card::CardContext;
 use crate::graph::stage_graph::{self, GraphInput};
-use crate::log::download::LoadedLog;
+use crate::log::download::{Fetched, LoadedLog};
 
 const LOG_LINES: usize = 150_000;
 /// The selection the second log run scrolls through: from mid-line 1,000 to mid-line 101,000.
@@ -65,8 +67,8 @@ fn log_line(index: usize) -> String {
     format!("{timestamp} {body}")
 }
 
-fn write_log() -> PathBuf {
-    let path = std::env::temp_dir().join(format!("review-frame-budget-{}.log", std::process::id()));
+fn write_log(scratch: &ScratchDir) -> PathBuf {
+    let path = scratch.path().join("frame-budget.log");
     let mut file = std::io::BufWriter::new(std::fs::File::create(&path).expect("create the log"));
     for index in 0..LOG_LINES {
         writeln!(file, "{}", log_line(index)).expect("write the log");
@@ -92,9 +94,11 @@ fn bench_log(
     selection: Option<Selection>,
     reports: &mut Vec<Report>,
 ) {
+    let mut fetch = LogFetch::default();
+    fetch.log = Load::Ready(Fetched::Log(log.clone()));
     let state = LogState {
         viewer: LogViewer {
-            fetch: LogFetch::loaded_for_test(log.clone()),
+            fetch,
             // The selected run starts well inside the selection; every painted line is selected.
             scroll_to: selection.map(|_| 20_000),
             selecting: Selecting { selection, ..Selecting::default() },
@@ -120,7 +124,8 @@ fn bench_log(
 #[test]
 #[ignore = "release-mode frame budget benchmark; see cv_testkit::frame_bench"]
 fn frame_budget_log() {
-    let path = write_log();
+    let scratch = ScratchDir::new("frame-budget");
+    let path = write_log(&scratch);
     let file = LogFile::open(&path).expect("index the log");
     assert_eq!(file.line_count(), LOG_LINES);
     let log = Arc::new(LoadedLog { file, first_error: Some(4) });
@@ -137,9 +142,6 @@ fn frame_budget_log() {
     let selected =
         super::raw_log::selected_text(&log.file, &selection()).expect("read the selection");
     let selected_ms = started.elapsed().as_secs_f32() * 1000.0;
-    drop(log);
-    // Best effort: a leftover file in the temp folder harms nothing.
-    let _cleanup = std::fs::remove_file(&path);
     println!(
         "copy log: {LOG_LINES} lines, {:.1} MB of plain text in {copy_ms:.0} ms (background thread)",
         copied.len() as f32 / 1e6
@@ -217,7 +219,6 @@ fn bench_stage_graph(pixels_per_point: f32, reports: &mut Vec<Report>) {
                 stages: &state.stages,
                 expanded: &state.expanded,
                 highlighted: Some("stage-7"),
-                scroll_to: None,
                 context: CardContext {
                     platform: ProviderKind::AzureDevOps,
                     has_token: true,

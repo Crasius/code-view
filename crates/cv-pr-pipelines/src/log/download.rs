@@ -25,7 +25,7 @@ const ERROR_MARKERS: [&str; 3] = ["##[error]", "error:", "error["];
 /// The end of the known part that a fetch again must repeat, or the log was rewritten.
 const CHECK_BYTES: u64 = 4 * 1024;
 
-pub struct LoadedLog {
+pub(crate) struct LoadedLog {
     pub file: LogFile,
     /// First `##[error]` / `error:` line, for "Jump to first error".
     pub first_error: Option<usize>,
@@ -33,14 +33,14 @@ pub struct LoadedLog {
 
 /// A finished download: the log, or why the platform did not serve it, kept whole so the pane can
 /// tell a log that is not there yet from a failure.
-pub enum Fetched {
+pub(crate) enum Fetched {
     Log(Arc<LoadedLog>),
     Failed(ProviderError),
 }
 
 impl Fetched {
     /// A finished job's whole log from disk when it is there, else downloaded.
-    pub async fn of(request: DownloadRequest) -> Fetched {
+    pub(crate) async fn of(request: DownloadRequest) -> Fetched {
         match open_or_download(request).await {
             Ok(log) => Fetched::Log(log),
             Err(error) => Fetched::Failed(error),
@@ -49,7 +49,7 @@ impl Fetched {
 }
 
 /// What fetching a running job's log again brought.
-pub enum Grown {
+pub(crate) enum Grown {
     /// Nothing new.
     Same,
     /// New text after the known part, appended and indexed.
@@ -58,7 +58,7 @@ pub enum Grown {
     Replaced(Arc<LoadedLog>),
 }
 
-pub struct DownloadRequest {
+pub(crate) struct DownloadRequest {
     pub provider: Arc<dyn Provider>,
     pub repository: String,
     pub number: u64,
@@ -72,12 +72,12 @@ pub struct DownloadRequest {
 }
 
 /// The file a download writes, and a running job's log stays in.
-pub fn part_file(path: &Path) -> PathBuf {
+pub(crate) fn part_file(path: &Path) -> PathBuf {
     path.with_extension("log.part")
 }
 
 /// A finished job's log that arrived whole.
-pub fn whole_file(path: &Path) -> PathBuf {
+pub(crate) fn whole_file(path: &Path) -> PathBuf {
     path.with_extension("whole.log")
 }
 
@@ -127,7 +127,7 @@ async fn index(path: PathBuf) -> Result<Arc<LoadedLog>, ProviderError> {
 
 /// Fetches the log of `current` again and appends what follows the known part; a log that no
 /// longer starts with it is downloaded anew.
-pub async fn refresh(
+pub(crate) async fn refresh(
     request: DownloadRequest,
     current: Arc<LoadedLog>,
 ) -> Result<Grown, ProviderError> {

@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use cv_base::theme;
 use cv_runtime::background::Background;
 use cv_runtime::toasts::Toasts;
+use cv_testkit::ScratchDir;
 use egui::OutputCommand;
 use egui_kittest::Harness;
 use review_store::{LogFile, ThemePreference};
@@ -39,28 +40,48 @@ pub(super) struct State {
     pub log: Arc<LoadedLog>,
     background: Background,
     toasts: Toasts,
+    /// The log files written so far, which numbers the next one.
+    logs: usize,
+    /// Last, so `viewer` and `log`, which hold its files, drop first.
+    scratch: ScratchDir,
 }
 
-/// Numbers each harness's log file: tests run in parallel, and one that rewrites a file another
-/// is reading hands it a short log.
-static LOG_FILES: AtomicUsize = AtomicUsize::new(0);
+impl State {
+    /// Shows `text` in place of the log, as a new download would, its first error on line
+    /// `first_error`.
+    pub(super) fn swap_log(&mut self, text: &str, first_error: Option<usize>) {
+        self.log = write_log(&self.scratch, self.logs, text, first_error);
+        self.logs += 1;
+    }
+}
 
-/// `text` as a downloaded log in a file of its own, its first error on line `first_error`.
-pub(super) fn log_of(text: &str, first_error: Option<usize>) -> Arc<LoadedLog> {
-    let number = LOG_FILES.fetch_add(1, Ordering::Relaxed);
-    let path =
-        std::env::temp_dir().join(format!("review-log-copy-{}-{number}.log", std::process::id()));
+/// Numbers each harness's scratch folder: tests run in parallel, and `ScratchDir` empties a
+/// folder of the same name.
+static SCRATCH: AtomicUsize = AtomicUsize::new(0);
+
+/// `text` as a downloaded log in the file `{number}.log` of `scratch`.
+fn write_log(
+    scratch: &ScratchDir,
+    number: usize,
+    text: &str,
+    first_error: Option<usize>,
+) -> Arc<LoadedLog> {
+    let path = scratch.path().join(format!("{number}.log"));
     std::fs::write(&path, text).expect("write the log");
     Arc::new(LoadedLog { file: LogFile::open(&path).expect("index the log"), first_error })
 }
 
 /// The toolbar and lines of [`LOG`], in the light theme.
 pub(super) fn harness() -> Harness<'static, State> {
-    harness_of(log_of(LOG, Some(5)))
+    harness_of(LOG, Some(5))
 }
 
-/// The toolbar and lines of `log`, in the light theme.
-pub(super) fn harness_of(log: Arc<LoadedLog>) -> Harness<'static, State> {
+/// The toolbar and lines of `text` as a downloaded log, its first error on line `first_error`,
+/// in the light theme.
+pub(super) fn harness_of(text: &str, first_error: Option<usize>) -> Harness<'static, State> {
+    let scratch =
+        ScratchDir::new(&format!("log-viewer-{}", SCRATCH.fetch_add(1, Ordering::Relaxed)));
+    let log = write_log(&scratch, 0, text, first_error);
     let state = State {
         viewer: LogViewer::default(),
         target: LogTarget {
@@ -72,6 +93,8 @@ pub(super) fn harness_of(log: Arc<LoadedLog>) -> Harness<'static, State> {
         log,
         background: Background::new(egui::Context::default()),
         toasts: Toasts::default(),
+        logs: 1,
+        scratch,
     };
     Harness::builder()
         .with_size([1100.0, 360.0])
@@ -85,7 +108,7 @@ pub(super) fn harness_of(log: Arc<LoadedLog>) -> Harness<'static, State> {
             |ui, state: &mut State| {
                 let palette = theme::activate(ui.ctx(), ThemePreference::Light);
                 ui.painter().rect_filled(ui.max_rect(), 0, palette.ground);
-                let State { viewer, target, log, background, toasts } = state;
+                let State { viewer, target, log, background, toasts, .. } = state;
                 viewer.show_log(ui, target, log, background, toasts, 13.0);
             },
             state,

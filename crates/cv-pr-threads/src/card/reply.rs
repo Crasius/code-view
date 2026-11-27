@@ -15,14 +15,14 @@ use super::super::{ThreadEvent, ThreadsUi, drafts};
 use super::{AVATAR_GAP, AVATAR_SIZE, section};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum FailureAction {
+pub(crate) enum FailureAction {
     Retry,
     Edit,
     FixToken,
 }
 
 /// "Not sent: <reason>. Your text is kept." with Retry, and Fix token or Edit as the way out.
-pub fn failure_row(ui: &mut Ui, message: &str, needs_token: bool) -> Option<FailureAction> {
+pub(crate) fn failure_row(ui: &mut Ui, message: &str, needs_token: bool) -> Option<FailureAction> {
     let palette = theme::palette(ui.ctx());
     let mut action = None;
     failure_frame(ui, palette.error, |ui| {

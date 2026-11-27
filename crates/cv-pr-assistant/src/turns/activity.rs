@@ -26,7 +26,7 @@ use super::super::transcript;
 
 /// Whether the agent still works on the turn.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Phase {
+pub(crate) enum Phase {
     Working,
     Finished,
 }
@@ -46,7 +46,7 @@ const EXCERPT_CHARS: usize = 240;
 
 /// Draws the activity of a turn with `steps`; `id` names the turn across frames. False when it
 /// drew nothing: a finished turn without steps.
-pub fn show(ui: &mut Ui, id: Id, steps: &[ChatStep], phase: Phase) -> bool {
+pub(crate) fn show(ui: &mut Ui, id: Id, steps: &[ChatStep], phase: Phase) -> bool {
     let now = transcript::now_ms();
     let text = match phase {
         Phase::Working => working_line(elapsed_ms(ui.ctx(), id, steps, now), steps),
@@ -75,7 +75,7 @@ pub fn show(ui: &mut Ui, id: Id, steps: &[ChatStep], phase: Phase) -> bool {
 
 /// The running line of a working turn with its latest step, "Working · 3 s · Reading src/a.rs",
 /// for the mini chat; `id` is the turn's, so its clock is the one the conversation shows.
-pub fn working_summary(ctx: &egui::Context, id: Id, steps: &[ChatStep]) -> String {
+pub(crate) fn working_summary(ctx: &egui::Context, id: Id, steps: &[ChatStep]) -> String {
     let elapsed = elapsed_ms(ctx, id, steps, transcript::now_ms());
     let mut text = format!("Working · {}", seconds(elapsed));
     if let Some(step) = steps.iter().rev().find(|step| step.kind != Some(ChatStepKind::Thinking)) {

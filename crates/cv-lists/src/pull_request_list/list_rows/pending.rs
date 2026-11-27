@@ -14,7 +14,7 @@ const INSET: f32 = 7.0;
 const SPINNER_GAP: f32 = 5.0;
 
 /// A write on its way to the row's pull request.
-pub struct Marker<'a> {
+pub(crate) struct Marker<'a> {
     /// The write in words, "Merging…".
     pub doing: &'a str,
     /// The pull request as the row writes it, "#7".
@@ -25,7 +25,7 @@ pub struct Marker<'a> {
 
 /// Paints the marker on the meta line of `row`, its left edge at `at` (and centred on its y);
 /// returns its right edge.
-pub fn paint(ui: &Ui, row: Rect, id: Id, at: Pos2, marker: &Marker<'_>) -> f32 {
+pub(crate) fn paint(ui: &Ui, row: Rect, id: Id, at: Pos2, marker: &Marker<'_>) -> f32 {
     let palette = theme::palette(ui.ctx());
     let mut painter = ui.painter_at(row);
     painter.multiply_opacity(marker.card_opacity);

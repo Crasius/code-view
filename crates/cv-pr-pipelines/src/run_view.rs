@@ -16,7 +16,7 @@ use super::job_tree::{self, LogTarget};
 use super::jobs_list;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Pivot {
+pub(crate) enum Pivot {
     #[default]
     Stages,
     Jobs,
@@ -24,7 +24,7 @@ pub enum Pivot {
 
 const PIVOTS: [(Pivot, &str); 2] = [(Pivot::Stages, "Stages"), (Pivot::Jobs, "Jobs")];
 
-pub enum RunViewAction {
+pub(crate) enum RunViewAction {
     /// A job, step or stage was clicked: its log, or its state while it has none.
     Log(LogTarget),
     Rerun(RerunAction),
@@ -37,7 +37,7 @@ pub enum RunViewAction {
 }
 
 #[derive(Clone, Copy)]
-pub struct RunViewInput<'a> {
+pub(crate) struct RunViewInput<'a> {
     pub run_id: &'a str,
     pub stages: &'a [PipelineJob],
     pub platform: ProviderKind,
@@ -49,22 +49,21 @@ pub struct RunViewInput<'a> {
 }
 
 #[derive(Default)]
-pub struct RunView {
+pub(crate) struct RunView {
     pivot: Pivot,
     expanded: HashSet<String>,
     /// The run whose initial expansion was applied.
     expanded_for: Option<String>,
     highlighted: Option<String>,
-    scroll_to: Option<String>,
 }
 
 impl RunView {
     /// Back to the Stages pivot, for a run opened anew.
-    pub fn show_stages(&mut self) {
+    pub(crate) fn show_stages(&mut self) {
         self.pivot = Pivot::Stages;
     }
 
-    pub fn show(&mut self, ui: &mut Ui, input: RunViewInput<'_>) -> Option<RunViewAction> {
+    pub(crate) fn show(&mut self, ui: &mut Ui, input: RunViewInput<'_>) -> Option<RunViewAction> {
         if self.expanded_for.as_deref() != Some(input.run_id) {
             self.expanded = stage_graph::initially_expanded(input.stages);
             self.expanded_for = Some(input.run_id.to_owned());
@@ -105,13 +104,11 @@ impl RunView {
             stages,
             known: input.known,
         };
-        let scroll_to = self.scroll_to.take();
         ui.painter().rect_filled(ui.available_rect_before_wrap(), 0, palette.ground);
         let graph_input = GraphInput {
             stages,
             expanded: &self.expanded,
             highlighted: self.highlighted.as_deref(),
-            scroll_to: scroll_to.as_deref(),
             context,
         };
         let (index, card) = stage_graph::show(ui, graph_input)?;

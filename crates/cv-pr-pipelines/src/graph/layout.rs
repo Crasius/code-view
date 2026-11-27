@@ -7,14 +7,14 @@ use std::collections::HashMap;
 use egui::{Pos2, Rect, Vec2, pos2, vec2};
 use review_core::PipelineJob;
 
-pub const CARD_WIDTH: f32 = 240.0;
-pub const COLUMN_GAP: f32 = 40.0;
-pub const ROW_GAP: f32 = 24.0;
-pub const PADDING: f32 = 24.0;
+pub(crate) const CARD_WIDTH: f32 = 240.0;
+pub(crate) const COLUMN_GAP: f32 = 40.0;
+pub(crate) const ROW_GAP: f32 = 24.0;
+pub(crate) const PADDING: f32 = 24.0;
 /// Connectors attach this far below a card's top, level with its header.
-pub const ATTACH_Y: f32 = 34.0;
+pub(crate) const ATTACH_Y: f32 = 34.0;
 
-pub struct GraphLayout {
+pub(crate) struct GraphLayout {
     /// Card rectangles in stage order, relative to the canvas origin.
     pub cards: Vec<Rect>,
     /// `(from, to)`: stage `to` depends on stage `from`.
@@ -24,7 +24,7 @@ pub struct GraphLayout {
 
 impl GraphLayout {
     /// `height(index)` is the current height of a stage's card (collapsed or expanded).
-    pub fn new(stages: &[PipelineJob], height: impl Fn(usize) -> f32) -> Self {
+    pub(crate) fn new(stages: &[PipelineJob], height: impl Fn(usize) -> f32) -> Self {
         let index_of: HashMap<&str, usize> =
             stages.iter().enumerate().map(|(index, stage)| (stage.id.as_str(), index)).collect();
         let columns = columns(stages, &index_of);
@@ -110,7 +110,7 @@ fn resolve(
 
 /// The connector from the right edge of `from` to the left edge of `to`: horizontal, then a
 /// rounded vertical run in the gap before `to`, then horizontal again.
-pub fn connector(from: Rect, to: Rect) -> Vec<Pos2> {
+pub(crate) fn connector(from: Rect, to: Rect) -> Vec<Pos2> {
     let start = pos2(from.right(), from.top() + ATTACH_Y);
     let end = pos2(to.left(), to.top() + ATTACH_Y);
     let bend_x = to.left() - COLUMN_GAP / 2.0;
@@ -164,20 +164,14 @@ mod tests {
         ((layout.cards[index].left() - PADDING) / (CARD_WIDTH + COLUMN_GAP)).round() as usize
     }
 
-    /// GitLab with every job on `needs: []` (gitlab-org/cli): the provider chains the stages in
-    /// their configured order, so they form one row of columns joined left to right, whatever
-    /// the jobs need.
+    /// Stages that each depend on the one before stand in one row, one column each.
     #[test]
-    fn a_stage_chain_of_jobs_without_needs_forms_one_row_of_columns() {
-        let lane = |id: &str, depends_on: &[&str], jobs: &[&str]| PipelineJob {
-            children: jobs.iter().map(|name| stage(name, &[])).collect(),
-            ..stage(id, depends_on)
-        };
+    fn a_chain_of_stages_forms_one_row_of_columns() {
         let stages = vec![
-            lane("test", &[], &["tests:unit", "tests:integration", "lint"]),
-            lane("build", &["test"], &["build:linux", "build:windows"]),
-            lane("release", &["build"], &["release"]),
-            lane("documentation", &["release"], &["docs:check"]),
+            stage("test", &[]),
+            stage("build", &["test"]),
+            stage("release", &["build"]),
+            stage("documentation", &["release"]),
         ];
         let layout = GraphLayout::new(&stages, |_| 72.0);
         assert_eq!(

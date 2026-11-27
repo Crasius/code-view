@@ -3,7 +3,7 @@
 
 use cv_base::theme::{self, Palette, icons, motion, style};
 use cv_services::diff_stats::{self, Shown};
-use cv_widgets::numbers::{compact_count, digit_template, group_digits};
+use cv_widgets::numbers::{compact_count, digit_template, group_digits, noun};
 use cv_widgets::{row, skeleton};
 use egui::{
     Align2, Color32, CornerRadius, FontId, Id, Painter, Rect, Sense, Stroke, Ui, pos2, vec2,
@@ -78,7 +78,7 @@ fn count_font() -> FontId {
 }
 
 /// The size column's placeholders, in the places of the counts, the bar and the file count.
-pub fn paint_placeholder(ui: &Ui, column: Rect) {
+pub(crate) fn paint_placeholder(ui: &Ui, column: Rect) {
     let layout = SizeLayout::measure(ui.painter(), column);
     let block = |right: f32, y: f32, size: egui::Vec2| {
         Rect::from_min_size(pos2(right - size.x, y - size.y / 2.0), size)
@@ -91,7 +91,7 @@ pub fn paint_placeholder(ui: &Ui, column: Rect) {
 
 /// The size column: counted lines over the bar and the changed files; placeholders while they
 /// are counted; or a dash, the files where known and "Count lines". True when that was clicked.
-pub fn paint(
+pub(crate) fn paint(
     ui: &mut Ui,
     painter: &Painter,
     id: Id,
@@ -295,13 +295,13 @@ fn paint_count_link(
 
 /// "1,552 lines changed in 18 files" and "1,240 added, 312 deleted" (for screen readers).
 fn size_summary(lines: LineCounts, files: Option<u64>) -> (String, String) {
-    let changed = match lines.total() {
-        1 => "1 line changed".to_owned(),
-        total => format!("{} lines changed", group_digits(total as usize)),
-    };
+    let total = lines.total() as usize;
+    let changed = format!("{} {} changed", group_digits(total), noun(total, "line", "lines"));
     let summary = match files {
-        Some(1) => format!("{changed} in 1 file"),
-        Some(files) => format!("{changed} in {} files", group_digits(files as usize)),
+        Some(files) => {
+            let files = files as usize;
+            format!("{changed} in {} {}", group_digits(files), noun(files, "file", "files"))
+        }
         None => changed,
     };
     let split = format!(
@@ -313,14 +313,11 @@ fn size_summary(lines: LineCounts, files: Option<u64>) -> (String, String) {
 }
 
 fn files_changed(files: u64) -> String {
-    if files == 1 {
-        "1 file changed".to_owned()
-    } else {
-        format!("{} files changed", group_digits(files as usize))
-    }
+    let files = files as usize;
+    format!("{} {} changed", group_digits(files), noun(files, "file", "files"))
 }
 
 /// A count in its tint; a zero carries no news, so it steps back (as in the file tree).
-pub fn count_color(value: u64, tint: Color32, palette: &Palette) -> Color32 {
+pub(crate) fn count_color(value: u64, tint: Color32, palette: &Palette) -> Color32 {
     if value == 0 { palette.text_disabled } else { tint }
 }

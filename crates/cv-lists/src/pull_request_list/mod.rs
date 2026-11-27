@@ -62,7 +62,8 @@ use self::filters::{STAR_GAP, narrows, overview_scope};
 use self::list_rows::{EmptyOffer, FavoritesLane, ListAction, ListInput, RowFilter, SIDE_MARGIN};
 use self::pauses::Pauses;
 use self::queries::ConnectionQueries;
-pub use self::queries::{ANONYMOUS_LIST_INTERVAL, LIST_INTERVAL, cache_stamp};
+pub use self::queries::LIST_INTERVAL;
+pub(crate) use self::queries::cache_stamp;
 use self::statuses::RowStatuses;
 pub use self::toolbar::{FAVORITES_LANE, GROUP_BY_REPOSITORY};
 use self::toolbar::{
@@ -78,7 +79,7 @@ pub enum ListSource {
 
 impl ListSource {
     /// The overview across every connection, not one repository's list.
-    pub fn is_overview(&self) -> bool {
+    pub(crate) fn is_overview(&self) -> bool {
         matches!(self, Self::Mine)
     }
 }
@@ -86,7 +87,7 @@ impl ListSource {
 pub const SEARCH_TOOLTIP: &str = concat!("Search (", shortcut!(command "K"), ")");
 
 /// Stars or unstars a repository and saves the choice; the Favorites card follows on its next frame.
-pub fn toggle_favorite(services: &mut Services, connection_id: &str, repository_key: &str) {
+pub(crate) fn toggle_favorite(services: &mut Services, connection_id: &str, repository_key: &str) {
     let is_favorite = services.settings.favorites.toggle(connection_id, repository_key);
     services.save_settings();
     let text = if is_favorite {
@@ -653,9 +654,7 @@ impl PullRequestListPage {
             .flat_map(|result| {
                 let listed = result.load.ready().into_iter().flatten();
                 listed.filter(|pull_request| pull_request.repository_key == repository_key).map(
-                    move |pull_request| {
-                        list_rows::stat_row(result, pull_request, result.has_token, row.is_favorite)
-                    },
+                    move |pull_request| list_rows::stat_row(result, pull_request, row.is_favorite),
                 )
             })
             .collect();

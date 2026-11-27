@@ -23,14 +23,14 @@ type ChangedPaths = (Option<Arc<Vec<ChangedFile>>>, Arc<HashSet<String>>);
 
 /// The changed paths, kept for the file list they were made from.
 #[derive(Default)]
-pub struct Links {
+pub(crate) struct Links {
     changed: Option<ChangedPaths>,
 }
 
 impl Links {
     /// Makes the answers drawn after this call resolve citation targets, and [`Self::is_changed`]
     /// read the pull request's current file list.
-    pub fn publish(&mut self, ctx: &egui::Context, session: &PullRequestSession) {
+    pub(crate) fn publish(&mut self, ctx: &egui::Context, session: &PullRequestSession) {
         let changed = self.changed_paths(session.files());
         let Some(detail) = session.detail.ready() else {
             return;
@@ -104,7 +104,7 @@ impl LinkResolver for CitationLinks {
 /// with the answer they were made from. A turn's answer changes when Retry asks again; the old
 /// links then no longer show, even when their check finishes after the retry.
 #[derive(Default)]
-pub struct LinkedAnswers {
+pub(crate) struct LinkedAnswers {
     by_turn: Vec<Option<Linked>>,
     pub to_check: Vec<usize>,
     checking: Option<Task<Vec<(usize, Linked)>>>,
@@ -118,14 +118,14 @@ struct Linked {
 
 impl LinkedAnswers {
     /// Turn `index`'s `answer` with its checked citations linked, once they are.
-    pub fn get(&self, index: usize, answer: &str) -> Option<&str> {
+    pub(crate) fn get(&self, index: usize, answer: &str) -> Option<&str> {
         let linked = self.by_turn.get(index)?.as_ref()?;
         (linked.answer == answer).then_some(linked.text.as_str())
     }
 }
 
 /// Checks the citations of finished answers against the checkout, one batch at a time.
-pub fn check_links(assistant: &mut Assistant, services: &Services) {
+pub(crate) fn check_links(assistant: &mut Assistant, services: &Services) {
     if let Some(task) = &mut assistant.links.checking {
         match task.poll() {
             TaskPoll::Pending => return,

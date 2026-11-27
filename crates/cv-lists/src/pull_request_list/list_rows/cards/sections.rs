@@ -12,6 +12,7 @@
 
 use cv_base::theme::{self, Palette, icons, motion, style};
 use cv_runtime::route::{Navigator, Route};
+use cv_widgets::numbers::counted;
 use cv_widgets::{elide, provider_icon, row, time_text};
 use egui::text::{LayoutJob, TextFormat};
 use egui::{
@@ -27,10 +28,10 @@ use crate::pull_request_list::list_rows::{
 use crate::pull_request_list::queries::ConnectionResult;
 
 /// A section header's height; shorter than a row, so it reads as the rows' heading.
-pub const SECTION_HEIGHT: f32 = 40.0;
+pub(crate) const SECTION_HEIGHT: f32 = 40.0;
 
 /// One repository's header in a card.
-pub struct Section<'a> {
+pub(crate) struct Section<'a> {
     card: SectionCard,
     /// The connection the repository is reached through: its platform mark in the Favorites card.
     result: &'a ConnectionResult,
@@ -45,7 +46,7 @@ pub struct Section<'a> {
 }
 
 impl Section<'_> {
-    pub fn height(&self) -> f32 {
+    pub(crate) fn height(&self) -> f32 {
         SECTION_HEIGHT * self.presence
     }
 
@@ -69,11 +70,7 @@ impl Section<'_> {
 
     /// "team/app, 3 pull requests, expanded": what the header says to a screen reader.
     fn accessible_name(&self) -> String {
-        let rows = if self.count == 1 {
-            "1 pull request".to_owned()
-        } else {
-            format!("{} pull requests", self.count)
-        };
+        let rows = counted(self.count, "pull request", "pull requests");
         let state = if self.is_open { "expanded" } else { "collapsed" };
         format!("{}, {rows}, {state}", self.place())
     }
@@ -91,7 +88,7 @@ fn listed<'a>(row: &Row<'a>) -> Option<(&'a ConnectionResult, &'a PullRequestSum
 
 /// Groups the card's pull request rows (one unbroken run in `body`, leaving rows among them) by
 /// repository, each group under its header; a closed section keeps only its header.
-pub fn split<'a>(body: &mut Vec<Row<'a>>, card: SectionCard, sections: &RepositorySections) {
+pub(crate) fn split<'a>(body: &mut Vec<Row<'a>>, card: SectionCard, sections: &RepositorySections) {
     let Some(start) = body.iter().position(|row| listed(row).is_some()) else {
         return;
     };
@@ -164,7 +161,7 @@ fn section<'a>(
 /// its right end (in line with the rows' Files buttons) the way to the repository's list. Returns
 /// the toggle; the arrow goes to the list itself. A section closing up with its last leaving rows
 /// takes no clicks.
-pub fn paint(
+pub(crate) fn paint(
     ui: &Ui,
     rect: Rect,
     section: &Section<'_>,

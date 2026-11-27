@@ -12,7 +12,7 @@ use super::super::citations::{self, CitedLines};
 /// The pieces of the last answer laid out, and the Markdown source of each, kept for the text
 /// they were parsed from.
 #[derive(Default)]
-pub struct Pieces {
+pub(crate) struct Pieces {
     parsed: Option<(u64, Units, Vec<String>)>,
 }
 
@@ -46,7 +46,7 @@ fn sources(text: &str, units: &Units) -> Vec<String> {
 
 /// Draws `text` (the answer of turn `turn`); with `linked`, its citation links are in and
 /// `current` gets the fill at `fill` strength (0 to 1).
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     pieces: &mut Pieces,
     text: &str,

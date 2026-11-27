@@ -13,7 +13,7 @@
 use egui::{Context, Id, Key, Rect};
 
 #[derive(Default)]
-pub struct CardWheel {
+pub(crate) struct CardWheel {
     is_armed: bool,
     /// The pass the card was last drawn in.
     shown_pass: Option<u64>,
@@ -22,13 +22,13 @@ pub struct CardWheel {
 }
 
 impl CardWheel {
-    pub fn is_armed(&self) -> bool {
+    pub(crate) fn is_armed(&self) -> bool {
         self.is_armed
     }
 
     /// Before the card draws: a card that was not on screen the pass before starts unarmed, and
     /// Esc disarms it (read before the composer or the page takes the key).
-    pub fn begin(&mut self, ctx: &Context) {
+    pub(crate) fn begin(&mut self, ctx: &Context) {
         let pass = ctx.cumulative_pass_nr();
         let was_shown = self.shown_pass.is_some_and(|shown| shown + 1 >= pass);
         self.shown_pass = Some(pass);
@@ -43,7 +43,7 @@ impl CardWheel {
 
     /// After the card was drawn in `card`: the keyboard focus moving into the card arms it, moving
     /// to a widget outside disarms it; a press arms it inside and disarms it outside.
-    pub fn end(&mut self, ctx: &Context, card: Rect) {
+    pub(crate) fn end(&mut self, ctx: &Context, card: Rect) {
         let focus = ctx.memory(egui::Memory::focused);
         if focus != self.focus {
             self.focus = focus;

@@ -6,12 +6,12 @@ use review_core::PullRequestSummary;
 use review_store::Favorites;
 
 /// The overview's repository choice applied to loaded rows.
-pub struct RowFilter {
+pub(crate) struct RowFilter {
     repository: Option<(String, String)>,
 }
 
 impl RowFilter {
-    pub fn new(repository: Option<&(String, String)>) -> Self {
+    pub(crate) fn new(repository: Option<&(String, String)>) -> Self {
         Self { repository: repository.cloned() }
     }
 

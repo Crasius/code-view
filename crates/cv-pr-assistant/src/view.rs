@@ -19,7 +19,7 @@ use cv_widgets::states::{self, Action as StateAction};
 use cv_widgets::{buttons, glyph, row};
 use egui::{Event, Id, Key, KeyboardShortcut, Modifiers, Response, RichText, TextEdit, Ui};
 
-use super::title::{self, NEW_KEY, TitleClick, TitleOutput};
+use super::title::{self, NEW_KEY, TitleOutput};
 use super::{Action, Assistant, Block, chip, turns};
 
 /// The card's conversation is never shorter than this, however little room the side column has:
@@ -55,7 +55,7 @@ pub fn card(
     column_bottom: f32,
 ) {
     assistant.wheel.begin(ui.ctx());
-    let mut action = title.click.map(TitleClick::action);
+    let mut action = title.click.clone();
     let mut picked = head(ui, assistant, session, services, &title.chip);
     let below_id = ui.scope_id().with("assistant_card_below");
     let below = ui.data(|data| data.get_temp::<f32>(below_id)).unwrap_or(0.0);
@@ -158,7 +158,7 @@ pub fn panel(
             },
         );
         let title = title.inner;
-        action = title.click.map(TitleClick::action);
+        action = title.click;
         ui.add_space(style::SPACE_S);
         if let Some(picked) = panel_body(ui, assistant, session, services, &title.chip) {
             action = Some(picked);

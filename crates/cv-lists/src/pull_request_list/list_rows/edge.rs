@@ -34,7 +34,7 @@ const DOT_INSET: f32 = 6.0;
 
 /// How current one row is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Edge<'a> {
+pub(crate) enum Edge<'a> {
     Fresh,
     Changed,
     Waiting,
@@ -45,7 +45,7 @@ pub enum Edge<'a> {
 }
 
 /// The edge of `row` in `result`'s card, while `pauses` hold requests back.
-pub fn of<'a>(
+pub(crate) fn of<'a>(
     result: &'a ConnectionResult,
     statuses: &'a RowStatuses,
     pauses: &Pauses,
@@ -68,7 +68,7 @@ pub fn of<'a>(
 
 /// Where the edge goes: the row, its id, whether it is the card's last (its corner is round), its
 /// card's fade and its number in words.
-pub struct Place<'a> {
+pub(crate) struct Place<'a> {
     pub rect: Rect,
     pub id: Id,
     pub is_last: bool,
@@ -77,7 +77,7 @@ pub struct Place<'a> {
 }
 
 /// Paints `edge` on the row's inner left; true when its failure's Retry was clicked.
-pub fn paint(ui: &Ui, place: &Place<'_>, edge: Edge<'_>) -> bool {
+pub(crate) fn paint(ui: &Ui, place: &Place<'_>, edge: Edge<'_>) -> bool {
     if edge == Edge::Fresh {
         return false;
     }

@@ -19,7 +19,7 @@ use self::activity::Phase;
 use super::{Action, Assistant};
 
 /// Draws every turn; returns what the user picked on one.
-pub fn show(ui: &mut Ui, assistant: &Assistant) -> Option<Action> {
+pub(crate) fn show(ui: &mut Ui, assistant: &Assistant) -> Option<Action> {
     let mut action = None;
     let last = assistant.chat.turns.len().saturating_sub(1);
     for (index, turn) in assistant.chat.turns.iter().enumerate() {

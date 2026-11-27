@@ -25,7 +25,7 @@ const LOG_MIN_HEIGHT: f32 = 160.0;
 const LOG_MAX_HEIGHT: f32 = 420.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Step {
+pub(crate) enum Step {
     LoadingDetails,
     ResolvingRemote,
     OpeningMirror,
@@ -44,7 +44,7 @@ impl Step {
         Step::ListingFiles,
     ];
 
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Step::LoadingDetails => "Loading pull request details",
             Step::ResolvingRemote => "Resolving the repository",
@@ -135,7 +135,7 @@ impl Default for SharedProgress {
 impl SharedProgress {
     /// Starts over, unless the first load is still in its first step: then the details just
     /// arrived and their step keeps its start time.
-    pub fn restart(&self) {
+    pub(crate) fn restart(&self) {
         let mut progress = self.lock();
         let is_first_step = progress.step == Step::LoadingDetails && !progress.is_failed();
         if !is_first_step {
@@ -144,20 +144,20 @@ impl SharedProgress {
     }
 
     /// Clears the log and the failure for a retry.
-    pub fn reset(&self) {
+    pub(crate) fn reset(&self) {
         *self.lock() = PrepareProgress::new(Instant::now());
     }
 
-    pub fn enter(&self, step: Step) {
+    pub(crate) fn enter(&self, step: Step) {
         self.lock().enter(step, Instant::now());
     }
 
-    pub fn report_git(&self, event: GitEvent) {
+    pub(crate) fn report_git(&self, event: GitEvent) {
         self.lock().log.report_git(event);
     }
 
     /// A line about what the running step found.
-    pub fn log(&self, message: &str) {
+    pub(crate) fn log(&self, message: &str) {
         self.lock().log.push(LineKind::Info, message);
     }
 

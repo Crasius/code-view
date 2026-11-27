@@ -17,17 +17,15 @@ const OVERSCAN: f32 = 96.0;
 const DOT_RADIUS: f32 = 3.0;
 
 #[derive(Clone, Copy)]
-pub struct GraphInput<'a> {
+pub(crate) struct GraphInput<'a> {
     pub stages: &'a [PipelineJob],
     pub expanded: &'a HashSet<String>,
     pub highlighted: Option<&'a str>,
-    /// Glides this stage into view once.
-    pub scroll_to: Option<&'a str>,
     pub context: CardContext<'a>,
 }
 
 /// Returns the clicked stage's index and what was clicked.
-pub fn show(ui: &mut Ui, input: GraphInput<'_>) -> Option<(usize, CardAction)> {
+pub(crate) fn show(ui: &mut Ui, input: GraphInput<'_>) -> Option<(usize, CardAction)> {
     let palette = theme::palette(ui.ctx());
     let openings: Vec<f32> = input
         .stages
@@ -41,11 +39,7 @@ pub fn show(ui: &mut Ui, input: GraphInput<'_>) -> Option<(usize, CardAction)> {
         stage_card::height(&input.stages[index], &input.context, openings[index])
     });
     let mut clicked = None;
-    let reveal = input
-        .scroll_to
-        .and_then(|id| input.stages.iter().position(|stage| stage.id == id))
-        .map(|index| layout.cards[index]);
-    let mut pan = pan_canvas::begin(ui, ui.scope_id().with("stage_graph"), layout.size, reveal);
+    let mut pan = pan_canvas::begin(ui, ui.scope_id().with("stage_graph"), layout.size);
     // The canvas is drawn in its own coordinates; the pan and zoom map it to the screen.
     let visible = pan.viewport().expand(OVERSCAN / pan.zoom());
     paint_connectors(&pan.ui, &layout, input.stages, visible, &palette);
@@ -100,6 +94,6 @@ fn paint_connectors(
 }
 
 /// Stages to show expanded when a run opens: every stage with jobs, so each card lists them.
-pub fn initially_expanded(stages: &[PipelineJob]) -> HashSet<String> {
+pub(crate) fn initially_expanded(stages: &[PipelineJob]) -> HashSet<String> {
     stages.iter().filter(|stage| !stage.children.is_empty()).map(|stage| stage.id.clone()).collect()
 }

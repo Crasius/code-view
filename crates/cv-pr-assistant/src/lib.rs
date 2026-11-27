@@ -62,14 +62,15 @@ use self::runner::{Runner, RunnerEvent};
 use self::transcript::Applied;
 use self::transcript::saver::Saver;
 
-pub use self::title::{TitleLine, card_action};
+pub(crate) use self::title::TitleLine;
+pub use self::title::card_action;
 #[cfg(any(test, feature = "test-support"))]
 pub use self::view::CARD_LABEL;
 pub use self::view::{TITLE, card, card_drawn, panel};
 
 /// Why the conversation cannot go on, each with its own fix in the card.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Block {
+pub(crate) enum Block {
     /// The install guide, and "Check again".
     NotInstalled(AgentKind),
     /// A terminal to sign in, and "Check again".
@@ -270,7 +271,6 @@ impl Assistant {
             RunnerEvent::CheckoutFailed(message) => {
                 self.block = Some(Block::Checkout(message));
             }
-            RunnerEvent::SessionStarted => {}
             RunnerEvent::SessionFailed(error) => self.fail(&error),
             RunnerEvent::Agent(event) => match transcript::apply(&mut self.chat, event) {
                 Applied::Progress => {}
@@ -443,7 +443,7 @@ impl Assistant {
     /// Why "Continue in terminal" cannot open the agent's CLI yet, or `None` when it can: it
     /// resumes this conversation's session, or before the first answer starts a fresh one in the
     /// checkout, which the first question prepares.
-    pub fn terminal_block(&self) -> Option<&'static str> {
+    pub(crate) fn terminal_block(&self) -> Option<&'static str> {
         let can_open = self.chat.session_id.is_some() || self.checkout.is_some();
         (!can_open).then_some("Ask a first question to prepare the checkout")
     }

@@ -58,7 +58,7 @@ enum Saved {
 
 /// The copies and the download of the log on screen; each is built on request, never per frame.
 #[derive(Default)]
-pub struct LogExports {
+pub(crate) struct LogExports {
     /// The plain text being built for "Copy log".
     copy: Load<String>,
     /// When the copied text reached the clipboard, for the short "Copied" confirmation.
@@ -76,7 +76,7 @@ pub struct LogExports {
 impl LogExports {
     /// Forgets the copies of the log shown before; a download in progress still reports where
     /// it saved the file.
-    pub fn forget_copies(&mut self) {
+    pub(crate) fn forget_copies(&mut self) {
         self.copy = Load::Idle;
         self.copied_at = None;
         self.copy_selection = Load::Idle;
@@ -84,7 +84,7 @@ impl LogExports {
 
     /// Runs the export a failure toast's Retry asked for, then hands what finished to the
     /// clipboard, or says where the download went or what failed.
-    pub fn finish(
+    pub(crate) fn finish(
         &mut self,
         ui: &Ui,
         toasts: &mut Toasts,
@@ -155,12 +155,12 @@ impl LogExports {
         }
     }
 
-    pub fn is_copying(&self) -> bool {
+    pub(crate) fn is_copying(&self) -> bool {
         self.copy.is_loading()
     }
 
     /// Builds the log's plain text, without its colors, for the clipboard.
-    pub fn start_copy(&mut self, log: &LoadedLog, background: &Background) {
+    pub(crate) fn start_copy(&mut self, log: &LoadedLog, background: &Background) {
         if self.copy.is_loading() {
             return;
         }
@@ -178,7 +178,7 @@ impl LogExports {
 
     /// Reads the selected lines from the file, so a selection of 100k lines does not stall the
     /// frame.
-    pub fn start_copy_selection(
+    pub(crate) fn start_copy_selection(
         &mut self,
         selection: Selection,
         log: &Arc<LoadedLog>,
@@ -202,7 +202,7 @@ impl LogExports {
     }
 
     /// Asks where to save the log of `title` and copies the file there, as the platform sent it.
-    pub fn start_download(&mut self, title: &str, log: &LoadedLog, background: &Background) {
+    pub(crate) fn start_download(&mut self, title: &str, log: &LoadedLog, background: &Background) {
         if self.download.is_loading() {
             return;
         }
@@ -239,7 +239,7 @@ impl LogExports {
     }
 
     /// The copy button's icon and label now: "Copy log", "Copying…", or "Copied" for a moment.
-    pub fn copy_face(&self, ui: &Ui) -> (&'static str, &'static str) {
+    pub(crate) fn copy_face(&self, ui: &Ui) -> (&'static str, &'static str) {
         let now = ui.input(|input| input.time);
         let shown_for =
             self.copied_at.map(|at| now - at).filter(|elapsed| *elapsed < COPIED_SECONDS);
@@ -255,7 +255,7 @@ impl LogExports {
 
     /// "Copy log", turning into "Copied" for a moment; the slot keeps one width in every state,
     /// so nothing in the toolbar moves.
-    pub fn copy_button(&self, ui: &mut Ui) -> bool {
+    pub(crate) fn copy_button(&self, ui: &mut Ui) -> bool {
         let (icon, text) = self.copy_face(ui);
         let width = COPY_STATES
             .iter()

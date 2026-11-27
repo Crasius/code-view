@@ -116,7 +116,7 @@ fn collapsed_summary(thread: &ReviewThread) -> String {
 }
 
 /// The first `max` characters of a comment as one line of plain text.
-pub fn excerpt(body: &str, max: usize) -> String {
+pub(crate) fn excerpt(body: &str, max: usize) -> String {
     let flat: String = body
         .lines()
         .map(str::trim)

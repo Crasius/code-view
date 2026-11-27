@@ -15,6 +15,7 @@
 )]
 
 mod card;
+mod context;
 mod drafts;
 mod edits;
 mod event;
@@ -43,12 +44,12 @@ use review_store::ThreadStore;
 
 use self::card::NewComments;
 pub use self::card::{CardOptions, show as show_card, show_pending as show_pending_card};
+pub use self::context::ThreadContext;
 pub use self::drafts::{GENERAL_KEY, new_thread_key};
 pub use self::event::{Jump, ThreadEvent};
 pub use self::links::thread_url;
 pub use self::panel::{
-    HIDE_HINT, PanelEvent, PanelInputs, SHOW_HINT, ToggleCounts, is_listed, panel_toggle,
-    show as show_panel, toggle_counts,
+    HIDE_HINT, PanelEvent, PanelInputs, SHOW_HINT, panel_toggle, show as show_panel, toggle_counts,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use self::posts::Delivery;
@@ -65,30 +66,6 @@ const SETTLE_WINDOW_SECONDS: f64 = 0.5;
 /// The id a new thread's card has while it is on its way.
 pub fn pending_id(key: &str) -> String {
     format!("pending:{key}")
-}
-
-/// What the cards need to know about the pull request this frame.
-#[derive(Clone)]
-pub struct ThreadContext {
-    pub platform: ProviderKind,
-    pub can_write: bool,
-    /// The pull request's author, who gets the "Author" badge.
-    pub author_id: Option<String>,
-    /// The pull request's web page, for thread links.
-    pub web_url: Option<String>,
-    pub connection_id: String,
-}
-
-impl ThreadContext {
-    fn new(platform: ProviderKind, connection_id: &str) -> Self {
-        Self {
-            platform,
-            can_write: false,
-            author_id: None,
-            web_url: None,
-            connection_id: connection_id.to_owned(),
-        }
-    }
 }
 
 /// Per pull request: drafts, open composers, collapsed cards, read marks and posts.
@@ -181,6 +158,7 @@ impl ThreadsUi {
         self.now = ctx.input(|input| input.time);
         self.context.platform = session.kind;
         self.context.can_write = session.has_token;
+        self.context.provider = Some(session.provider.clone());
         self.context.author_id =
             session.detail.ready().map(|detail| detail.summary.author.id.clone());
         self.context.web_url = session.detail.ready().map(|detail| detail.summary.web_url.clone());
@@ -206,7 +184,6 @@ impl ThreadsUi {
             session.reload_threads(services);
         }
         self.on_post_news(&news);
-        self.edits.set_provider(&session.provider);
         let version = session.threads.version();
         if self.edits.poll(&issues, &self.context.connection_id, version, &mut services.toasts) {
             session.reload_threads(services);
@@ -338,7 +315,7 @@ impl ThreadsUi {
     }
 
     /// The signed-in user, once known. Asking starts the one request that finds out.
-    pub fn me(&mut self) -> Option<&UserIdentity> {
+    pub(crate) fn me(&mut self) -> Option<&UserIdentity> {
         self.request_me();
         self.me.ready()
     }
@@ -352,20 +329,20 @@ impl ThreadsUi {
         self.me.ready()
     }
 
-    pub fn is_collapsed(&self, thread: &ReviewThread) -> bool {
+    pub(crate) fn is_collapsed(&self, thread: &ReviewThread) -> bool {
         self.collapsed.get(&thread.id).copied().unwrap_or(thread.status == ThreadStatus::Resolved)
     }
 
-    pub fn set_collapsed(&mut self, thread_id: &str, is_collapsed: bool) {
+    pub(crate) fn set_collapsed(&mut self, thread_id: &str, is_collapsed: bool) {
         self.collapsed.insert(thread_id.to_owned(), is_collapsed);
     }
 
-    pub fn toggle_collapsed(&mut self, thread: &ReviewThread) {
+    pub(crate) fn toggle_collapsed(&mut self, thread: &ReviewThread) {
         self.set_collapsed(&thread.id, !self.is_collapsed(thread));
     }
 
     /// Comments of other people the user has not seen yet; `None` when there are none.
-    pub fn new_comments(&self, thread: &ReviewThread) -> Option<NewComments> {
+    pub(crate) fn new_comments(&self, thread: &ReviewThread) -> Option<NewComments> {
         let me = self.known_me().map(|me| me.id.as_str());
         NewComments::of(thread, reading::news(&self.store, me, thread)?)
     }
@@ -377,7 +354,7 @@ impl ThreadsUi {
     }
 
     /// Marks every comment of `thread` as read now.
-    pub fn mark_read(&mut self, thread: &ReviewThread) {
+    pub(crate) fn mark_read(&mut self, thread: &ReviewThread) {
         if let Some(newest) = newest(thread) {
             self.store.mark_seen(&thread.id, newest);
         }
@@ -545,7 +522,7 @@ impl ThreadsUi {
 
     /// The reply to `thread_id` while it is on its way: the platform's copy once it answered,
     /// else the comment as it will come back. `None` when none is on its way, or it failed.
-    pub fn pending_reply(&mut self, thread_id: &str) -> Option<review_core::ThreadComment> {
+    pub(crate) fn pending_reply(&mut self, thread_id: &str) -> Option<review_core::ThreadComment> {
         let key = drafts::reply_key(thread_id);
         if !self.posts.state(&key).is_some_and(PostState::is_pending) {
             return None;
@@ -698,15 +675,15 @@ impl ThreadsUi {
     }
     #[cfg(any(test, feature = "test-support"))]
     /// The first visit was at `unix`: later comments are new.
-    pub fn visited_at(&mut self, unix: i64) {
+    pub(crate) fn visited_at(&mut self, unix: i64) {
         self.store.start_visit(unix, std::iter::empty());
     }
     #[cfg(any(test, feature = "test-support"))]
     pub fn set_me(&mut self, me: UserIdentity) {
         self.me = Load::Ready(me);
     }
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn set_post_state(&mut self, key: &str, state: PostState, body: &str) {
+    #[cfg(test)]
+    pub(crate) fn set_post_state(&mut self, key: &str, state: PostState, body: &str) {
         self.posts.insert_for_tests(key, state, body);
     }
     #[cfg(any(test, feature = "test-support"))]
@@ -767,7 +744,7 @@ impl ThreadsUi {
     }
     #[cfg(any(test, feature = "test-support"))]
     /// The code of `thread`'s excerpt loaded: `diff` and `text` of its file at ("base", "head").
-    pub fn insert_code_for_tests(&mut self, thread: &ReviewThread, diff: &str, text: &str) {
+    pub(crate) fn insert_code_for_tests(&mut self, thread: &ReviewThread, diff: &str, text: &str) {
         self.code.insert_for_tests(thread, "base", "head", diff, text);
     }
     #[cfg(any(test, feature = "test-support"))]
