@@ -54,7 +54,7 @@ cv-pr-rendered = { workspace = true, features = ["test-support"] }
 cv-pr-threads = { workspace = true, features = ["test-support"] }
 cv-pr-tree = { workspace = true, features = ["test-support"] }
 cv-runtime = { workspace = true, features = ["test-support"] }
-# The code zoom in the summary's shots (src/shots.rs).
+# The code zoom of the summary's test scene (src/testing.rs).
 cv-shell = { workspace = true, features = ["test-support"] }
 cv-syntax = { workspace = true, features = ["test-support"] }
 cv-testkit.workspace = true
