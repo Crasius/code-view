@@ -83,23 +83,23 @@ fn run(options: &Options) -> Result<bool, RepoError> {
             Ok(true)
         }
         Mode::Lengths => {
-            let tree = Tree::read()?;
-            print_lengths(&tree.lengths, &Scope::new(&tree.repo, &options.paths))
+            let parsed = Parsed::read()?;
+            print_lengths(&parsed.lengths, &Scope::new(&parsed.repo, &options.paths))
         }
         Mode::ShrinkAllowlist => {
-            let tree = Tree::read()?;
-            shrink_allowlist(&tree.repo, &tree.lengths)
+            let parsed = Parsed::read()?;
+            shrink_allowlist(&parsed.repo, &parsed.lengths)
         }
         Mode::Check => {
-            let tree = Tree::read()?;
-            let scope = Scope::new(&tree.repo, &options.paths);
-            report(&check(&tree, &scope, &options.base)?)
+            let parsed = Parsed::read()?;
+            let scope = Scope::new(&parsed.repo, &options.paths);
+            report(&check(&parsed, &scope, &options.base)?)
         }
     }
 }
 
 /// The repository with every Rust file parsed, classified as shipped or test-only and counted.
-struct Tree {
+struct Parsed {
     repo: Repo,
     sources: BTreeMap<String, Source>,
     is_test: BTreeMap<String, bool>,
@@ -107,8 +107,8 @@ struct Tree {
     lengths: BTreeMap<String, usize>,
 }
 
-impl Tree {
-    fn read() -> Result<Tree, RepoError> {
+impl Parsed {
+    fn read() -> Result<Parsed, RepoError> {
         let repo = Repo::open()?;
         let mut sources = BTreeMap::new();
         for path in &repo.rust_files {
@@ -130,7 +130,7 @@ impl Tree {
                 (path.clone(), if test_only { 0 } else { source.shipped_lines() })
             })
             .collect();
-        Ok(Tree { repo, sources, is_test, lengths })
+        Ok(Parsed { repo, sources, is_test, lengths })
     }
 }
 
@@ -163,8 +163,8 @@ impl Scope {
     }
 }
 
-fn check(tree: &Tree, scope: &Scope, base: &str) -> Result<Vec<Finding>, RepoError> {
-    let Tree { repo, sources, is_test, lengths } = tree;
+fn check(parsed: &Parsed, scope: &Scope, base: &str) -> Result<Vec<Finding>, RepoError> {
+    let Parsed { repo, sources, is_test, lengths } = parsed;
     let mut findings = Vec::new();
     for (path, source) in sources.iter().filter(|(path, _)| scope.covers(path)) {
         let file_is_test = is_test.get(path) == Some(&true);
