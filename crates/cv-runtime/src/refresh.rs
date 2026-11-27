@@ -94,14 +94,20 @@ impl RefreshScheduler {
         inner.observe_activity(is_active, now);
         let is_held = inner.held_in_pass.is_some_and(|held| held + 1 >= pass);
         inner.forget_stale(pass, now);
-        let next_slot = inner.next_slot;
-        let entry = inner.entries.entry(key.to_owned()).or_insert(Entry {
-            last_fired: now,
-            last_asked: now,
-            pending: false,
-            slot: None,
-            is_paused: true,
-        });
+        let Inner { entries, next_slot, .. } = &mut *inner;
+        if !entries.contains_key(key) {
+            let entry = Entry {
+                last_fired: now,
+                last_asked: now,
+                pending: false,
+                slot: None,
+                is_paused: true,
+            };
+            entries.insert(key.to_owned(), entry);
+        }
+        let Some(entry) = entries.get_mut(key) else {
+            return false;
+        };
         let is_paused = policy == WhenInactive::Pause;
         entry.last_asked = now;
         entry.is_paused = is_paused;
@@ -126,9 +132,8 @@ impl RefreshScheduler {
                 ctx.request_repaint_after(Duration::from_secs_f64(slot - now));
                 return false;
             }
-            inner.next_slot = slot.max(now) + CATCH_UP_STAGGER.as_secs_f64();
+            *next_slot = slot.max(now) + CATCH_UP_STAGGER.as_secs_f64();
         }
-        let entry = inner.entries.get_mut(key).expect("inserted above");
         entry.last_fired = now;
         entry.pending = false;
         entry.slot = None;
@@ -201,35 +206,6 @@ impl Inner {
     }
 }
 
-/// Tells whether a [`Live`] value brought a new answer, and whether that answer differs.
-#[cfg(test)]
-pub struct LiveWatch<T> {
-    version: u64,
-    last: Option<T>,
-}
-
-#[cfg(test)]
-impl<T> Default for LiveWatch<T> {
-    fn default() -> Self {
-        Self { version: 0, last: None }
-    }
-}
-
-#[cfg(test)]
-impl<T: Clone + PartialEq + Send + 'static> LiveWatch<T> {
-    /// `Some(changed)` once per new answer, `None` while nothing new arrived.
-    pub fn update(&mut self, live: &Live<T>) -> Option<bool> {
-        if live.version() == self.version {
-            return None;
-        }
-        self.version = live.version();
-        let current = live.ready().cloned();
-        let changed = current != self.last;
-        self.last = current;
-        Some(changed)
-    }
-}
-
 /// The live refresh of a pull request's pipelines, asked by whichever screen shows them (the
 /// Overview, the Pipelines tab) under one `key` per pull request, so switching between them keeps
 /// the schedule. Due only while a run is unfinished and no reload of the runs is on its way,
@@ -267,7 +243,7 @@ mod tests {
             Self { ctx: egui::Context::default(), time: 0.0, focused: true }
         }
 
-        /// Runs one frame at `time` and returns whether `key` fired.
+        /// Runs one frame at `self.time`; the keys that fired.
         fn frame(
             &mut self,
             scheduler: &RefreshScheduler,
@@ -277,14 +253,15 @@ mod tests {
             let mut input = egui::RawInput { time: Some(self.time), ..Default::default() };
             input.viewports.entry(egui::ViewportId::ROOT).or_default().focused = Some(self.focused);
             let mut fired = Vec::new();
-            let mut output = self.ctx.run_ui(input, |ui| {
-                for key in keys {
-                    if scheduler.due(ui.ctx(), key, interval, WhenInactive::Pause) {
-                        fired.push((*key).to_owned());
+            self.ctx
+                .run_ui(input, |ui| {
+                    for key in keys {
+                        if scheduler.due(ui.ctx(), key, interval, WhenInactive::Pause) {
+                            fired.push((*key).to_owned());
+                        }
                     }
-                }
-            });
-            output.textures_delta.clear();
+                })
+                .drop_without_applying_deltas();
             fired
         }
 

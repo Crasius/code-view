@@ -218,11 +218,7 @@ mod tests {
         spawner.spawn(async { panic!("the task fails") });
         spawner.spawn_kept(async { panic!("the task fails") });
 
-        let started = Instant::now();
-        while background.running() > 0 {
-            assert!(started.elapsed() < Duration::from_secs(5), "the panicked tasks still count");
-            cv_testkit::let_threads_run(Duration::from_millis(5));
-        }
+        cv_testkit::poll_until("the panicked tasks count out", || background.running() == 0);
         assert!(matches!(task.poll(), TaskPoll::Lost), "the owner sees the task lost");
 
         let dropping = Instant::now();

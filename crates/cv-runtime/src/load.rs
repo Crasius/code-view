@@ -232,13 +232,11 @@ impl<T> Live<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
-
+    use cv_testkit::poll_until;
     use review_core::ProviderError;
 
     use super::{Live, Load};
     use crate::background::{Background, Task};
-    use crate::refresh::LiveWatch;
 
     #[test]
     fn a_pending_load_gives_nothing_and_keeps_loading() {
@@ -269,15 +267,6 @@ mod tests {
         assert!(load.is_idle());
     }
 
-    /// Polls until a value arrives, as the frames would.
-    fn poll_until_new(live: &mut Live<u32>) {
-        let started = Instant::now();
-        while !live.poll() {
-            assert!(started.elapsed() < Duration::from_secs(10), "no value arrived");
-            cv_testkit::let_threads_run(Duration::from_millis(5));
-        }
-    }
-
     #[test]
     fn a_value_on_the_way_shows_until_the_result_replaces_it() {
         let background = Background::new(egui::Context::default());
@@ -288,10 +277,10 @@ mod tests {
             let _released_or_test_gone = released.await;
             Ok(3)
         });
-        poll_until_new(&mut live);
+        poll_until("the value on the way arrives", || live.poll());
         assert_eq!((live.ready(), live.is_loading(), live.version()), (Some(&1), true, 1));
         release.send(()).expect("the load waits");
-        poll_until_new(&mut live);
+        poll_until("the result arrives", || live.poll());
         assert_eq!((live.ready(), live.is_loading(), live.version()), (Some(&3), false, 2));
     }
 
@@ -300,16 +289,15 @@ mod tests {
     #[test]
     fn versions_keep_growing_across_a_clear() {
         let mut live = Live::default();
-        let mut watch = LiveWatch::default();
         live.set(1);
         live.set(2);
-        assert_eq!(watch.update(&live), Some(true));
+        let seen = live.version();
 
         live.clear();
         live.set(3);
         live.set(4);
 
+        assert!(live.version() > seen, "the watcher sees a newer version");
         assert_eq!(live.version(), 4, "the clear kept the version");
-        assert_eq!(watch.update(&live), Some(true), "the watcher saw the new value");
     }
 }
