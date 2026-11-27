@@ -9,8 +9,9 @@
 #
 # Every named step runs, also after one failed; the summary names each step. Exit 1 = a step
 # failed, 2 = a usage error. --base is repo-lint's allowlist base and the fork point `test` and
-# --changed compare with; without it repo-lint and `test` take main when it resolves, else HEAD,
-# and --changed looks at the uncommitted files only.
+# --changed compare the work tree with (committed, uncommitted and untracked files); without it
+# repo-lint and `test` take main when it resolves, else HEAD, and --changed looks at the
+# uncommitted files only.
 # A missing tool (cargo-deny, cargo-about, cargo-shear): without CI set the step prints SKIPPED
 # with the install command and the summary lists it as NOT-VERIFIED, the exit code stays; with CI
 # set the step fails. The versions come from ci/install-build-deps.sh, the one place that pins them.
@@ -135,7 +136,7 @@ step_commands() {
         printf 'check: no common ancestor of %s and HEAD\n' "$rev" >&2
         return 1
       }
-      filter=$(sh scripts/affected-tests.sh "$fork" HEAD) || return 1
+      filter=$(sh scripts/affected-tests.sh "$fork" --work-tree) || return 1
       case $filter in
         'none()') ;;
         'all()') echo 'cargo test --locked --no-fail-fast --workspace' ;;
@@ -216,7 +217,7 @@ list() {
     fi
   done
   printf '\ntest (by name)\n'
-  printf '  cargo test --locked --no-fail-fast -p <package>... for the filterset of sh scripts/affected-tests.sh <fork point of --base> HEAD\n'
+  printf '  cargo test --locked --no-fail-fast -p <package>... for the filterset of sh scripts/affected-tests.sh <fork point of --base> --work-tree\n'
   printf '  (all() runs --workspace, none() runs nothing)\n'
   printf '\n--changed [--base <rev>]\n'
   printf '  rustfmt --check -l <changed .rs files outside vendor/>\n'

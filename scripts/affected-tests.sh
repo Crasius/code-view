@@ -12,7 +12,10 @@
 # when only files no test reads changed (docs, agent rules, marketing). Otherwise the filterset is
 # `package(=a) | package(=b) ...`, one term per package, so a caller can intersect it with a list of
 # packages (ci/github-plan.sh).
-# Usage: affected-tests.sh <base commit> [<head commit, default HEAD>]   (run in the repository)
+# Usage: affected-tests.sh <base commit> [<head commit, default HEAD> | --work-tree]
+# (run in the repository's root). --work-tree: the change is what differs from the base in the work
+# tree or the index, with the untracked files git does not ignore, so that uncommitted work counts
+# (scripts/check.sh test).
 set -eu
 base="${1:-}"
 head="${2:-HEAD}"
@@ -29,8 +32,23 @@ esac
 git cat-file -e "$base^{commit}" 2> /dev/null || all "the base $base is not in the clone"
 # Paths as they are (no octal quoting); lists split at line ends only, and no glob expands a path
 # that holds *, ? or [.
-changed="$(git -c core.quotePath=false diff --name-only --no-renames "$base" "$head")"
+if [ "$head" = --work-tree ]; then
+    changed="$(git -c core.quotePath=false diff --name-only --no-renames "$base" &&
+        git -c core.quotePath=false ls-files --others --exclude-standard --full-name -- ':/')"
+else
+    changed="$(git -c core.quotePath=false diff --name-only --no-renames "$base" "$head")"
+fi
 [ "$(printf '%s\n' "$changed" | grep -c .)" -le 300 ] || all "more than 300 changed files"
+
+# The Rust sources that name <path>, with or without its leading crates/: read from the head
+# commit (each hit as `<head>:<path>`), or with --work-tree from the files on disk.
+naming() {
+    if [ "$head" = --work-tree ]; then
+        git -c core.quotePath=false grep -l -F --untracked -e "$1" -e "${1#crates/}" -- 'crates/*.rs' 'tools/*.rs' || true
+    else
+        git -c core.quotePath=false grep -l -F -e "$1" -e "${1#crates/}" "$head" -- 'crates/*.rs' 'tools/*.rs' || true
+    fi
+}
 nl='
 '
 IFS="$nl"
@@ -80,8 +98,7 @@ for f in $changed; do
             ;;
     esac
     found="$(owner "$f")"
-    # Sources that name the file from elsewhere, with or without the leading crates/.
-    for hit in $(git -c core.quotePath=false grep -l -F -e "$f" -e "${f#crates/}" "$head" -- 'crates/*.rs' 'tools/*.rs' || true); do
+    for hit in $(naming "$f"); do
         found="$found$nl$(owner "${hit#"$head":}")"
     done
     [ -n "$(printf '%s' "$found" | tr -d '\n')" ] || all "$f belongs to no package and no source names it"

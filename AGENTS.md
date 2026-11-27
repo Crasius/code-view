@@ -88,7 +88,7 @@ The app talks to the owner's real accounts on GitHub, GitLab and Azure DevOps.
 | `tmp/` | Scratch, git-ignored. Nothing durable lives only here |
 
 ## Commands
-- Check: `sh scripts/check.sh` (`--list` names the steps and their commands), then `sh scripts/check.sh test` on the committed change (rule `testing`, Running).
+- Check: `sh scripts/check.sh` (`--list` names the steps and their commands), then `sh scripts/check.sh test`, the tests the change affects (rule `testing`, Running).
 - Format: `rustfmt --edition 2024 <changed files>` (rule `rust`, Format).
 - Start: `cargo run -p review-app --bin CodeView` (debug) or `target/release/CodeView.exe` after a release build.
 
