@@ -34,6 +34,11 @@ pub fn extension_dir(paths: &AppPaths) -> PathBuf {
     paths.browser_dir().join("extension")
 }
 
+/// The host manifest Windows registers for both browsers.
+pub fn host_manifest(paths: &AppPaths) -> PathBuf {
+    paths.browser_dir().join(format!("{HOST_NAME}.json"))
+}
+
 /// Serves the browser when it started this process as the native host; true when it did, and
 /// the process should end without a window. `factory` builds the provider a `check` reads through.
 pub fn serve_if_asked(factory: ProviderFactory) -> bool {

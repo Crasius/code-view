@@ -4,8 +4,8 @@
 //!
 //! The app records every URL a frame opens that [`link_access::locate`] resolves to a pull request
 //! ([`Recorder`]), keyed by the pull request rather than the URL, so `/files`, a fragment and the
-//! `visualstudio.com` host all match. The host's `check` asks [`contains`] before anything else
-//! and answers `pass` within [`TTL`], without a read. No URL is changed: a marker in the query or
+//! `visualstudio.com` host all match. The host's `check` asks [`contains`] right after
+//! [`link_access::locate`] and answers `pass` within [`TTL`], without a read. No URL is changed: a marker in the query or
 //! fragment would show up in the browser and in links the user copies from there.
 //!
 //! The file is `passes.json` in the browser folder, shared by two processes: the app writes it,
@@ -13,8 +13,7 @@
 //! reads half a list, and drops the entries past [`TTL`], so the file stays a handful of lines.
 //! Writes of the app run one at a time on the background runtime (never disk on the UI thread),
 //! each reading the file it replaces, so a later write never loses an earlier pass. A file that
-//! is missing or unreadable is an empty list: the worst case is the old behaviour, the extension
-//! hands the page back to Code View.
+//! is missing or unreadable is an empty list: the extension hands the page back to Code View.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -139,7 +138,7 @@ impl Recorder {
     fn record(&self, key: PullRequestKey) {
         let (path, writing) = (self.path.clone(), self.writing.clone());
         // Kept: a click on "Open on GitHub" right before quitting still lands. A failed write
-        // has nobody to tell; the extension then hands the page back, as before the list.
+        // has nobody to tell; the extension then hands the page back.
         self.spawner.spawn_kept(async move {
             let _unreported = tokio::task::spawn_blocking(move || {
                 let _one_at_a_time = writing.lock().unwrap_or_else(PoisonError::into_inner);

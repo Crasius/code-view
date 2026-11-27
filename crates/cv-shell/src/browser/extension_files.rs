@@ -18,7 +18,7 @@ const FILES: &[(&str, &[u8])] = &[
     ("icons/icon-128.png", include_bytes!("../../../../browser-extension/icons/icon-128.png")),
 ];
 
-/// Writes the extension into `folder`, replacing what an older build left there.
+/// Writes every file of this build's extension into `folder`, over what an older build left there.
 pub fn unpack(folder: &Path) -> io::Result<()> {
     for (name, bytes) in FILES {
         let path = folder.join(name);

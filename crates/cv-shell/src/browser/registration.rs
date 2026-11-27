@@ -95,7 +95,7 @@ impl Registry {
     pub fn system(paths: &review_store::AppPaths) -> io::Result<Self> {
         #[cfg(windows)]
         {
-            let manifest = paths.browser_dir().join(format!("{HOST_NAME}.json"));
+            let manifest = super::host_manifest(paths);
             Ok(Self::Keys { manifest, keys: Arc::new(super::platform::UserKeys) })
         }
         #[cfg(not(windows))]
