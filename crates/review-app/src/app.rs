@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use egui::{Key, Modifiers, PointerButton};
 use review_core::{Connection, Provider};
-use review_store::AppPaths;
+use review_store::{AppPaths, PullRequestTab};
 
 use cv_base::platform::{self, pointer};
 use cv_base::theme::{self, motion};
@@ -14,9 +14,7 @@ use cv_pr_session::session::hand_over_row;
 use cv_runtime::history::swipe::{Swipe, SwipeFrame};
 use cv_runtime::history::{History, Place, Step, Visit};
 use cv_runtime::links::pull_request_link;
-use cv_runtime::route::{
-    Landing, Navigator, Origin, PullRequestKey, PullRequestTab, Request, Route,
-};
+use cv_runtime::route::{Landing, Navigator, Origin, PullRequestKey, Request, Route};
 use cv_runtime::toasts::{ToastAction, WaysOut};
 use cv_runtime::trail::Trail;
 use cv_services::Services;

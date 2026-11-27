@@ -32,12 +32,13 @@ mod storage;
 
 use cv_base::theme::{self, icons, style};
 use cv_runtime::intents::{self, SettingsSection};
-use cv_runtime::route::{Navigator, PullRequestTab, Route};
+use cv_runtime::route::{Navigator, Route};
 use cv_services::Services;
 use cv_widgets::states::{self, Action};
 use cv_widgets::{buttons, scroll};
 use egui::{Key, KeyboardShortcut, Modifiers, RichText, Stroke, Ui, UiBuilder};
 use review_core::ProviderKind;
+use review_store::PullRequestTab;
 
 use self::category::Category;
 use self::connections::{ConnectionList, ListAction};

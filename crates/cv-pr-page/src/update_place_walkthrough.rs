@@ -22,14 +22,14 @@ use review_core::{
     DiffSide, GitRemote, Label, MergeStatus, PullRequestDetail, PullRequestSummary, Result,
     ReviewThread, ReviewVote, Reviewer, ThreadStatus,
 };
-use review_store::{DiffLayout, FilesStart, PullRequestStart};
+use review_store::{DiffLayout, FilesStart, PullRequestStart, PullRequestTab as Tab};
 
 use crate::PullRequestPage;
 use crate::page_harness::PageApp;
 use cv_pr_files::probe;
 use cv_pr_session::actions::Refresh;
 use cv_pr_threads::samples;
-use cv_runtime::route::{PullRequestKey, PullRequestTab as Tab};
+use cv_runtime::route::PullRequestKey;
 use cv_services::writes::Effect;
 use cv_shell::focus_mode::{self, Surface};
 use cv_testkit::provider::{Script, Scripted};

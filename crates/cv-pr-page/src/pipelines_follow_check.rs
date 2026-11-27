@@ -15,6 +15,7 @@ use review_core::{
     PipelineJob, PipelineRun, ProviderError, PullRequestDetail, PullRequestRevision,
     PullRequestSummary, Result, RunStatus, Timestamp,
 };
+use review_store::PullRequestTab as Tab;
 use time::macros::datetime;
 
 use crate::page_harness::PageApp;
@@ -22,7 +23,7 @@ use cv_pr_pipelines::stage_bars::Stages;
 use cv_pr_pipelines::stages_of;
 use cv_runtime::load::Live;
 use cv_runtime::refresh::{ANONYMOUS_PIPELINE_INTERVAL, CATCH_UP_STAGGER, PIPELINE_INTERVAL};
-use cv_runtime::route::{PullRequestKey, PullRequestTab as Tab};
+use cv_runtime::route::PullRequestKey;
 use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::samples;
 

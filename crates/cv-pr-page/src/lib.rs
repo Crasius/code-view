@@ -28,7 +28,7 @@ mod vote_comment;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use review_store::{LastTab, PullRequestStart};
+use review_store::{PullRequestStart, PullRequestTab as Tab};
 
 use self::checkout::CheckoutButton;
 use self::header_reveal::HeaderReveal;
@@ -51,7 +51,7 @@ use cv_runtime::intents;
 use cv_runtime::links::link_target::Here;
 use cv_runtime::links::pull_request_link;
 use cv_runtime::load::Live;
-use cv_runtime::route::{Navigator, PullRequestKey, PullRequestTab as Tab, Route};
+use cv_runtime::route::{Navigator, PullRequestKey, Route};
 use cv_services::Services;
 use cv_shell::{breadcrumbs, focus_mode};
 use cv_widgets::states::{self, Action};
@@ -99,7 +99,7 @@ impl PullRequestPage {
         let threads = ThreadsUi::new(&key, kind, services);
         let assistant = Assistant::new(&key, services);
         let session = open_session(&key, services);
-        let tab = files.last_tab().map_or_else(|| start_tab(services), tab_of);
+        let tab = files.last_tab().unwrap_or_else(|| start_tab(services));
         Self {
             key,
             session,
@@ -270,7 +270,7 @@ impl PullRequestPage {
             *tab = Tab::Files;
             *tab_entered_at = Some(now);
         }
-        files.remember_place(services, stored_tab(*tab));
+        files.remember_place(services, *tab);
     }
 }
 
@@ -288,26 +288,6 @@ fn start_tab(services: &Services) -> Tab {
     match services.settings.pull_request_start {
         PullRequestStart::Overview => Tab::Overview,
         PullRequestStart::Files => Tab::Files,
-    }
-}
-
-/// `tab` as the pull request's saved place keeps it.
-fn stored_tab(tab: Tab) -> LastTab {
-    match tab {
-        Tab::Overview => LastTab::Overview,
-        Tab::Files => LastTab::Files,
-        Tab::Commits => LastTab::Commits,
-        Tab::Pipelines => LastTab::Pipelines,
-    }
-}
-
-/// The tab of a saved place.
-fn tab_of(tab: LastTab) -> Tab {
-    match tab {
-        LastTab::Overview => Tab::Overview,
-        LastTab::Files => Tab::Files,
-        LastTab::Commits => Tab::Commits,
-        LastTab::Pipelines => Tab::Pipelines,
     }
 }
 

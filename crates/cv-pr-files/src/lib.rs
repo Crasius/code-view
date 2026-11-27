@@ -39,7 +39,7 @@ use std::sync::Arc;
 
 use review_core::{DiffSide, ProviderKind};
 use review_git::{ChangedFile, FileDiff};
-use review_store::{DiffLayout, FileFilters, FilesStart, LastTab};
+use review_store::{DiffLayout, FileFilters, FilesStart, PullRequestTab};
 
 use self::origin_view::OriginView;
 use self::tab::choices::{
@@ -146,12 +146,12 @@ impl FilesTab {
     }
 
     /// The tab the user left the pull request on, if they ever left it.
-    pub fn last_tab(&self) -> Option<LastTab> {
+    pub fn last_tab(&self) -> Option<PullRequestTab> {
         resume::last_tab(self)
     }
 
     /// Saves where the user is (see [`resume::remember_place`]).
-    pub fn remember_place(&mut self, services: &mut Services, tab: LastTab) {
+    pub fn remember_place(&mut self, services: &mut Services, tab: PullRequestTab) {
         resume::remember_place(self, services, tab);
     }
 
