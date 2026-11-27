@@ -66,10 +66,6 @@ mod breadcrumb_overflow;
 #[cfg(test)]
 mod browser_pass_walkthrough;
 #[cfg(test)]
-mod bug_actions_walkthrough;
-#[cfg(test)]
-mod bug_keys_walkthrough;
-#[cfg(test)]
 mod change_breakdown_walkthrough;
 #[cfg(test)]
 mod checkout_finish_walkthrough;
@@ -77,11 +73,6 @@ mod checkout_finish_walkthrough;
 mod checkout_walkthrough;
 #[cfg(test)]
 mod cite_flash_walkthrough;
-// egui's debug options (`show_expand_width`) exist only with debug assertions; release test
-// builds (`cargo test --release`, for the live performance checks) leave the clip audit out.
-#[cfg(test)]
-#[cfg(debug_assertions)]
-mod clip_audit;
 #[cfg(test)]
 #[cfg(debug_assertions)]
 mod clip_check;
@@ -102,6 +93,10 @@ mod diff_find_walkthrough;
 #[cfg(test)]
 mod favorites_walkthrough;
 #[cfg(test)]
+mod files_keyboard_triage_walkthrough;
+#[cfg(test)]
+mod files_review_loop_walkthrough;
+#[cfg(test)]
 #[cfg(windows)]
 mod focus_mode_walkthrough;
 #[cfg(test)]
@@ -116,6 +111,13 @@ mod gitlab_mock;
 mod hide_header_walkthrough;
 #[cfg(test)]
 mod image_copy_walkthrough;
+#[cfg(test)]
+mod keyboard_walkthrough;
+// egui's debug options (`show_expand_width`) exist only with debug assertions; release test
+// builds (`cargo test --release`, for the live performance checks) leave the clip audit out.
+#[cfg(test)]
+#[cfg(debug_assertions)]
+mod layout_audit_walkthrough;
 #[cfg(test)]
 mod layout_walkthrough;
 #[cfg(test)]
@@ -169,6 +171,8 @@ mod request_budget;
 #[cfg(test)]
 mod restart_walkthrough;
 #[cfg(test)]
+mod review_ways_out_walkthrough;
+#[cfg(test)]
 mod scripted_platforms;
 #[cfg(test)]
 mod self_review_walkthrough;
@@ -186,13 +190,9 @@ mod thread_code_walkthrough;
 mod thread_jump_walkthrough;
 #[cfg(test)]
 #[cfg(windows)]
-mod title_bar_shots;
+mod title_bar_walkthrough;
 #[cfg(test)]
 mod tree_side_walkthrough;
-#[cfg(test)]
-mod ux_files_nav_walkthrough;
-#[cfg(test)]
-mod ux_keys_walkthrough;
 #[cfg(test)]
 mod walkthrough;
 #[cfg(test)]
