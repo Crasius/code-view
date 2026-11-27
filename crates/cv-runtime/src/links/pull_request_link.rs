@@ -216,28 +216,18 @@ fn decode(segment: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use cv_testkit::samples::connection;
     use review_core::{Connection, ItemKind, ProviderKind};
 
     use super::{item_web_url, resolve, resolve_item, unconnected_cloud_link, web_url};
 
-    fn connection(id: &str, kind: ProviderKind, base_url: &str, token: Option<&str>) -> Connection {
-        Connection {
-            id: id.to_owned(),
-            name: id.to_owned(),
-            kind,
-            base_url: base_url.to_owned(),
-            organizations: Vec::new(),
-            token: token.map(str::to_owned),
-        }
-    }
-
     #[test]
     fn resolves_links_of_every_platform() {
         let connections = [
-            connection("gh", ProviderKind::GitHub, "https://github.com", None),
-            connection("gl", ProviderKind::GitLab, "https://gitlab.example.com/", None),
-            connection("ado", ProviderKind::AzureDevOps, "https://dev.azure.com", None),
-            connection("server", ProviderKind::AzureDevOps, "https://tfs.example.com/tfs", None),
+            connection("gh", ProviderKind::GitHub, "https://github.com"),
+            connection("gl", ProviderKind::GitLab, "https://gitlab.example.com/"),
+            connection("ado", ProviderKind::AzureDevOps, "https://dev.azure.com"),
+            connection("server", ProviderKind::AzureDevOps, "https://tfs.example.com/tfs"),
         ];
         let cases = [
             ("https://github.com/cli/cli/pull/14727/files", "gh", "cli/cli", 14727),
@@ -281,8 +271,8 @@ mod tests {
     #[test]
     fn resolves_legacy_and_short_azure_devops_links() {
         let connections = [
-            connection("ado", ProviderKind::AzureDevOps, "https://dev.azure.com", None),
-            connection("server", ProviderKind::AzureDevOps, "https://tfs.example.com/tfs", None),
+            connection("ado", ProviderKind::AzureDevOps, "https://dev.azure.com"),
+            connection("server", ProviderKind::AzureDevOps, "https://tfs.example.com/tfs"),
         ];
         let cases = [
             (
@@ -307,9 +297,9 @@ mod tests {
     #[test]
     fn builds_web_urls_that_resolve_back() {
         let connections = [
-            connection("gh", ProviderKind::GitHub, "https://github.com", None),
-            connection("gl", ProviderKind::GitLab, "https://gitlab.example.com/", None),
-            connection("ado", ProviderKind::AzureDevOps, "https://dev.azure.com", None),
+            connection("gh", ProviderKind::GitHub, "https://github.com"),
+            connection("gl", ProviderKind::GitLab, "https://gitlab.example.com/"),
+            connection("ado", ProviderKind::AzureDevOps, "https://dev.azure.com"),
         ];
         let cases = [
             ("gh", "cli/cli", "https://github.com/cli/cli/pull/7"),
@@ -335,14 +325,22 @@ mod tests {
     #[test]
     fn resolves_issue_and_work_item_links_on_several_hosts() {
         let connections = [
-            connection("gh", ProviderKind::GitHub, "https://github.com", None),
-            connection("ghe", ProviderKind::GitHub, "https://git.example.com", None),
-            connection("gl", ProviderKind::GitLab, "https://gitlab.com", None),
-            connection("gl-self", ProviderKind::GitLab, "https://gitlab.example.com", None),
-            connection("ado", ProviderKind::AzureDevOps, "https://dev.azure.com", None),
+            connection("gh", ProviderKind::GitHub, "https://github.com"),
+            connection("ghe", ProviderKind::GitHub, "https://git.example.com"),
+            connection("gl", ProviderKind::GitLab, "https://gitlab.com"),
+            connection("gl-self", ProviderKind::GitLab, "https://gitlab.example.com"),
+            connection("ado", ProviderKind::AzureDevOps, "https://dev.azure.com"),
+            connection("ado-server", ProviderKind::AzureDevOps, "https://tfs.example.com/tfs"),
         ];
         let cases = [
             ("https://github.com/cli/cli/issues/5", "gh", ItemKind::Issue, "cli/cli", 5),
+            (
+                "https://tfs.example.com/tfs/Coll/Proj/_git/repo/pullrequest/43",
+                "ado-server",
+                ItemKind::PullRequest,
+                "Coll/Proj/repo",
+                43,
+            ),
             (
                 "https://git.example.com/team/app/pull/8/files",
                 "ghe",
@@ -403,8 +401,11 @@ mod tests {
     #[test]
     fn prefers_a_connection_with_token() {
         let connections = [
-            connection("anonymous", ProviderKind::GitHub, "https://github.com", None),
-            connection("work", ProviderKind::GitHub, "https://github.com", Some("t")),
+            connection("anonymous", ProviderKind::GitHub, "https://github.com"),
+            Connection {
+                token: Some("t".into()),
+                ..connection("work", ProviderKind::GitHub, "https://github.com")
+            },
         ];
         let key = resolve("https://github.com/a/b/pull/1", &connections).expect("resolves");
         assert_eq!(key.connection_id, "work");
@@ -413,8 +414,8 @@ mod tests {
     #[test]
     fn names_the_cloud_platform_of_links_without_a_connection() {
         let connections = [
-            connection("ghe", ProviderKind::GitHub, "https://git.example.com", None),
-            connection("gl-self", ProviderKind::GitLab, "https://gitlab.example.com", None),
+            connection("ghe", ProviderKind::GitHub, "https://git.example.com"),
+            connection("gl-self", ProviderKind::GitLab, "https://gitlab.example.com"),
         ];
         let cases = [
             ("https://github.com/cli/cli/pull/3/files", ProviderKind::GitHub, None),
@@ -458,7 +459,7 @@ mod tests {
 
     #[test]
     fn rejects_unknown_hosts_and_paths() {
-        let connections = [connection("gh", ProviderKind::GitHub, "https://github.com", None)];
+        let connections = [connection("gh", ProviderKind::GitHub, "https://github.com")];
         assert!(resolve("https://example.com/a/b/pull/1", &connections).is_err());
         assert!(resolve("https://github.com/a/b/issues/1", &connections).is_err());
     }
