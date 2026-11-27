@@ -57,33 +57,33 @@ pub(crate) fn thread_params(setup: &ThreadSetup, mcp_servers: &[String]) -> Valu
     for name in mcp_servers {
         overrides.insert(format!("mcp_servers.{name}.enabled"), Value::Bool(false));
     }
-    let mut params = json!({
-        "cwd": setup.workdir,
-        "sandbox": "read-only",
-        "approvalPolicy": "never",
-        "developerInstructions": setup.brief,
-        "config": overrides,
-    });
+    let mut params = Map::new();
+    params.insert("cwd".to_owned(), json!(setup.workdir));
+    params.insert("sandbox".to_owned(), json!("read-only"));
+    params.insert("approvalPolicy".to_owned(), json!("never"));
+    params.insert("developerInstructions".to_owned(), json!(setup.brief));
+    params.insert("config".to_owned(), Value::Object(overrides));
     with_optional(
         &mut params,
         &[("model", setup.model.as_deref()), ("threadId", setup.resume.as_deref())],
     );
-    params
+    Value::Object(params)
 }
 
 /// `turn/start` parameters for one question.
 pub(crate) fn turn_params(thread_id: &str, text: &str, effort: Option<&str>) -> Value {
-    let mut params = json!({"threadId": thread_id, "input": [{"type": "text", "text": text}]});
+    let mut params = Map::new();
+    params.insert("threadId".to_owned(), json!(thread_id));
+    params.insert("input".to_owned(), json!([{"type": "text", "text": text}]));
     with_optional(&mut params, &[("effort", effort)]);
-    params
+    Value::Object(params)
 }
 
-/// Adds the present values of `fields` to the object `params`.
-fn with_optional(params: &mut Value, fields: &[(&str, Option<&str>)]) {
-    let Some(object) = params.as_object_mut() else { return };
+/// Adds the present values of `fields` to `params`.
+fn with_optional(params: &mut Map<String, Value>, fields: &[(&str, Option<&str>)]) {
     for (key, value) in fields {
         if let Some(value) = value {
-            object.insert((*key).to_owned(), Value::String((*value).to_owned()));
+            params.insert((*key).to_owned(), Value::String((*value).to_owned()));
         }
     }
 }
@@ -201,6 +201,10 @@ impl TurnReader {
         Self { thread_id: thread_id.to_owned(), ..Self::default() }
     }
 
+    pub(crate) fn thread_id(&self) -> &str {
+        &self.thread_id
+    }
+
     pub(crate) fn notification(&mut self, method: &str, params: &Value) -> Vec<AgentEvent> {
         let other_thread = params
             .get("threadId")
@@ -231,12 +235,7 @@ impl TurnReader {
                 }
             }
             "item/reasoning/summaryPartAdded" => {
-                events.push(AgentEvent::Thinking(
-                    "
-
-"
-                    .to_owned(),
-                ));
+                events.push(AgentEvent::Thinking("\n\n".to_owned()));
             }
             "item/completed" if item_type == "reasoning" => events.push(AgentEvent::ThinkingDone),
             "item/agentMessage/delta" => {

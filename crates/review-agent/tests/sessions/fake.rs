@@ -16,7 +16,7 @@ const CODEX_THREAD: &str = include_str!("../fixtures/codex/thread-start.jsonl");
 const CODEX_TOOLS: &str = include_str!("../fixtures/codex/turn-tools.jsonl");
 const CODEX_INTERRUPTED: &str = include_str!("../fixtures/codex/turn-interrupted.jsonl");
 /// The thread of the Codex fixtures.
-const THREAD: &str = "01a15939-1521-74d0-aba4-406184d368e9";
+pub(crate) const THREAD: &str = "01a15939-1521-74d0-aba4-406184d368e9";
 
 /// Where this run records what it got; `None` outside a session's checkout (listing models).
 fn record_file() -> Option<PathBuf> {

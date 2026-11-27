@@ -183,16 +183,6 @@ fn the_model_list_keeps_its_order_skips_hidden_models_and_the_fastest_is_the_fas
     assert_eq!(cursor.as_deref(), Some("c2"));
 }
 
-#[test]
-fn approvals_are_declined_and_unknown_requests_refused() {
-    assert_eq!(
-        protocol::decline("item/commandExecution/requestApproval"),
-        Some(json!({"decision": "decline"}))
-    );
-    assert_eq!(protocol::decline("execCommandApproval"), Some(json!({"decision": "denied"})));
-    assert_eq!(protocol::decline("item/tool/call"), None);
-}
-
 fn config(resume: Option<&str>) -> SessionConfig {
     SessionConfig {
         cli: AgentCli {
@@ -305,6 +295,9 @@ fn approval_requests_get_an_answer_with_their_id() {
     let request = json!({"id": 41, "method": "item/fileChange/requestApproval", "params": {}});
     let reply = answer_with(&mut codex, &request).send;
     assert_eq!(reply, [json!({"id": 41, "result": {"decision": "decline"}})]);
+    let legacy = json!({"id": 42, "method": "execCommandApproval", "params": {}});
+    let reply = answer_with(&mut codex, &legacy).send;
+    assert_eq!(reply, [json!({"id": 42, "result": {"decision": "denied"}})]);
     let unknown = json!({"id": "x", "method": "item/tool/call", "params": {}});
     assert_eq!(answer_with(&mut codex, &unknown).send[0]["error"]["code"], -32601);
 }

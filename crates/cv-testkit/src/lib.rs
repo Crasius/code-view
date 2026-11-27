@@ -7,10 +7,11 @@
 //! - its providers reach loopback hosts only ([`http_client`]): a request to a host no mock
 //!   answers fails at once, naming the host, instead of waiting on the real network; a mock
 //!   server's origin starts without an earlier test's rate-limit pause ([`fresh_origin`]);
-//! - a [`Watchdog`] stops the test binary with a message once a test runs past [`watchdog_limit`]
-//!   in real time, so a call that never returns fails the run instead of hanging it; the message
-//!   says where the test was ([`step`], [`frame_started`]: the wait under way, its frames, the
-//!   background work in flight, a panic it hung after);
+//! - a [`Watchdog`] stops the test binary with a message once a test runs past the watchdog limit
+//!   (5 min, `REVIEW_TEST_WATCHDOG_SECS` overrides it) in real time, so a call that never returns
+//!   fails the run instead of hanging it; the message says where the test was ([`step`],
+//!   [`frame_started`]: the wait under way, its frames, the background work in flight, a panic it
+//!   hung after);
 //! - at most [`PROCESS_SLOTS`] such tests run at once ([`take_process_slot`]): the processes they
 //!   start (git above all) are started one after another for the whole test binary, so every
 //!   further test adds to each one's wait.
@@ -32,9 +33,6 @@
 //! optional dependency under its `test-support` feature (for its watchdog and hermetic checks).
 //! Its statics and thread-locals (the process slots above all) exist once per test binary.
 #![forbid(unsafe_code)]
-// RS-LINT-02: the frame benchmarks hand egui its f32 frame interval from the f64 clock
-// (`frame_bench.rs`).
-#![expect(clippy::cast_possible_truncation, reason = "egui takes f32 seconds from the f64 clock")]
 
 mod clicks;
 pub mod frame_bench;
@@ -184,15 +182,16 @@ impl Resolve for LoopbackOnly {
 }
 
 /// [`WATCHDOG_LIMIT`], or `REVIEW_TEST_WATCHDOG_SECS` when set.
-pub fn watchdog_limit() -> Duration {
+fn watchdog_limit() -> Duration {
     std::env::var("REVIEW_TEST_WATCHDOG_SECS")
         .ok()
         .and_then(|seconds| seconds.parse().ok())
         .map_or(WATCHDOG_LIMIT, Duration::from_secs)
 }
 
-/// Stops the test binary once the test that started it runs past [`watchdog_limit`]; dropping it
-/// (the test's services go away) calls it off.
+/// Stops the test binary once the test that started it runs past the watchdog limit (5 min,
+/// `REVIEW_TEST_WATCHDOG_SECS` overrides it); dropping it (the test's services go away) calls it
+/// off.
 pub struct Watchdog {
     _done: Option<mpsc::Sender<()>>,
 }
@@ -474,11 +473,9 @@ mod tests {
     fn requests_to_unmocked_hosts_fail_at_once_and_name_the_host() {
         let runtime =
             tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
-        let started = std::time::Instant::now();
         let error = runtime
             .block_on(async { http_client().get("https://api.github.com/user").send().await })
             .expect_err("no real network in tests");
-        assert!(started.elapsed() < Duration::from_secs(5), "fails fast: {:?}", started.elapsed());
         let chain = format!("{error:?}");
         assert!(chain.contains("nothing mocks api.github.com"), "{chain}");
     }

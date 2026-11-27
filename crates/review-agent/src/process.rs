@@ -16,7 +16,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -79,7 +79,7 @@ fn is_host_token(name: &str) -> bool {
 
 pub(crate) struct AgentProcess {
     child: Child,
-    stdin: Option<ChildStdin>,
+    stdin: ChildStdin,
     lines: mpsc::UnboundedReceiver<String>,
     stderr_tail: JoinHandle<String>,
 }
@@ -106,7 +106,7 @@ impl AgentProcess {
             }
         });
         let stderr_tail = tokio::spawn(read_tail(stderr));
-        Ok(Self { child, stdin: Some(stdin), lines, stderr_tail })
+        Ok(Self { child, stdin, lines, stderr_tail })
     }
 
     /// The next stdout line; `None` once stdout closed.
@@ -114,37 +114,47 @@ impl AgentProcess {
         self.lines.recv().await
     }
 
-    /// Writes `message` as one JSON line.
-    pub(crate) async fn send(&mut self, message: &serde_json::Value) -> Result<(), AgentError> {
-        let stdin = self.stdin.as_mut().ok_or_else(|| AgentError::Spawn("input closed".into()))?;
+    /// Writes `message` as one JSON line. A failed write means the CLI no longer reads its input;
+    /// [`AgentProcess::finish`] then tells how it ended.
+    pub(crate) async fn send(&mut self, message: &serde_json::Value) -> std::io::Result<()> {
         let mut line = message.to_string();
         line.push('\n');
-        let written = async {
-            stdin.write_all(line.as_bytes()).await?;
-            stdin.flush().await
-        };
-        written.await.map_err(|error| AgentError::Exited {
-            code: None,
-            stderr_tail: format!("could not write to the agent: {error}"),
-        })
+        self.stdin.write_all(line.as_bytes()).await?;
+        self.stdin.flush().await
+    }
+
+    /// Runs `exchange` within `limit`, then [`AgentProcess::finish`]es the process. The exchange's
+    /// error is `None` when the CLI stopped reading its input: its exit then tells why, as
+    /// [`AgentError::Exited`]. Past `limit` the answer is [`AgentError::Timeout`] for `what`.
+    pub(crate) async fn exchange<T>(
+        mut self,
+        limit: Duration,
+        what: &'static str,
+        exchange: impl AsyncFnOnce(&mut Self) -> Result<T, Option<AgentError>>,
+    ) -> Result<T, AgentError> {
+        let answer = tokio::time::timeout(limit, exchange(&mut self)).await;
+        let (code, stderr_tail) = self.finish(EXIT_GRACE).await;
+        let answer = answer.unwrap_or(Err(Some(AgentError::Timeout(what))));
+        answer.map_err(|error| error.unwrap_or(AgentError::Exited { code, stderr_tail }))
     }
 
     /// Closes stdin, waits up to `grace` for the exit, then kills. Returns the exit code (`None`
     /// when killed or ended by a signal) and the last lines of stderr.
-    pub(crate) async fn finish(mut self, grace: Duration) -> (Option<i32>, String) {
-        drop(self.stdin.take());
-        let code = if let Ok(Ok(status)) = tokio::time::timeout(grace, self.child.wait()).await {
+    pub(crate) async fn finish(self, grace: Duration) -> (Option<i32>, String) {
+        let Self { mut child, stdin, mut stderr_tail, .. } = self;
+        drop(stdin);
+        let code = if let Ok(Ok(status)) = tokio::time::timeout(grace, child.wait()).await {
             status.code()
         } else {
             // Already gone or unkillable: there is nothing more to do with it either way.
-            let _kill_may_fail_when_gone = self.child.kill().await;
+            let _kill_may_fail_when_gone = child.kill().await;
             None
         };
         // A grandchild that outlived a killed `cmd.exe` may hold stderr open; do not wait for it.
-        let tail = if let Ok(tail) = tokio::time::timeout(grace, &mut self.stderr_tail).await {
+        let tail = if let Ok(tail) = tokio::time::timeout(grace, &mut stderr_tail).await {
             tail.unwrap_or_default()
         } else {
-            self.stderr_tail.abort();
+            stderr_tail.abort();
             String::new()
         };
         (code, tail)
@@ -152,21 +162,15 @@ impl AgentProcess {
 }
 
 /// The last [`STDERR_TAIL_LINES`] non-empty lines of `stderr`, without terminal colour codes.
-async fn read_tail(mut stderr: impl tokio::io::AsyncRead + Unpin) -> String {
-    let mut bytes = Vec::new();
+async fn read_tail(stderr: impl tokio::io::AsyncRead + Unpin) -> String {
     let mut tail: VecDeque<String> = VecDeque::with_capacity(STDERR_TAIL_LINES);
-    let mut chunk = [0u8; 4096];
-    while let Ok(read) = stderr.read(&mut chunk).await {
-        let Some(new_bytes) = chunk.get(..read).filter(|bytes| !bytes.is_empty()) else {
-            break;
-        };
-        bytes.extend_from_slice(new_bytes);
-        while let Some(end) = bytes.iter().position(|byte| *byte == b'\n') {
-            let line: Vec<u8> = bytes.drain(..=end).collect();
-            push_line(&mut tail, &String::from_utf8_lossy(&line));
-        }
+    let mut reader = BufReader::new(stderr);
+    let mut line = Vec::new();
+    // A read error ends the tail like EOF does.
+    while reader.read_until(b'\n', &mut line).await.unwrap_or(0) > 0 {
+        push_line(&mut tail, &String::from_utf8_lossy(&line));
+        line.clear();
     }
-    push_line(&mut tail, &String::from_utf8_lossy(&bytes));
     Vec::from(tail).join("\n")
 }
 
@@ -205,10 +209,46 @@ fn strip_ansi(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use std::ffi::OsStr;
+    use std::time::Duration;
 
     use tokio::process::Command;
 
-    use super::{remove_host_tokens, strip_ansi};
+    use super::{AgentProcess, command, remove_host_tokens, strip_ansi};
+    use crate::AgentError;
+
+    /// A CLI that writes "fatal: boom" to stderr and exits with code 3 without reading its input.
+    fn crashing_cli() -> AgentProcess {
+        let (program, args) = if cfg!(windows) {
+            ("cmd", ["/C", "echo fatal: boom 1>&2& exit 3"])
+        } else {
+            ("sh", ["-c", "echo 'fatal: boom' >&2; exit 3"])
+        };
+        let command = command(program.as_ref(), args, &std::env::temp_dir());
+        AgentProcess::spawn(command).expect("the shell starts")
+    }
+
+    #[tokio::test]
+    async fn a_failed_write_reports_how_the_cli_ended() {
+        let mut agent = crashing_cli();
+        agent.child.wait().await.expect("the CLI exits");
+        let answer = agent
+            .exchange(Duration::from_secs(30), "the model list", async |agent| {
+                agent.send(&serde_json::json!({})).await.map_err(|_| None)
+            })
+            .await;
+        let exited = AgentError::Exited { code: Some(3), stderr_tail: "fatal: boom".to_owned() };
+        assert_eq!(answer, Err(exited));
+    }
+
+    #[tokio::test]
+    async fn a_cli_that_does_not_answer_in_time_times_out_instead_of_exiting() {
+        let answer: Result<(), AgentError> = crashing_cli()
+            .exchange(Duration::from_millis(10), "the model list", async |_| {
+                std::future::pending().await
+            })
+            .await;
+        assert_eq!(answer, Err(AgentError::Timeout("the model list")));
+    }
 
     #[test]
     fn the_agent_starts_without_the_hosts_access_tokens() {
