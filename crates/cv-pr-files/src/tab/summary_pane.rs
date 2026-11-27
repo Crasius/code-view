@@ -100,7 +100,7 @@ impl SummaryPane {
             .full_order()
             .iter()
             .map(|&index| index as usize)
-            .filter(|&index| source::is_below(&files[index].path, folder))
+            .filter(|&index| cv_pr_tree::is_below(&files[index].path, folder))
             .collect();
         self.order_key = Some(key);
         self.order_version += 1;
