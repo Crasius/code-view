@@ -513,6 +513,16 @@ impl GitHubHost {
         self.matching(verb, request_path).count()
     }
 
+    /// The API writes received so far, as [`review_core::http::is_write`] tells them. git's
+    /// fetches post too, but outside `review_core::http`.
+    pub fn writes(&self) -> usize {
+        self.requests()
+            .iter()
+            .filter(|request| request.url.path().starts_with("/api/"))
+            .filter(|request| review_core::http::is_write(&request.method, Some(&request.body)))
+            .count()
+    }
+
     /// The JSON bodies of the requests matching `verb` and `request_path`, in order.
     pub fn bodies(&self, verb: &str, request_path: &str) -> Vec<Value> {
         self.matching(verb, request_path)
