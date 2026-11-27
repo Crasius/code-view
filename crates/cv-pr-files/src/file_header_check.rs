@@ -7,17 +7,19 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{DiffSide, FileCategory};
 use review_git::{ChangeKind, ChangedFile, FULL_FILE_CONTEXT};
-use review_store::{AppPaths, DiffLayout, ThemePreference};
+use review_store::{DiffLayout, ThemePreference};
 
+use crate::tests::services_in;
 use cv_base::theme;
 use cv_pr_diff::testing::settle;
 use cv_pr_rendered::file_header::{self, HeaderInputs};
 use cv_pr_rendered::preview::Preview;
 use cv_services::Services;
+use cv_testkit::ScratchDir;
 
-/// The path of the reported overlap, and longer.
+/// A long path next to the layout controls.
 const LONG_PATH: &str =
-    "src/DndTracker.Infrastructure/Ai/EntityEditPlanValidationPipelineConfiguration.cs";
+    "src/AppTracker.Infrastructure/Ai/EntityEditPlanValidationPipelineConfiguration.cs";
 /// The width the navigation rail and the file tree (beside the diff, on either side) take.
 const SIDEBAR: f32 = 340.0;
 /// Window widths from roomy down to the narrowest the files tab allows.
@@ -56,15 +58,10 @@ fn file(
     }
 }
 
-fn scene(file: ChangedFile, changes: Option<(usize, usize)>) -> Scene {
-    let root = std::env::temp_dir().join(format!("review-header-{}", std::process::id()));
+fn scene(file: ChangedFile, changes: Option<(usize, usize)>, services: Services) -> Scene {
     let whole_file = super::whole_file_side(&file);
     Scene {
-        services: Services::new(
-            egui::Context::default(),
-            AppPaths::new(root.join("config"), root.join("cache")),
-            cv_providers::create_provider,
-        ),
+        services,
         preview: Preview::default(),
         file,
         is_viewed: false,
@@ -272,9 +269,10 @@ fn assert_whole_files_keep_the_bar(
 
 #[test]
 fn switching_files_moves_nothing_but_the_path() {
+    let scratch = ScratchDir::new("header-switching-files");
     for width in [1600.0, 1200.0, 760.0] {
         let code = file(LONG_PATH, ChangeKind::Modified, None, (5, 0));
-        let mut harness = harness(scene(code.clone(), None), width);
+        let mut harness = harness(scene(code.clone(), None, services_in(&scratch)), width);
         // Loading, then shown: the diff's controls switch from disabled to enabled in place.
         let reference = show_file(&mut harness, width, code.clone(), None);
         let found = show_file(&mut harness, width, code.clone(), Some((1, 4)));
@@ -319,14 +317,9 @@ fn switching_files_moves_nothing_but_the_path() {
 /// next start.
 #[test]
 fn the_comments_switch_is_saved() {
-    let root = std::env::temp_dir().join(format!("review-header-comments-{}", std::process::id()));
-    // Left over from an earlier run, or absent.
-    let _was_absent = std::fs::remove_dir_all(&root);
-    let paths = AppPaths::new(root.join("config"), root.join("cache"));
-    let mut scene = scene(file(LONG_PATH, ChangeKind::Modified, None, (5, 0)), Some((0, 4)));
-    scene.services =
-        Services::new(egui::Context::default(), paths.clone(), cv_providers::create_provider);
-    let mut harness = harness(scene, 1600.0);
+    let scratch = ScratchDir::new("header-comments");
+    let file = file(LONG_PATH, ChangeKind::Modified, None, (5, 0));
+    let mut harness = harness(scene(file, Some((0, 4)), services_in(&scratch)), 1600.0);
     settle(&mut harness);
     assert!(harness.state().services.settings.show_comments_in_diff, "comments show by default");
     for expected in [false, true] {
@@ -335,29 +328,18 @@ fn the_comments_switch_is_saved() {
         );
         settle(&mut harness);
         assert_eq!(harness.state().services.settings.show_comments_in_diff, expected);
-        let restarted =
-            Services::new(egui::Context::default(), paths.clone(), cv_providers::create_provider);
+        let restarted = services_in(&scratch);
         assert_eq!(restarted.settings.show_comments_in_diff, expected, "saved");
     }
-    // Best effort: the next run removes what is left.
-    let _best_effort = std::fs::remove_dir_all(&root);
 }
 
 /// Over a rendered Markdown diff the wrap switch's slot holds the Full width switch, in the same
 /// place; it switches the reading column to full width and back, saved for the next start.
 #[test]
 fn the_width_switch_takes_the_wrap_slot_and_is_saved() {
-    let root = std::env::temp_dir().join(format!("review-header-width-{}", std::process::id()));
-    // Left over from an earlier run, or absent.
-    let _was_absent = std::fs::remove_dir_all(&root);
-    let paths = AppPaths::new(root.join("config"), root.join("cache"));
-    let mut scene = scene(
-        file("docs/engineering/billing-invoicing.md", ChangeKind::Modified, None, (5, 0)),
-        Some((0, 4)),
-    );
-    scene.services =
-        Services::new(egui::Context::default(), paths.clone(), cv_providers::create_provider);
-    let mut harness = harness(scene, 1600.0);
+    let scratch = ScratchDir::new("header-width");
+    let file = file("docs/engineering/billing-invoicing.md", ChangeKind::Modified, None, (5, 0));
+    let mut harness = harness(scene(file, Some((0, 4)), services_in(&scratch)), 1600.0);
     settle(&mut harness);
     let wrap = harness.get_by_role_and_label(Role::Switch, "Wrap long lines").rect();
     harness.state_mut().is_rendered = true;
@@ -380,17 +362,17 @@ fn the_width_switch_takes_the_wrap_slot_and_is_saved() {
     harness.click_at(harness.get_by_role_and_label(Role::Switch, "Full width").rect());
     settle(&mut harness);
     assert!(harness.state().services.settings.rendered_width.full);
-    let restarted = Services::new(egui::Context::default(), paths, cv_providers::create_provider);
+    let restarted = services_in(&scratch);
     assert!(restarted.settings.rendered_width.full, "saved");
-    // Best effort: the next run removes what is left.
-    let _best_effort = std::fs::remove_dir_all(&root);
 }
 
 #[test]
 fn long_paths_never_overlap_the_controls() {
-    // The reported case: a long C# path with four changes, next to the layout controls.
+    let scratch = ScratchDir::new("header-long-paths");
+    let fresh = |file, changes| scene(file, changes, services_in(&scratch));
+    // A long path with four changes, next to the layout controls.
     check_widths(
-        || scene(file(LONG_PATH, ChangeKind::Modified, None, (5, 0)), Some((0, 4))),
+        || fresh(file(LONG_PATH, ChangeKind::Modified, None, (5, 0)), Some((0, 4))),
         "modified",
     );
     check_widths(
@@ -401,19 +383,19 @@ fn long_paths_never_overlap_the_controls() {
                 Some(LONG_PATH),
                 (120, 3),
             );
-            let mut scene = scene(renamed, Some((12, 345)));
+            let mut scene = fresh(renamed, Some((12, 345)));
             scene.is_viewed = true;
             scene
         },
         "renamed-markdown",
     );
     check_widths(
-        || scene(file(LONG_PATH, ChangeKind::Added, None, (1_234, 0)), Some((0, 1))),
+        || fresh(file(LONG_PATH, ChangeKind::Added, None, (1_234, 0)), Some((0, 1))),
         "added",
     );
     check_widths(
-        || scene(file(LONG_PATH, ChangeKind::Deleted, None, (0, 87)), Some((0, 1))),
+        || fresh(file(LONG_PATH, ChangeKind::Deleted, None, (0, 87)), Some((0, 1))),
         "deleted",
     );
-    check_widths(|| scene(file(LONG_PATH, ChangeKind::Modified, None, (5, 0)), None), "loading");
+    check_widths(|| fresh(file(LONG_PATH, ChangeKind::Modified, None, (5, 0)), None), "loading");
 }

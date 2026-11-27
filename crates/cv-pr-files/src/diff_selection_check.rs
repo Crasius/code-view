@@ -1,16 +1,15 @@
 //! Selecting, copying and commenting on several lines in the diff, driven with the pointer and
 //! keyboard like a user.
 
-use std::sync::Arc;
-
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir};
 use egui::{Event, Key, Modifiers, PointerButton, Pos2, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use review_core::{DiffSide, FileCategory, LineRange, ReviewThread, ThreadAnchor};
-use review_git::{ChangeKind, ChangedFile, FileDiff, LineKind};
-use review_store::{AppPaths, DiffLayout};
+use review_core::{DiffSide, FileCategory, LineRange, ReviewThread, ThreadAnchor, ThreadStatus};
+use review_git::{ChangeKind, ChangedFile, LineKind};
+use review_store::DiffLayout;
 
+use crate::tests::services_in;
 use cv_base::theme;
 use cv_code::diff_rows::{Layout, RangeRows};
 use cv_code::line_source::Pane;
@@ -20,6 +19,7 @@ use cv_pr_diff::testing::{
 };
 use cv_pr_rendered::file_header::{self, HeaderInputs};
 use cv_pr_rendered::preview::Preview;
+use cv_pr_threads::samples;
 use cv_services::Services;
 use cv_widgets::text_selection;
 
@@ -118,9 +118,7 @@ fn range_thread(
     end: (Option<u32>, Option<u32>),
     body: &str,
 ) -> ReviewThread {
-    let mut thread = check::thread_on_old_line(0, body);
-    thread.id = "range-thread".into();
-    thread.anchor = Some(ThreadAnchor {
+    let anchor = ThreadAnchor {
         path: PATH.into(),
         old_path: None,
         old_line: end.0,
@@ -131,8 +129,9 @@ fn range_thread(
             side: DiffSide::New,
             detail: None,
         }),
-    });
-    thread
+    };
+    let comments = vec![samples::comment("c1", &samples::mara(), 0, body)];
+    samples::thread("range-thread", ThreadStatus::Active, Some(anchor), comments)
 }
 
 #[test]
@@ -380,11 +379,7 @@ fn github_ranges_stay_within_one_block_of_changes() {
     let mut fixture = fixture(Layout::Inline);
     // A second change at the top gives the diff two blocks with collapsed lines between them.
     let head = NEW.replacen("use std::fmt;", "use core::fmt;", 1);
-    let unified = similar::TextDiff::from_lines(OLD, head.as_str())
-        .unified_diff()
-        .context_radius(3)
-        .to_string();
-    fixture.diff = Arc::new(FileDiff::parse_unified(unified.as_bytes()));
+    fixture.diff = check::diff_of(OLD, &head);
     fixture.contents.new = Some(side(&head));
     fixture.can_comment_outside_hunks = false;
     let mut harness = harness(fixture);
@@ -425,24 +420,13 @@ struct Page {
     file: ChangedFile,
 }
 
-fn page(kind: ChangeKind, chosen: DiffLayout) -> Page {
-    let mut fixture = fixture(Layout::SideBySide);
-    let (old, new) = match kind {
-        ChangeKind::Added => ("", NEW),
-        _ => (OLD, ""),
+/// An added or deleted file, on the data folders below `scratch`.
+fn page(kind: ChangeKind, chosen: DiffLayout, scratch: &ScratchDir) -> Page {
+    let (whole, old, new) = match kind {
+        ChangeKind::Added => (DiffSide::New, "", NEW),
+        _ => (DiffSide::Old, OLD, ""),
     };
-    let unified =
-        similar::TextDiff::from_lines(old, new).unified_diff().context_radius(3).to_string();
-    fixture.diff = Arc::new(FileDiff::parse_unified(unified.as_bytes()));
-    fixture.contents.old = (!old.is_empty()).then(|| side(old));
-    fixture.contents.new = (!new.is_empty()).then(|| side(new));
-    let root =
-        std::env::temp_dir().join(format!("review-selection-{}-{kind:?}", std::process::id()));
-    let mut services = Services::new(
-        egui::Context::default(),
-        AppPaths::new(root.join("config"), root.join("cache")),
-        cv_providers::create_provider,
-    );
+    let mut services = services_in(scratch);
     services.settings.diff_layout = chosen;
     let file = ChangedFile {
         path: PATH.into(),
@@ -456,7 +440,7 @@ fn page(kind: ChangeKind, chosen: DiffLayout) -> Page {
         category: FileCategory::Code,
         whitespace_only: false,
     };
-    Page { fixture, services, preview: Preview::default(), file }
+    Page { fixture: check::whole_file_fixture(whole), services, preview: Preview::default(), file }
 }
 
 /// Where the line numbers of two lines of the one pane are.
@@ -503,7 +487,8 @@ fn page_harness(page: Page) -> Harness<'static, Page> {
 
 #[test]
 fn added_files_show_their_new_content_whole() {
-    let mut harness = page_harness(page(ChangeKind::Added, DiffLayout::SideBySide));
+    let scratch = ScratchDir::new("selection-added");
+    let mut harness = page_harness(page(ChangeKind::Added, DiffLayout::SideBySide, &scratch));
     settle(&mut harness);
     assert_eq!(harness.state().fixture.layout, Layout::WholeFile(DiffSide::New));
     assert!(
@@ -545,7 +530,8 @@ fn added_files_show_their_new_content_whole() {
 
 #[test]
 fn deleted_files_show_their_old_content_whole() {
-    let mut harness = page_harness(page(ChangeKind::Deleted, DiffLayout::NewOnly));
+    let scratch = ScratchDir::new("selection-deleted");
+    let mut harness = page_harness(page(ChangeKind::Deleted, DiffLayout::NewOnly, &scratch));
     settle(&mut harness);
     assert_eq!(harness.state().fixture.layout, Layout::WholeFile(DiffSide::Old));
     assert!(harness.query_by_label("Deleted file").is_some());
@@ -576,9 +562,9 @@ fn deleted_files_show_their_old_content_whole() {
     assert_eq!(harness.state().services.settings.diff_layout, DiffLayout::NewOnly);
 }
 
-/// One layout of [`a_text_selection_paints_one_continuous_block`]: the lines the drag starts and
-/// ends on, as (base, head) line numbers, and the window width.
-struct BlockCase {
+/// One layout the selection tests drag over: the lines the drag starts and ends on, as (base, head)
+/// line numbers, and the window width.
+struct LayoutCase {
     name: &'static str,
     fixture: Fixture,
     pane: Pane,
@@ -591,51 +577,28 @@ struct BlockCase {
 const BLOCK_FROM: usize = 12;
 const BLOCK_TO: usize = 5;
 
-/// The layouts [`a_text_selection_paints_one_continuous_block`] drags over: three added lines in
-/// each, and in the wrapped inline diff a function's signature over its removed loop to its brace.
-fn block_cases() -> Vec<BlockCase> {
+/// Three added lines in each layout, and in the wrapped inline diff the signature of `total` over
+/// its removed loop and its wrapped new body to its brace.
+fn layout_cases() -> Vec<LayoutCase> {
     let is_empty = line_of(NEW, "pub fn is_empty(");
     let added = ((None, Some(is_empty)), (None, Some(is_empty + 2)));
     let (old_total, new_total) = (line_of(OLD, "pub fn total("), line_of(NEW, "pub fn total("));
-    let mut whole_file = page(ChangeKind::Added, DiffLayout::SideBySide).fixture;
-    whole_file.layout = Layout::WholeFile(DiffSide::New);
     let mut wrapped = fixture(Layout::Inline);
     wrapped.wrap = true;
+    let case = |name, fixture, pane| LayoutCase {
+        name,
+        fixture,
+        pane,
+        first: added.0,
+        last: added.1,
+        width: 1180.0,
+    };
     vec![
-        BlockCase {
-            name: "inline",
-            fixture: fixture(Layout::Inline),
-            pane: Pane::Inline,
-            first: added.0,
-            last: added.1,
-            width: 1180.0,
-        },
-        BlockCase {
-            name: "side-by-side",
-            fixture: fixture(Layout::SideBySide),
-            pane: Pane::Right,
-            first: added.0,
-            last: added.1,
-            width: 1180.0,
-        },
-        BlockCase {
-            name: "new-only",
-            fixture: fixture(Layout::NewOnly),
-            pane: Pane::Inline,
-            first: added.0,
-            last: added.1,
-            width: 1180.0,
-        },
-        BlockCase {
-            name: "whole-file",
-            fixture: whole_file,
-            pane: Pane::Inline,
-            first: added.0,
-            last: added.1,
-            width: 1180.0,
-        },
-        // From the signature of `total` over its removed loop and its wrapped new body to its brace.
-        BlockCase {
+        case("inline", fixture(Layout::Inline), Pane::Inline),
+        case("side-by-side", fixture(Layout::SideBySide), Pane::Right),
+        case("new-only", fixture(Layout::NewOnly), Pane::Inline),
+        case("whole-file", check::whole_file_fixture(DiffSide::New), Pane::Inline),
+        LayoutCase {
             name: "inline-wrapped",
             fixture: wrapped,
             pane: Pane::Inline,
@@ -650,7 +613,7 @@ fn block_cases() -> Vec<BlockCase> {
 /// selection color, in every layout, wrapped too. Checked on the frame's painted shapes.
 #[test]
 fn a_text_selection_paints_one_continuous_block() {
-    for case in block_cases() {
+    for case in layout_cases() {
         let mut harness = harness(case.fixture);
         harness.set_size(egui::vec2(case.width, 760.0));
         settle(&mut harness);
@@ -789,54 +752,15 @@ fn assert_row_selected(
     }
 }
 
-/// One layout of [`a_selection_offers_one_comment_button`].
-struct CommentCase {
-    name: &'static str,
-    fixture: Fixture,
-    pane: Pane,
-    first: (Option<u32>, Option<u32>),
-    last: (Option<u32>, Option<u32>),
-    /// What the button at the selection's end offers.
-    label: String,
-    width: f32,
-}
-
-/// The layouts [`a_selection_offers_one_comment_button`] drags over: three added lines in each,
-/// and in the wrapped inline diff a function's signature over its removed loop to its new body.
-fn comment_cases() -> Vec<CommentCase> {
-    let is_empty = line_of(NEW, "pub fn is_empty(");
-    let added = ((None, Some(is_empty)), (None, Some(is_empty + 2)));
-    let added_label = format!("Comment on lines {is_empty}–{}", is_empty + 2);
-    let (old_total, new_total) = (line_of(OLD, "pub fn total("), line_of(NEW, "pub fn total("));
-    let mut whole_file = page(ChangeKind::Added, DiffLayout::SideBySide).fixture;
-    whole_file.layout = Layout::WholeFile(DiffSide::New);
-    let mut wrapped = fixture(Layout::Inline);
-    wrapped.wrap = true;
-    let case = |name, fixture, pane| CommentCase {
-        name,
-        fixture,
-        pane,
-        first: added.0,
-        last: added.1,
-        label: added_label.clone(),
-        width: 1180.0,
-    };
-    vec![
-        case("inline", fixture(Layout::Inline), Pane::Inline),
-        case("side-by-side", fixture(Layout::SideBySide), Pane::Right),
-        case("new-only", fixture(Layout::NewOnly), Pane::Inline),
-        case("whole-file", whole_file, Pane::Inline),
-        // From the signature of `total` over its removed loop to its wrapped new body.
-        CommentCase {
-            name: "inline-wrapped",
-            fixture: wrapped,
-            pane: Pane::Inline,
-            first: (Some(old_total), Some(new_total)),
-            last: (None, Some(new_total + 1)),
-            label: format!("Comment on lines {new_total}–{}", new_total + 1),
-            width: 640.0,
-        },
-    ]
+/// The [`layout_cases`] of [`a_selection_offers_one_comment_button`]: in the wrapped inline diff
+/// the drag ends on the first line of `total`'s new body.
+fn comment_cases() -> Vec<LayoutCase> {
+    let new_total = line_of(NEW, "pub fn total(");
+    let mut cases = layout_cases();
+    for case in cases.iter_mut().filter(|case| case.name == "inline-wrapped") {
+        case.last = (None, Some(new_total + 1));
+    }
+    cases
 }
 
 /// A selection over several lines offers exactly one comment button, "Comment on lines X–Y", on
@@ -848,6 +772,8 @@ fn comment_cases() -> Vec<CommentCase> {
 fn a_selection_offers_one_comment_button() {
     let is_empty = line_of(NEW, "pub fn is_empty(");
     for case in comment_cases() {
+        let head = |(_, new_line): (Option<u32>, Option<u32>)| new_line.expect("a head line");
+        let label = format!("Comment on lines {}–{}", head(case.first), head(case.last));
         let mut harness = harness(case.fixture);
         harness.set_size(egui::vec2(case.width, 760.0));
         settle(&mut harness);
@@ -865,7 +791,7 @@ fn a_selection_offers_one_comment_button() {
                 if is_up { (bottom, top, first, last) } else { (top, bottom, last, first) };
             drag(&mut harness, from, &[from.lerp(to, 0.5), to]);
 
-            let button = ButtonAt { pane: case.pane, label: &case.label, focus, origin };
+            let button = ButtonAt { pane: case.pane, label: &label, focus, origin };
             assert_one_button_wherever_it_rests(&mut harness, &button, &name);
             assert_hint_beyond_the_selection(&mut harness, &button, (first, last), is_up, &name);
             harness.hover_at(harness.state().view.marker_point(case.pane, origin));
@@ -1011,120 +937,145 @@ fn diff_rect(harness: &Harness<'_, Fixture>) -> egui::Rect {
 /// Inline and side by side alike.
 #[test]
 fn the_comment_opens_where_the_drag_ended() {
+    for drag_case in drag_cases() {
+        let DragCase { layout, pane, ref name, is_up, at_edge, first_new, last_new } = drag_case;
+        let label = format!("Comment on lines {first_new}–{last_new}");
+        let mut harness = harness(fixture(layout));
+        // Shorter than the diff, so it scrolls: a card above `is_empty` pushes the code above up.
+        harness.set_size(egui::vec2(1180.0, 640.0));
+        settle(&mut harness);
+        let lines = |harness: &Harness<'_, Fixture>| {
+            (
+                row(harness.state(), None, Some(first_new)),
+                row(harness.state(), None, Some(last_new)),
+            )
+        };
+        let (first, last) = lines(&harness);
+        if at_edge && !is_up {
+            // The view ends right below the last line: no room for the card under it.
+            let bottom = harness.state().view.text_area(pane, last).rect.bottom();
+            harness.set_size(egui::vec2(1180.0, bottom + 6.0));
+            settle(&mut harness);
+        }
+        let (top, bottom) = (
+            harness.state().view.text_point(pane, first, 8),
+            harness.state().view.text_point(pane, last, 6),
+        );
+        let (from, to) = if is_up { (bottom, top) } else { (top, bottom) };
+        drag(&mut harness, from, &[from.lerp(to, 0.5), to]);
+        harness.key_press_modifiers(Modifiers::ALT, Key::C);
+        settle(&mut harness);
+        settle(&mut harness);
+
+        let (first, last) = lines(&harness);
+        assert_card_next_to_the_drag(&harness, (first, last), &label, &drag_case, to.y);
+        let ranges = harness.state().view.range_rows();
+        assert_eq!(ranges.len(), 1, "{name}");
+        assert_eq!(
+            (ranges[0].start, ranges[0].end, ranges[0].is_draft),
+            (first, last, true),
+            "{name}: the picked lines stay marked"
+        );
+    }
+}
+
+/// How a comment's lines were picked: in a layout, dragging up or down, in the middle of the view
+/// or at its edge, where the diff has to scroll for the card; and the head lines picked.
+struct DragCase {
+    layout: Layout,
+    pane: Pane,
+    name: String,
+    is_up: bool,
+    at_edge: bool,
+    first_new: u32,
+    last_new: u32,
+}
+
+/// Every drag of the comment card tests, inline and side by side.
+fn drag_cases() -> Vec<DragCase> {
     let is_empty = line_of(NEW, "pub fn is_empty(");
     let add = line_of(NEW, "pub fn add(");
-    for (layout, pane, name) in [
+    let mut cases = Vec::new();
+    for (layout, pane, layout_name) in [
         (Layout::Inline, Pane::Inline, "inline"),
         (Layout::SideBySide, Pane::Right, "side-by-side"),
     ] {
         for is_up in [false, true] {
             for at_edge in [false, true] {
-                let case = format!(
-                    "{name}-{}-{}",
-                    if is_up { "up" } else { "down" },
-                    if at_edge { "edge" } else { "middle" }
-                );
+                let direction = if is_up { "up" } else { "down" };
+                let place = if at_edge { "edge" } else { "middle" };
                 // `add` is near the top of the view, `is_empty` further down: dragged up at the
                 // edge, the card has no room above `add`; dragged down in the middle, it has room below.
                 let (first_new, last_new) =
                     if is_up == at_edge { (add, add + 1) } else { (is_empty, is_empty + 2) };
-                let label = format!("Comment on lines {first_new}–{last_new}");
-                let mut harness = harness(fixture(layout));
-                // Shorter than the diff, so it scrolls: a card above `is_empty` pushes the code above up.
-                harness.set_size(egui::vec2(1180.0, 640.0));
-                settle(&mut harness);
-                let lines = |harness: &Harness<'_, Fixture>| {
-                    (
-                        row(harness.state(), None, Some(first_new)),
-                        row(harness.state(), None, Some(last_new)),
-                    )
-                };
-                let (first, last) = lines(&harness);
-                if at_edge && !is_up {
-                    // The view ends right below the last line: no room for the card under it.
-                    let bottom = harness.state().view.text_area(pane, last).rect.bottom();
-                    harness.set_size(egui::vec2(1180.0, bottom + 6.0));
-                    settle(&mut harness);
-                }
-                let (top, bottom) = (
-                    harness.state().view.text_point(pane, first, 8),
-                    harness.state().view.text_point(pane, last, 6),
-                );
-                let (from, to) = if is_up { (bottom, top) } else { (top, bottom) };
-                drag(&mut harness, from, &[from.lerp(to, 0.5), to]);
-                harness.key_press_modifiers(Modifiers::ALT, Key::C);
-                settle(&mut harness);
-                settle(&mut harness);
-
-                let drag = DragCase { is_up, at_edge };
-                let (first, last) = lines(&harness);
-                assert_card_next_to_the_drag(
-                    &harness,
+                cases.push(DragCase {
+                    layout,
                     pane,
-                    (first, last),
-                    &label,
-                    drag,
-                    to.y,
-                    &case,
-                );
-                let ranges = harness.state().view.range_rows();
-                assert_eq!(ranges.len(), 1, "{case}");
-                assert_eq!(
-                    (ranges[0].start, ranges[0].end, ranges[0].is_draft),
-                    (first, last, true),
-                    "{case}: the picked lines stay marked"
-                );
+                    name: format!("{layout_name}-{direction}-{place}"),
+                    is_up,
+                    at_edge,
+                    first_new,
+                    last_new,
+                });
             }
         }
     }
+    cases
 }
 
-/// How a comment's lines were picked: dragging up or down, in the middle of the view or at its
-/// edge, where the diff has to scroll for the card.
-#[derive(Clone, Copy)]
-struct DragCase {
+/// The `card` opened beside the picked lines, from `first_line` to `last_line`, inside the `view`:
+/// above the first line after a drag up, below the last after a drag down.
+fn assert_card_beside(
+    card: egui::Rect,
+    first_line: egui::Rect,
+    last_line: egui::Rect,
+    view: egui::Rect,
     is_up: bool,
-    at_edge: bool,
-}
-
-/// The card labelled `label` for the rows `first..=last` of `pane` opened next to where the drag
-/// ended (`pointer_y`) and inside the view, which scrolled no more than the card needed.
-fn assert_card_next_to_the_drag(
-    harness: &Harness<'_, Fixture>,
-    pane: Pane,
-    (first, last): (usize, usize),
-    label: &str,
-    DragCase { is_up, at_edge }: DragCase,
-    pointer_y: f32,
     case: &str,
 ) {
+    assert!(
+        card.top() >= view.top() - 0.5 && card.bottom() <= view.bottom() + 0.5,
+        "{case}: the card {card:?} is outside the view {view:?}"
+    );
+    if is_up {
+        assert!(
+            card.bottom() <= first_line.top() + 0.5,
+            "{case}: dragged up, the card ends at {}, below the first line at {}",
+            card.bottom(),
+            first_line.top()
+        );
+    } else {
+        assert!(
+            card.top() >= last_line.bottom() - 0.5,
+            "{case}: dragged down, the card starts at {}, above the last line at {}",
+            card.top(),
+            last_line.bottom()
+        );
+    }
+}
+
+/// The card labelled `label` for the rows `first..=last` opened next to where the drag ended
+/// (`pointer_y`) and inside the view, which scrolled no more than the card needed.
+fn assert_card_next_to_the_drag(
+    harness: &Harness<'_, Fixture>,
+    (first, last): (usize, usize),
+    label: &str,
+    drag: &DragCase,
+    pointer_y: f32,
+) {
+    let DragCase { pane, is_up, at_edge, .. } = *drag;
+    let case = drag.name.as_str();
     let view = diff_rect(harness);
     let (card_top, card_bottom) = card_span(harness, label);
+    let card = egui::Rect::from_x_y_ranges(view.x_range(), card_top..=card_bottom);
     let first_line = harness.state().view.text_area(pane, first).rect;
     let last_line = harness.state().view.text_area(pane, last).rect;
-    assert!(
-        card_top >= view.top() - 0.5 && card_bottom <= view.bottom() + 0.5,
-        "{case}: the card {card_top}..{card_bottom} is inside the view {view:?}"
-    );
     assert!(
         first_line.top() >= view.top() - 0.5 && last_line.bottom() <= view.bottom() + 0.5,
         "{case}: the picked lines stay in view"
     );
-    let focus_after = if is_up {
-        assert!(
-            card_bottom <= first_line.top() + 0.5,
-            "{case}: dragged up, the card ends at {card_bottom}, above the first line at {}",
-            first_line.top()
-        );
-        first_line.center().y
-    } else {
-        assert!(
-            card_top >= last_line.bottom() - 0.5,
-            "{case}: dragged down, the card starts at {card_top}, below the last line at {}",
-            last_line.bottom()
-        );
-        last_line.center().y
-    };
+    assert_card_beside(card, first_line, last_line, view, is_up, case);
+    let focus_after = if is_up { first_line.center().y } else { last_line.center().y };
     if at_edge {
         // Scrolled just enough: the card ends near the edge it would have crossed.
         let left_over = if is_up { card_top - view.top() } else { view.bottom() - card_bottom };
@@ -1174,74 +1125,58 @@ fn recording_harness(fixture: Fixture, height: f32) -> Harness<'static, Recorder
 /// and at its edge, where the diff has to scroll for it.
 #[test]
 fn the_comment_card_opens_in_place_without_moving() {
-    let is_empty = line_of(NEW, "pub fn is_empty(");
-    let add = line_of(NEW, "pub fn add(");
-    for (layout, pane, name) in [
-        (Layout::Inline, Pane::Inline, "inline"),
-        (Layout::SideBySide, Pane::Right, "side-by-side"),
-    ] {
-        for is_up in [false, true] {
-            for at_edge in [false, true] {
-                let case = format!(
-                    "{name}-{}-{}",
-                    if is_up { "up" } else { "down" },
-                    if at_edge { "edge" } else { "middle" }
-                );
-                let (first_new, last_new) =
-                    if is_up == at_edge { (add, add + 1) } else { (is_empty, is_empty + 2) };
-                let mut harness = recording_harness(fixture(layout), 640.0);
-                settle(&mut harness);
-                let rows = |harness: &Harness<'_, Recorder>| {
-                    let fixture = &harness.state().fixture;
-                    (
-                        fixture.view.row_of(&fixture.diff, None, Some(first_new)),
-                        fixture.view.row_of(&fixture.diff, None, Some(last_new)),
-                    )
-                };
-                if at_edge && !is_up {
-                    let (_, last) = rows(&harness);
-                    let bottom = harness.state().fixture.view.text_area(pane, last).rect.bottom();
-                    harness.set_size(egui::vec2(1180.0, bottom + 6.0));
-                    settle(&mut harness);
-                }
-                let (first, last) = rows(&harness);
-                let marker = |harness: &Harness<'_, Recorder>, row: usize| {
-                    harness.state().fixture.view.marker_point(pane, row)
-                };
-                let (from, to) = if is_up {
-                    (marker(&harness, last), marker(&harness, first))
-                } else {
-                    (marker(&harness, first), marker(&harness, last))
-                };
-                harness.hover_at(from);
-                harness.step();
-                harness.event(button(from, PointerButton::Primary, true, Modifiers::NONE));
-                harness.step();
-                harness.hover_at(from.lerp(to, 0.5));
-                harness.step();
-                harness.hover_at(to);
-                harness.step();
-                harness.state_mut().is_recording = true;
-                harness.event(button(to, PointerButton::Primary, false, Modifiers::NONE));
-                harness.run_steps(12);
-
-                let picked = rows(&harness);
-                assert_card_steady(&harness, pane, picked, is_up, &case);
-            }
+    for drag_case in drag_cases() {
+        let DragCase { layout, pane, is_up, at_edge, first_new, last_new, .. } = drag_case;
+        let mut harness = recording_harness(fixture(layout), 640.0);
+        settle(&mut harness);
+        let rows = |harness: &Harness<'_, Recorder>| {
+            let fixture = &harness.state().fixture;
+            (
+                fixture.view.row_of(&fixture.diff, None, Some(first_new)),
+                fixture.view.row_of(&fixture.diff, None, Some(last_new)),
+            )
+        };
+        if at_edge && !is_up {
+            let (_, last) = rows(&harness);
+            let bottom = harness.state().fixture.view.text_area(pane, last).rect.bottom();
+            harness.set_size(egui::vec2(1180.0, bottom + 6.0));
+            settle(&mut harness);
         }
+        let (first, last) = rows(&harness);
+        let marker = |harness: &Harness<'_, Recorder>, row: usize| {
+            harness.state().fixture.view.marker_point(pane, row)
+        };
+        let (from, to) = if is_up {
+            (marker(&harness, last), marker(&harness, first))
+        } else {
+            (marker(&harness, first), marker(&harness, last))
+        };
+        harness.hover_at(from);
+        harness.step();
+        harness.event(button(from, PointerButton::Primary, true, Modifiers::NONE));
+        harness.step();
+        harness.hover_at(from.lerp(to, 0.5));
+        harness.step();
+        harness.hover_at(to);
+        harness.step();
+        harness.state_mut().is_recording = true;
+        harness.event(button(to, PointerButton::Primary, false, Modifiers::NONE));
+        harness.run_steps(12);
+
+        let picked = rows(&harness);
+        assert_card_steady(&harness, picked, &drag_case);
     }
 }
 
 /// From the first frame that showed the card it stays in one place and size, the picked rows
-/// `first..=last` of `pane` stay marked in every frame, and that place is next to the drag's end
-/// (above the rows after a drag up), inside the view.
+/// `first..=last` stay marked in every frame, and that place is next to the drag's end (above the
+/// rows after a drag up), inside the view.
 fn assert_card_steady(
     harness: &Harness<'_, Recorder>,
-    pane: Pane,
     (first, last): (usize, usize),
-    is_up: bool,
-    case: &str,
+    drag: &DragCase,
 ) {
+    let case = drag.name.as_str();
     let frames = &harness.state().frames;
     let first_card = frames
         .iter()
@@ -1261,21 +1196,8 @@ fn assert_card_steady(
         "{case}: the picked lines blink unmarked in a frame: {frames:?}"
     );
     // And that first place is the right one: next to the pointer, inside the view.
-    let view = harness.ctx.content_rect();
-    assert!(
-        shown.top() >= view.top() - 0.5 && shown.bottom() <= view.bottom() + 0.5,
-        "{case}: the card {shown:?} is outside the view {view:?}"
-    );
-    let fixture = &harness.state().fixture;
-    if is_up {
-        assert!(
-            shown.bottom() <= fixture.view.text_area(pane, first).rect.top() + 0.5,
-            "{case}: dragged up, the card is not above the first line"
-        );
-    } else {
-        assert!(
-            shown.top() >= fixture.view.text_area(pane, last).rect.bottom() - 0.5,
-            "{case}: dragged down, the card is not below the last line"
-        );
-    }
+    let view = &harness.state().fixture.view;
+    let (first_line, last_line) =
+        (view.text_area(drag.pane, first).rect, view.text_area(drag.pane, last).rect);
+    assert_card_beside(shown, first_line, last_line, harness.ctx.content_rect(), drag.is_up, case);
 }

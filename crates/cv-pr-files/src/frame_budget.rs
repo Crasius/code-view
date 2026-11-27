@@ -6,10 +6,7 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 
 use egui::{Pos2, pos2, vec2};
-use review_core::{
-    FileCategory, ProviderKind, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus,
-    UserIdentity,
-};
+use review_core::{FileCategory, ProviderKind, ReviewThread, ThreadAnchor, ThreadStatus};
 use review_git::{ChangeKind, ChangedFile, FileDiff};
 
 use cv_base::theme::syntax::TokenKind;
@@ -18,7 +15,7 @@ use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
 use cv_pr_diff::diff_view::{DiffInputs, DiffView};
 use cv_pr_diff::find::FindInputs;
-use cv_pr_threads::ThreadsUi;
+use cv_pr_threads::{ThreadsUi, samples};
 use cv_pr_tree::{FileTree, TreeInputs, side_panel};
 use cv_syntax::blob_text::BlobText;
 use cv_syntax::highlight::{LineSpans, Span};
@@ -32,16 +29,7 @@ const THREAD_EVERY_BLOCKS: usize = 12;
 /// Open threads on context lines all through the huge diff: two or three comments with Markdown,
 /// every fourth resolved (collapsed), every third with a suggestion.
 fn bench_threads() -> Vec<ReviewThread> {
-    let people = ["Jonas Weber", "Mara Lind", "Erika Brandt"].map(|name| UserIdentity {
-        id: name.to_lowercase(),
-        display_name: name.into(),
-        login: None,
-        avatar_url: None,
-    });
-    let at = |minutes: i64| {
-        time::OffsetDateTime::from_unix_timestamp(1_790_000_000 + minutes * 60)
-            .expect("a valid time")
-    };
+    let people = [samples::jonas(), samples::mara(), samples::erika()];
     (0..DIFF_LINES / 10)
         .step_by(THREAD_EVERY_BLOCKS)
         .map(|block| {
@@ -53,27 +41,23 @@ fn bench_threads() -> Vec<ReviewThread> {
             if block % 3 == 0 {
                 bodies.push(format!("Something like this?\n```suggestion\nlet value_{block} = cached_total(&input);\n```"));
             }
-            ReviewThread {
-                id: format!("thread-{block}"),
-                status: if block % 4 == 0 { ThreadStatus::Resolved } else { ThreadStatus::Active },
-                anchor: Some(ThreadAnchor { path: BENCH_PATH.into(), old_path: None, old_line: Some(old_line), new_line: Some(new_line), range: None }),
-                is_outdated: false,
-                origin: None,
-                is_system: false,
-                can_reply: true,
-                can_resolve: true,
-                comments: bodies
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, body)| ThreadComment {
-                        id: format!("{block}-{index}"),
-                        author: people[(block + index) % people.len()].clone(),
-                        body,
-                        created_at: at((block * 3 + index) as i64),
-                        updated_at: None,
-                    })
-                    .collect(),
-            }
+            let status = if block % 4 == 0 { ThreadStatus::Resolved } else { ThreadStatus::Active };
+            let anchor = ThreadAnchor {
+                path: BENCH_PATH.into(),
+                old_path: None,
+                old_line: Some(old_line),
+                new_line: Some(new_line),
+                range: None,
+            };
+            let comments = bodies
+                .iter()
+                .enumerate()
+                .map(|(index, body)| {
+                    let (id, minutes) = (format!("{block}-{index}"), (block * 3 + index) as i64);
+                    samples::comment(&id, &people[(block + index) % people.len()], minutes, body)
+                })
+                .collect();
+            samples::thread(&format!("thread-{block}"), status, Some(anchor), comments)
         })
         .collect()
 }
@@ -472,19 +456,4 @@ fn frame_budget_tree() {
         bench_tree(pixels_per_point, &mut reports);
     }
     finish(&reports);
-}
-
-#[test]
-fn synthetic_spans_cover_the_token_kinds() {
-    let spans = spans_of("    let value = compute(\"x\", 42); // note");
-    let kinds: Vec<TokenKind> = spans.iter().map(|span| span.kind()).collect();
-    for kind in [
-        TokenKind::Keyword,
-        TokenKind::Function,
-        TokenKind::String,
-        TokenKind::Number,
-        TokenKind::Comment,
-    ] {
-        assert!(kinds.contains(&kind), "{kind:?} missing from {kinds:?}");
-    }
 }

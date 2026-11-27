@@ -8,17 +8,14 @@ use cv_testkit::Clicks;
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_core::{
-    NewThread, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus, UserIdentity,
-};
+use review_core::{NewThread, ReviewThread, ThreadStatus};
 
 use cv_base::theme;
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
-use cv_pr_diff::diff_view::{DiffEvent, DiffInputs};
-use cv_pr_diff::find::FindInputs;
+use cv_pr_diff::diff_view::DiffEvent;
 use cv_pr_diff::testing::{Fixture, NEW, PATH, fixture, line_of};
-use cv_pr_threads::{Delivery, ThreadEvent, new_thread_key};
+use cv_pr_threads::{Delivery, ThreadEvent, new_thread_key, samples};
 
 const FRAME: f32 = 1.0 / 120.0;
 /// Frames the hand-off may take: the ease plus the frame it starts in and one to land.
@@ -33,18 +30,9 @@ struct Scene {
     posted: Vec<(String, NewThread)>,
 }
 
-fn me() -> UserIdentity {
-    UserIdentity {
-        id: "me".into(),
-        display_name: "Erika Brandt".into(),
-        login: Some("ebrandt".into()),
-        avatar_url: None,
-    }
-}
-
 fn harness() -> Harness<'static, Scene> {
     let mut fixture = fixture(Layout::Inline);
-    fixture.threads_ui.set_me(me());
+    fixture.threads_ui.set_me(samples::erika());
     // No motion setting: without one `motion::is_reduced` is false, so the eases run.
     Harness::builder()
         .with_size([1180.0, 760.0])
@@ -55,24 +43,8 @@ fn harness() -> Harness<'static, Scene> {
                 theme::activate(ui.ctx(), scene.fixture.theme);
                 let fixture = &mut scene.fixture;
                 fixture.threads_ui.begin_frame_for_tests(ui.ctx(), &fixture.threads, scene.version);
-                let threads: Vec<&ReviewThread> = fixture.threads.iter().collect();
-                let inputs = DiffInputs {
-                    diff: &fixture.diff,
-                    contents: Some(&fixture.contents),
-                    threads: &threads,
-                    layout: fixture.layout,
-                    font_size: 13.0,
-                    wrap: false,
-                    can_comment: true,
-                    can_comment_outside_hunks: true,
-                    path: PATH,
-                    old_path: None,
-                    line_spans: None,
-                    show_threads: true,
-                    find: FindInputs::default(),
-                };
                 // What the files tab does with the view's events, without a platform.
-                match fixture.view.show(ui, &inputs, &mut fixture.split, &mut fixture.threads_ui) {
+                match fixture.show(ui) {
                     Some(DiffEvent::Create { key, thread }) => {
                         fixture.threads_ui.post_new_thread_for_tests(&key, thread.clone());
                         scene.posted.push((key, thread));
@@ -197,23 +169,8 @@ fn write_comment(harness: &mut Harness<'_, Scene>) {
 
 /// The thread the platform stores for `new`, as it sends it back and the reload shows it.
 fn stored(new: &NewThread) -> ReviewThread {
-    ReviewThread {
-        id: "t-created".into(),
-        status: ThreadStatus::Active,
-        anchor: new.anchor.clone(),
-        is_outdated: false,
-        origin: None,
-        is_system: false,
-        can_reply: true,
-        can_resolve: true,
-        comments: vec![ThreadComment {
-            id: "c-created".into(),
-            author: me(),
-            body: new.body.clone(),
-            created_at: time::OffsetDateTime::now_utc(),
-            updated_at: None,
-        }],
-    }
+    let comment = samples::comment("c-created", &samples::erika(), 0, &new.body);
+    samples::thread("t-created", ThreadStatus::Active, new.anchor.clone(), vec![comment])
 }
 
 /// Submit → pending → platform's answer → reloaded threads: the composer folds into the comment
@@ -331,36 +288,10 @@ fn a_failed_post_brings_the_composer_back_with_the_text_and_retry() {
 #[test]
 fn a_reply_hands_its_composer_to_the_reply_in_place() {
     let mut harness = harness();
-    let anchor = ThreadAnchor {
-        path: PATH.into(),
-        old_path: None,
-        old_line: None,
-        new_line: Some(commented_line()),
-        range: None,
-    };
-    let mara = UserIdentity {
-        id: "mara".into(),
-        display_name: "Mara Schulz".into(),
-        login: Some("mschulz".into()),
-        avatar_url: None,
-    };
-    let thread = ReviewThread {
-        id: "t-1".into(),
-        status: ThreadStatus::Active,
-        anchor: Some(anchor),
-        is_outdated: false,
-        origin: None,
-        is_system: false,
-        can_reply: true,
-        can_resolve: true,
-        comments: vec![ThreadComment {
-            id: "c-1".into(),
-            author: mara,
-            body: "Why a loop here?".into(),
-            created_at: time::OffsetDateTime::UNIX_EPOCH,
-            updated_at: None,
-        }],
-    };
+    let line = commented_line();
+    let question = samples::comment("c-1", &samples::mara(), 5, "Why a loop here?");
+    let anchor = Some(samples::lines(PATH, line, line));
+    let thread = samples::thread("t-1", ThreadStatus::Active, anchor, vec![question]);
     harness.state_mut().fixture.threads.push(thread);
     harness.run_steps(30);
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Reply").rect());
@@ -376,13 +307,7 @@ fn a_reply_hands_its_composer_to_the_reply_in_place() {
     assert!(harness.query_by_label("Posting…").is_some(), "the reply says it is on its way");
     let comment = comment_top(&harness).expect("the reply shows while it is posted");
 
-    let reply = ThreadComment {
-        id: "c-2".into(),
-        author: me(),
-        body: BODY.into(),
-        created_at: time::OffsetDateTime::now_utc(),
-        updated_at: None,
-    };
+    let reply = samples::comment("c-2", &samples::erika(), 0, BODY);
     let version = harness.state().version;
     harness.state_mut().fixture.threads_ui.deliver_for_tests(
         "reply:t-1",

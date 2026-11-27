@@ -21,16 +21,15 @@ use cv_pr_diff::diff_cache::DiffKey;
 use cv_pr_diff::diff_view::{DiffInputs, DiffView};
 use cv_pr_diff::find::FindInputs;
 use cv_pr_diff::patch_colors::PatchColors;
-use cv_pr_diff::testing::{NEW, OLD, PATH, side};
+use cv_pr_diff::testing::{NEW, OLD, PATH, diff_of, side};
 use cv_pr_threads::ThreadsUi;
 use cv_syntax::color_worker::observe_repaints;
 use cv_syntax::grammar;
 use cv_syntax::pool::Priority;
+use cv_testkit::WAIT_LIMIT;
 
 /// Frames the rows show before the held file versions arrive.
 const FRAMES_BEFORE_CONTENTS: usize = 3;
-/// A hang guard, not a budget: the whole suite coloring in parallel slows every load down.
-const TIMEOUT: Duration = Duration::from_secs(60);
 
 fn key() -> DiffKey {
     key_for(PATH)
@@ -48,12 +47,6 @@ fn key_for(path: &str) -> DiffKey {
 
 fn fixture_diff() -> Arc<FileDiff> {
     diff_of(OLD, NEW)
-}
-
-fn diff_of(old: &str, new: &str) -> Arc<FileDiff> {
-    let unified =
-        similar::TextDiff::from_lines(old, new).unified_diff().context_radius(3).to_string();
-    Arc::new(FileDiff::parse_unified(unified.as_bytes()))
 }
 
 fn file_contents() -> FileContents {
@@ -88,7 +81,7 @@ fn opening(layout: Layout) -> (Opening, Sender<Arc<FileDiff>>, Sender<FileConten
         view: DiffView::default(),
         // The wait for the first colors is what this checks, not its length: the coloring pool is
         // shared with every other test of the suite.
-        colors: PatchColors::default().with_wait(TIMEOUT),
+        colors: PatchColors::default().with_wait(WAIT_LIMIT),
         diff: None,
         diff_arrives,
         contents: None,
@@ -192,7 +185,7 @@ fn run_until_contents(
         syntax::color(TokenKind::Keyword, &Palette::LIGHT),
         syntax::color(TokenKind::String, &Palette::LIGHT),
     );
-    let deadline = Instant::now() + TIMEOUT;
+    let deadline = Instant::now() + WAIT_LIMIT;
     let mut frames: Vec<(bool, bool)> = Vec::new();
     let mut after_contents = 0;
     while after_contents < 3 && Instant::now() < deadline {
@@ -360,7 +353,7 @@ fn a_file_opened_right_after_the_pull_request_is_colored_in_its_first_frame() {
     state.key = key_for(TS_PATH);
     // The wait for the warming grammar is what this checks, not its length: the whole suite
     // compiling in parallel can take the grammar longer than `WARMING_WAIT`.
-    state.colors = PatchColors::default().with_warming_wait(Duration::from_secs(60));
+    state.colors = PatchColors::default().with_warming_wait(WAIT_LIMIT);
     // The pull request opens: its changed files are known, the warm-up starts on the start file.
     state
         .colors
@@ -391,7 +384,7 @@ fn a_file_opened_right_after_the_pull_request_is_colored_in_its_first_frame() {
         syntax::color(TokenKind::Keyword, &Palette::LIGHT),
         syntax::color(TokenKind::String, &Palette::LIGHT),
     );
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + WAIT_LIMIT;
     let mut shown = Vec::new();
     while shown.len() < 5 && Instant::now() < deadline {
         harness.step();
@@ -405,7 +398,7 @@ fn a_file_opened_right_after_the_pull_request_is_colored_in_its_first_frame() {
         )]
         std::thread::sleep(Duration::from_millis(4));
     }
-    assert_eq!(shown.len(), 5, "the diff showed");
+    assert_eq!(shown.len(), 5, "the diff did not show five frames within {WAIT_LIMIT:?}");
     assert!(
         shown.iter().all(|colored| *colored),
         "every frame with rows on screen is colored, the first one too: {shown:?}"

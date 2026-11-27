@@ -1,4 +1,4 @@
-//! The Files tab while a pull request's changes are prepared (design L5, live log): the tree
+//! The Files tab while a pull request's changes are prepared, with its live log: the tree
 //! skeleton beside the header, the step segments and the log, mid-fetch and after a failure.
 //! Checks that nothing moves while lines arrive, that git's progress overwrites its line, that
 //! no credential reaches the screen, and that the failure keeps its way out. No network, no
@@ -17,7 +17,7 @@ use cv_pr_session::prepare_progress::{self, FailureAction, SharedProgress, Step}
 use cv_pr_tree::side_panel;
 
 const TREE_WIDTH: f32 = 300.0;
-const FAILURE: &str = "git failed: fatal: unable to access 'https://x-access-token:ghs_leaked0123456789@github.com/cli/cli.git/': The requested URL returned error: 403";
+const FAILURE: &str = "git failed: fatal: unable to access 'https://x-access-token:ghs_leaked0123456789@github.com/acme/shop.git/': The requested URL returned error: 403";
 
 struct Scene {
     progress: SharedProgress,
@@ -67,9 +67,10 @@ fn receiving(percent: u8) -> GitEvent {
 fn up_to_fetch(progress: &SharedProgress) {
     progress.log("Head 9f3c2a1 into target 4be81d0");
     progress.enter(Step::ResolvingRemote);
-    progress.log("Remote https://x-access-token:ghs_leaked0123456789@github.com/cli/cli.git");
+    progress.log("Remote https://x-access-token:ghs_leaked0123456789@github.com/acme/shop.git");
     progress.enter(Step::OpeningMirror);
-    progress.log(r"Mirror C:\Users\reviewer\AppData\Local\CodeView\mirrors\github.com_cli_cli.git");
+    progress
+        .log(r"Mirror C:\Users\reviewer\AppData\Local\CodeView\mirrors\github.com_acme_shop.git");
     progress.enter(Step::Fetching);
     progress.report_git(GitEvent::Command(
         "git fetch --progress --no-tags --no-write-fetch-head --filter=blob:none origin +refs/pull/8421/head:refs/review/pull/8421/head +refs/heads/trunk:refs/review/heads/trunk"
@@ -140,7 +141,7 @@ fn the_loading_log_stays_put_overwrites_progress_and_keeps_retry_on_failure() {
         "progress overwrites its line:\n{text}"
     );
     assert!(text.contains("Receiving objects: 64% (41,203/64,380)"), "{text}");
-    assert!(text.contains("Remote https://github.com/cli/cli.git"), "{text}");
+    assert!(text.contains("Remote https://github.com/acme/shop.git"), "{text}");
     assert!(
         !text.contains("ghs_") && !text.contains("x-access-token"),
         "credentials stay out of the log:\n{text}"
@@ -167,7 +168,7 @@ fn the_loading_log_stays_put_overwrites_progress_and_keeps_retry_on_failure() {
     assert!(text.contains("Fetching commits and trees failed after"), "{text}");
     assert!(
         text.contains(
-            "error: git failed: fatal: unable to access 'https://github.com/cli/cli.git/'"
+            "error: git failed: fatal: unable to access 'https://github.com/acme/shop.git/'"
         ),
         "{text}"
     );
@@ -184,7 +185,7 @@ fn copied_log(harness: &mut Harness<'_, Scene>) -> String {
         });
     harness.run_steps(1);
     assert!(harness.query_by_label("Copied").is_some(), "the button confirms the copy");
-    // "Copied" shows for two seconds (harness frames are 1/60 s); then "Copy log" is back.
+    // "Copied" shows for 1.5 seconds (harness frames are 1/60 s); then "Copy log" is back.
     harness.run_steps(130);
     copied.expect("Copy log puts the log on the clipboard")
 }

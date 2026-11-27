@@ -83,13 +83,13 @@ enum BannerAction {
 
 /// What the area below the banner shows this frame.
 enum Body {
-    Diff(Shown),
+    Diff(VersionDiff),
     Unavailable { title: &'static str, detail: String },
     Loading,
 }
 
 /// A diff below the banner: the version's, or the comment's own hunk without its contents.
-struct Shown {
+struct VersionDiff {
     diff: Arc<FileDiff>,
     path: String,
     old_path: Option<String>,
@@ -219,7 +219,7 @@ impl OriginView {
     /// nothing can show, or the skeleton while it loads.
     fn body(&self) -> Body {
         match &self.version {
-            Load::Ready(Version::Diff { file, diff, .. }) => Body::Diff(Shown {
+            Load::Ready(Version::Diff { file, diff, .. }) => Body::Diff(VersionDiff {
                 diff: diff.clone(),
                 path: file.path.clone(),
                 old_path: file.old_path.clone(),
@@ -227,7 +227,7 @@ impl OriginView {
                 has_contents: true,
             }),
             Load::Ready(Version::Missing(reason)) => match &self.hunk {
-                Some(hunk) => Body::Diff(Shown {
+                Some(hunk) => Body::Diff(VersionDiff {
                     diff: hunk.clone(),
                     path: self.origin.anchor.path.clone(),
                     old_path: None,
@@ -273,7 +273,7 @@ impl OriginView {
     fn show_diff(
         &mut self,
         ui: &mut Ui,
-        shown: &Shown,
+        shown: &VersionDiff,
         inputs: &mut OriginInputs<'_>,
         services: &mut Services,
         threads_ui: &mut ThreadsUi,
@@ -413,7 +413,7 @@ impl OriginView {
         let back = actions.len() - 1;
         match notice::show(ui, icons::WARNING, palette.warning, title, detail, &actions)? {
             0 => {
-                self.version = Load::Idle;
+                self.retry();
                 None
             }
             picked if picked == back => Some(OriginEvent::Back),

@@ -386,12 +386,14 @@ fn diff_switches(
     // summary shows its cards inline or side by side; New only is the file view's own.
     let is_summary = inputs.file.is_none();
     let can_choose = has_diff && inputs.whole_file.is_none();
-    for (layout, icon, label, _) in file_header::LAYOUTS {
+    for segment in file_header::LAYOUT_SEGMENTS {
+        let layout = segment.value;
         let is_on = settings.diff_layout == layout;
         let hint = match layout {
             DiffLayout::NewOnly => concat!("New only (", shortcut!(alt "N"), ")"),
-            DiffLayout::Inline | DiffLayout::SideBySide => label,
+            DiffLayout::Inline | DiffLayout::SideBySide => segment.label,
         };
+        let icon = segment.icon.expect("every layout has an icon");
         let is_enabled = if is_summary { layout != DiffLayout::NewOnly } else { can_choose };
         let toggle = ui
             .add_enabled_ui(is_enabled, |ui| {

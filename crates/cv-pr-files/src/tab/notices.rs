@@ -41,27 +41,18 @@ pub fn without_changes(
         };
     }
     let palette = theme::palette(ui.ctx());
-    let mut actions =
-        vec![Action { icon: icons::ARROW_CLOCKWISE, label: "Reload", is_primary: true }];
-    if let Some(link) = web_link {
-        actions.push(Action { icon: link.icon, label: &link.label, is_primary: false });
-    }
+    let reload = Action { icon: icons::ARROW_CLOCKWISE, label: "Reload", is_primary: true };
     let detail = "The file list was made for other commits than the ones compared now. Reload to bring it up to date.";
-    match notice::show(
+    show_with_link(
         ui,
         icons::FILE_TEXT,
         palette.text_secondary,
         "No changes in this comparison",
         detail,
-        &actions,
-    ) {
-        Some(0) => Some(NoChanges::Reload),
-        Some(_) => {
-            open_link(ui, web_link);
-            None
-        }
-        None => None,
-    }
+        Some(reload),
+        web_link,
+    )
+    .then_some(NoChanges::Reload)
 }
 
 /// "Couldn't load the diff" with the reason: returns true for Retry.
@@ -71,22 +62,31 @@ pub fn diff_failure(
     web_link: Option<&web_link::WebLink>,
 ) -> bool {
     let palette = theme::palette(ui.ctx());
-    let mut actions =
-        vec![Action { icon: icons::ARROW_CLOCKWISE, label: "Retry", is_primary: true }];
-    if let Some(link) = web_link {
+    let retry = Action { icon: icons::ARROW_CLOCKWISE, label: "Retry", is_primary: true };
+    let title = "Couldn't load the diff";
+    show_with_link(ui, icons::WARNING, palette.error, title, message, Some(retry), web_link)
+}
+
+/// A notice with its `primary` action, if it has one, and the platform `link` after it. Opens the
+/// link when it is picked; returns true when the primary action is.
+fn show_with_link(
+    ui: &mut egui::Ui,
+    icon: &str,
+    color: egui::Color32,
+    title: &str,
+    detail: &str,
+    primary: Option<Action<'_>>,
+    link: Option<&web_link::WebLink>,
+) -> bool {
+    let has_primary = primary.is_some();
+    let mut actions: Vec<Action<'_>> = primary.into_iter().collect();
+    if let Some(link) = link {
         actions.push(Action { icon: link.icon, label: &link.label, is_primary: false });
     }
-    match notice::show(
-        ui,
-        icons::WARNING,
-        palette.error,
-        "Couldn't load the diff",
-        message,
-        &actions,
-    ) {
-        Some(0) => true,
+    match notice::show(ui, icon, color, title, detail, &actions) {
+        Some(0) if has_primary => true,
         Some(_) => {
-            open_link(ui, web_link);
+            open_link(ui, link);
             false
         }
         None => false,
@@ -137,22 +137,8 @@ fn unchanged(ui: &mut egui::Ui, file: &ChangedFile, web_link: Option<&web_link::
             "Only the file mode changed.".to_owned()
         }
     };
-    let actions: Vec<Action<'_>> = web_link
-        .map(|link| Action { icon: link.icon, label: &link.label, is_primary: false })
-        .into_iter()
-        .collect();
-    if notice::show(
-        ui,
-        icons::FILE_TEXT,
-        palette.text_secondary,
-        "No changes to the content",
-        &detail,
-        &actions,
-    )
-    .is_some()
-    {
-        open_link(ui, web_link);
-    }
+    let title = "No changes to the content";
+    show_with_link(ui, icons::FILE_TEXT, palette.text_secondary, title, &detail, None, web_link);
 }
 
 pub fn open_link(ui: &egui::Ui, link: Option<&web_link::WebLink>) {
