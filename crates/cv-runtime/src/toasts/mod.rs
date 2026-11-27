@@ -1,11 +1,15 @@
 //! Short confirmations, notes and errors in the bottom-right corner. An error always carries its
 //! ways out ([`WaysOut`], [`ways_out`]) and stays until one is clicked or it is dismissed; the
 //! same error again replaces the one shown instead of stacking.
+//!
+//! The clock is egui's input time, like the refresh schedule's: a toast's age counts from the
+//! first frame shown after it came, so one pushed while the window is hidden waits until it is
+//! shown, and tests drive expiry with simulated frames.
 
 mod ways_out;
 
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use cv_base::theme::{self, Palette, icons, motion, style};
 use cv_widgets::{buttons, glyph};
@@ -22,6 +26,10 @@ const MAX_VISIBLE: usize = 4;
 /// Fade-in after appearing and fade-out before expiring, in seconds.
 const FADE_IN: f32 = 0.18;
 const FADE_OUT: f32 = 0.3;
+const TOAST_WIDTH: f32 = 420.0;
+const ICON_SIZE: f32 = 18.0;
+/// The left inset is `style::SPACE_ROW_X`; `Margin` takes `i8`.
+const CARD_MARGIN: Margin = Margin { left: 14, right: 6, top: 6, bottom: 6 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Severity {
@@ -33,7 +41,8 @@ enum Severity {
 struct Toast {
     text: String,
     severity: Severity,
-    shown_at: Instant,
+    /// The input time of the first frame shown after it came; `None` until then.
+    shown_at: Option<f64>,
     actions: Vec<ToastAction>,
 }
 
@@ -47,17 +56,19 @@ impl Toast {
         }
     }
 
-    fn is_expired(&self) -> bool {
-        self.lifetime().is_some_and(|lifetime| self.shown_at.elapsed() >= lifetime)
+    fn is_expired(&self, now: f64) -> bool {
+        self.lifetime().is_some_and(|lifetime| self.age(now) >= lifetime)
     }
 
     /// Seconds until the toast expires; infinite for one that waits to be dismissed.
-    fn seconds_left(&self) -> f32 {
-        self.lifetime().map_or(f32::INFINITY, |lifetime| lifetime.as_secs_f32() - self.age())
+    fn seconds_left(&self, now: f64) -> f32 {
+        self.lifetime()
+            .map_or(f32::INFINITY, |lifetime| lifetime.as_secs_f32() - self.age(now).as_secs_f32())
     }
 
-    fn age(&self) -> f32 {
-        self.shown_at.elapsed().as_secs_f32()
+    fn age(&self, now: f64) -> Duration {
+        self.shown_at
+            .map_or(Duration::ZERO, |shown_at| Duration::from_secs_f64((now - shown_at).max(0.0)))
     }
 }
 
@@ -99,7 +110,7 @@ impl Toasts {
     }
 
     fn push(&mut self, text: String, severity: Severity, actions: Vec<ToastAction>) {
-        self.toasts.push(Toast { text, severity, shown_at: Instant::now(), actions });
+        self.toasts.push(Toast { text, severity, shown_at: None, actions });
     }
 
     /// The texts of every toast waiting to be shown or dismissed (test builds only).
@@ -119,7 +130,11 @@ impl Toasts {
     }
 
     pub fn show(&mut self, ctx: &egui::Context) {
-        self.toasts.retain(|toast| !toast.is_expired());
+        let now = ctx.input(|input| input.time);
+        for toast in &mut self.toasts {
+            toast.shown_at.get_or_insert(now);
+        }
+        self.toasts.retain(|toast| !toast.is_expired(now));
         if self.toasts.is_empty() {
             return;
         }
@@ -131,12 +146,12 @@ impl Toasts {
         };
         let mut clicked = None;
         let area = egui::Area::new(egui::Id::unique("toasts"))
-            .anchor(Align2::RIGHT_BOTTOM, [-16.0, -16.0])
+            .anchor(Align2::RIGHT_BOTTOM, [-style::SPACE_L, -style::SPACE_L])
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
-                ui.set_max_width(420.0);
+                ui.set_max_width(TOAST_WIDTH);
                 for (index, toast) in self.toasts.iter().enumerate().skip(first_visible) {
-                    let opacity = fades.opacity(toast);
+                    let opacity = fades.opacity(toast, now);
                     let click = ui
                         .scope(|ui| {
                             ui.multiply_opacity(opacity);
@@ -151,13 +166,11 @@ impl Toasts {
             });
         // Toasts with buttons wait while the pointer is on its way to one; they start over after.
         if area.response.contains_pointer() {
-            let held_at = Instant::now()
-                .checked_sub(Duration::from_secs_f32(fades.fade_in))
-                .unwrap_or_else(Instant::now);
+            let held_at = now - f64::from(fades.fade_in);
             let waits =
                 |toast: &&mut Toast| !toast.actions.is_empty() && toast.lifetime().is_some();
             for toast in self.toasts.iter_mut().filter(waits) {
-                toast.shown_at = held_at;
+                toast.shown_at = Some(held_at);
             }
         }
         match clicked {
@@ -174,15 +187,14 @@ impl Toasts {
             }
             None => {}
         }
-        self.schedule_repaint(ctx, fades);
+        self.schedule_repaint(ctx, now, fades);
     }
 
     /// Every frame while a toast fades, else once when the next one starts fading out.
-    fn schedule_repaint(&self, ctx: &egui::Context, fades: Fades) {
-        let is_fading = self
-            .toasts
-            .iter()
-            .any(|toast| toast.age() < fades.fade_in || toast.seconds_left() < fades.fade_out);
+    fn schedule_repaint(&self, ctx: &egui::Context, now: f64, fades: Fades) {
+        let is_fading = self.toasts.iter().any(|toast| {
+            toast.age(now).as_secs_f32() < fades.fade_in || toast.seconds_left(now) < fades.fade_out
+        });
         if is_fading {
             ctx.request_repaint();
             return;
@@ -194,11 +206,7 @@ impl Toasts {
             .iter()
             .filter_map(|toast| {
                 let lifetime = toast.lifetime()?;
-                Some(
-                    lifetime
-                        .saturating_sub(toast.shown_at.elapsed())
-                        .saturating_sub(fade_out_starts),
-                )
+                Some(lifetime.saturating_sub(toast.age(now)).saturating_sub(fade_out_starts))
             })
             .min();
         if let Some(next_change) = next_change {
@@ -215,8 +223,9 @@ struct Fades {
 }
 
 impl Fades {
-    fn opacity(self, toast: &Toast) -> f32 {
-        fade(toast.age(), self.fade_in).min(fade(toast.seconds_left(), self.fade_out))
+    fn opacity(self, toast: &Toast, now: f64) -> f32 {
+        fade(toast.age(now).as_secs_f32(), self.fade_in)
+            .min(fade(toast.seconds_left(now), self.fade_out))
     }
 }
 
@@ -240,12 +249,13 @@ fn card(ui: &mut Ui, toast: &Toast, palette: &Palette) -> Option<Click> {
         .fill(palette.surface)
         .stroke(egui::Stroke::new(1.0, palette.border))
         .corner_radius(style::RADIUS_POPUP)
-        .inner_margin(Margin { left: 14, right: 6, top: 6, bottom: 6 })
+        .inner_margin(CARD_MARGIN)
         .shadow(ui.visuals().popup_shadow)
         .show(ui, |ui| {
             let icon_width = ui
                 .horizontal(|ui| {
-                    let icon = glyph::decorative(ui, RichText::new(icon).color(color).size(18.0));
+                    let icon =
+                        glyph::decorative(ui, RichText::new(icon).color(color).size(ICON_SIZE));
                     message(ui, &toast.text, palette);
                     if buttons::icon(ui, icons::X, "Dismiss").clicked() {
                         click = Some(Click::Dismiss);
