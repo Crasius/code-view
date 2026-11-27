@@ -48,7 +48,7 @@ enum Request {
     PullRequestFinished(FinishedPullRequest),
 }
 
-pub type Notify = Arc<dyn Fn() + Send + Sync>;
+pub(crate) type Notify = Arc<dyn Fn() + Send + Sync>;
 
 /// The app's handle; cheap to clone into background tasks.
 #[derive(Clone)]

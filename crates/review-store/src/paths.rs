@@ -68,7 +68,7 @@ impl AppPaths {
         self.cache.join("mirrors")
     }
 
-    pub fn logs_dir(&self) -> PathBuf {
+    pub(crate) fn logs_dir(&self) -> PathBuf {
         self.cache.join("logs")
     }
 
@@ -100,7 +100,7 @@ impl AppPaths {
     }
 
     /// Images that descriptions and comments embed, as downloaded.
-    pub fn images_dir(&self) -> PathBuf {
+    pub(crate) fn images_dir(&self) -> PathBuf {
         self.cache.join("images")
     }
 
@@ -119,7 +119,7 @@ impl AppPaths {
     }
 
     /// Where deletions wait for the background thread; see `retention`.
-    pub fn trash_dir(&self) -> PathBuf {
+    pub(crate) fn trash_dir(&self) -> PathBuf {
         self.cache.join("trash")
     }
 

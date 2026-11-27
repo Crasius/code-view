@@ -14,7 +14,7 @@
 // never indexes.
 #![warn(clippy::string_slice, clippy::indexing_slicing)]
 
-pub mod budget;
+pub(crate) mod budget;
 mod cache;
 pub mod image;
 pub mod traffic;
@@ -31,7 +31,7 @@ use crate::error::Result;
 
 pub use budget::{Api, RateLimitNotice, rate_limits, resume, without_waiting};
 pub use cache::{cached_bytes, write_epoch};
-pub use traffic::{ConnectionTraffic, EndpointCount, for_connection};
+pub use traffic::{ConnectionTraffic, for_connection};
 
 const USER_AGENT: &str = concat!("CodeView/", env!("CARGO_PKG_VERSION"));
 

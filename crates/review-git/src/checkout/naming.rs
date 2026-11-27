@@ -11,7 +11,7 @@ const SLUG_MAX: usize = 40;
 
 /// The last part of `branch`, fit for a folder or branch name: `feature/Login Cache` →
 /// `login-cache`. Never empty.
-pub fn slug(branch: &str) -> String {
+pub(crate) fn slug(branch: &str) -> String {
     let last = branch.trim_end_matches('/').rsplit('/').next().unwrap_or_default();
     let mut slug = String::with_capacity(last.len());
     for character in last.chars().flat_map(char::to_lowercase) {

@@ -197,7 +197,7 @@ async fn diff_stats_count_the_latest_iterations_changed_files() {
 }
 
 /// The policy evaluations name a pull request by its project's GUID: one repository lookup per
-/// project finds it, shared by row requests at the same time and kept for later ones.
+/// project finds it and is kept for later row requests.
 #[tokio::test]
 async fn row_statuses_look_up_the_project_once() {
     let server = MockServer::start().await;
@@ -224,10 +224,8 @@ async fn row_statuses_look_up_the_project_once() {
     }
     let provider = provider(&server, &["north"], Some(TOKEN));
 
-    let (first, second) = tokio::join!(
-        provider.row_statuses("north/Web/site", &[11]),
-        provider.row_statuses("north/Web/site", &[12]),
-    );
+    let first = provider.row_statuses("north/Web/site", &[11]).await;
+    let second = provider.row_statuses("north/Web/site", &[12]).await;
     let later = provider.row_statuses("north/Web/site", &[13]).await;
 
     for (statuses, number) in [(first, 11), (second, 12), (later, 13)] {

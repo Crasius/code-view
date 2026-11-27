@@ -11,14 +11,11 @@ use wiremock::matchers::{body_json, body_partial_json, header, method, path, que
 use wiremock::{Match, Mock, MockServer, Request, ResponseTemplate};
 
 use crate::support::{
-    AUTHORIZATION, COLLECTION, PR, REPO, TOKEN, api, mount_source_tip, ok, provider, pull_request,
+    AUTHORIZATION, COLLECTION, PR, REPO, TOKEN, api, mount_source_tip, ok, pr_path, provider,
+    pull_request,
 };
 
 const ME: &str = "me-id";
-
-fn pr_path(suffix: &str) -> String {
-    format!("/{COLLECTION}/My%20Project/_apis/git/repositories/web/pullrequests/{PR}{suffix}")
-}
 
 /// Asserts that a top-level JSON body field is absent.
 struct WithoutField(&'static str);

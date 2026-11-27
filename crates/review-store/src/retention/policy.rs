@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime};
 
 /// One thing that is kept or deleted as a whole: a log file, a viewed-state file, a mirror.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Entry {
+pub(crate) struct Entry {
     pub path: PathBuf,
     pub bytes: u64,
     pub last_used: SystemTime,
@@ -29,7 +29,7 @@ pub struct Outcome {
 }
 
 impl Outcome {
-    pub fn add(&mut self, other: Outcome) {
+    pub(crate) fn add(&mut self, other: Outcome) {
         self.removed += other.removed;
         self.freed += other.freed;
         self.kept_in_use += other.kept_in_use;
@@ -47,7 +47,7 @@ impl Outcome {
 
 /// Applies `limits` at `now`. `retire` removes one entry and returns false when it is in use;
 /// a refused entry still counts towards the total, so the next oldest goes instead.
-pub fn apply(
+pub(crate) fn apply(
     mut entries: Vec<Entry>,
     now: SystemTime,
     limits: Limits,
@@ -90,7 +90,7 @@ pub fn apply(
 
 /// Asks `retire` for every one of `entries`, whatever their age and size: removing a connection's
 /// data and clearing the cache.
-pub fn retire_all(
+pub(crate) fn retire_all(
     entries: impl IntoIterator<Item = Entry>,
     retire: &mut dyn FnMut(&Entry) -> bool,
 ) -> Outcome {

@@ -25,18 +25,18 @@ pub use assistant::chats::{
     AssistantChats, Chat, ChatQuote, ChatStep, ChatStepKind, ChatTurn, ChatUsage, ChatsSnapshot,
     TurnEnd, TurnKind, agent_checkouts_dir, chats_dir,
 };
-pub use assistant::settings::{AssistantSettings, MiniChatCorner};
+pub(crate) use assistant::settings::AssistantSettings;
 pub use atomic_file::write_bytes;
 pub use cold_cache::{BUDGET_BYTES as COLD_CACHE_BUDGET_BYTES, ColdCache};
 pub use connections::ConnectionStore;
 pub use log_file::LogFile;
 pub use merge_preferences::MergePreferences;
-pub use overview::{FavoriteRepository, Favorites, RepositorySections, SectionCard, SectionKey};
+pub use overview::{Favorites, RepositorySections, SectionCard, SectionKey};
 pub use paths::AppPaths;
 pub use settings::{
     AppSettings, CheckFilter, CommentEditor, CommentEditors, DiffLayout, FileFilters, FilesStart,
-    FrameRateLimit, ImageCompare, ListFilters, PaneSizes, PipelineSettings, PullRequestStart,
-    RenderedWidth, ThemePreference, ThreadFilters, ThreadsPanel, TreeSide, WindowPlacement,
+    FrameRateLimit, ImageCompare, ListFilters, PaneSizes, PullRequestStart, RenderedWidth,
+    ThemePreference, ThreadFilters, TreeSide, WindowPlacement,
 };
 pub use settings::{HeaderMode, HeaderModes};
 pub use threads::{Draft, DraftAnchor, DraftRange, ThreadStore};

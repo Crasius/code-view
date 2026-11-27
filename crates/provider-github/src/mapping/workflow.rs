@@ -21,7 +21,7 @@ pub(crate) struct WorkflowJob {
 
 impl WorkflowJob {
     /// The name GitHub shows for the whole job (all matrix legs), as close as it can be known.
-    pub fn display_name(&self) -> &str {
+    pub(crate) fn display_name(&self) -> &str {
         if self.name_template.contains(EXPRESSION_START) { &self.key } else { &self.name_template }
     }
 
@@ -43,7 +43,7 @@ pub(crate) struct WorkflowGraph {
 
 impl WorkflowGraph {
     /// `None` when the file is not YAML or has no `jobs:` mapping.
-    pub fn parse(source: &str) -> Option<Self> {
+    pub(crate) fn parse(source: &str) -> Option<Self> {
         let documents = YamlLoader::load_from_str(source).ok()?;
         let jobs = documents.first()?["jobs"].as_hash()?;
         let jobs = jobs
@@ -65,7 +65,7 @@ impl WorkflowGraph {
     }
 
     /// The workflow job an Actions job named `job_name` ran for: the best name match.
-    pub fn job_for(&self, job_name: &str) -> Option<&WorkflowJob> {
+    pub(crate) fn job_for(&self, job_name: &str) -> Option<&WorkflowJob> {
         self.jobs
             .iter()
             .filter_map(|job| Some((job.match_score(job_name)?, job)))

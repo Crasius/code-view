@@ -6,12 +6,10 @@
 //!   `__tests__/`, `spec/`, `e2e/`, `fixtures/`; names such as `*_test.go`, `*.test.ts`,
 //!   `*.spec.ts`, `test_*.py`, `*Test.java`, `*Tests.cs`, `*_spec.rb`). A test's image stays a
 //!   test: `tests/fixtures/logo.png` is Tests.
-//! - Mockups: images (png jpg jpeg gif webp svg ico bmp avif) and design files (fig sketch xd psd
-//!   ai pen excalidraw drawio) wherever they live, `docs/images/flow.svg` included, and every file
-//!   below a `mockups`, `designs`, `wireframes` or `screenshots` folder or `mocks/ui`.
-//! - Docs: what the category filter calls docs: md mdx rst adoc txt, `README*`, `CHANGELOG*`,
-//!   `LICENSE*`, text below `docs/` or `doc/`. `requirements.txt` and `CMakeLists.txt` are build
-//!   files, so Other.
+//! - Mockups: images and design files ([`MOCKUP_EXTENSIONS`]) wherever they live,
+//!   `docs/images/flow.svg` included, and every file below a [`MOCKUP_DIRS`] folder or `mocks/ui`.
+//! - Docs: what [`FileCategory::classify`] calls docs. `requirements.txt` and `CMakeLists.txt` are
+//!   build files, so Other.
 //! - Code: the filter's code whose extension is a source language ([`SOURCE_EXTENSIONS`], html,
 //!   css, scss and sql included). A file the filter calls code only because nothing else matched
 //!   (no or an unknown extension: `bin/run`, `data.csv`) is Other.

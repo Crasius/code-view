@@ -103,7 +103,7 @@ pub(crate) struct Thread {
 impl Thread {
     /// Platform notices (votes, reviewer and ref updates, status changes) carry a
     /// `CodeReviewThreadType` property or consist of `system` comments.
-    pub fn is_system(&self) -> bool {
+    pub(crate) fn is_system(&self) -> bool {
         let has_thread_type = self
             .properties
             .as_ref()
@@ -115,13 +115,13 @@ impl Thread {
                 .is_some_and(|comment| comment.comment_type.as_deref() == Some("system"))
     }
 
-    pub fn first_comment_id(&self) -> Option<u32> {
+    pub(crate) fn first_comment_id(&self) -> Option<u32> {
         self.comments.iter().filter(|comment| !comment.is_deleted).map(|comment| comment.id).min()
     }
 
     /// Azure DevOps tracked the anchor onto a newer iteration because the code around it changed;
     /// that is the closest signal to "outdated".
-    pub fn is_tracked(&self) -> bool {
+    pub(crate) fn is_tracked(&self) -> bool {
         self.pull_request_thread_context
             .as_ref()
             .is_some_and(|context| context.tracking_criteria.is_some())
@@ -157,7 +157,7 @@ impl Thread {
 
     /// `None` for deleted threads and threads whose comments are all deleted. `iterations` gives
     /// tracked threads the commits they were created on.
-    pub fn to_thread(&self, iterations: &IterationCommits) -> Option<ReviewThread> {
+    pub(crate) fn to_thread(&self, iterations: &IterationCommits) -> Option<ReviewThread> {
         if self.is_deleted {
             return None;
         }
@@ -187,7 +187,7 @@ impl Thread {
 }
 
 impl Comment {
-    pub fn to_comment(&self) -> ThreadComment {
+    pub(crate) fn to_comment(&self) -> ThreadComment {
         ThreadComment {
             id: self.id.to_string(),
             author: self.author.to_user(),

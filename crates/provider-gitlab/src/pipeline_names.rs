@@ -17,8 +17,6 @@ use crate::client::ApiClient;
 use crate::dto::PipelineDto;
 use crate::graphql::{Nodes, SchemaGaps};
 
-/// Pipelines one query names at most: as many as the merge request's pipelines are listed.
-const MAX_NAMED: usize = 50;
 /// Pipelines whose labels a connection keeps (our number; about 100 bytes each).
 const MAX_KNOWN: usize = 4_096;
 
@@ -81,7 +79,7 @@ async fn labels(client: &ApiClient, project_id: u64, iid: u64) -> Result<HashMap
     let variables = json!({
         "project": format!("gid://gitlab/Project/{project_id}"),
         "iid": iid.to_string(),
-        "first": MAX_NAMED,
+        "first": crate::pipelines::MAX_LISTED_PIPELINES,
     });
     Ok(labels_of(client.graphql_fitted(query, variables).await?))
 }

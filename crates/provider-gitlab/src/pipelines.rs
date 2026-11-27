@@ -21,7 +21,7 @@ use crate::pipeline_mapping::{
 };
 use crate::pipeline_names;
 
-const MAX_LISTED_PIPELINES: usize = 50;
+pub(crate) const MAX_LISTED_PIPELINES: usize = 50;
 const MAX_RUNS: usize = 10;
 const MAX_STATUSES: usize = 200;
 const MAX_JOBS: usize = 2_000;

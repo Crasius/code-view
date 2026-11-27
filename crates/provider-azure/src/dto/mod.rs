@@ -45,26 +45,28 @@ pub(crate) struct PropertyValue {
 }
 
 impl PropertyValue {
-    pub fn as_text(&self) -> Option<&str> {
+    pub(crate) fn as_text(&self) -> Option<&str> {
         self.value.as_str()
     }
 }
 
-/// RFC 3339 timestamps. Azure DevOps writes up to seven fractional digits and uses
-/// `0001-01-01T00:00:00` (no offset) for "not set"; optional fields map that to `None`.
+/// RFC 3339 timestamps. Azure DevOps writes up to seven fractional digits. Optional fields read any
+/// value that is not RFC 3339 as `None`; that covers the `0001-01-01T00:00:00` (no offset) Azure
+/// DevOps sends for "not set", and keeps an optional date in an unseen shape from failing the whole
+/// answer.
 pub(crate) mod date {
     use serde::{Deserialize, Deserializer};
     use time::OffsetDateTime;
     use time::format_description::well_known::Rfc3339;
 
-    pub fn required<'de, D: Deserializer<'de>>(
+    pub(crate) fn required<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<OffsetDateTime, D::Error> {
         let text = String::deserialize(deserializer)?;
         OffsetDateTime::parse(&text, &Rfc3339).map_err(serde::de::Error::custom)
     }
 
-    pub fn optional<'de, D: Deserializer<'de>>(
+    pub(crate) fn optional<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Option<OffsetDateTime>, D::Error> {
         let text = Option::<String>::deserialize(deserializer)?;

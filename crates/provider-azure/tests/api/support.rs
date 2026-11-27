@@ -45,6 +45,11 @@ pub fn api(verb: &str, url_path: &str) -> MockBuilder {
         .and(header("authorization", AUTHORIZATION))
 }
 
+/// The path of the pull request [`PR`] of [`REPO`], followed by `suffix`.
+pub fn pr_path(suffix: &str) -> String {
+    format!("/{COLLECTION}/My%20Project/_apis/git/repositories/web/pullrequests/{PR}{suffix}")
+}
+
 pub fn ok(body: Value) -> ResponseTemplate {
     ResponseTemplate::new(200).set_body_json(body)
 }

@@ -8,12 +8,8 @@ use wiremock::matchers::{body_json, body_partial_json, method, path};
 use wiremock::{Mock, MockServer};
 
 use crate::support::{
-    COLLECTION, PR, REPO, TOKEN, api, mount_source_tip, ok, provider, pull_request,
+    COLLECTION, PR, REPO, TOKEN, api, mount_source_tip, ok, pr_path, provider, pull_request,
 };
-
-fn pr_path() -> String {
-    format!("/{COLLECTION}/My%20Project/_apis/git/repositories/web/pullrequests/{PR}")
-}
 
 fn options(head_sha: &str) -> MergeOptions {
     MergeOptions {
@@ -28,7 +24,7 @@ fn options(head_sha: &str) -> MergeOptions {
 #[tokio::test]
 async fn set_auto_complete_names_the_signed_in_user_and_the_completion() {
     let server = MockServer::start().await;
-    api("GET", &pr_path()).respond_with(ok(pull_request(&json!({})))).mount(&server).await;
+    api("GET", &pr_path("")).respond_with(ok(pull_request(&json!({})))).mount(&server).await;
     mount_source_tip(&server, "head-sha", None).await;
     Mock::given(method("GET"))
         .and(path(format!("/{COLLECTION}/_apis/connectionData")))
@@ -38,7 +34,7 @@ async fn set_auto_complete_names_the_signed_in_user_and_the_completion() {
         .expect(1)
         .mount(&server)
         .await;
-    api("PATCH", &pr_path())
+    api("PATCH", &pr_path(""))
         .and(body_json(json!({
             "autoCompleteSetBy": { "id": "me-id" },
             "completionOptions": {
@@ -60,9 +56,9 @@ async fn set_auto_complete_names_the_signed_in_user_and_the_completion() {
 #[tokio::test]
 async fn set_auto_complete_refuses_a_source_branch_pushed_past_the_review() {
     let server = MockServer::start().await;
-    api("GET", &pr_path()).respond_with(ok(pull_request(&json!({})))).mount(&server).await;
+    api("GET", &pr_path("")).respond_with(ok(pull_request(&json!({})))).mount(&server).await;
     mount_source_tip(&server, "pushed-sha", None).await;
-    api("PATCH", &pr_path())
+    api("PATCH", &pr_path(""))
         .respond_with(ok(pull_request(&json!({}))))
         .expect(0)
         .mount(&server)
@@ -77,7 +73,7 @@ async fn set_auto_complete_refuses_a_source_branch_pushed_past_the_review() {
 #[tokio::test]
 async fn cancel_auto_complete_clears_who_set_it() {
     let server = MockServer::start().await;
-    api("PATCH", &pr_path())
+    api("PATCH", &pr_path(""))
         .and(body_partial_json(json!({
             "autoCompleteSetBy": { "id": "00000000-0000-0000-0000-000000000000" }
         })))
@@ -95,7 +91,7 @@ async fn the_detail_names_who_set_auto_complete_and_its_strategy() {
         "autoCompleteSetBy": { "id": "u9", "displayName": "Ada Lovelace" },
         "completionOptions": { "mergeStrategy": "rebase" }
     }));
-    api("GET", &pr_path()).respond_with(ok(set)).mount(&server).await;
+    api("GET", &pr_path("")).respond_with(ok(set)).mount(&server).await;
     let detail =
         provider(&server, &[COLLECTION], Some(TOKEN)).pull_request(REPO, PR).await.unwrap();
     let auto_complete = detail.auto_complete.expect("auto-complete is set");

@@ -195,22 +195,21 @@ impl FileCategory {
             Some((dirs, file_name)) => (dirs, file_name),
             None => ("", lower.as_str()),
         };
-        let mut segments = dirs.split('/').filter(|segment| !segment.is_empty());
         let (stem, extension) = split_extension(file_name);
 
         if is_generated(file_name, dirs) {
             return FileCategory::Generated;
         }
-        if is_test(&mut segments.clone(), stem, original_stem) {
+        if is_test(dirs, stem, original_stem) {
             return FileCategory::Tests;
         }
-        if is_doc(&mut segments.clone(), file_name, stem, extension) {
+        if is_doc(dirs, file_name, stem, extension) {
             return FileCategory::Docs;
         }
         if ASSET_EXTENSIONS.contains(&extension) {
             return FileCategory::Assets;
         }
-        if is_config(&mut segments, file_name, extension) {
+        if is_config(dirs, file_name, extension) {
             return FileCategory::Config;
         }
         FileCategory::Code
@@ -231,12 +230,8 @@ fn is_generated(file_name: &str, dirs: &str) -> bool {
     is_lockfile || has_generated_suffix || is_in_generated_dir
 }
 
-fn is_test<'a>(
-    segments: &mut impl Iterator<Item = &'a str>,
-    stem: &str,
-    original_stem: &str,
-) -> bool {
-    let is_in_test_dir = segments.any(|segment| {
+fn is_test(dirs: &str, stem: &str, original_stem: &str) -> bool {
+    let is_in_test_dir = dirs.split('/').any(|segment| {
         let is_test_dir_name = TEST_DIRS.contains(&segment);
         let has_test_dir_suffix = TEST_DIR_SUFFIXES.iter().any(|suffix| segment.ends_with(suffix));
         is_test_dir_name || has_test_dir_suffix
@@ -256,16 +251,11 @@ fn has_pascal_suffix(stem: &str, suffix: &str) -> bool {
     head.chars().next_back().is_some_and(|last| last.is_ascii_lowercase() || last.is_ascii_digit())
 }
 
-fn is_doc<'a>(
-    segments: &mut impl Iterator<Item = &'a str>,
-    file_name: &str,
-    stem: &str,
-    extension: &str,
-) -> bool {
+fn is_doc(dirs: &str, file_name: &str, stem: &str, extension: &str) -> bool {
     // `CMakeLists.txt` and `requirements.txt` are text files that build the project.
     let has_doc_extension = DOC_EXTENSIONS.contains(&extension) && !is_build_file(file_name);
     let is_doc_stem = DOC_STEMS.contains(&stem);
-    let is_in_doc_dir = segments.any(|segment| DOC_DIRS.contains(&segment));
+    let is_in_doc_dir = dirs.split('/').any(|segment| DOC_DIRS.contains(&segment));
     let is_doc_dir_text = is_in_doc_dir && !CONFIG_EXTENSIONS.contains(&extension);
     has_doc_extension || is_doc_stem || is_doc_dir_text
 }
@@ -275,16 +265,12 @@ fn is_build_file(file_name: &str) -> bool {
         || (file_name.starts_with("requirements") && split_extension(file_name).1 == "txt")
 }
 
-fn is_config<'a>(
-    segments: &mut impl Iterator<Item = &'a str>,
-    file_name: &str,
-    extension: &str,
-) -> bool {
+fn is_config(dirs: &str, file_name: &str, extension: &str) -> bool {
     let has_config_extension = CONFIG_EXTENSIONS.contains(&extension);
     let is_config_file = is_build_file(file_name) || file_name.starts_with("dockerfile");
     let is_ci_file =
         file_name.starts_with(".gitlab-ci") || file_name.starts_with("azure-pipelines");
-    let is_in_config_dir = segments.any(|segment| CONFIG_DIRS.contains(&segment));
+    let is_in_config_dir = dirs.split('/').any(|segment| CONFIG_DIRS.contains(&segment));
     has_config_extension || is_config_file || is_ci_file || is_in_config_dir
 }
 

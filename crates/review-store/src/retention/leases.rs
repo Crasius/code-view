@@ -43,7 +43,7 @@ impl<K: Hash + Eq + Clone> Leases<K> {
         Lease { key, held: self.held.clone() }
     }
 
-    pub fn is_leased<Q: Hash + Eq + ?Sized>(&self, key: &Q) -> bool
+    pub(crate) fn is_leased<Q: Hash + Eq + ?Sized>(&self, key: &Q) -> bool
     where
         K: Borrow<Q>,
     {

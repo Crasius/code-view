@@ -77,7 +77,7 @@ pub(crate) struct Projects {
 }
 
 impl Projects {
-    pub async fn get(&self, client: &ApiClient, repo: &str) -> Result<ProjectDto> {
+    pub(crate) async fn get(&self, client: &ApiClient, repo: &str) -> Result<ProjectDto> {
         let fresh = self
             .answers()
             .get(repo)

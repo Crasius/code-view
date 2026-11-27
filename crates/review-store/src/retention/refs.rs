@@ -15,7 +15,7 @@ const REVIEW_REFS: &str = "refs/review/";
     clippy::disallowed_methods,
     reason = "runs on the retention worker thread, which may wait on git"
 )]
-pub fn list(git_dir: &Path) -> io::Result<Vec<String>> {
+pub(crate) fn list(git_dir: &Path) -> io::Result<Vec<String>> {
     let output =
         git(git_dir).args(["for-each-ref", "--format=%(refname)", REVIEW_REFS]).output()?;
     if !output.status.success() {
@@ -29,7 +29,7 @@ pub fn list(git_dir: &Path) -> io::Result<Vec<String>> {
 }
 
 /// Deletes `names` in one transaction: all go or none (another git command holding a lock).
-pub fn delete(git_dir: &Path, names: &[String]) -> io::Result<()> {
+pub(crate) fn delete(git_dir: &Path, names: &[String]) -> io::Result<()> {
     let names: Vec<&String> = names.iter().filter(|name| name.starts_with(REVIEW_REFS)).collect();
     if names.is_empty() {
         return Ok(());

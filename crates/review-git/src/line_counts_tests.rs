@@ -5,7 +5,7 @@ use super::*;
 use crate::test_repo::{Scratch, file_remote, git, numbered_lines, write};
 use crate::{DiffOptions, GitMirror};
 
-/// Files changed in the fixture besides the [`MANY`] modified ones.
+/// Files the fixture's `feature` branch modifies under `src/many/`: enough for several chunks.
 const MANY: usize = 70;
 
 /// An origin whose `feature` branch changes [`MANY`] files (several chunks) and has every other
@@ -65,8 +65,8 @@ async fn mirror(scratch: &Scratch, name: &str, origin: &Path, commits: [&str; 2]
     mirror
 }
 
-/// What the file list was before counts streamed: one `diff-tree -M --numstat` that downloads
-/// every blob, then the same offline with `-w` for the whitespace-only marks.
+/// The reference list: one `diff-tree -M --numstat` that downloads every blob, then the same
+/// offline with `-w` for the whitespace-only marks.
 async fn one_shot(mirror: &GitMirror, base: &str, head: &str) -> Vec<ChangedFile> {
     let git = GitCommand::new(mirror.git_dir(), None);
     let output =

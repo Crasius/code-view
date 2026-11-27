@@ -7,7 +7,7 @@ use std::time::SystemTime;
 use super::policy::Entry;
 
 /// Every file in `dir` and in its connection folders, with size and last change.
-pub fn scan(dir: &Path) -> Vec<Entry> {
+pub(crate) fn scan(dir: &Path) -> Vec<Entry> {
     let mut entries = Vec::new();
     let Ok(children) = std::fs::read_dir(dir) else {
         return entries;
@@ -35,7 +35,7 @@ fn file_entry(path: &Path) -> Option<Entry> {
 }
 
 /// Removes connection folders that became empty; folders with files stay.
-pub fn remove_empty_folders(dir: &Path) {
+pub(crate) fn remove_empty_folders(dir: &Path) {
     let Ok(children) = std::fs::read_dir(dir) else { return };
     for child in children.flatten() {
         if child.file_type().is_ok_and(|file_type| file_type.is_dir()) {

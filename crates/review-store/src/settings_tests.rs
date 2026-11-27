@@ -6,17 +6,18 @@ use std::path::PathBuf;
 
 use review_core::{FileCategory, MergeStrategy, ProviderKind, PullRequestScope, StateFilter};
 
+use crate::assistant::settings::MiniChatCorner;
 use crate::checkouts::{
     CheckoutPlace, CheckoutSettings, OpenByDefault, OpenWith, RememberedCheckout, TerminalChoice,
     WhenFinished,
 };
+use crate::settings::{PipelineSettings, ThreadsPanel};
 use crate::test_support::TestDir;
 use crate::{
     AppSettings, AssistantSettings, CheckFilter, CommentEditor, CommentEditors, DiffLayout,
     Favorites, FileFilters, FilesStart, FrameRateLimit, HeaderMode, HeaderModes, ImageCompare,
-    ListFilters, MergePreferences, MiniChatCorner, PaneSizes, PipelineSettings, PullRequestStart,
-    RenderedWidth, RepositorySections, SectionCard, SectionKey, ThemePreference, ThreadFilters,
-    ThreadsPanel, TreeSide, WindowPlacement,
+    ListFilters, MergePreferences, PaneSizes, PullRequestStart, RenderedWidth, RepositorySections,
+    SectionCard, SectionKey, ThemePreference, ThreadFilters, TreeSide, WindowPlacement,
 };
 use review_core::{AgentKind, ModelChoice};
 

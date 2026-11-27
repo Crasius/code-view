@@ -11,7 +11,7 @@ use super::settings::OpenWith;
 use crate::atomic_file;
 
 /// Log lines a record keeps; older ones fall out.
-pub const MAX_LOG_LINES: usize = 200;
+pub(crate) const MAX_LOG_LINES: usize = 200;
 
 /// What kind of folder a checkout went to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,7 +60,7 @@ pub struct CheckoutRecord {
 }
 
 impl CheckoutRecord {
-    pub fn is_for(&self, connection_id: &str, repository_key: &str, number: u64) -> bool {
+    pub(crate) fn is_for(&self, connection_id: &str, repository_key: &str, number: u64) -> bool {
         self.connection_id == connection_id
             && self.repository_key == repository_key
             && self.number == number
