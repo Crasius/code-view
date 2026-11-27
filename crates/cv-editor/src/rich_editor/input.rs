@@ -10,7 +10,7 @@ use egui::{Pos2, Ui};
 pub use self::clipboard::is_url;
 use self::clipboard::{copy, paste};
 pub use self::keys::take_commands;
-use super::caret;
+use super::caret::{self, Direction};
 use super::edit::rules;
 use super::edit::structure::{self, ListStyle};
 use super::edit::{self as edit_ops};
@@ -372,36 +372,27 @@ fn move_caret(state: &mut State, frame: &Frame<'_>, motion: Motion, extend: bool
     let target = match motion {
         Motion::Left if !extend && !selection.is_empty() => from,
         Motion::Right if !extend && !selection.is_empty() => to,
-        Motion::Left => caret::step(doc, head, false),
-        Motion::Right => caret::step(doc, head, true),
+        Motion::Left => caret::step(doc, head, Direction::Backward),
+        Motion::Right => caret::step(doc, head, Direction::Forward),
         Motion::WordLeft => caret::word_left(doc, head),
         Motion::WordRight => caret::word_right(doc, head),
         Motion::Up | Motion::Down => {
-            let (pos, column) = caret::vertical(
-                layout,
-                ctx,
-                doc,
-                frame.origin,
-                head,
-                state.column,
-                motion == Motion::Down,
-            );
+            let direction =
+                if motion == Motion::Down { Direction::Forward } else { Direction::Backward };
+            let (pos, column) =
+                caret::vertical(layout, ctx, doc, frame.origin, head, state.column, direction);
             state.column = Some(column);
             pos
         }
-        Motion::RowStart => caret::row_edge(layout, ctx, doc, head, false),
-        Motion::RowEnd => caret::row_edge(layout, ctx, doc, head, true),
+        Motion::RowStart => caret::row_edge(layout, ctx, doc, head, Direction::Backward),
+        Motion::RowEnd => caret::row_edge(layout, ctx, doc, head, Direction::Forward),
         Motion::DocStart => Pos::new(0, 0),
         Motion::DocEnd => doc.end(),
-        Motion::PageUp | Motion::PageDown => caret::page(
-            layout,
-            ctx,
-            doc,
-            frame.origin,
-            head,
-            frame.page_height,
-            motion == Motion::PageDown,
-        ),
+        Motion::PageUp | Motion::PageDown => {
+            let direction =
+                if motion == Motion::PageDown { Direction::Forward } else { Direction::Backward };
+            caret::page(layout, ctx, doc, frame.origin, head, frame.page_height, direction)
+        }
     };
     if !keeps_column {
         state.column = None;

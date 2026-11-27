@@ -176,8 +176,11 @@ fn ime_event(state: &mut State, event: ImeEvent, commands: &mut Vec<Command>) {
             state.selection = Selection { anchor: from, head: state.doc.clamp(to) };
             commands.push(Command::Backspace);
         }
-        #[expect(deprecated, reason = "egui still sends `Enabled`; it needs no action")]
-        ImeEvent::Enabled | ImeEvent::Disabled => clear_preedit(state),
+        #[expect(
+            deprecated,
+            reason = "the enum still has the deprecated variants; egui-winit 0.37 never sends them"
+        )]
+        ImeEvent::Enabled | ImeEvent::Disabled => {}
     }
 }
 
