@@ -293,7 +293,7 @@ impl Posts {
         }
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn insert_for_tests(&mut self, key: &str, state: PostState, body: &str) {
         let kind = PostKind::Reply {
             thread_id: key.strip_prefix(super::drafts::REPLY_PREFIX).unwrap_or_default().to_owned(),

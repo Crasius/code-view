@@ -47,8 +47,7 @@ pub use self::drafts::{GENERAL_KEY, new_thread_key};
 pub use self::event::{Jump, ThreadEvent};
 pub use self::links::thread_url;
 pub use self::panel::{
-    HIDE_HINT, PanelEvent, PanelInputs, SHOW_HINT, ToggleCounts, is_listed, panel_toggle,
-    show as show_panel, toggle_counts,
+    HIDE_HINT, PanelEvent, PanelInputs, SHOW_HINT, panel_toggle, show as show_panel, toggle_counts,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use self::posts::Delivery;
@@ -705,7 +704,7 @@ impl ThreadsUi {
     pub fn set_me(&mut self, me: UserIdentity) {
         self.me = Load::Ready(me);
     }
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn set_post_state(&mut self, key: &str, state: PostState, body: &str) {
         self.posts.insert_for_tests(key, state, body);
     }

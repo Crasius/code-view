@@ -62,8 +62,8 @@ use self::filters::{STAR_GAP, narrows, overview_scope};
 use self::list_rows::{EmptyOffer, FavoritesLane, ListAction, ListInput, RowFilter, SIDE_MARGIN};
 use self::pauses::Pauses;
 use self::queries::ConnectionQueries;
+pub use self::queries::LIST_INTERVAL;
 pub(crate) use self::queries::cache_stamp;
-pub use self::queries::{ANONYMOUS_LIST_INTERVAL, LIST_INTERVAL};
 use self::statuses::RowStatuses;
 pub use self::toolbar::{FAVORITES_LANE, GROUP_BY_REPOSITORY};
 use self::toolbar::{

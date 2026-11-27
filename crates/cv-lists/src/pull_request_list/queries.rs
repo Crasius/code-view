@@ -40,7 +40,7 @@ pub(super) const PAGE_SIZE: usize = 100;
 pub const LIST_INTERVAL: Duration = Duration::from_secs(120);
 /// The same without a token. Our number, the pipelines' anonymous one: GitHub allows 60 anonymous
 /// requests an hour, which the pull request page's probe shares.
-pub const ANONYMOUS_LIST_INTERVAL: Duration = ANONYMOUS_PIPELINE_INTERVAL;
+pub(crate) const ANONYMOUS_LIST_INTERVAL: Duration = ANONYMOUS_PIPELINE_INTERVAL;
 
 /// One connection's listing, its answer and the rows on their way out (see the module doc).
 pub(crate) struct ConnectionResult {

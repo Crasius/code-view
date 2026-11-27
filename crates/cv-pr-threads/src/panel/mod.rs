@@ -233,7 +233,11 @@ fn is_mine(thread: &ReviewThread, me: Option<&str>) -> bool {
 
 /// Whether the panel lists `thread` under `filters`: never a system notice or a thread without
 /// comments; with no status filter on, both statuses.
-pub fn is_listed(thread: &ReviewThread, filters: ThreadFilters, threads: &ThreadsUi) -> bool {
+pub(crate) fn is_listed(
+    thread: &ReviewThread,
+    filters: ThreadFilters,
+    threads: &ThreadsUi,
+) -> bool {
     let any_status = !filters.active && !filters.resolved;
     let shows_status = match thread.status {
         ThreadStatus::Active => filters.active || any_status,
