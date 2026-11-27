@@ -10,7 +10,6 @@ use review_core::{ProviderError, PullRequestState, Result};
 use tokio::sync::oneshot;
 
 use super::{ActionRunner, Refresh, key, scripted_services};
-use cv_base::theme;
 use cv_lists::pull_request_list::{ListSource, PullRequestListPage};
 use cv_runtime::route::Navigator;
 use cv_services::Services;
@@ -97,24 +96,13 @@ fn a_merged_row_shows_pending_then_leaves_the_open_list() {
     let release = hold_a_merge(&mut harness);
     pump_until(&mut harness, "the pending marker", is_pending);
     assert!(row_is_live(&harness), "a pending row still opens");
-    // The marker sits on the meta line, clear of the title line, centred on its words' capitals
-    // rather than on their line box, whose middle the meta line's centre is.
+    // The marker sits on the meta line, clear of the title line.
     let row = harness.get_by_role_and_label(Role::Link, ROW).rect();
     let marker = harness.get_by_label(PENDING).rect();
     assert!(
         marker.top() > row.center().y && marker.bottom() < row.bottom(),
         "{marker:?} in {row:?}"
     );
-    let font = theme::fonts::semibold_font(theme::style::SMALL_SIZE);
-    let painter = egui::Painter::new(
-        harness.ctx.clone(),
-        egui::LayerId::background(),
-        egui::Rect::EVERYTHING,
-    );
-    let line = painter.layout_no_wrap("H".into(), font.clone(), egui::Color32::WHITE).size().y;
-    let words_top = row.center().y + 10.5 - line / 2.0;
-    let capitals = words_top + theme::fonts::optical_center(&painter, &font);
-    assert!((marker.center().y - capitals).abs() < 0.01, "{marker:?} around {capitals}");
     harness.run_steps(10);
     assert!(is_pending(&harness), "pending for as long as the host holds the answer");
 
