@@ -146,6 +146,27 @@ impl CheckoutRecords {
         self.save()
     }
 
+    /// Replaces every log line of every record with what `rewrite` makes of it and saves when
+    /// that changed a line; whether it saved. When the save fails, the records keep the rewritten
+    /// lines all the same.
+    pub fn rewrite_log_lines(
+        &mut self,
+        mut rewrite: impl FnMut(&str) -> String,
+    ) -> io::Result<bool> {
+        let mut is_changed = false;
+        for line in self.records.iter_mut().flat_map(|record| record.log.iter_mut()) {
+            let rewritten = rewrite(line);
+            if rewritten != *line {
+                *line = rewritten;
+                is_changed = true;
+            }
+        }
+        if is_changed {
+            self.save()?;
+        }
+        Ok(is_changed)
+    }
+
     /// How many records name a worktree of the clone in `clone`.
     pub fn worktrees_of(&self, clone: &Path) -> usize {
         self.records

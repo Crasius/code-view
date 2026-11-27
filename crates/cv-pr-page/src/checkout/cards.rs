@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use egui::{Color32, RichText, Ui};
-use review_git::checkout::{Blocked, Survey};
+use review_git::checkout::{Blocked, Changes, Survey};
 use review_store::checkouts::{CheckoutRecord, OpenWith};
 
 use super::choose::folder_name;
@@ -33,7 +33,7 @@ fn body(ui: &mut Ui, text: &str) {
 }
 
 /// Paths, file lines or commits in the code font, the first [`MAX_LISTED`] of them.
-fn listing(ui: &mut Ui, lines: &[String]) {
+fn listing(ui: &mut Ui, lines: &[impl AsRef<str>]) {
     let palette = theme::palette(ui.ctx());
     let frame = egui::Frame::new()
         .fill(palette.surface_subtle)
@@ -46,7 +46,8 @@ fn listing(ui: &mut Ui, lines: &[String]) {
         for line in lines.iter().take(MAX_LISTED) {
             ui.add(
                 egui::Label::new(
-                    RichText::new(redact(line)).font(theme::fonts::code_font(style::SMALL_SIZE)),
+                    RichText::new(redact(line.as_ref()))
+                        .font(theme::fonts::code_font(style::SMALL_SIZE)),
                 )
                 .truncate(),
             );
@@ -76,7 +77,7 @@ fn two_buttons(ui: &mut Ui, primary: (&str, Act), secondary: (&str, Act)) -> Opt
 }
 
 /// The clone has uncommitted changes, so switching it is refused.
-pub(super) fn dirty(ui: &mut Ui, clone: &Path, files: &[String]) -> Option<Act> {
+pub(super) fn dirty(ui: &mut Ui, clone: &Path, files: &[impl AsRef<str>]) -> Option<Act> {
     let palette = theme::palette(ui.ctx());
     let count = files.len();
     let title = format!(
@@ -208,7 +209,7 @@ fn git_failed(ui: &mut Ui, view: &View<'_>, job: &Job, title: &str, message: &st
     head(ui, "FAILED", title, palette.error);
     let progress = job.progress();
     progress::steps(ui, &progress, std::time::Instant::now());
-    listing(ui, &message.lines().map(str::to_owned).collect::<Vec<_>>());
+    listing(ui, &message.lines().collect::<Vec<_>>());
     body(
         ui,
         &format!(
@@ -252,7 +253,7 @@ pub(super) fn remove(
                 ),
             );
             listing(ui, &[record.path.display().to_string()]);
-            danger_or_keep(ui, "Remove worktree", Act::Remove { force: false })
+            danger_or_keep(ui, "Remove worktree", Act::Remove(Changes::Keep))
         }
         Some(RemovalState::Removing) => {
             ui.horizontal(|ui| {
@@ -270,12 +271,12 @@ pub(super) fn remove(
             head(ui, "WORKTREE HAS CHANGES", &title, palette.error);
             body(ui, "The worktree has files that are not committed. Removing it deletes them.");
             listing(ui, files);
-            danger_or_keep(ui, "Remove anyway", Act::Remove { force: true })
+            danger_or_keep(ui, "Remove anyway", Act::Remove(Changes::Discard))
         }
         Some(RemovalState::Failed(message)) => {
             head(ui, "NOT REMOVED", "The worktree could not be removed", palette.error);
-            listing(ui, &message.lines().map(str::to_owned).collect::<Vec<_>>());
-            danger_or_keep(ui, "Try again", Act::Remove { force: false })
+            listing(ui, &message.lines().collect::<Vec<_>>());
+            danger_or_keep(ui, "Try again", Act::Remove(Changes::Keep))
         }
     }
 }

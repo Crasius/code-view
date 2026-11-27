@@ -12,14 +12,15 @@ use std::sync::{Arc, Mutex, PoisonError};
 use review_core::short_sha;
 use review_git::GitMirror;
 use review_git::checkout::{
-    self, Blocked, CheckoutError, Event, LocalRepo, Removal, UpdateOutcome, UpdateRequest, Updated,
+    self, Blocked, Changes, CheckoutError, Event, LocalRepo, OwnBranch, Removal, UpdateOutcome,
+    UpdateRequest, Updated,
 };
 use review_store::checkouts::CheckoutRecord;
 
 use cv_runtime::background::{Background, TASK_LOST, Task, TaskPoll};
 use cv_runtime::route::PullRequestKey;
 use cv_widgets::numbers::counted;
-use cv_widgets::progress_log::{ProgressLog, timestamp};
+use cv_widgets::progress_log::{ProgressLog, redact, timestamp};
 
 /// How a checkout stands against the pull request's head the page last saw.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -133,20 +134,23 @@ impl Upkeep {
         self.updates.insert(key.clone(), task);
     }
 
-    /// Removes the checkout's worktree; `force` is the second yes for one with changes.
+    /// Removes the checkout's worktree; `changes` is [`Changes::Discard`] after the second yes for
+    /// one with changes.
     pub(super) fn remove(
         &mut self,
         record: &CheckoutRecord,
         key: &PullRequestKey,
-        force: bool,
+        changes: Changes,
         background: &Background,
     ) {
         let (clone, path) = (record.clone.clone(), record.path.clone());
         let own = record.is_own_branch.then(|| (record.branch.clone(), record.head.clone()));
         self.removal_states.insert(key.clone(), RemovalState::Removing);
         let task = background.spawn(async move {
-            let own_branch = own.as_ref().map(|(branch, tip)| (branch.as_str(), tip.as_str()));
-            checkout::remove_worktree(&clone, &path, force, own_branch).await
+            let own_branch = own
+                .as_ref()
+                .map(|(name, tip)| OwnBranch { name: name.as_str(), tip: tip.as_str() });
+            checkout::remove_worktree(&clone, &path, changes, own_branch).await
         });
         self.removals.insert(key.clone(), task);
     }
@@ -235,7 +239,10 @@ impl Upkeep {
                 Change::Updated { key, head: result.head, log }
             }
             UpdateOutcome::Blocked(blocked) => {
-                log.push(format!("{now}  Not updated: {}", reason(&blocked, result.behind)));
+                log.push(redact(&format!(
+                    "{now}  Not updated: {}",
+                    reason(&blocked, result.behind)
+                )));
                 let status =
                     Status { behind: result.behind, blocked: Some(blocked), is_updating: false };
                 self.statuses.insert(key.clone(), status);
@@ -251,7 +258,7 @@ async fn behind(request: &UpdateRequest) -> usize {
     let Ok(Some(tip)) = repo.branch_tip(&request.branch).await else {
         return 0;
     };
-    repo.divergence(&tip, &request.head).await.map_or(0, |divergence| divergence.behind)
+    repo.behind(&tip, &request.head).await.unwrap_or(0)
 }
 
 /// Why a checkout was not updated, for its log and the menu's Update item.
@@ -274,4 +281,39 @@ pub fn reason(blocked: &Blocked, behind: usize) -> String {
 
 pub fn plural(count: usize, word: &str) -> String {
     if count == 1 { word.to_owned() } else { format!("{word}s") }
+}
+
+#[cfg(test)]
+mod tests {
+    use review_git::checkout::{Blocked, UpdateOutcome};
+
+    use super::{Change, UpdateResult, Upkeep};
+    use cv_runtime::route::PullRequestKey;
+
+    /// Regression: the "Not updated" line carries git's message, and the Log panel no longer hides
+    /// a token in it on screen, so it has to reach the log redacted.
+    #[test]
+    fn a_refused_update_is_stored_redacted() {
+        let key = PullRequestKey {
+            connection_id: "gh".into(),
+            repository_key: "acme/app".into(),
+            number: 7,
+        };
+        let refused = "fatal: unable to access https://ci:ghp_secret123@github.com/acme/app";
+        let result = UpdateResult {
+            outcome: Ok(UpdateOutcome::Blocked(Blocked::Refused(refused.into()))),
+            head: "def".into(),
+            behind: 2,
+            log: Vec::new(),
+        };
+        let change = Upkeep::default().updated(key, Some(result));
+        let Change::Stayed { log, .. } = change else {
+            panic!("the checkout stays when git refuses");
+        };
+        let [line] = log.as_slice() else {
+            panic!("one line for the refusal: {log:?}");
+        };
+        assert!(line.contains("Not updated: git refused"), "{line}");
+        assert!(!line.contains("ghp_secret123"), "{line}");
+    }
 }

@@ -42,7 +42,8 @@ pub(super) fn show(
         return cards::checked_out(ui, path);
     }
     if choice.place == CheckoutPlace::Clone && !survey.state.is_clean() {
-        return cards::dirty(ui, &survey.clone, &survey.state.tracked_changes());
+        let files: Vec<&str> = survey.state.tracked_changes().collect();
+        return cards::dirty(ui, &survey.clone, &files);
     }
     let mut act = None;
     heading(ui, view);
@@ -78,7 +79,7 @@ pub(super) fn show(
         });
     }
     let clone_name = folder_name(&survey.clone);
-    let state = match (&survey.state.branch, survey.state.tracked_changes().len()) {
+    let state = match (&survey.state.branch, survey.state.tracked_changes().count()) {
         (Some(branch), 0) => format!("on {branch}, clean"),
         (Some(branch), changed) => {
             format!("on {branch}, {}", counted(changed, "changed file", "changed files"))

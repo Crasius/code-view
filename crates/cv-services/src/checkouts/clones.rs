@@ -78,16 +78,10 @@ impl Clones {
     }
 
     /// Looks for the clone of `key`'s repository and at it.
-    pub(super) fn look_up(
-        &mut self,
-        key: &PullRequestKey,
-        repository: (String, String),
-        query: Query,
-        background: &Background,
-    ) {
-        let (settings_key, name) = repository;
-        let known = self.repositories.entry(settings_key).or_insert_with(|| KnownRepository {
-            name,
+    pub(super) fn look_up(&mut self, key: &PullRequestKey, query: Query, background: &Background) {
+        let entry = self.repositories.entry(super::settings_key(key));
+        let known = entry.or_insert_with(|| KnownRepository {
+            name: key.repository_key.clone(),
             clone_url: query.clone_url.clone(),
             found: None,
         });
