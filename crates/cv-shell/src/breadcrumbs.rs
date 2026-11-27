@@ -1,3 +1,9 @@
+//! Breadcrumb trail: where you are and the way you came ([`Trail`]), every level above it one
+//! click away. Going back and forward is the title bar's arrows, Alt+Left/Right or the mouse's
+//! side buttons. The title bar gives it its room; a trail longer than that keeps its first and last
+//! crumbs and the page's own route, cuts long names and folds the levels between into a "…" crumb
+//! whose list leads to each of them ([`crumb_fit`]).
+
 use std::sync::Arc;
 
 use egui::text::{LayoutJob, TextWrapping};
@@ -71,11 +77,11 @@ struct PageTrail {
 }
 
 fn trail_id() -> Id {
-    Id::unique("top_bar_page_trail")
+    Id::unique("breadcrumbs.page_trail")
 }
 
 fn click_id() -> Id {
-    Id::unique("top_bar_page_trail_click")
+    Id::unique("breadcrumbs.page_trail_click")
 }
 
 /// The page on `route` names levels below it, each with the tooltip of its link (the pipelines
@@ -109,13 +115,7 @@ pub fn take_trail_click(ctx: &Context) -> Option<usize> {
     mailbox::take::<usize>(ctx, click_id())
 }
 
-/// Breadcrumb trail: where you are and the way you came ([`Trail`]), every level above it one
-/// click away. Going back and forward is the title bar's arrows, Alt+Left/Right or the mouse's
-/// side buttons. The title bar gives it its room; a trail longer than that keeps its first and last
-/// crumbs and the page's own route, cuts long names and folds the levels between into a "…" crumb
-/// whose list leads to each of them ([`crumb_fit`]).
-///
-/// Measured and placed only when the trail, the page's levels, the connections, the scale or the
+/// The trail as shown in the title bar. Measured and placed only when the trail, the page's levels, the connections, the scale or the
 /// room change; a frame without changes paints the cached galleys at the cached positions.
 #[derive(Default)]
 pub struct Breadcrumbs {
@@ -432,11 +432,11 @@ fn place(ctx: &Context, model: &Model, budget: f32) -> Placement {
 }
 
 fn crumb_id(index: usize) -> Id {
-    Id::unique("title_bar_crumb").with(index)
+    Id::unique("breadcrumbs.crumb").with(index)
 }
 
 fn overflow_id() -> Id {
-    Id::unique("title_bar_crumb_overflow")
+    Id::unique("breadcrumbs.crumb_overflow")
 }
 
 /// Goes where a crumb leads: its route, or a level of the page (reported by [`take_trail_click`]).

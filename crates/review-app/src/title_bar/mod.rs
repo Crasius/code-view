@@ -21,7 +21,7 @@ use cv_runtime::history::History;
 use cv_runtime::route::{Navigator, Route};
 use cv_runtime::trail::Trail;
 use cv_services::Services;
-use cv_shell::top_bar;
+use cv_shell::breadcrumbs;
 
 pub use self::jump::JumpAction;
 use self::jump::JumpBox;
@@ -44,7 +44,7 @@ pub struct Navigation<'a> {
 
 pub struct TitleBar {
     is_integrated: bool,
-    crumbs: top_bar::Breadcrumbs,
+    crumbs: breadcrumbs::Breadcrumbs,
     jump: JumpBox,
     /// The window theme last sent, so the native frame (border, system menu) follows the app's.
     window_theme: Option<egui::SystemTheme>,
@@ -54,7 +54,7 @@ impl TitleBar {
     pub fn new(creation: &eframe::CreationContext<'_>) -> Self {
         Self {
             is_integrated: platform::integrate_title_bar(creation),
-            crumbs: top_bar::Breadcrumbs::default(),
+            crumbs: breadcrumbs::Breadcrumbs::default(),
             jump: JumpBox::default(),
             window_theme: None,
         }
@@ -67,7 +67,7 @@ impl TitleBar {
 
     /// The breadcrumbs as last shown.
     #[cfg(test)]
-    pub fn crumbs(&self) -> &top_bar::Breadcrumbs {
+    pub fn crumbs(&self) -> &breadcrumbs::Breadcrumbs {
         &self.crumbs
     }
 
@@ -88,11 +88,10 @@ impl TitleBar {
         self.follow_theme(ui.ctx(), services);
         let palette = theme::palette(ui.ctx());
         let height = if self.is_integrated { CAPTION_HEIGHT } else { BAR_HEIGHT };
-        let id = if self.is_integrated { "title_bar" } else { "top_bar" };
         // Integrated, the window border is the system's: only the hairline below the bar is ours.
         let stroke =
             if self.is_integrated { Stroke::NONE } else { Stroke::new(1.0, palette.border) };
-        egui::Panel::top(id)
+        egui::Panel::top("title_bar")
             .exact_size(height)
             .resizable(false)
             .frame(egui::Frame::new().fill(palette.surface).stroke(stroke))

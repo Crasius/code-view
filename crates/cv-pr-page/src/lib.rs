@@ -53,7 +53,7 @@ use cv_runtime::links::pull_request_link;
 use cv_runtime::load::Live;
 use cv_runtime::route::{Navigator, PullRequestKey, PullRequestTab as Tab, Route};
 use cv_services::Services;
-use cv_shell::{focus_mode, top_bar};
+use cv_shell::{breadcrumbs, focus_mode};
 use cv_widgets::states::{self, Action};
 use cv_widgets::{provider_icon, skeleton};
 use review_core::http::Api;
@@ -372,7 +372,7 @@ impl TabParts<'_> {
 
     /// The trail is the shown tab's: its levels lead within that tab.
     fn follow_trail_click(&mut self, ctx: &egui::Context, tab: &mut Tab) {
-        let Some(level) = top_bar::take_trail_click(ctx) else {
+        let Some(level) = breadcrumbs::take_trail_click(ctx) else {
             return;
         };
         match tab {
@@ -458,7 +458,7 @@ impl TabParts<'_> {
             }
             Tab::Overview | Tab::Files | Tab::Commits => ("", Vec::new()),
         };
-        top_bar::publish_trail(ctx, &Route::PullRequest(key.clone()), root_hint, trail);
+        breadcrumbs::publish_trail(ctx, &Route::PullRequest(key.clone()), root_hint, trail);
     }
 }
 
