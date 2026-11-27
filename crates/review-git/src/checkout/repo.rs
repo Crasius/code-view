@@ -4,7 +4,6 @@
 // RS-DONT-04: parses git's output.
 #![warn(clippy::string_slice, clippy::indexing_slicing)]
 
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use review_core::{ProviderError, Result};
@@ -137,9 +136,8 @@ impl LocalRepo {
     /// `4be19a0  wip: try shorter ttl` for each commit of `tip` that `base` lacks, newest first.
     pub(crate) async fn commits_missing_from(&self, tip: &str, base: &str) -> Result<Vec<String>> {
         let range = format!("{base}..{tip}");
-        let args: [&OsStr; 4] =
-            ["log".as_ref(), "--no-color".as_ref(), "--format=%h  %s".as_ref(), range.as_ref()];
-        let output = self.git().run(args).await?;
+        let output =
+            self.git().run(["log", "--no-color", "--format=%h  %s", range.as_str()]).await?;
         Ok(String::from_utf8_lossy(&output).lines().map(str::to_owned).collect())
     }
 }

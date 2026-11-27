@@ -33,8 +33,8 @@ pub(crate) struct ScannedMirror {
     pub stamp: Option<MirrorStamp>,
 }
 
-/// Every mirror with its size and last use. Mirrors from before stamps existed use the time git
-/// last changed their folder (each open rewrites the config there).
+/// Every mirror with its size and last use. A mirror without a stamp uses the time its folder last
+/// changed: a fetch or a config write, not an open.
 pub(crate) fn scan(mirrors_dir: &Path) -> Vec<ScannedMirror> {
     let Ok(children) = std::fs::read_dir(mirrors_dir) else {
         return Vec::new();
