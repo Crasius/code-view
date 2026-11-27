@@ -17,7 +17,7 @@ const MAX_DETAILS_CHARS: usize = 4_000;
 /// What the log pane says about an item without a log, or with one the platform does not serve
 /// yet.
 #[derive(Debug, PartialEq, Eq)]
-pub struct NoLog {
+pub(crate) struct NoLog {
     icon: &'static str,
     title: String,
     detail: String,
@@ -26,7 +26,7 @@ pub struct NoLog {
 }
 
 impl NoLog {
-    pub fn of(status: RunStatus, name: &str, platform: ProviderKind) -> Self {
+    pub(crate) fn of(status: RunStatus, name: &str, platform: ProviderKind) -> Self {
         let platform_name = platform.label();
         let (icon, title, detail) = match status {
             RunStatus::Queued if platform == ProviderKind::AzureDevOps => (
@@ -77,7 +77,7 @@ impl NoLog {
 
     /// The platform serves the log only once its job finished, and `owner` (the job) still runs.
     /// A step of it is named: its log is part of the job's.
-    pub fn after_finish(
+    pub(crate) fn after_finish(
         target: &LogTarget,
         owner: Option<&PipelineJob>,
         platform: ProviderKind,
@@ -103,7 +103,7 @@ impl NoLog {
     }
 
     /// The item's state, and the way to watch or open it on the platform.
-    pub fn show(&self, ui: &mut Ui, target: &LogTarget, platform: ProviderKind) {
+    pub(crate) fn show(&self, ui: &mut Ui, target: &LogTarget, platform: ProviderKind) {
         let label = if self.watch_live {
             format!("Watch live {}", states::on_platform(platform))
         } else {
@@ -124,7 +124,7 @@ impl NoLog {
 }
 
 /// The log is asked for or on its way: how much arrived, over skeleton lines.
-pub fn downloading(ui: &mut Ui, title: &str, received: u64) {
+pub(crate) fn downloading(ui: &mut Ui, title: &str, received: u64) {
     let text = if received == 0 {
         format!("Requesting the log of {title}…")
     } else {
@@ -134,12 +134,12 @@ pub fn downloading(ui: &mut Ui, title: &str, received: u64) {
 }
 
 /// The job just finished and the platform has not published its log yet: it is asked for again.
-pub fn publishing(ui: &mut Ui, title: &str, platform: ProviderKind) {
+pub(crate) fn publishing(ui: &mut Ui, title: &str, platform: ProviderKind) {
     waiting(ui, &format!("{} is publishing the log of {title}…", platform.label()));
 }
 
 /// Something on its way to the log pane, `text` saying what: a spinner over skeleton lines.
-pub fn waiting(ui: &mut Ui, text: &str) {
+pub(crate) fn waiting(ui: &mut Ui, text: &str) {
     states::loading(ui, text);
     ui.add_space(8.0);
     skeleton::code_lines(ui, 30, 18.0, false);
@@ -154,7 +154,7 @@ enum FailedLog<'a> {
 
 /// A download that failed: the cause in a few words with the ways out; the platform's raw
 /// answer only behind "Details". True when the user asked to try again.
-pub fn failed(
+pub(crate) fn failed(
     ui: &mut Ui,
     cause: &str,
     details: Option<&str>,
@@ -191,7 +191,7 @@ pub fn failed(
 
 /// A failed download in a few words with what to do, and the platform's raw answer for "Details".
 /// The answer itself (an XML or JSON document) is never the message.
-pub fn failure(
+pub(crate) fn failure(
     error: &ProviderError,
     title: &str,
     platform: ProviderKind,

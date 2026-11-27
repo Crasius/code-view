@@ -338,7 +338,7 @@ impl ThreadsUi {
     }
 
     /// The signed-in user, once known. Asking starts the one request that finds out.
-    pub fn me(&mut self) -> Option<&UserIdentity> {
+    pub(crate) fn me(&mut self) -> Option<&UserIdentity> {
         self.request_me();
         self.me.ready()
     }
@@ -352,20 +352,20 @@ impl ThreadsUi {
         self.me.ready()
     }
 
-    pub fn is_collapsed(&self, thread: &ReviewThread) -> bool {
+    pub(crate) fn is_collapsed(&self, thread: &ReviewThread) -> bool {
         self.collapsed.get(&thread.id).copied().unwrap_or(thread.status == ThreadStatus::Resolved)
     }
 
-    pub fn set_collapsed(&mut self, thread_id: &str, is_collapsed: bool) {
+    pub(crate) fn set_collapsed(&mut self, thread_id: &str, is_collapsed: bool) {
         self.collapsed.insert(thread_id.to_owned(), is_collapsed);
     }
 
-    pub fn toggle_collapsed(&mut self, thread: &ReviewThread) {
+    pub(crate) fn toggle_collapsed(&mut self, thread: &ReviewThread) {
         self.set_collapsed(&thread.id, !self.is_collapsed(thread));
     }
 
     /// Comments of other people the user has not seen yet; `None` when there are none.
-    pub fn new_comments(&self, thread: &ReviewThread) -> Option<NewComments> {
+    pub(crate) fn new_comments(&self, thread: &ReviewThread) -> Option<NewComments> {
         let me = self.known_me().map(|me| me.id.as_str());
         NewComments::of(thread, reading::news(&self.store, me, thread)?)
     }
@@ -377,7 +377,7 @@ impl ThreadsUi {
     }
 
     /// Marks every comment of `thread` as read now.
-    pub fn mark_read(&mut self, thread: &ReviewThread) {
+    pub(crate) fn mark_read(&mut self, thread: &ReviewThread) {
         if let Some(newest) = newest(thread) {
             self.store.mark_seen(&thread.id, newest);
         }
@@ -545,7 +545,7 @@ impl ThreadsUi {
 
     /// The reply to `thread_id` while it is on its way: the platform's copy once it answered,
     /// else the comment as it will come back. `None` when none is on its way, or it failed.
-    pub fn pending_reply(&mut self, thread_id: &str) -> Option<review_core::ThreadComment> {
+    pub(crate) fn pending_reply(&mut self, thread_id: &str) -> Option<review_core::ThreadComment> {
         let key = drafts::reply_key(thread_id);
         if !self.posts.state(&key).is_some_and(PostState::is_pending) {
             return None;
@@ -698,7 +698,7 @@ impl ThreadsUi {
     }
     #[cfg(any(test, feature = "test-support"))]
     /// The first visit was at `unix`: later comments are new.
-    pub fn visited_at(&mut self, unix: i64) {
+    pub(crate) fn visited_at(&mut self, unix: i64) {
         self.store.start_visit(unix, std::iter::empty());
     }
     #[cfg(any(test, feature = "test-support"))]
@@ -706,7 +706,7 @@ impl ThreadsUi {
         self.me = Load::Ready(me);
     }
     #[cfg(any(test, feature = "test-support"))]
-    pub fn set_post_state(&mut self, key: &str, state: PostState, body: &str) {
+    pub(crate) fn set_post_state(&mut self, key: &str, state: PostState, body: &str) {
         self.posts.insert_for_tests(key, state, body);
     }
     #[cfg(any(test, feature = "test-support"))]
@@ -767,7 +767,7 @@ impl ThreadsUi {
     }
     #[cfg(any(test, feature = "test-support"))]
     /// The code of `thread`'s excerpt loaded: `diff` and `text` of its file at ("base", "head").
-    pub fn insert_code_for_tests(&mut self, thread: &ReviewThread, diff: &str, text: &str) {
+    pub(crate) fn insert_code_for_tests(&mut self, thread: &ReviewThread, diff: &str, text: &str) {
         self.code.insert_for_tests(thread, "base", "head", diff, text);
     }
     #[cfg(any(test, feature = "test-support"))]

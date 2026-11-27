@@ -11,7 +11,7 @@ use super::ListSource;
 use super::toolbar::{choice, picker};
 
 /// Between a repository's title and its favorite star.
-pub const STAR_GAP: f32 = style::SPACE_XS;
+pub(crate) const STAR_GAP: f32 = style::SPACE_XS;
 
 /// The state tabs of a repository's list.
 const REPOSITORY_TABS: [(StateFilter, &str); 4] = [
@@ -42,7 +42,7 @@ fn repository_tab_labels() -> Vec<String> {
 }
 
 /// True when the overview's filters show less than their defaults (every role, active, all repositories).
-pub fn narrows(filters: &ListFilters) -> bool {
+pub(crate) fn narrows(filters: &ListFilters) -> bool {
     let defaults = ListFilters::default();
     overview_scope(filters.scope) != defaults.scope
         || filters.state != defaults.state
@@ -50,7 +50,7 @@ pub fn narrows(filters: &ListFilters) -> bool {
 }
 
 /// The saved role, or "All" where it is none of the overview's roles.
-pub fn overview_scope(saved: PullRequestScope) -> PullRequestScope {
+pub(crate) fn overview_scope(saved: PullRequestScope) -> PullRequestScope {
     if ROLE_SCOPES.iter().any(|segment| segment.value == saved) {
         saved
     } else {
@@ -59,7 +59,7 @@ pub fn overview_scope(saved: PullRequestScope) -> PullRequestScope {
 }
 
 /// The filters' width without the overview's repository picker: what [`show`] lays out besides it.
-pub fn fixed_width(ui: &egui::Ui, source: &ListSource) -> f32 {
+pub(crate) fn fixed_width(ui: &egui::Ui, source: &ListSource) -> f32 {
     match source {
         // The favorite star sits between the title and the tabs.
         ListSource::Repository { .. } => {
@@ -74,7 +74,7 @@ pub fn fixed_width(ui: &egui::Ui, source: &ListSource) -> f32 {
 /// The role, state and repository pickers, the repository one `repository_width` wide and its
 /// choices the `known` repositories (connection id, connection name, repository key); true
 /// when the user changed one. The pickers cut a long choice with an ellipsis instead of growing.
-pub fn show(
+pub(crate) fn show(
     ui: &mut egui::Ui,
     source: &ListSource,
     filters: &mut ListFilters,

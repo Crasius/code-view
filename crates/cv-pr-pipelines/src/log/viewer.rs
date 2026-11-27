@@ -55,7 +55,7 @@ enum Lines {
 }
 
 #[derive(Default)]
-pub struct LogViewer {
+pub(crate) struct LogViewer {
     target: Option<LogTarget>,
     /// The target's download, and fetching it again while its job runs.
     fetch: LogFetch,
@@ -72,13 +72,13 @@ pub struct LogViewer {
 }
 
 impl LogViewer {
-    pub fn target(&self) -> Option<&LogTarget> {
+    pub(crate) fn target(&self) -> Option<&LogTarget> {
         self.target.as_ref()
     }
 
     /// Lets go of the log and its download once its page is no longer shown: a finished job's log
     /// opens again from disk, a running job's with one request.
-    pub fn release_unless(&mut self, is_shown: bool, services: &Services) {
+    pub(crate) fn release_unless(&mut self, is_shown: bool, services: &Services) {
         if !is_shown && self.target.is_some() {
             self.fetch.reset(services);
             *self = Self::default();
@@ -86,7 +86,7 @@ impl LogViewer {
     }
 
     /// Shows `target`; its log downloads once the platform serves it (see [`Self::show`]).
-    pub fn open(&mut self, target: LogTarget, services: &Services) {
+    pub(crate) fn open(&mut self, target: LogTarget, services: &Services) {
         self.fetch.reset(services);
         self.target = Some(target);
         self.search.reset();
@@ -100,7 +100,7 @@ impl LogViewer {
     /// `shown` is the target's item and `owner` the job (or task) its log belongs to, as the stages
     /// loaded last report them: whether the platform serves the log yet depends on the owner's
     /// state, what the pane says about an item without a log on the item's.
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut Ui,
         shown: Option<&PipelineJob>,
@@ -448,7 +448,7 @@ impl LogViewer {
     /// state on the left, where dragging moves the window; the search, the first error, copy and
     /// download and the way out on the right, then what `extra` adds (the attempt switcher). The
     /// log's keys stay the same.
-    pub fn focus_strip(
+    pub(crate) fn focus_strip(
         &mut self,
         ui: &mut Ui,
         shown: Option<&PipelineJob>,

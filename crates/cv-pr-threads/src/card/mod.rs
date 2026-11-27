@@ -24,9 +24,9 @@ use review_core::provider::CommentActions;
 use review_core::{ReviewThread, ThreadComment, ThreadStatus};
 
 use self::collapsed::collapsed;
-pub use self::collapsed::excerpt;
+pub(crate) use self::collapsed::excerpt;
 use self::comment::{comment_row, comments};
-pub use self::reply::{FailureAction, failure_row};
+pub(crate) use self::reply::{FailureAction, failure_row};
 use self::reply::{ReplyBox, reply_area};
 use super::posts::PostState;
 use super::suggestion;
@@ -43,7 +43,7 @@ const NEW_DOT: f32 = 8.0;
 /// How strongly a comment on its way is shown until the platform has it.
 const SENDING_OPACITY: f32 = 0.7;
 /// Where the time of a comment on its way goes until the platform has it.
-pub const POSTING: &str = "Posting…";
+pub(crate) const POSTING: &str = "Posting…";
 
 pub struct CardOptions {
     /// Show the file and line as a link to the code, and the code itself under the header: the
@@ -388,7 +388,7 @@ fn outdated_pill(ui: &mut Ui, palette: &Palette) {
 
 /// New comments in a thread: from other people, newer than what the user has seen.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NewComments {
+pub(crate) struct NewComments {
     /// Index of the first new comment.
     pub first: usize,
     pub count: usize,
@@ -398,7 +398,10 @@ pub struct NewComments {
 
 impl NewComments {
     /// The comments of `thread` that `is_new` tells; `None` when there are none.
-    pub fn of(thread: &ReviewThread, is_new: impl Fn(&ThreadComment) -> bool) -> Option<Self> {
+    pub(crate) fn of(
+        thread: &ReviewThread,
+        is_new: impl Fn(&ThreadComment) -> bool,
+    ) -> Option<Self> {
         let first = thread.comments.iter().position(&is_new)?;
         let mut authors: Vec<String> = Vec::new();
         let mut count = 0;
@@ -413,7 +416,7 @@ impl NewComments {
     }
 
     /// The whole thread is new (its first comment is new).
-    pub fn is_new_thread(&self) -> bool {
+    pub(crate) fn is_new_thread(&self) -> bool {
         self.first == 0
     }
 }
@@ -498,7 +501,7 @@ fn outdated_note(ui: &mut Ui, thread: &ReviewThread, threads: &ThreadsUi) -> boo
 }
 
 /// The action that opens the version an outdated thread was written on, wherever it is offered.
-pub const SHOW_ORIGIN: &str = "Show original version";
+pub(crate) const SHOW_ORIGIN: &str = "Show original version";
 const ORIGIN_HINT: &str =
     "The file as it was when the comment was written, with the comment at its line";
 

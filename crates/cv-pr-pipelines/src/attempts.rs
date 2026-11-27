@@ -19,13 +19,13 @@ const OPTION_HEIGHT: f32 = style::ROW_TWO_LINE - 8.0;
 
 /// Earlier attempts loaded on demand (Azure DevOps) so far, by attempt target.
 #[derive(Default, Clone, Copy)]
-pub struct Known<'a> {
+pub(crate) struct Known<'a> {
     pub loaded: &'a [(&'a str, &'a PipelineJob)],
 }
 
 impl<'a> Known<'a> {
     /// The attempt's node: reported with the run, or loaded since.
-    pub fn job(&self, attempt: &'a PipelineAttempt) -> Option<&'a PipelineJob> {
+    pub(crate) fn job(&self, attempt: &'a PipelineAttempt) -> Option<&'a PipelineJob> {
         attempt.job().or_else(|| {
             let target = attempt.lazy_target()?;
             self.loaded.iter().find(|(loaded, _)| *loaded == target).map(|(_, job)| *job)
@@ -35,7 +35,7 @@ impl<'a> Known<'a> {
 
 /// One attempt as the switcher lists it.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Attempt {
+pub(crate) struct Attempt {
     pub number: u32,
     /// `None` while an attempt listed by id only is not loaded.
     pub status: Option<RunStatus>,
@@ -61,7 +61,7 @@ fn status_icon(status: Option<RunStatus>, palette: &Palette) -> (&'static str, C
 }
 
 /// Every attempt of `node`, newest first.
-pub fn list(node: &PipelineJob, known: Known<'_>) -> Vec<Attempt> {
+pub(crate) fn list(node: &PipelineJob, known: Known<'_>) -> Vec<Attempt> {
     let latest = Attempt {
         number: node.attempt_number(),
         status: Some(node.status),
@@ -84,7 +84,7 @@ pub fn list(node: &PipelineJob, known: Known<'_>) -> Vec<Attempt> {
 
 /// The node whose attempts a stage card shows: the stage itself, or the one job of a stage that
 /// stands for its job (GitHub and GitLab group jobs into stages that are never retried as such).
-pub fn retried(stage: &PipelineJob) -> Option<&PipelineJob> {
+pub(crate) fn retried(stage: &PipelineJob) -> Option<&PipelineJob> {
     if !stage.previous_attempts.is_empty() {
         return Some(stage);
     }
@@ -96,7 +96,7 @@ pub fn retried(stage: &PipelineJob) -> Option<&PipelineJob> {
 
 /// "passed on retry", "failed after 2 attempts": a retried node's outcome in a few words; `None`
 /// for a node that ran once.
-pub fn outcome(node: &PipelineJob) -> Option<String> {
+pub(crate) fn outcome(node: &PipelineJob) -> Option<String> {
     let count = node.attempt_count();
     if count < 2 {
         return None;
@@ -113,7 +113,7 @@ pub fn outcome(node: &PipelineJob) -> Option<String> {
 }
 
 /// The tooltip of a badge: every attempt's outcome, and how to switch.
-pub fn tooltip(node: &PipelineJob, known: Known<'_>) -> String {
+pub(crate) fn tooltip(node: &PipelineJob, known: Known<'_>) -> String {
     let lines: Vec<String> = list(node, known)
         .iter()
         .rev()
@@ -143,7 +143,7 @@ fn badge_text(node: &PipelineJob, is_compact: bool) -> String {
 }
 
 /// Width of the badge, for the space a row keeps for it.
-pub fn badge_width(ui: &Ui, node: &PipelineJob, is_compact: bool) -> f32 {
+pub(crate) fn badge_width(ui: &Ui, node: &PipelineJob, is_compact: bool) -> f32 {
     let font = FontId::proportional(style::SMALL_SIZE);
     let text = elide::text_width(ui, &badge_text(node, is_compact), &font);
     BADGE_PADDING * 2.0 + ICON_SIZE + style::SPACE_XS + text
@@ -151,7 +151,7 @@ pub fn badge_width(ui: &Ui, node: &PipelineJob, is_compact: bool) -> f32 {
 
 /// One node's attempt badge as a row or card line paints it.
 #[derive(Clone, Copy)]
-pub struct Badge<'a> {
+pub(crate) struct Badge<'a> {
     pub node: &'a PipelineJob,
     /// Compact badges ("2") fit job rows, full ones ("2 attempts") card lines.
     pub is_compact: bool,
@@ -161,7 +161,12 @@ pub struct Badge<'a> {
 }
 
 /// Paints the badge with its right edge at `right_center`; returns its rect.
-pub fn paint_badge(ui: &Ui, painter: &Painter, right_center: Pos2, badge: Badge<'_>) -> Rect {
+pub(crate) fn paint_badge(
+    ui: &Ui,
+    painter: &Painter,
+    right_center: Pos2,
+    badge: Badge<'_>,
+) -> Rect {
     let Badge { node, is_compact, known, fade } = badge;
     let palette = theme::palette(ui.ctx());
     let width = badge_width(ui, node, is_compact);
@@ -197,7 +202,7 @@ pub fn paint_badge(ui: &Ui, painter: &Painter, right_center: Pos2, badge: Badge<
 
 /// A clickable badge that opens the attempt list; returns the attempt picked. `id` must be
 /// stable for the badge (it keys the popup).
-pub fn badge_button(
+pub(crate) fn badge_button(
     ui: &mut Ui,
     id: Id,
     painter: &Painter,
@@ -225,7 +230,7 @@ pub fn badge_button(
 
 /// The switcher above a log: "Attempt 2 of 2" with the shown attempt's outcome; returns the
 /// attempt picked. `shown` is the attempt on screen; `height` that of the bar it sits in.
-pub fn switcher(
+pub(crate) fn switcher(
     ui: &mut Ui,
     node: &PipelineJob,
     shown: u32,

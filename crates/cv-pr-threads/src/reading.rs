@@ -10,7 +10,7 @@ use review_store::ThreadStore;
 
 /// Which comments of `thread` are news to the user `me`: other people's, newer than what the user
 /// has seen. `None` when none can be (a platform notice, or no visit yet).
-pub fn news<'a>(
+pub(crate) fn news<'a>(
     store: &ThreadStore,
     me: Option<&'a str>,
     thread: &ReviewThread,
@@ -35,7 +35,7 @@ struct OnScreen {
 }
 
 #[derive(Default)]
-pub struct Reading {
+pub(crate) struct Reading {
     on_screen: HashMap<String, OnScreen>,
     /// The cards in view this frame, with the newest comment each showed.
     painted: HashMap<String, i64>,
@@ -43,7 +43,7 @@ pub struct Reading {
 
 impl Reading {
     /// The card of `thread` is in view this frame.
-    pub fn note(&mut self, thread: &ReviewThread) {
+    pub(crate) fn note(&mut self, thread: &ReviewThread) {
         if let Some(newest) = super::newest(thread) {
             self.painted.insert(thread.id.clone(), newest);
         }
@@ -51,7 +51,7 @@ impl Reading {
 
     /// Cards that left the view after the user had time to read them are read up to what they
     /// showed.
-    pub fn track(&mut self, now: f64, store: &mut ThreadStore) {
+    pub(crate) fn track(&mut self, now: f64, store: &mut ThreadStore) {
         let painted = std::mem::take(&mut self.painted);
         let left: Vec<(String, OnScreen)> = self
             .on_screen

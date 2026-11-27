@@ -29,7 +29,7 @@ struct Row<'a> {
     stage: &'a PipelineJob,
 }
 
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     stages: &[PipelineJob],
     platform: ProviderKind,

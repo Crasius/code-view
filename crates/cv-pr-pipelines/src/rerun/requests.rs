@@ -69,30 +69,30 @@ enum FailureChoice<'a> {
 }
 
 #[derive(Default)]
-pub struct RerunRequests {
+pub(crate) struct RerunRequests {
     running: Load<RerunOutcome>,
     failure: Option<RerunFailure>,
 }
 
 impl RerunRequests {
-    pub fn is_busy(&self) -> bool {
+    pub(crate) fn is_busy(&self) -> bool {
         self.running.is_loading()
     }
 
     /// Whether the last rerun that did not start belongs to the run with `run_id`.
-    pub fn has_failed(&self, run_id: &str) -> bool {
+    pub(crate) fn has_failed(&self, run_id: &str) -> bool {
         self.failure.as_ref().is_some_and(|failure| failure.run_id == run_id)
     }
 
     /// The run whose last rerun did not start, among `runs`.
-    pub fn failed_run<'a>(&self, runs: &'a [PipelineRun]) -> Option<&'a PipelineRun> {
+    pub(crate) fn failed_run<'a>(&self, runs: &'a [PipelineRun]) -> Option<&'a PipelineRun> {
         let failure = self.failure.as_ref()?;
         runs.iter().find(|run| run.id == failure.run_id)
     }
 
     /// Starts the reruns one after another; the first that does not start stops the rest and
     /// stays on screen with its ways out, Retry included, which goes on with the rest.
-    pub fn start(
+    pub(crate) fn start(
         &mut self,
         reruns: Vec<(String, RerunAction)>,
         session: &PullRequestSession,
@@ -123,7 +123,7 @@ impl RerunRequests {
 
     /// A finished rerun request: confirm it and reload so the new attempt shows up, or keep the
     /// failure on screen with its ways out.
-    pub fn poll(&mut self, session: &mut PullRequestSession, services: &mut Services) {
+    pub(crate) fn poll(&mut self, session: &mut PullRequestSession, services: &mut Services) {
         let Some(result) = self.running.take_finished() else {
             return;
         };
@@ -159,7 +159,7 @@ impl RerunRequests {
 
     /// The last rerun of `run` that did not start, with Retry, the token fix and the platform
     /// page.
-    pub fn show_failure(
+    pub(crate) fn show_failure(
         &mut self,
         ui: &mut Ui,
         run: &PipelineRun,
@@ -204,7 +204,7 @@ impl RerunRequests {
 
     /// In focus mode a rerun's failure floats under the strip's right end, with all its actions:
     /// the log below keeps its place, whether the failure comes or goes.
-    pub fn show_focus_failure(
+    pub(crate) fn show_focus_failure(
         &mut self,
         ui: &Ui,
         run: &PipelineRun,

@@ -8,11 +8,11 @@ use review_core::{RunStatus, RunningLogs};
 
 /// How long after its job finished a missing log counts as still on its way: the platform may
 /// publish the file a moment after it reports the job done.
-pub const PUBLISH_GRACE: Duration = Duration::from_secs(60);
+pub(crate) const PUBLISH_GRACE: Duration = Duration::from_secs(60);
 
 /// What the log pane does for the open item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Availability {
+pub(crate) enum Availability {
     /// No log to fetch: the item has none (yet), or has not started. The pane explains its state.
     Absent,
     /// The platform serves the log only once its job finished, and it still runs: the pane says
@@ -24,7 +24,7 @@ pub enum Availability {
 
 /// `has_log` is whether the item has a log id; `owner` the state of the job (or task) the log
 /// belongs to, as the stages loaded last report it.
-pub fn of(running_logs: RunningLogs, has_log: bool, owner: RunStatus) -> Availability {
+pub(crate) fn of(running_logs: RunningLogs, has_log: bool, owner: RunStatus) -> Availability {
     match (has_log, owner) {
         // GitLab lists a log for a pending job; there is nothing in it before the job starts.
         (false, _) | (true, RunStatus::Queued) => Availability::Absent,
@@ -38,7 +38,7 @@ pub fn of(running_logs: RunningLogs, has_log: bool, owner: RunStatus) -> Availab
 
 /// What a fetch that the platform answered with an error status means.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Missing {
+pub(crate) enum Missing {
     /// The platform serves the log once the job finished, which it has not (the stages were
     /// older than the answer): the same state as [`Availability::AfterFinish`].
     AfterFinish,
@@ -51,7 +51,7 @@ pub enum Missing {
 }
 
 /// `finished_ago` is the time since the job finished, when it did.
-pub fn missing(
+pub(crate) fn missing(
     running_logs: RunningLogs,
     owner: RunStatus,
     status: Option<u16>,

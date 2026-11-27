@@ -20,7 +20,7 @@ pub(super) struct Column {
 
 impl Column {
     /// The rect of a card whose top is at `top`.
-    pub fn card(self, top: f32, group: &Group<'_>) -> Rect {
+    pub(crate) fn card(self, top: f32, group: &Group<'_>) -> Rect {
         Rect::from_min_size(
             pos2(self.origin.x + SIDE_MARGIN, top),
             vec2(self.width - SIDE_MARGIN * 2.0 - style::SCROLL_GUTTER, group.height()),
@@ -28,7 +28,7 @@ impl Column {
     }
 
     /// Where the focusable row at `place` lies, drawn or not.
-    pub fn row(self, groups: &[Group<'_>], place: usize) -> Option<Rect> {
+    pub(crate) fn row(self, groups: &[Group<'_>], place: usize) -> Option<Rect> {
         let mut top = self.origin.y + GROUP_GAP;
         let mut before = 0;
         for group in groups {
@@ -72,7 +72,7 @@ pub(super) struct Columns {
 }
 
 impl Columns {
-    pub fn for_row(rect: Rect) -> Self {
+    pub(crate) fn for_row(rect: Rect) -> Self {
         let files_right = rect.right() - FILES_INSET;
         let files = (files_right - FILES_BUTTON, files_right);
         let mut right = files.0 - FILES_GAP;

@@ -9,10 +9,10 @@ use cv_services::Services;
 use review_core::http::Api;
 
 #[derive(Debug, Default)]
-pub struct Pauses(BTreeSet<(String, Api)>);
+pub(crate) struct Pauses(BTreeSet<(String, Api)>);
 
 impl Pauses {
-    pub fn of(services: &Services) -> Self {
+    pub(crate) fn of(services: &Services) -> Self {
         Self(
             services
                 .rate_limited()
@@ -23,12 +23,12 @@ impl Pauses {
     }
 
     /// The connection's requests of `api` wait.
-    pub fn holds(&self, connection_id: &str, api: Api) -> bool {
+    pub(crate) fn holds(&self, connection_id: &str, api: Api) -> bool {
         self.0.iter().any(|(id, held)| id == connection_id && *held == api)
     }
 
     /// Some of the connection's requests wait, of either kind.
-    pub fn holds_any(&self, connection_id: &str) -> bool {
+    pub(crate) fn holds_any(&self, connection_id: &str) -> bool {
         self.0.iter().any(|(id, _)| id == connection_id)
     }
 

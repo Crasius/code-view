@@ -5,13 +5,13 @@ use review_core::{PipelineJob, RunStatus};
 use super::job_tree::{self, LogTarget};
 
 /// The node with `id` anywhere in the tree.
-pub fn find<'a>(nodes: &'a [PipelineJob], id: &str) -> Option<&'a PipelineJob> {
+pub(crate) fn find<'a>(nodes: &'a [PipelineJob], id: &str) -> Option<&'a PipelineJob> {
     nodes.iter().find_map(|node| if node.id == id { Some(node) } else { find(&node.children, id) })
 }
 
 /// The node whose own log is `log_id`: the job (or task) a log belongs to, also when a step
 /// without a log of its own shows it.
-pub fn log_owner<'a>(nodes: &'a [PipelineJob], log_id: &str) -> Option<&'a PipelineJob> {
+pub(crate) fn log_owner<'a>(nodes: &'a [PipelineJob], log_id: &str) -> Option<&'a PipelineJob> {
     nodes.iter().find_map(|node| {
         if node.log_id.as_deref() == Some(log_id) {
             Some(node)
@@ -22,19 +22,19 @@ pub fn log_owner<'a>(nodes: &'a [PipelineJob], log_id: &str) -> Option<&'a Pipel
 }
 
 /// A stage's jobs; a stage without jobs of its own is its own job.
-pub fn jobs_of(stage: &PipelineJob) -> &[PipelineJob] {
+pub(crate) fn jobs_of(stage: &PipelineJob) -> &[PipelineJob] {
     if stage.children.is_empty() { std::slice::from_ref(stage) } else { &stage.children }
 }
 
 /// The job (a stage's child, or a stage without children) that holds the node with `id`.
-pub fn owning_job<'a>(stages: &'a [PipelineJob], id: &str) -> Option<&'a PipelineJob> {
+pub(crate) fn owning_job<'a>(stages: &'a [PipelineJob], id: &str) -> Option<&'a PipelineJob> {
     stages.iter().find_map(|stage| {
         jobs_of(stage).iter().find(|job| find(std::slice::from_ref(*job), id).is_some())
     })
 }
 
 /// Puts `replacement` where the node with `id` is; false when there is none.
-pub fn replace_node(nodes: &mut [PipelineJob], id: &str, replacement: PipelineJob) -> bool {
+pub(crate) fn replace_node(nodes: &mut [PipelineJob], id: &str, replacement: PipelineJob) -> bool {
     let Some(node) = find_mut(nodes, id) else {
         return false;
     };
@@ -55,7 +55,7 @@ fn find_mut<'a>(nodes: &'a mut [PipelineJob], id: &str) -> Option<&'a mut Pipeli
 }
 
 /// The nearest retried node on the way to `id`: the item itself, its job or its stage.
-pub fn retried_ancestor<'a>(nodes: &'a [PipelineJob], id: &str) -> Option<&'a PipelineJob> {
+pub(crate) fn retried_ancestor<'a>(nodes: &'a [PipelineJob], id: &str) -> Option<&'a PipelineJob> {
     let node = nodes.iter().find(|node| find(std::slice::from_ref(*node), id).is_some())?;
     let retried = (!node.previous_attempts.is_empty()).then_some(node);
     if node.id == id {
@@ -66,7 +66,7 @@ pub fn retried_ancestor<'a>(nodes: &'a [PipelineJob], id: &str) -> Option<&'a Pi
 
 /// The log "Logs" opens: the run's first failed item with a log (in a stage that still runs
 /// too), else the first log of a failed stage, else its first log.
-pub fn first_log(stages: &[PipelineJob]) -> Option<LogTarget> {
+pub(crate) fn first_log(stages: &[PipelineJob]) -> Option<LogTarget> {
     stages
         .iter()
         .find_map(job_tree::failed_target)

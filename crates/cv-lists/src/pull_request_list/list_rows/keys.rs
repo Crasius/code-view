@@ -19,17 +19,17 @@ pub(super) struct RowKeys {
 }
 
 impl RowKeys {
-    pub fn load(ctx: &Context, id: Id) -> Self {
+    pub(crate) fn load(ctx: &Context, id: Id) -> Self {
         ctx.data(|data| data.get_temp(id)).unwrap_or_default()
     }
 
-    pub fn store(self, ctx: &Context, id: Id) {
+    pub(crate) fn store(self, ctx: &Context, id: Id) {
         ctx.data_mut(|data| data.insert_temp(id, self));
     }
 
     /// Reads J and K outside text fields; `rows` counts the rows that can take the focus, asked
     /// only when a key was pressed.
-    pub fn read(&mut self, ui: &Ui, rows: impl FnOnce() -> usize) {
+    pub(crate) fn read(&mut self, ui: &Ui, rows: impl FnOnce() -> usize) {
         if ui.ctx().text_edit_focused() {
             return;
         }
@@ -51,12 +51,12 @@ impl RowKeys {
     }
 
     /// The row to scroll into view.
-    pub fn target(&self) -> Option<usize> {
+    pub(crate) fn target(&self) -> Option<usize> {
         self.target
     }
 
     /// Row `place` was drawn as widget `id`: it takes the focus when it is the target.
-    pub fn drawn(&mut self, ui: &Ui, place: usize, id: Id) {
+    pub(crate) fn drawn(&mut self, ui: &Ui, place: usize, id: Id) {
         if self.target == Some(place) {
             ui.memory_mut(|memory| memory.request_focus(id));
             self.target = None;

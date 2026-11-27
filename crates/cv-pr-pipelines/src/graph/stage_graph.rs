@@ -17,7 +17,7 @@ const OVERSCAN: f32 = 96.0;
 const DOT_RADIUS: f32 = 3.0;
 
 #[derive(Clone, Copy)]
-pub struct GraphInput<'a> {
+pub(crate) struct GraphInput<'a> {
     pub stages: &'a [PipelineJob],
     pub expanded: &'a HashSet<String>,
     pub highlighted: Option<&'a str>,
@@ -27,7 +27,7 @@ pub struct GraphInput<'a> {
 }
 
 /// Returns the clicked stage's index and what was clicked.
-pub fn show(ui: &mut Ui, input: GraphInput<'_>) -> Option<(usize, CardAction)> {
+pub(crate) fn show(ui: &mut Ui, input: GraphInput<'_>) -> Option<(usize, CardAction)> {
     let palette = theme::palette(ui.ctx());
     let openings: Vec<f32> = input
         .stages
@@ -100,6 +100,6 @@ fn paint_connectors(
 }
 
 /// Stages to show expanded when a run opens: every stage with jobs, so each card lists them.
-pub fn initially_expanded(stages: &[PipelineJob]) -> HashSet<String> {
+pub(crate) fn initially_expanded(stages: &[PipelineJob]) -> HashSet<String> {
     stages.iter().filter(|stage| !stage.children.is_empty()).map(|stage| stage.id.clone()).collect()
 }

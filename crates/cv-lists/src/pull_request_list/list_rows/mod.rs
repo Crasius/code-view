@@ -46,7 +46,7 @@ use review_store::{Favorites, RepositorySections, SectionKey};
 
 use self::cards::sections::{self, Section};
 use self::column::{Column, Columns};
-pub use self::filter::RowFilter;
+pub(crate) use self::filter::RowFilter;
 pub(super) use self::filter::matches_search;
 use self::item::{ItemRow, RepositoryName, RowPick};
 use self::keys::RowKeys;
@@ -114,7 +114,7 @@ fn paint_chip(
 }
 
 /// What a click in the list asks the page to do.
-pub enum ListAction {
+pub(crate) enum ListAction {
     Retry,
     /// Back to the overview's default filters: every role, active, all repositories.
     ClearFilters,
@@ -141,7 +141,7 @@ pub enum ListAction {
 
 /// What an empty card offers besides its note, so it never ends the way.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum EmptyOffer {
+pub(crate) enum EmptyOffer {
     Nothing,
     /// The filters narrow the view: [`ListAction::ClearFilters`].
     ClearFilters,
@@ -230,7 +230,7 @@ struct Drawn<'a> {
 }
 
 /// Per-connection state the cards show besides their rows.
-pub struct Hosts<'a> {
+pub(crate) struct Hosts<'a> {
     /// Overview groups shown closed (ignored for a repository list, which has no collapsible header).
     pub collapsed: &'a BTreeSet<String>,
     /// The requests a host's rate limit holds back.
@@ -263,7 +263,7 @@ impl Hosts<'_> {
 
 /// The pull request rows painted this frame: their lines may be counted and their checks asked for.
 #[derive(Default)]
-pub struct Painted {
+pub(crate) struct Painted {
     pub statuses: Vec<StatusRow>,
     /// The row a click opened this frame: its page paints the header from it until the detail is in.
     pub opened: Option<(PullRequestKey, PullRequestSummary)>,
@@ -280,7 +280,7 @@ pub struct Painted {
 }
 
 /// The overview's Favorites card.
-pub struct FavoritesLane<'a> {
+pub(crate) struct FavoritesLane<'a> {
     pub queries: &'a FavoriteQueries,
     /// Starred repositories of connections that exist, which the card lists.
     pub repositories: usize,
@@ -301,7 +301,7 @@ pub(super) const FAVORITES_KEY: &str = "\u{0}favorites";
 /// What the list shows: the connections' cards with their state, the overview's Favorites card
 /// above them (`lane`), and the way forward an empty card shows when no filter of its own hid
 /// its rows (`offer`).
-pub struct ListInput<'a> {
+pub(crate) struct ListInput<'a> {
     pub queries: &'a ConnectionQueries,
     pub lane: Option<&'a FavoritesLane<'a>>,
     pub hosts: &'a Hosts<'a>,
@@ -311,7 +311,7 @@ pub struct ListInput<'a> {
 
 /// The cards of `input`; the pull request rows painted this frame go into `visible`, so their
 /// lines can be counted and their checks asked for.
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     input: &ListInput<'_>,
     navigator: &mut Navigator,

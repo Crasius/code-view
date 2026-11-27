@@ -50,10 +50,10 @@ const INDICATOR_THICKNESS: f32 = 4.0;
 const INDICATOR_INSET: f32 = 3.0;
 const INDICATOR_MIN_LENGTH: f32 = 32.0;
 
-pub const MIN_ZOOM: f32 = 0.25;
-pub const MAX_ZOOM: f32 = 2.0;
+pub(crate) const MIN_ZOOM: f32 = 0.25;
+pub(crate) const MAX_ZOOM: f32 = 2.0;
 /// The levels the zoom buttons and Ctrl+Plus/Minus step through, as in a browser.
-pub const ZOOM_STEPS: [f32; 12] =
+pub(crate) const ZOOM_STEPS: [f32; 12] =
     [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
 
 #[derive(Clone, Copy)]
@@ -141,7 +141,7 @@ struct ZoomGlide {
 
 /// What a zoom control or shortcut asks for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Command {
+pub(crate) enum Command {
     /// Whole steps of [`ZOOM_STEPS`], negative to zoom out.
     Step(i32),
     /// Back to 100 %.
@@ -180,7 +180,7 @@ impl Bounds {
 }
 
 /// One frame of the canvas, between [`begin`] and [`Pan::finish`].
-pub struct Pan {
+pub(crate) struct Pan {
     /// Draws on the canvas, in canvas coordinates: one point is one point of content at 100 %.
     pub ui: Ui,
     /// The canvas on screen.
@@ -194,7 +194,7 @@ pub struct Pan {
 }
 
 impl Pan {
-    pub fn zoom(&self) -> f32 {
+    pub(crate) fn zoom(&self) -> f32 {
         self.zoom
     }
 
@@ -205,7 +205,7 @@ impl Pan {
 
     /// Paints the position indicators over what was drawn on the canvas, lays its text out for
     /// the zoom and shows the zoom control.
-    pub fn finish(self, ui: &Ui) {
+    pub(crate) fn finish(self, ui: &Ui) {
         let Self { ui: canvas, rect, id, content, offset, zoom, is_zooming } = self;
         let layer = canvas.layer_id();
         let to_screen = TSTransform::new(rect.min.to_vec2() - offset, zoom);
@@ -264,7 +264,7 @@ struct Frame {
 /// Takes the rest of `ui` as the canvas for `content` points of content (at 100 %) and handles
 /// this frame's pan, zoom, wheel and coast. `reveal` (canvas coordinates) glides into the middle
 /// of view.
-pub fn begin(ui: &mut Ui, id: Id, content: Vec2, reveal: Option<Rect>) -> Pan {
+pub(crate) fn begin(ui: &mut Ui, id: Id, content: Vec2, reveal: Option<Rect>) -> Pan {
     let rect = ui.available_rect_before_wrap();
     ui.advance_cursor_after_rect(rect);
     let ctx = ui.ctx().clone();
@@ -509,7 +509,7 @@ fn has_focus_in(ctx: &Context, canvas: Rect) -> bool {
 }
 
 /// The step `steps` away from `zoom` in [`ZOOM_STEPS`]; a zoom between steps moves to its neighbor.
-pub fn next_step(zoom: f32, steps: i32) -> f32 {
+pub(crate) fn next_step(zoom: f32, steps: i32) -> f32 {
     let mut zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
     for _ in 0..steps.unsigned_abs() {
         zoom = if steps > 0 {

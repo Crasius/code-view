@@ -49,7 +49,11 @@ enum Status {
 
 /// The code `thread` is about, between its card's header and its comments, behind a hairline;
 /// nothing for a thread without lines. Returns where the user asked to see the code.
-pub fn show(ui: &mut Ui, thread: &ReviewThread, threads: &mut ThreadsUi) -> Option<ThreadEvent> {
+pub(crate) fn show(
+    ui: &mut Ui,
+    thread: &ReviewThread,
+    threads: &mut ThreadsUi,
+) -> Option<ThreadEvent> {
     let code = &mut threads.code;
     let source = code.source(thread);
     let anchor = source.as_ref().map(|(_, anchor)| *anchor).or(thread.anchor.as_ref())?;

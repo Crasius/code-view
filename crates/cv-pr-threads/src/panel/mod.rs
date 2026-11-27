@@ -164,7 +164,12 @@ pub fn show(
 
 /// The tab bar's "Threads" toggle (Alt+T): the number of active threads and a dot while any
 /// thread has news. Returns true when clicked.
-pub fn toggle(ui: &mut Ui, all: &[ReviewThread], threads: &ThreadsUi, is_open: bool) -> bool {
+pub(crate) fn toggle(
+    ui: &mut Ui,
+    all: &[ReviewThread],
+    threads: &ThreadsUi,
+    is_open: bool,
+) -> bool {
     let palette = theme::palette(ui.ctx());
     let counts = toggle_counts(all, threads);
     let (active, has_news) = (counts.active, counts.unread > 0);

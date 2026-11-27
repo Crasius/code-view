@@ -19,7 +19,7 @@ pub(super) const MARK_TO_TITLE: f32 = 26.0;
 /// In the overview the whole header toggles the card (click, Enter, Space). A connection's card
 /// names the connection and its platform; the Favorites card leads with a filled star and counts
 /// its repositories.
-pub fn paint(
+pub(crate) fn paint(
     ui: &mut Ui,
     rect: Rect,
     group: &Group<'_>,
@@ -140,7 +140,7 @@ fn text<'a>(group: &Group<'a>) -> (String, String, Option<&'a str>) {
 }
 
 /// "1 repository", "3 repositories".
-pub fn repositories_text(count: usize) -> String {
+pub(crate) fn repositories_text(count: usize) -> String {
     if count == 1 { "1 repository".to_owned() } else { format!("{count} repositories") }
 }
 

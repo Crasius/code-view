@@ -44,7 +44,7 @@ const APPROVED_TOOLTIP: &str = "The approvals it needs are in and no reviewer bl
 const STATUS_ICON_GAP: f32 = 4.0;
 
 /// What a row was asked for.
-pub enum RowPick {
+pub(crate) enum RowPick {
     Open(Landing),
     /// The context menu: the repository's own list.
     Repository,
@@ -58,7 +58,7 @@ pub enum RowPick {
 
 /// Where a row's repository is named.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum RepositoryName {
+pub(crate) enum RepositoryName {
     /// In the row: its column, or its meta line on a narrow card.
     InRow,
     /// In the section header above the row ([`super::cards::sections`]).
@@ -66,7 +66,7 @@ pub enum RepositoryName {
 }
 
 /// Where and how one pull request row is painted.
-pub struct ItemRow<'a> {
+pub(crate) struct ItemRow<'a> {
     pub repository: RepositoryName,
     pub rect: Rect,
     pub id: Id,
@@ -117,7 +117,7 @@ impl RowPaint<'_> {
 /// usual, the Files button (or Shift+Enter on the focused row) on its Files tab; its context menu
 /// stars or unstars the repository (`is_favorite` says which) and opens the repository's list;
 /// the size column may offer to count the lines.
-pub fn paint(
+pub(crate) fn paint(
     ui: &mut Ui,
     item: &ItemRow<'_>,
     result: &ConnectionResult,

@@ -20,7 +20,7 @@ use review_store::{
 
 /// What an event meant for the conversation.
 #[derive(Debug, PartialEq)]
-pub enum Applied {
+pub(crate) enum Applied {
     /// Text or a tool step went into the running turn (or nowhere).
     Progress,
     /// The CLI is ready and answers with `model`.
@@ -34,7 +34,7 @@ pub enum Applied {
 }
 
 /// Opens a turn for `question`, asked as `prompt`.
-pub fn begin(
+pub(crate) fn begin(
     chat: &mut Chat,
     kind: TurnKind,
     question: &str,
@@ -51,12 +51,12 @@ pub fn begin(
 }
 
 /// The turn the agent is answering, if any.
-pub fn running(chat: &mut Chat) -> Option<&mut ChatTurn> {
+pub(crate) fn running(chat: &mut Chat) -> Option<&mut ChatTurn> {
     chat.turns.last_mut().filter(|turn| turn.end == TurnEnd::Running)
 }
 
 /// Takes in one event of the agent, arrived now.
-pub fn apply(chat: &mut Chat, event: AgentEvent) -> Applied {
+pub(crate) fn apply(chat: &mut Chat, event: AgentEvent) -> Applied {
     apply_at(chat, event, now_ms())
 }
 
@@ -176,20 +176,20 @@ fn end_turn(turn: &mut ChatTurn, end: TurnEnd, now: u64) {
 }
 
 /// Ends the running turn as stopped by the user.
-pub fn stop(chat: &mut Chat) {
+pub(crate) fn stop(chat: &mut Chat) {
     if let Some(turn) = running(chat) {
         end_turn(turn, TurnEnd::Stopped, now_ms());
     }
 }
 
 /// The wall clock in Unix milliseconds.
-pub fn now_ms() -> u64 {
+pub(crate) fn now_ms() -> u64 {
     let since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     u64::try_from(since_epoch.as_millis()).unwrap_or(u64::MAX)
 }
 
 /// A conversation read from disk: a turn the app closed during counts as stopped.
-pub fn settle_loaded(chat: &mut Chat) {
+pub(crate) fn settle_loaded(chat: &mut Chat) {
     stop(chat);
 }
 

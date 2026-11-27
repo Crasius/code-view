@@ -39,11 +39,11 @@ use review_git::ChangedFile;
 use super::interest::{Depth, Interest};
 
 /// Pull requests read at once: the rested row and its two neighbours.
-pub const READING: usize = 3;
+pub(crate) const READING: usize = 3;
 
 /// A painted row and how likely the user opens it.
 #[derive(Debug, Clone)]
-pub struct AheadRow {
+pub(crate) struct AheadRow {
     pub row: StatRow,
     pub interest: Interest,
 }
@@ -64,7 +64,7 @@ struct Reading {
 }
 
 #[derive(Default)]
-pub struct Warming {
+pub(crate) struct Warming {
     reading: Vec<Reading>,
     /// Rows of the last rest that found no free place, likeliest first.
     waiting: Vec<(StatRow, Depth)>,
@@ -75,7 +75,12 @@ pub struct Warming {
 impl Warming {
     /// The pointer rests on `rows[rested]`, if anywhere: reads it and its neighbours as deep as
     /// their interest asks, or lets them wait for a free place.
-    pub fn rest(&mut self, services: &mut Services, rows: &[AheadRow], rested: Option<usize>) {
+    pub(crate) fn rest(
+        &mut self,
+        services: &mut Services,
+        rows: &[AheadRow],
+        rested: Option<usize>,
+    ) {
         let is_active = services.background.ctx().input(|input| is_window_active(input.viewport()));
         let Some(rested) = rested.filter(|_| is_active) else {
             return;
@@ -99,7 +104,7 @@ impl Warming {
 
     /// Moves finished reads into the page cache (and their counts into the size column), starts
     /// the git part of a read that goes that deep, then the rows that waited.
-    pub fn poll(&mut self, services: &mut Services) {
+    pub(crate) fn poll(&mut self, services: &mut Services) {
         let mut index = 0;
         while index < self.reading.len() {
             let reading = &mut self.reading[index];

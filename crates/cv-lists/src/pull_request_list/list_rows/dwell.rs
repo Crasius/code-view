@@ -17,11 +17,11 @@ use super::Painted;
 
 /// How long the pointer rests on a row before its page warms up: our own number, about the pause
 /// before a click that a pointer travelling across the list does not make.
-pub const DWELL: Duration = Duration::from_millis(400);
+pub(crate) const DWELL: Duration = Duration::from_millis(400);
 
 /// True once the pointer rests on the row `id` at `rect` (see the module docs). Until then a row
 /// the pointer moved on asks for the one repaint that ends the wait.
-pub fn is_resting(ui: &Ui, id: Id, rect: Rect) -> bool {
+pub(crate) fn is_resting(ui: &Ui, id: Id, rect: Rect) -> bool {
     if !ui.rect_contains_pointer(rect) {
         return false;
     }
@@ -68,7 +68,7 @@ fn update(
 
 /// When the pointer rests on the row `id` at `rect` ([`is_resting`]), showing `row`, painted
 /// next: the user saw what changed in it, and the list may read ahead around it.
-pub fn note_rest(ui: &Ui, id: Id, rect: Rect, painted: &mut Painted, row: &StatRow) {
+pub(crate) fn note_rest(ui: &Ui, id: Id, rect: Rect, painted: &mut Painted, row: &StatRow) {
     if !is_resting(ui, id, rect) {
         return;
     }

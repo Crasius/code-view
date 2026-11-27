@@ -78,7 +78,7 @@ fn count_font() -> FontId {
 }
 
 /// The size column's placeholders, in the places of the counts, the bar and the file count.
-pub fn paint_placeholder(ui: &Ui, column: Rect) {
+pub(crate) fn paint_placeholder(ui: &Ui, column: Rect) {
     let layout = SizeLayout::measure(ui.painter(), column);
     let block = |right: f32, y: f32, size: egui::Vec2| {
         Rect::from_min_size(pos2(right - size.x, y - size.y / 2.0), size)
@@ -91,7 +91,7 @@ pub fn paint_placeholder(ui: &Ui, column: Rect) {
 
 /// The size column: counted lines over the bar and the changed files; placeholders while they
 /// are counted; or a dash, the files where known and "Count lines". True when that was clicked.
-pub fn paint(
+pub(crate) fn paint(
     ui: &mut Ui,
     painter: &Painter,
     id: Id,
@@ -321,6 +321,6 @@ fn files_changed(files: u64) -> String {
 }
 
 /// A count in its tint; a zero carries no news, so it steps back (as in the file tree).
-pub fn count_color(value: u64, tint: Color32, palette: &Palette) -> Color32 {
+pub(crate) fn count_color(value: u64, tint: Color32, palette: &Palette) -> Color32 {
     if value == 0 { palette.text_disabled } else { tint }
 }

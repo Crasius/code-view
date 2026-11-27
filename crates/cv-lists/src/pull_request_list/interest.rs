@@ -13,7 +13,7 @@ use review_core::{
 
 /// How likely the user opens a pull request, likeliest first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Interest {
+pub(crate) enum Interest {
     /// The user's review is asked for and not given.
     Waiting,
     /// Open and ready, or the user's own.
@@ -26,7 +26,7 @@ pub enum Interest {
 
 /// How much of a pull request's page is read ahead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Depth {
+pub(crate) enum Depth {
     Nothing,
     /// The detail (description and all) and the images its description shows.
     Meta,
@@ -37,7 +37,7 @@ pub enum Depth {
 impl Interest {
     /// The interest in `summary`, with `reviewers` (the listing's or the votes read since),
     /// the approvals the platform requires, and `me`, the signed-in user once known.
-    pub fn of(
+    pub(crate) fn of(
         summary: &PullRequestSummary,
         reviewers: &[Reviewer],
         required: Option<&Check>,
@@ -70,7 +70,7 @@ impl Interest {
     /// How deep to read ahead: on the row the pointer rests on (`is_focus`), or on a row next to
     /// it. Git work (a fetch, blobs) only where an open is likely; nothing for a merged or closed
     /// pull request beside the pointer.
-    pub fn depth(self, is_focus: bool) -> Depth {
+    pub(crate) fn depth(self, is_focus: bool) -> Depth {
         match (self, is_focus) {
             (Self::Waiting, _) | (Self::Open, true) => Depth::Full,
             (Self::Open | Self::Settled, _) | (Self::Done, true) => Depth::Meta,

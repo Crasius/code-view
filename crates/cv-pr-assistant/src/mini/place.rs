@@ -9,35 +9,35 @@ use cv_base::theme::motion;
 use egui::{Context, Pos2, Rect, Vec2, pos2, vec2};
 
 /// Room between the mini chat and the content's edges.
-pub const INSET: f32 = 16.0;
+pub(crate) const INSET: f32 = 16.0;
 /// The open card, as the design gives it; a smaller Files tab gets a smaller card.
-pub const CARD: Vec2 = vec2(400.0, 520.0);
+pub(crate) const CARD: Vec2 = vec2(400.0, 520.0);
 /// The pill the card shrinks to.
-pub const PILL: Vec2 = vec2(300.0, 44.0);
+pub(crate) const PILL: Vec2 = vec2(300.0, 44.0);
 /// The card's corner radius; the pill is fully rounded.
-pub const CARD_RADIUS: f32 = 10.0;
+pub(crate) const CARD_RADIUS: f32 = 10.0;
 /// Appearing, card ↔ pill and the snap to a corner (the design's timing).
-pub const MOVE_SECONDS: f32 = 0.26;
+pub(crate) const MOVE_SECONDS: f32 = 0.26;
 /// The fill moving between references and the fade while it covers the cited lines.
-pub const FADE_SECONDS: f32 = 0.2;
+pub(crate) const FADE_SECONDS: f32 = 0.2;
 /// The card starts this small when it appears, growing out of its corner.
-pub const APPEAR_SCALE: f32 = 0.92;
+pub(crate) const APPEAR_SCALE: f32 = 0.92;
 
 /// A corner of the Files tab's content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Corner {
+pub(crate) struct Corner {
     pub left: bool,
     pub top: bool,
 }
 
 impl Corner {
     /// The corner of `room` nearest to `center`.
-    pub fn nearest(room: Rect, center: Pos2) -> Self {
+    pub(crate) fn nearest(room: Rect, center: Pos2) -> Self {
         Self { left: center.x < room.center().x, top: center.y < room.center().y }
     }
 
     /// The point of `room` this corner names.
-    pub fn point(self, room: Rect) -> Pos2 {
+    pub(crate) fn point(self, room: Rect) -> Pos2 {
         pos2(
             if self.left { room.left() } else { room.right() },
             if self.top { room.top() } else { room.bottom() },
@@ -45,7 +45,7 @@ impl Corner {
     }
 
     /// A rect of `size` in this corner of `room`, [`INSET`] in from its edges.
-    pub fn place(self, room: Rect, size: Vec2) -> Rect {
+    pub(crate) fn place(self, room: Rect, size: Vec2) -> Rect {
         let x = if self.left { room.left() + INSET } else { room.right() - INSET - size.x };
         let y = if self.top { room.top() + INSET } else { room.bottom() - INSET - size.y };
         Rect::from_min_size(pos2(x, y), size)
@@ -53,13 +53,13 @@ impl Corner {
 }
 
 /// `size`, no larger than `room` leaves inside its insets.
-pub fn fit(size: Vec2, room: Rect) -> Vec2 {
+pub(crate) fn fit(size: Vec2, room: Rect) -> Vec2 {
     let most = (room.size() - Vec2::splat(2.0 * INSET)).max(Vec2::ZERO);
     size.min(most)
 }
 
 /// A rect of `size` with its top left at `min`, moved inside `room` where it would leave it.
-pub fn keep_inside(min: Pos2, size: Vec2, room: Rect) -> Rect {
+pub(crate) fn keep_inside(min: Pos2, size: Vec2, room: Rect) -> Rect {
     let most = (room.max - size).max(room.min);
     Rect::from_min_size(min.clamp(room.min, most), size)
 }
@@ -89,7 +89,7 @@ impl Clock {
 
 /// The mini chat this frame: its frame, its content at full size held at the frame's corner (a
 /// growing frame reveals it instead of reflowing it), and how far it appeared and the fill faded.
-pub struct Laid {
+pub(crate) struct Laid {
     pub frame: Rect,
     pub content: Rect,
     pub radius: f32,
@@ -99,7 +99,7 @@ pub struct Laid {
 
 /// The mini chat's motions and where it was drawn last.
 #[derive(Default)]
-pub struct Motions {
+pub(crate) struct Motions {
     frame: Option<Rect>,
     appear: Clock,
     fill: Clock,
@@ -113,7 +113,7 @@ pub struct Motions {
 
 impl Motions {
     /// It opens: it appears with the next frame drawn, wherever a drag left it.
-    pub fn appear(&mut self) {
+    pub(crate) fn appear(&mut self) {
         self.appear = Clock::Due;
         self.dragged = None;
         self.snap = None;
@@ -126,22 +126,22 @@ impl Motions {
     }
 
     /// Card and pill swap: the size changes from the one drawn last.
-    pub fn morph(&mut self, now: f64) {
+    pub(crate) fn morph(&mut self, now: f64) {
         self.morph = self.frame.map(|frame| (frame.size(), now));
     }
 
-    pub fn is_dragged(&self) -> bool {
+    pub(crate) fn is_dragged(&self) -> bool {
         self.dragged.is_some()
     }
 
     /// The pointer moved it by `delta`.
-    pub fn drag(&mut self, delta: Vec2) {
+    pub(crate) fn drag(&mut self, delta: Vec2) {
         self.snap = None;
         self.dragged = self.dragged.or(self.frame.map(|frame| frame.min)).map(|min| min + delta);
     }
 
     /// Let go in `room`: it glides from there to the corner nearest to it, which is returned.
-    pub fn release(&mut self, room: Rect, now: f64) -> Option<Corner> {
+    pub(crate) fn release(&mut self, room: Rect, now: f64) -> Option<Corner> {
         let min = self.dragged.take()?;
         let frame = keep_inside(min, self.frame?.size(), room);
         self.snap = Some((frame.min, now));
@@ -149,7 +149,13 @@ impl Motions {
     }
 
     /// Where it is this frame in `corner` of `room`, as a pill or a card.
-    pub fn lay_out(&mut self, ctx: &Context, room: Rect, corner: Corner, is_pill: bool) -> Laid {
+    pub(crate) fn lay_out(
+        &mut self,
+        ctx: &Context,
+        room: Rect,
+        corner: Corner,
+        is_pill: bool,
+    ) -> Laid {
         let target = fit(if is_pill { PILL } else { CARD }, room);
         let size = match self.morph {
             Some((from, started)) => {
@@ -188,7 +194,7 @@ impl Motions {
 
 /// Eased progress (0 to 1) of a motion of `seconds` that started at input time `started`; asks
 /// for the next frame while it runs. At once under reduced motion.
-pub fn progress(ctx: &Context, started: f64, seconds: f32) -> f32 {
+pub(crate) fn progress(ctx: &Context, started: f64, seconds: f32) -> f32 {
     let total = motion::duration(ctx, seconds);
     let now = ctx.input(|input| input.time);
     if total <= 0.0 {

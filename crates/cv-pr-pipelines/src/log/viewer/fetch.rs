@@ -20,7 +20,7 @@ use super::super::download::{self, DownloadRequest, Fetched, Grown, LoadedLog};
 const LIVE_LOG_INTERVAL: Duration = Duration::from_secs(4);
 
 #[derive(Default)]
-pub struct LogFetch {
+pub(crate) struct LogFetch {
     pub log: Load<Fetched>,
     /// The log of a running job fetched again for what it added.
     grow: Load<Grown>,
@@ -50,18 +50,18 @@ impl LogFetch {
     }
 
     /// Forgets the last log and its schedule, for another one.
-    pub fn reset(&mut self, services: &Services) {
+    pub(crate) fn reset(&mut self, services: &Services) {
         self.stop_polling(services);
         *self = Self::default();
     }
 
     /// Bytes of the download so far.
-    pub fn received(&self) -> u64 {
+    pub(crate) fn received(&self) -> u64 {
         self.received.load(Ordering::Relaxed)
     }
 
     /// The downloaded log, once there.
-    pub fn loaded(&self) -> Option<Arc<LoadedLog>> {
+    pub(crate) fn loaded(&self) -> Option<Arc<LoadedLog>> {
         match &self.log {
             Load::Ready(Fetched::Log(log)) => Some(log.clone()),
             _ => None,
@@ -70,7 +70,7 @@ impl LogFetch {
 
     /// Takes in the downloads that are done; returns what fetching a running job's log again
     /// brought.
-    pub fn poll(&mut self) -> Option<Grown> {
+    pub(crate) fn poll(&mut self) -> Option<Grown> {
         if self.log.poll() && matches!(self.log, Load::Ready(Fetched::Log(_))) {
             self.missing = None;
         }
@@ -87,7 +87,7 @@ impl LogFetch {
     }
 
     /// Starts what the log `log_id` needs now (see the module's doc).
-    pub fn sync(
+    pub(crate) fn sync(
         &mut self,
         ctx: &egui::Context,
         log_id: &str,
@@ -142,7 +142,7 @@ impl LogFetch {
         }
     }
 
-    pub fn stop_polling(&mut self, services: &Services) {
+    pub(crate) fn stop_polling(&mut self, services: &Services) {
         if let Some(key) = self.poll_key.take() {
             services.refresh.forget(&key);
         }

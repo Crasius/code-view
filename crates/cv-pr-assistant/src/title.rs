@@ -17,12 +17,12 @@ use super::{Action, Assistant};
 /// Starts a new conversation while the assistant has the keys: the panel is open, or the card is
 /// armed (a click or the focus went into it). The conventional "new" key, free elsewhere in the
 /// app.
-pub const NEW_SHORTCUT: &str = shortcut!(command "N");
-pub const NEW_KEY: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::N);
+pub(crate) const NEW_SHORTCUT: &str = shortcut!(command "N");
+pub(crate) const NEW_KEY: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::N);
 
 /// A title-line button clicked this frame.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum TitleClick {
+pub(crate) enum TitleClick {
     Expand,
     Collapse,
     Terminal,

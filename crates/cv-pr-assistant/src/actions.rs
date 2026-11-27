@@ -32,7 +32,7 @@ pub(super) fn ask(assistant: &mut Assistant, question: &str, with_quote: bool) -
     true
 }
 
-pub fn act(
+pub(crate) fn act(
     assistant: &mut Assistant,
     action: Action,
     session: &PullRequestSession,

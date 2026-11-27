@@ -43,7 +43,7 @@ pub const LIST_INTERVAL: Duration = Duration::from_secs(120);
 pub const ANONYMOUS_LIST_INTERVAL: Duration = ANONYMOUS_PIPELINE_INTERVAL;
 
 /// One connection's listing, its answer and the rows on their way out (see the module doc).
-pub struct ConnectionResult {
+pub(crate) struct ConnectionResult {
     pub connection_id: String,
     pub connection_name: String,
     pub kind: ProviderKind,
@@ -74,7 +74,7 @@ pub struct ConnectionResult {
 
 /// A row on its way out of the list: a write of the user's moved it out of the state filter (a
 /// merge out of the open list). It collapses where it was instead of vanishing at once.
-pub struct Leaving {
+pub(crate) struct Leaving {
     pub row: PullRequestSummary,
     /// Its place among the rows it left.
     pub index: usize,
@@ -84,7 +84,7 @@ pub struct Leaving {
 
 /// How long a row takes to leave; it is gone for the lists after this, and the rows paint it shorter
 /// on the way ([`super::list_rows`]).
-pub const LEAVE_SECONDS: f32 = cv_base::theme::motion::MEDIUM;
+pub(crate) const LEAVE_SECONDS: f32 = cv_base::theme::motion::MEDIUM;
 
 /// What a result asks its provider for.
 #[derive(Clone)]
@@ -109,7 +109,7 @@ struct QueryKey {
 }
 
 #[derive(Default)]
-pub struct ConnectionQueries {
+pub(crate) struct ConnectionQueries {
     key: Option<QueryKey>,
     pub results: Vec<ConnectionResult>,
     /// The overview groups can collapse (and then load nothing); a repository list cannot.
@@ -119,7 +119,7 @@ pub struct ConnectionQueries {
 impl ConnectionQueries {
     /// Builds the results when the filter or the connections changed. Remembered answers show at
     /// once; only stale ones are owed a load.
-    pub fn ensure(
+    pub(crate) fn ensure(
         &mut self,
         services: &mut Services,
         source: &ListSource,
@@ -172,7 +172,7 @@ impl ConnectionQueries {
 
     /// A group was expanded (a user action): load it unless a fresh answer is on screen or on its
     /// way.
-    pub fn expand(&mut self, services: &mut Services, connection_id: &str) {
+    pub(crate) fn expand(&mut self, services: &mut Services, connection_id: &str) {
         let Some(result) =
             self.results.iter_mut().find(|result| result.connection_id == connection_id)
         else {
@@ -185,14 +185,14 @@ impl ConnectionQueries {
     }
 
     /// Moves arrived answers on screen and into the page cache.
-    pub fn poll(&mut self, services: &mut Services) {
+    pub(crate) fn poll(&mut self, services: &mut Services) {
         poll_results(&mut self.results, services);
     }
 
     /// Refreshes in the background, keeping the rows on screen: owes a load to every card
     /// (`force`: Refresh, Retry) or to those whose answer is older than the cache's freshness window
     /// (a revisit). Only the open cards on screen send it ([`Self::load_owed`]).
-    pub fn revalidate(&mut self, services: &Services, force: bool) {
+    pub(crate) fn revalidate(&mut self, services: &Services, force: bool) {
         let now = services.now();
         for result in &mut self.results {
             result.owed |= force || services.cache.is_stale(&result.cache_key, now);
@@ -201,7 +201,7 @@ impl ConnectionQueries {
 
     /// Sends the owed loads of the open cards in `on_screen` (connection ids); the others keep
     /// theirs until they scroll in or are expanded. `by_user`: also while the window is inactive.
-    pub fn load_owed(
+    pub(crate) fn load_owed(
         &mut self,
         services: &mut Services,
         on_screen: &BTreeSet<String>,
@@ -217,7 +217,7 @@ impl ConnectionQueries {
 
     /// Each frame: an open card in `on_screen` that was not in `before` owes a load when its answer
     /// is stale, and every open card on screen follows the scheduler's beat. True on a beat.
-    pub fn follow(
+    pub(crate) fn follow(
         &mut self,
         services: &Services,
         on_screen: &BTreeSet<String>,
@@ -250,23 +250,23 @@ impl ConnectionQueries {
         self.collapsible && services.settings.collapsed_connections.contains(connection_id)
     }
 
-    pub fn is_collapsible(&self) -> bool {
+    pub(crate) fn is_collapsible(&self) -> bool {
         self.collapsible
     }
 
     /// A card's newer listing is under way ([`ConnectionResult::is_refreshing`]).
-    pub fn is_refreshing(&self, pauses: &Pauses) -> bool {
+    pub(crate) fn is_refreshing(&self, pauses: &Pauses) -> bool {
         self.results.iter().any(|result| result.is_refreshing(pauses))
     }
 
     /// The first failed refresh whose older rows stayed on screen.
-    pub fn refresh_error(&self) -> Option<&str> {
+    pub(crate) fn refresh_error(&self) -> Option<&str> {
         self.results.iter().find_map(|result| result.load.refresh_error())
     }
 
     /// One connection's rows as if they had loaded, for tests of what reads them.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn loaded_for_test(
+    pub(crate) fn loaded_for_test(
         connection_id: &str,
         kind: ProviderKind,
         rows: Vec<PullRequestSummary>,
@@ -283,13 +283,13 @@ impl ConnectionResult {
     /// A newer listing is under way: not while the host's REST pause, which every listing goes
     /// through, holds it back. Then it waits, which the rows' edges and the banner say, and a
     /// spinner would turn for the whole pause.
-    pub fn is_refreshing(&self, pauses: &Pauses) -> bool {
+    pub(crate) fn is_refreshing(&self, pauses: &Pauses) -> bool {
         self.load.is_refreshing() && !pauses.holds(&self.connection_id, Api::Rest)
     }
 
     /// One connection's rows as if they had loaded.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn loaded_for_test(
+    pub(crate) fn loaded_for_test(
         connection_id: &str,
         kind: ProviderKind,
         rows: Vec<PullRequestSummary>,
@@ -416,7 +416,7 @@ impl ConnectionResult {
     }
 
     /// The repositories the request names, for messages about it; `None` for a connection's listing.
-    pub fn repositories_label(&self) -> Option<String> {
+    pub(crate) fn repositories_label(&self) -> Option<String> {
         match &self.request {
             ListRequest::Query(query) => query.repository_key.clone(),
             ListRequest::Repositories { keys, .. } => Some(keys.join(", ")),
@@ -518,7 +518,7 @@ pub(super) fn query_cache_key(
 /// The part of a page cache key that names the connection as it lists: its id and a digest of its
 /// [`signature`]. An edited host, organization or token presence lists other rows, so the answers
 /// remembered before the edit are not shown as fresh ones after it.
-pub fn cache_stamp(connection: &Connection) -> String {
+pub(crate) fn cache_stamp(connection: &Connection) -> String {
     let mut hasher = DefaultHasher::new();
     signature(connection).hash(&mut hasher);
     format!("{}|{:016x}", connection.id, hasher.finish())

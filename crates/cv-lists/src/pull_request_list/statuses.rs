@@ -44,7 +44,7 @@ const MAX_RUNNING: usize = 4;
 
 /// A list row, as far as its checks and votes go.
 #[derive(Debug, Clone, PartialEq)]
-pub struct StatusRow {
+pub(crate) struct StatusRow {
     pub connection_id: String,
     pub kind: ProviderKind,
     pub has_token: bool,
@@ -59,7 +59,7 @@ pub struct StatusRow {
 }
 
 impl StatusRow {
-    pub fn new(
+    pub(crate) fn new(
         connection_id: &str,
         kind: ProviderKind,
         has_token: bool,
@@ -97,7 +97,7 @@ pub(super) fn fingerprint(summary: &PullRequestSummary) -> u64 {
 
 /// What a row's checks indicator shows.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ChecksShown<'a> {
+pub(crate) enum ChecksShown<'a> {
     /// Asked for (or about to be), nothing known yet.
     Loading,
     /// Only the listing's combined state; the checks themselves are on their way.
@@ -155,7 +155,7 @@ fn lists_votes(kind: ProviderKind) -> bool {
 }
 
 #[derive(Default)]
-pub struct RowStatuses {
+pub(crate) struct RowStatuses {
     /// By storage key.
     entries: HashMap<String, Entry>,
     running: Vec<Running>,
@@ -190,7 +190,11 @@ struct Running {
 
 impl RowStatuses {
     /// What `row`'s checks indicator shows; `rollup` is the listing's combined state, if any.
-    pub fn checks<'a>(&'a self, row: &StatusRow, rollup: Option<RunStatus>) -> ChecksShown<'a> {
+    pub(crate) fn checks<'a>(
+        &'a self,
+        row: &StatusRow,
+        rollup: Option<RunStatus>,
+    ) -> ChecksShown<'a> {
         if let Plan::NotOffered(reason) = plan(row) {
             return rollup
                 .map_or(ChecksShown::Unknown(reason), |run| ChecksShown::Rollup(run.into()));
@@ -209,7 +213,11 @@ impl RowStatuses {
     }
 
     /// The reviewers to show: the answer's where it brought votes the listing lacks, else `listed`.
-    pub fn reviewers<'a>(&'a self, row: &StatusRow, listed: &'a [Reviewer]) -> &'a [Reviewer] {
+    pub(crate) fn reviewers<'a>(
+        &'a self,
+        row: &StatusRow,
+        listed: &'a [Reviewer],
+    ) -> &'a [Reviewer] {
         self.entries
             .get(&row.storage_key)
             .and_then(|entry| entry.latest.as_ref())
@@ -218,7 +226,7 @@ impl RowStatuses {
     }
 
     /// The approvals the platform requires of the row, once its answer is in.
-    pub fn required_approvals(&self, row: &StatusRow) -> Option<&Check> {
+    pub(crate) fn required_approvals(&self, row: &StatusRow) -> Option<&Check> {
         self.entries
             .get(&row.storage_key)
             .and_then(|entry| entry.latest.as_ref())
@@ -226,7 +234,7 @@ impl RowStatuses {
     }
 
     /// A request for `row`'s checks and votes is on its way.
-    pub fn is_running(&self, row: &StatusRow) -> bool {
+    pub(crate) fn is_running(&self, row: &StatusRow) -> bool {
         self.entries
             .get(&row.storage_key)
             .is_some_and(|entry| matches!(entry.phase, Phase::Running))
@@ -234,13 +242,13 @@ impl RowStatuses {
 
     /// A request for `row`'s checks and votes is on its way, but a rate-limit pause on its kind of
     /// request holds it back: it waits, for up to an hour, and goes out on its own after.
-    pub fn is_held(&self, row: &StatusRow, pauses: &Pauses) -> bool {
+    pub(crate) fn is_held(&self, row: &StatusRow, pauses: &Pauses) -> bool {
         self.is_running(row)
             && plan(row).api().is_some_and(|api| pauses.holds(&row.connection_id, api))
     }
 
     /// Why the last request for `row`'s checks and votes failed.
-    pub fn failure(&self, row: &StatusRow) -> Option<&str> {
+    pub(crate) fn failure(&self, row: &StatusRow) -> Option<&str> {
         match &self.entries.get(&row.storage_key)?.phase {
             Phase::Failed(message) => Some(message),
             Phase::Running | Phase::Done => None,
@@ -249,7 +257,7 @@ impl RowStatuses {
 
     /// The page refreshed at `now`: answers older than that are asked again where the listing
     /// cannot show a vote, once their listing answered after this.
-    pub fn renew(&mut self, now: f64) {
+    pub(crate) fn renew(&mut self, now: f64) {
         self.renewed_at = now;
     }
 
@@ -292,7 +300,7 @@ impl RowStatuses {
     /// Moves finished answers in. Where an answer brought the reviewers (shown instead of the
     /// listing's, see [`Self::reviewers`]), the user's writes on them apply as they do to the
     /// listing's rows: to every answer that arrives, and to all once a write was logged since.
-    pub fn poll(&mut self, writes: &Writes, now: f64) {
+    pub(crate) fn poll(&mut self, writes: &Writes, now: f64) {
         let mut answered = Vec::new();
         let mut index = 0;
         while index < self.running.len() {
@@ -361,7 +369,7 @@ impl RowStatuses {
 
 /// Asks for the checks of the rows on screen that need them, unless the window is inactive (then
 /// they wait). Rows of one repository that a platform batches go out in one request.
-pub fn want(statuses: &mut RowStatuses, services: &mut Services, visible: &[StatusRow]) {
+pub(crate) fn want(statuses: &mut RowStatuses, services: &mut Services, visible: &[StatusRow]) {
     let is_active = services.background.ctx().input(|input| is_window_active(input.viewport()));
     if !is_active {
         return;

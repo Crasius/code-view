@@ -19,7 +19,7 @@ const MAX_COLOR_BYTES: usize = 2 * 1024 * 1024;
 
 /// One line of the unified file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CodeRow {
+pub(crate) struct CodeRow {
     /// `Context` for an unchanged line, `Added` or `Deleted` for a changed one.
     pub kind: LineKind,
     /// Line numbers in the base and the head version, 0 where the line does not exist.
@@ -32,7 +32,7 @@ pub struct CodeRow {
 /// One side-by-side line: indices into [`CodeFile::rows`] of its base (`old`) and head (`new`)
 /// line, the same row on both sides for an unchanged line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SplitRow {
+pub(crate) struct SplitRow {
     pub old: Option<u32>,
     pub new: Option<u32>,
 }
@@ -43,7 +43,7 @@ struct Colors {
     removed: LineSpans,
 }
 
-pub struct CodeFile {
+pub(crate) struct CodeFile {
     head: BlobText,
     /// The removed lines, one per line, in file order.
     removed: BlobText,
@@ -58,7 +58,7 @@ pub struct CodeFile {
 
 impl CodeFile {
     /// The rows of `head` (the head version's bytes) with the removed lines of `diff` between them.
-    pub fn build(diff: &FileDiff, head: Vec<u8>) -> Self {
+    pub(crate) fn build(diff: &FileDiff, head: Vec<u8>) -> Self {
         let head = BlobText::from_bytes(head);
         let (rows, removed) = unify(diff, head.line_count());
         let head_rows = rows
@@ -80,26 +80,26 @@ impl CodeFile {
         }
     }
 
-    pub fn rows(&self) -> &[CodeRow] {
+    pub(crate) fn rows(&self) -> &[CodeRow] {
         &self.rows
     }
 
     /// Indices into [`Self::rows`] of the lines the head version has.
-    pub fn head_rows(&self) -> &[u32] {
+    pub(crate) fn head_rows(&self) -> &[u32] {
         &self.head_rows
     }
 
     /// The rows side by side.
-    pub fn split_rows(&self) -> &[SplitRow] {
+    pub(crate) fn split_rows(&self) -> &[SplitRow] {
         &self.split_rows
     }
 
     /// The largest line number in either version, for the gutter's width.
-    pub fn max_line(&self) -> u32 {
+    pub(crate) fn max_line(&self) -> u32 {
         self.max_line
     }
 
-    pub fn text(&self, row: &CodeRow) -> &str {
+    pub(crate) fn text(&self, row: &CodeRow) -> &str {
         let line = match row.kind {
             LineKind::Deleted => self.removed.line(row.removed as usize),
             _ => row.new_line.checked_sub(1).and_then(|index| self.head.line(index as usize)),
@@ -108,7 +108,7 @@ impl CodeFile {
     }
 
     /// The row's syntax spans once the file is colored; empty before and for plain files.
-    pub fn spans(&self, row: &CodeRow) -> Option<&[Span]> {
+    pub(crate) fn spans(&self, row: &CodeRow) -> Option<&[Span]> {
         let colors = self.colors.get()?;
         match row.kind {
             LineKind::Deleted => colors.removed.line(row.removed as usize),
@@ -117,7 +117,7 @@ impl CodeFile {
     }
 
     /// Queues the file's coloring by the grammar of `path`; `ctx` repaints when it is done.
-    pub fn color(self: &Arc<Self>, path: &str, ctx: &egui::Context) {
+    pub(crate) fn color(self: &Arc<Self>, path: &str, ctx: &egui::Context) {
         if self.head.len().max(self.removed.len()) > MAX_COLOR_BYTES {
             return;
         }

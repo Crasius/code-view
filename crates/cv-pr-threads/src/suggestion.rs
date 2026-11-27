@@ -55,7 +55,7 @@ pub fn lines_title(anchor: &ThreadAnchor) -> String {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Part<'a> {
+pub(crate) enum Part<'a> {
     Markdown(&'a str),
     Suggestion(String),
 }
@@ -63,7 +63,7 @@ pub enum Part<'a> {
 /// The parts of `body` in order. A fence opens with ```` ```suggestion ```` or GitLab's
 /// ```` ```suggestion:-0+0 ```` (any number of backticks, at least three) and closes with a fence
 /// at least as long.
-pub fn split(body: &str) -> Vec<Part<'_>> {
+pub(crate) fn split(body: &str) -> Vec<Part<'_>> {
     let mut parts = Vec::new();
     let mut markdown_start = 0;
     let mut offset = 0;
@@ -119,7 +119,7 @@ fn push_markdown<'a>(parts: &mut Vec<Part<'a>>, text: &'a str) {
 }
 
 /// The comment contains a suggestion block (for the panel's "suggested change" note).
-pub fn has_suggestion(body: &str) -> bool {
+pub(crate) fn has_suggestion(body: &str) -> bool {
     split(body).iter().any(|part| matches!(part, Part::Suggestion(_)))
 }
 

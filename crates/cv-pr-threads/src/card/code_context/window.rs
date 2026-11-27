@@ -13,15 +13,15 @@ use review_git::LineKind;
 use super::code_file::{CodeFile, CodeRow, SplitRow};
 
 /// Lines shown above and below the commented ones by default.
-pub const CONTEXT: usize = 3;
+pub(crate) const CONTEXT: usize = 3;
 /// Lines one "Show more" adds.
-pub const STEP: usize = 10;
+pub(crate) const STEP: usize = 10;
 /// How far Diff reaches beyond the commented lines into the changes around them, per side.
 const HUNK_REACH: usize = 12;
 
 /// How the excerpt shows the code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
+pub(crate) enum Mode {
     /// The head version alone, its changed lines marked, as the diff's New only layout.
     NewOnly,
     /// Removed and added lines, unified.
@@ -32,7 +32,7 @@ pub enum Mode {
 
 /// The lines a thread is on, in the version they are counted in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Focus {
+pub(crate) struct Focus {
     side: DiffSide,
     first: u32,
     last: u32,
@@ -40,7 +40,7 @@ pub struct Focus {
 
 impl Focus {
     /// The commented lines of `anchor`; `None` when it names no line.
-    pub fn of(anchor: &ThreadAnchor) -> Option<Self> {
+    pub(crate) fn of(anchor: &ThreadAnchor) -> Option<Self> {
         let side = match &anchor.range {
             Some(range) => range.side,
             None if anchor.new_line.is_some() => DiffSide::New,
@@ -52,16 +52,16 @@ impl Focus {
     }
 
     /// The first commented line, for the excerpt's accessible name.
-    pub fn first(&self) -> u32 {
+    pub(crate) fn first(&self) -> u32 {
         self.first
     }
 
     /// The comment is on the base version's lines: Split marks them on the left.
-    pub fn is_old_side(&self) -> bool {
+    pub(crate) fn is_old_side(&self) -> bool {
         self.side == DiffSide::Old
     }
 
-    pub fn covers(&self, row: &CodeRow) -> bool {
+    pub(crate) fn covers(&self, row: &CodeRow) -> bool {
         let line = match self.side {
             DiffSide::New if row.kind != LineKind::Deleted => row.new_line,
             DiffSide::Old if row.kind != LineKind::Added => row.old_line,
@@ -73,26 +73,26 @@ impl Focus {
 
 /// Lines the user added to the excerpt above and below the default.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Extra {
+pub(crate) struct Extra {
     pub above: usize,
     pub below: usize,
 }
 
 /// The lines one mode shows, as indices into [`CodeFile::rows`].
 #[derive(Clone, Copy)]
-pub struct Shown<'a> {
+pub(crate) struct Shown<'a> {
     file: &'a CodeFile,
     mode: Mode,
 }
 
 impl<'a> Shown<'a> {
-    pub fn new(file: &'a CodeFile, mode: Mode) -> Self {
+    pub(crate) fn new(file: &'a CodeFile, mode: Mode) -> Self {
         Self { file, mode }
     }
 
     /// The row at `position` of the shown lines; Split's head row, or its base row where the
     /// head side is empty.
-    pub fn row(&self, position: usize) -> &'a CodeRow {
+    pub(crate) fn row(&self, position: usize) -> &'a CodeRow {
         let index = match self.mode {
             Mode::NewOnly => self.file.head_rows()[position],
             Mode::Diff => position as u32,
@@ -105,13 +105,13 @@ impl<'a> Shown<'a> {
     }
 
     /// The base and the head row at `position` of Split's lines; `None` for an empty side.
-    pub fn sides(&self, position: usize) -> [Option<&'a CodeRow>; 2] {
+    pub(crate) fn sides(&self, position: usize) -> [Option<&'a CodeRow>; 2] {
         let SplitRow { old, new } = self.file.split_rows()[position];
         [old, new].map(|index| index.map(|index| &self.file.rows()[index as usize]))
     }
 
     /// The rows at `position`: one, or Split's two sides (one for an unchanged line).
-    pub fn rows(&self, position: usize) -> impl Iterator<Item = &'a CodeRow> {
+    pub(crate) fn rows(&self, position: usize) -> impl Iterator<Item = &'a CodeRow> {
         let [old, new] = match self.mode {
             Mode::Split => self.sides(position),
             Mode::NewOnly | Mode::Diff => [None, Some(self.row(position))],
@@ -122,7 +122,7 @@ impl<'a> Shown<'a> {
 
 /// What an excerpt shows: positions in its mode's lines.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Excerpt {
+pub(crate) struct Excerpt {
     pub lines: Range<usize>,
     /// Lines above and below the shown ones, for "Show more".
     pub hidden_above: usize,
@@ -130,7 +130,7 @@ pub struct Excerpt {
 }
 
 impl Excerpt {
-    pub fn shape(&self) -> Shape {
+    pub(crate) fn shape(&self) -> Shape {
         Shape {
             above: self.hidden_above > 0,
             lines: self.lines.len(),
@@ -141,7 +141,7 @@ impl Excerpt {
 
 /// How tall an excerpt is: its code lines and whether a "Show more" row sits above and below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Shape {
+pub(crate) struct Shape {
     pub above: bool,
     pub lines: usize,
     pub below: bool,
@@ -149,7 +149,7 @@ pub struct Shape {
 
 /// What the pull request's list of changed files says about a file before it is read.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Known {
+pub(crate) struct Known {
     /// The lines the excerpt can show: an added file's added lines, a deleted file's removed ones.
     pub len: Option<usize>,
     /// Every line is changed (an added or a deleted file), so Diff and Split reach
@@ -162,7 +162,7 @@ pub struct Known {
 /// deleted file; Diff and Split of a modified file also show the changed lines next to them, which
 /// only the file says. Without `known.len` the file is taken to reach past the excerpt, as nearly
 /// every commented file does, so only a file that ends within the excerpt comes out shorter.
-pub fn predict(focus: &Focus, mode: Mode, extra: Extra, known: Known) -> Shape {
+pub(crate) fn predict(focus: &Focus, mode: Mode, extra: Extra, known: Known) -> Shape {
     let commented = focus.first.saturating_sub(1) as usize..focus.last as usize;
     let past_the_excerpt = commented.end + 2 * CONTEXT + extra.below + 1;
     let len = known.len.unwrap_or(past_the_excerpt).max(commented.end);
@@ -176,12 +176,12 @@ pub fn predict(focus: &Focus, mode: Mode, extra: Extra, known: Known) -> Shape {
 }
 
 /// Whether a commented line is a removed one, which only Diff can show.
-pub fn is_on_removed_lines(file: &CodeFile, focus: &Focus) -> bool {
+pub(crate) fn is_on_removed_lines(file: &CodeFile, focus: &Focus) -> bool {
     file.rows().iter().any(|row| row.kind == LineKind::Deleted && focus.covers(row))
 }
 
 /// The excerpt of `file` around `focus` in `mode`; `None` when the file has none of its lines.
-pub fn excerpt(file: &CodeFile, mode: Mode, focus: &Focus, extra: Extra) -> Option<Excerpt> {
+pub(crate) fn excerpt(file: &CodeFile, mode: Mode, focus: &Focus, extra: Extra) -> Option<Excerpt> {
     let rows = file.rows();
     let first = rows.iter().position(|row| focus.covers(row))?;
     let last = rows.iter().rposition(|row| focus.covers(row))?;
