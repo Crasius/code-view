@@ -227,7 +227,11 @@ mod tests {
     use super::*;
 
     fn code(text: &str) -> Vec<String> {
-        scan(text).code.into_iter().map(|line| line.trim_end().to_owned()).collect()
+        code_lines(&scan(text))
+    }
+
+    fn code_lines(scanned: &Scanned) -> Vec<String> {
+        scanned.code.iter().map(|line| line.trim_end().to_owned()).collect()
     }
 
     #[test]
@@ -236,10 +240,6 @@ mod tests {
         assert_eq!(code_lines(&scanned), ["let a = 1;", " let b;"]);
         assert_eq!(scanned.comments[0], (1, " unsafe here".to_owned()));
         assert_eq!(scanned.comments[1].0, 2);
-    }
-
-    fn code_lines(scanned: &Scanned) -> Vec<String> {
-        scanned.code.iter().map(|line| line.trim_end().to_owned()).collect()
     }
 
     #[test]
