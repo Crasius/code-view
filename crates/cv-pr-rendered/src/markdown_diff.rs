@@ -304,17 +304,15 @@ impl MarkdownDiff {
         past_end: bool,
     ) -> Option<RenderedEvent> {
         let total = Ends::of(self.heights.tops(), content.height(), past_end).height;
-        let mut scroll = egui::ScrollArea::vertical()
+        let scroll = egui::ScrollArea::vertical()
             .id_salt("markdown_diff_scroll")
             .auto_shrink(false)
             .scroll_source(egui::scroll_area::ScrollSource::MOUSE_WHEEL)
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
-        if let Some(offset) = self.scroll_to.take() {
-            scroll = scroll.vertical_scroll_offset(offset);
-        }
+        let placed = self.scroll_to.take();
         let output = ui
             .scope_builder(UiBuilder::new().max_rect(content), |ui| {
-                scroll.show_viewport(ui, |ui, viewport| {
+                cv_widgets::scroll::placed(ui, scroll, placed).show_viewport(ui, |ui, viewport| {
                     ui.set_min_height(total);
                     let frame = Frame { origin: ui.max_rect().min, ..*template };
                     self.paint_rows(ui, &frame, viewport, threads_ui)

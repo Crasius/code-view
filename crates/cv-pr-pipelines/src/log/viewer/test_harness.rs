@@ -1,5 +1,6 @@
-//! The log viewer over a downloaded log with Azure DevOps timestamps and ANSI colors, for the copy
-//! and selection tests, and the wait for what a pass put on the clipboard. No network.
+//! The log viewer over a downloaded log with Azure DevOps timestamps and ANSI colors (or another
+//! log a test writes), for the copy, selection and scroll tests, and the wait for what a pass put
+//! on the clipboard. No network.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -34,7 +35,8 @@ test result: ok. 162 passed; 0 failed\n\
 pub(super) struct State {
     pub viewer: LogViewer,
     target: LogTarget,
-    log: Arc<LoadedLog>,
+    /// The log shown; a test swaps it for another as a new download would.
+    pub log: Arc<LoadedLog>,
     background: Background,
     toasts: Toasts,
 }
@@ -43,16 +45,22 @@ pub(super) struct State {
 /// is reading hands it a short log.
 static LOG_FILES: AtomicUsize = AtomicUsize::new(0);
 
-/// The toolbar and lines of [`LOG`], in the light theme.
-pub(super) fn harness() -> Harness<'static, State> {
+/// `text` as a downloaded log in a file of its own, its first error on line `first_error`.
+pub(super) fn log_of(text: &str, first_error: Option<usize>) -> Arc<LoadedLog> {
     let number = LOG_FILES.fetch_add(1, Ordering::Relaxed);
     let path =
         std::env::temp_dir().join(format!("review-log-copy-{}-{number}.log", std::process::id()));
-    std::fs::write(&path, LOG).expect("write the log");
-    let log = Arc::new(LoadedLog {
-        file: LogFile::open(&path).expect("index the log"),
-        first_error: Some(5),
-    });
+    std::fs::write(&path, text).expect("write the log");
+    Arc::new(LoadedLog { file: LogFile::open(&path).expect("index the log"), first_error })
+}
+
+/// The toolbar and lines of [`LOG`], in the light theme.
+pub(super) fn harness() -> Harness<'static, State> {
+    harness_of(log_of(LOG, Some(5)))
+}
+
+/// The toolbar and lines of `log`, in the light theme.
+pub(super) fn harness_of(log: Arc<LoadedLog>) -> Harness<'static, State> {
     let state = State {
         viewer: LogViewer::default(),
         target: LogTarget {

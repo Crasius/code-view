@@ -23,23 +23,13 @@ pub fn show<R>(
         top: MARGIN as i8,
         bottom: MARGIN as i8,
     };
-    let mut scroll = ScrollArea::vertical()
+    let scroll = ScrollArea::vertical()
         .id_salt(("folder_summary", folder))
         .auto_shrink(false)
         .scroll_source(ScrollSource::SCROLL_BAR | ScrollSource::MOUSE_WHEEL)
         .content_margin(margin);
-    if let Some(offset) = placed {
-        scroll = scroll.vertical_scroll_offset(offset);
-    }
     ui.scope_builder(UiBuilder::new().max_rect(area), |ui| {
-        // egui measures the edge from last frame's content, and the cards may have grown since
-        // (a jump to the end, then a card above the view measured). A placed offset past that
-        // edge is where the view goes, not a pull past it: rubber-banding would spring it back
-        // and leave the view coasting, so that every later key missed its target.
-        if placed.is_some() {
-            ui.spacing_mut().scroll.kinetic.rubber_band = false;
-        }
-        scroll.show_viewport(ui, add_contents)
+        cv_widgets::scroll::placed(ui, scroll, placed).show_viewport(ui, add_contents)
     })
     .inner
 }
