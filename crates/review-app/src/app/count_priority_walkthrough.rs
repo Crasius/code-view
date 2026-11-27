@@ -19,7 +19,9 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use review_store::{AppPaths, FilesStart};
 
 use super::ReviewApp;
-use super::action_e2e::{app, has_cached_diff, open_pull_request, settle_background, wait_until};
+use super::action_e2e::{
+    app, has_cached_diff, open_pull_request, settle_background, shows_file_view, wait_until,
+};
 use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread, REPOSITORY, THREAD_TEXT};
 use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
@@ -144,9 +146,7 @@ fn count_priority_a_file_opened_deep_in_tree_order_counts_with_its_neighbours_fi
         harness.query_by_role_and_label(Role::TreeItem, opened).is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, opened).rect());
-    wait_until(&mut harness, "the deep file's diff", |harness| {
-        harness.query_by_label(&format!("Diff of {opened}")).is_some()
-    });
+    wait_until(&mut harness, "the deep file's diff", |harness| shows_file_view(harness, opened));
     // The neighbours (the previous and the next file of its folder) came with it, as wanted
     // files of the count: a fetch of the opened file's own would bring its two blobs alone.
     let neighbours = blob_ids(&scratch, &[DEEP[0], DEEP[2]]);
@@ -205,7 +205,7 @@ fn click_row_until_shown(
         harness.step();
         frames += 1;
         skeleton |= harness.query_by_label("Loading the diff").is_some();
-        if harness.query_by_label(&format!("Diff of {path}")).is_some() {
+        if shows_file_view(harness, path) {
             return (frames, skeleton);
         }
         assert!(started.elapsed() < Duration::from_secs(60), "{path} never showed");
@@ -238,7 +238,7 @@ fn count_priority_a_resting_pointer_on_a_thread_row_loads_its_file_ahead() {
     open_pull_request(&mut harness);
     files_tab(&mut harness);
     wait_until(&mut harness, "the first file's diff", |harness| {
-        harness.query_by_label("Diff of a/first.rs").is_some()
+        shows_file_view(harness, "a/first.rs")
     });
     wait_until(&mut harness, "the thread rows", |harness| {
         thread_row(harness, THREAD_TEXT).is_some() && thread_row(harness, FAR_THREAD).is_some()

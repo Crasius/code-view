@@ -12,7 +12,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, wait_until};
+use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
 use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread};
 use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
@@ -88,11 +88,10 @@ fn a_thread_in_a_file_never_opened_comes_into_view() {
 
     // A text diff is open; the code thread's file was never opened.
     open_in_tree(&mut harness, FILE);
-    wait_until(&mut harness, "the open text diff", |harness| {
-        harness.query_by_label(&format!("Diff of {FILE}")).is_some()
-    });
+    wait_until(&mut harness, "the open text diff", |harness| shows_file_view(harness, FILE));
     click_row(&mut harness, CODE_THREAD);
     let card = wait_for_card(&mut harness, CODE_THREAD);
+    assert!(shows_file_view(&harness, CODE), "the thread's file opened");
     let diff = harness.get_by_label(&format!("Diff of {CODE}")).rect();
     assert!(diff.contains_rect(card), "the code thread {card:?} inside the diff {diff:?}");
 

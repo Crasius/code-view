@@ -24,6 +24,7 @@ use review_store::{AppPaths, AppSettings, ConnectionStore, DiffLayout, PaneSizes
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::action_e2e::{shows_file_view, shows_folder_view};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir, git};
@@ -134,8 +135,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, CODE_PATH).rect());
     wait_for(&mut harness, "the diff", |harness| {
-        harness.query_by_label(&format!("Diff of {CODE_PATH}")).is_some()
-            && harness.query_by_label("Resize diff sides").is_some()
+        shows_file_view(harness, CODE_PATH) && harness.query_by_label("Resize diff sides").is_some()
     });
 
     // The tree sits at its side of the diff, its splitter on its inner edge; `inward` points from
@@ -280,9 +280,10 @@ fn folder_view_zooms_the_code_over_cards_and_the_app_elsewhere() {
         harness.query_by_label_contains("Files (").is_some()
     });
     harness.click_at(harness.get_by_label_contains("Files (").rect());
+    // A card draws its code with the file view's diff view, under the same label.
     let card = format!("Diff of {GADGETS_PATH}");
     wait_for(&mut harness, "the folder view's cards", |harness| {
-        harness.query_by_label(&card).is_some()
+        shows_folder_view(harness) && harness.query_by_label(&card).is_some()
     });
     let scale = harness.ctx.pixels_per_point();
 
@@ -338,9 +339,7 @@ fn switching_files_keeps_the_header_still_without_placeholders() {
         harness.query_by_role_and_label(Role::TreeItem, CODE_PATH).is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, CODE_PATH).rect());
-    wait_for(&mut harness, "the diff", |harness| {
-        harness.query_by_label(&format!("Diff of {CODE_PATH}")).is_some()
-    });
+    wait_for(&mut harness, "the diff", |harness| shows_file_view(harness, CODE_PATH));
     // Line counts, colors and the diffs of the neighbouring files.
     wait_for(&mut harness, "the work ahead", |harness| {
         harness.state().services.background.running() == 0

@@ -9,7 +9,7 @@ use egui_kittest::kittest::Queryable;
 use review_store::{AppPaths, AppSettings, LastPlace, LastTab, PullRequestStart, ViewedFiles};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, wait_until};
+use super::action_e2e::{app, open_pull_request, shows_file_view, shows_folder_view, wait_until};
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_runtime::route::{PullRequestTab, Route};
 use cv_testkit::Clicks;
@@ -33,10 +33,6 @@ fn paths(scratch: &ScratchDir) -> AppPaths {
     AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"))
 }
 
-fn diff_shows(harness: &Harness<'_, ReviewApp>, path: &str) -> bool {
-    harness.query_by_label(&format!("Diff of {path}")).is_some()
-}
-
 fn tab(harness: &Harness<'_, ReviewApp>) -> Option<PullRequestTab> {
     harness.state().current_tab()
 }
@@ -45,11 +41,8 @@ fn tab(harness: &Harness<'_, ReviewApp>) -> Option<PullRequestTab> {
 fn open_on_file(harness: &mut Harness<'_, ReviewApp>, path: &str) {
     open_pull_request(harness);
     wait_until(harness, path, |harness| {
-        // The mock's own `src/lib.rs` makes three.
-        let folder_view = harness.query_by_label("All files (current folder)").is_some()
-            || harness.query_by_label("3 changed files").is_some();
-        assert!(!folder_view, "the folder view showed");
-        diff_shows(harness, path)
+        assert!(!shows_folder_view(harness), "the folder view showed");
+        shows_file_view(harness, path)
     });
     assert_eq!(tab(harness), Some(PullRequestTab::Files));
 }
@@ -91,7 +84,7 @@ fn open_resume_files_option_and_the_place_left_survive_a_restart() {
 
     open_on_file(&mut harness, FIRST);
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, LAST).rect());
-    wait_until(&mut harness, "the last file", |harness| diff_shows(harness, LAST));
+    wait_until(&mut harness, "the last file", |harness| shows_file_view(harness, LAST));
     drop(harness);
 
     // A restart opens the file left open, not the first one.
@@ -116,8 +109,8 @@ fn open_resume_files_option_and_the_place_left_survive_a_restart() {
             })
             .rect(),
     );
-    wait_until(&mut harness, "the file left open", |harness| diff_shows(harness, LAST));
-    assert!(!diff_shows(&harness, FIRST));
+    wait_until(&mut harness, "the file left open", |harness| shows_file_view(harness, LAST));
+    assert!(!shows_file_view(&harness, FIRST));
 }
 
 /// A saved file the pull request no longer changes opens the first file, without an error or the
