@@ -10,10 +10,39 @@ use egui::{Color32, Ui};
 use super::super::citations;
 use super::Reference;
 
-/// The pieces of the last answer laid out, kept for the text they were parsed from.
+/// The pieces of the last answer laid out, and the Markdown source of each, kept for the text
+/// they were parsed from.
 #[derive(Default)]
 pub struct Pieces {
-    parsed: Option<(u64, Units)>,
+    parsed: Option<(u64, Units, Vec<String>)>,
+}
+
+impl Pieces {
+    /// The pieces of `text` and their sources, parsed when `text` changed.
+    fn of(&mut self, text: &str) -> (&Units, &[String]) {
+        let key = egui::epaint::util::hash(text);
+        let parsed = match self.parsed.take() {
+            Some(kept) if kept.0 == key => kept,
+            _ => {
+                let units = Units::parse(text, None);
+                let sources = sources(text, &units);
+                (key, units, sources)
+            }
+        };
+        let (_, units, sources) = self.parsed.insert(parsed);
+        (units, sources)
+    }
+}
+
+/// The Markdown each piece of `units` was made from.
+fn sources(text: &str, units: &Units) -> Vec<String> {
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let source_of = |unit: &markdown::Unit| {
+        let first = (unit.lines.start as usize).saturating_sub(1);
+        let last = (unit.lines.end as usize).saturating_sub(1).min(lines.len());
+        lines.get(first..last).unwrap_or_default().concat()
+    };
+    units.units.iter().map(source_of).collect()
 }
 
 /// Draws `text` (the answer of turn `turn`); with `linked`, its citation links are in and
@@ -30,24 +59,14 @@ pub fn show(
         markdown::render(ui, ("assistant_mini_answer", turn), text, RenderOptions::default());
         return;
     }
-    let key = egui::epaint::util::hash(text);
-    if pieces.parsed.as_ref().is_none_or(|(kept, _)| *kept != key) {
-        pieces.parsed = Some((key, Units::parse(text, None)));
-    }
-    let Some((_, units)) = &pieces.parsed else {
-        return;
-    };
+    let (units, sources) = pieces.of(text);
     let palette = theme::palette(ui.ctx());
-    let lines: Vec<&str> = text.split_inclusive('\n').collect();
-    for (index, unit) in units.units.iter().enumerate() {
+    for ((index, unit), source) in units.units.iter().enumerate().zip(sources) {
         if index > 0 {
             ui.add_space(Units::gap((units, index - 1), (units, index)));
         }
-        let first = (unit.lines.start as usize).saturating_sub(1);
-        let last = (unit.lines.end as usize).saturating_sub(1).min(lines.len());
-        let source: String = lines.get(first..last).unwrap_or_default().concat();
         let marks = current.and_then(|(reference, fill)| {
-            let ranges = ranges_of(&source, &unit.text, reference);
+            let ranges = ranges_of(source, &unit.text, reference);
             let color = palette.selection.gamma_multiply(fill);
             (!ranges.is_empty() && color != Color32::TRANSPARENT).then_some(Marks { ranges, color })
         });

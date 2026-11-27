@@ -17,14 +17,14 @@ use review_agent::{AgentError, AgentEvent, Session, SessionConfig};
 use review_git::GitMirror;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use super::checkout;
+use super::checkout::{self, Checkout};
 
 /// Events that arrived together, and the receiver for the next ones.
 type Batch = (Vec<AgentEvent>, UnboundedReceiver<AgentEvent>);
 
 /// What finished in the background since the last frame.
 pub enum RunnerEvent {
-    CheckoutReady(PathBuf),
+    CheckoutReady(Checkout),
     CheckoutFailed(String),
     SessionStarted,
     SessionFailed(AgentError),
@@ -33,7 +33,7 @@ pub enum RunnerEvent {
 
 #[derive(Default)]
 pub struct Runner {
-    checkout: Option<Task<Result<PathBuf, String>>>,
+    checkout: Option<Task<Result<Checkout, String>>>,
     starting: Option<Task<Started>>,
     session: Option<Session>,
     events: Option<Task<Batch>>,
@@ -146,8 +146,8 @@ impl Runner {
         if let Some(task) = &mut self.checkout {
             match task.poll() {
                 TaskPoll::Pending => {}
-                TaskPoll::Done(Ok(dir)) => {
-                    finished.push(RunnerEvent::CheckoutReady(dir));
+                TaskPoll::Done(Ok(checkout)) => {
+                    finished.push(RunnerEvent::CheckoutReady(checkout));
                     self.checkout = None;
                 }
                 TaskPoll::Done(Err(message)) => {
@@ -215,25 +215,23 @@ impl Runner {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
-
     use cv_runtime::background::Background;
+    use cv_testkit::poll_until;
     use review_agent::{AgentError, AgentEvent, Session, Usage};
 
     use super::{Runner, RunnerEvent};
 
-    /// The agent events the runner hands out until `count` arrived (or ten seconds passed).
+    /// The agent events the runner hands out until `count` arrived.
     fn agent_events(runner: &mut Runner, background: &Background, count: usize) -> Vec<AgentEvent> {
-        let deadline = Instant::now() + Duration::from_secs(10);
         let mut events = Vec::new();
-        while events.len() < count && Instant::now() < deadline {
+        poll_until("the agent's events", || {
             let finished = runner.poll(background).into_iter();
             events.extend(finished.filter_map(|event| match event {
                 RunnerEvent::Agent(event) => Some(event),
                 _ => None,
             }));
-            std::thread::yield_now();
-        }
+            events.len() >= count
+        });
         events
     }
 
