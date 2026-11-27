@@ -16,9 +16,9 @@ const REST: f32 = 0.75;
 const QUIET_REST: f32 = 0.4;
 
 /// Where the support item leads: the author's Buy Me a Coffee page.
-pub const SUPPORT_URL: &str = "https://buymeacoffee.com/northbyte";
+const SUPPORT_URL: &str = "https://buymeacoffee.com/northbyte";
 /// The support item's tooltip and accessible name.
-pub const SUPPORT_LABEL: &str = "Support Code View: buy me a coffee";
+const SUPPORT_LABEL: &str = "Support Code View: buy me a coffee";
 
 /// The icon rail on the left, like the Azure DevOps hub bar. The selection indicator slides
 /// between items instead of jumping. At the bottom, a quiet coffee button opens the support page in

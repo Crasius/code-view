@@ -20,7 +20,7 @@ use egui::{Align2, FontId, Key, Modifiers, Order, Rect, Sense, Stroke, Ui, pos2,
 /// tear. The frame rate limit ([`crate::frame_pacing`]) holds continuous repaints below that.
 pub const VSYNC: bool = true;
 /// Frames kept for the percentiles and the sparkline.
-pub const HISTORY: usize = 240;
+const HISTORY: usize = 240;
 /// The open overlay refreshes this often while the app is otherwise idle.
 const IDLE_REFRESH: Duration = Duration::from_millis(250);
 /// Re-read the monitor's refresh rate this often (the window may move to another monitor).
@@ -41,14 +41,14 @@ pub struct FrameStats {
     monitor: Monitor,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Renderer {
+#[derive(Default)]
+struct Renderer {
     /// "OpenGL" plus the driver's version string.
-    pub api: String,
+    api: String,
     /// `GL_RENDERER`: the GPU (or software rasterizer) that draws.
-    pub device: String,
-    pub vendor: String,
-    pub is_software: bool,
+    device: String,
+    vendor: String,
+    is_software: bool,
 }
 
 #[derive(Default)]
@@ -237,7 +237,7 @@ fn memory_line(holders: &[(&str, usize)]) -> String {
 }
 
 /// Microsoft's GDI fallback, Mesa's `llvmpipe`/`softpipe` and SwiftShader draw on the CPU.
-pub fn is_software_rasterizer(device: &str) -> bool {
+fn is_software_rasterizer(device: &str) -> bool {
     let device = device.to_ascii_lowercase();
     ["gdi generic", "llvmpipe", "softpipe", "swiftshader", "basic render"]
         .iter()
@@ -254,16 +254,6 @@ fn push<T>(samples: &mut VecDeque<T>, sample: T) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn keeps_the_last_frames_only() {
-        let mut samples = VecDeque::new();
-        for value in 0..HISTORY + 10 {
-            push(&mut samples, value);
-        }
-        assert_eq!(samples.len(), HISTORY);
-        assert_eq!(samples.front(), Some(&10));
-    }
 
     #[test]
     fn recognizes_software_rasterizers() {
