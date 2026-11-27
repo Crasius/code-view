@@ -1,8 +1,7 @@
 //! Editing and deleting merge request notes against a mock GitLab REST API v4, matched on the
 //! documented discussion note endpoints (docs.gitlab.com/api/discussions).
 
-use review_core::provider::CommentActions;
-use review_core::{Provider, ReviewThread, ThreadStatus};
+use review_core::Provider;
 use serde_json::{Value, json};
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -50,24 +49,4 @@ async fn deletes_a_note() {
         .delete_comment(REPO, 7, "6a9c1750b37d", "302")
         .await
         .expect("deleted");
-}
-
-#[tokio::test]
-async fn system_notes_offer_nothing() {
-    let server = MockServer::start().await;
-    let mut thread = ReviewThread {
-        id: "6a9c1750b37d".to_owned(),
-        status: ThreadStatus::Active,
-        anchor: None,
-        is_outdated: false,
-        origin: None,
-        is_system: false,
-        can_reply: true,
-        can_resolve: true,
-        comments: Vec::new(),
-    };
-    let provider = support::provider(&server, Some(TOKEN));
-    assert_eq!(provider.comment_actions(&thread), CommentActions::EDIT_AND_DELETE);
-    thread.is_system = true;
-    assert_eq!(provider.comment_actions(&thread), CommentActions::NONE);
 }

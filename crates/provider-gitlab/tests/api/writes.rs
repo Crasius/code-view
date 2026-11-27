@@ -41,19 +41,6 @@ async fn mount_merge_request(server: &MockServer, title: &str, reviewers: &Value
         .await;
 }
 
-/// A merge-commit project with optional squashing; merges read it first.
-async fn mount_project(server: &MockServer) {
-    Mock::given(method("GET"))
-        .and(path("/api/v4/projects/group%2Fsub%2Fproject"))
-        .and(header("PRIVATE-TOKEN", TOKEN))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "path_with_namespace": REPO, "name": "project", "web_url": "https://gitlab.example.com/group/sub/project",
-            "http_url_to_repo": "https://gitlab.example.com/group/sub/project.git", "merge_method": "merge", "squash_option": "default_off"
-        })))
-        .mount(server)
-        .await;
-}
-
 async fn expect_write(server: &MockServer, verb: &str, route: &str, body: Value, status: u16) {
     let mock = Mock::given(method(verb)).and(path(route)).and(header("PRIVATE-TOKEN", TOKEN));
     let mock = if body == json!({}) { mock } else { mock.and(body_partial_json(body)) };
@@ -307,7 +294,8 @@ async fn removes_reviewer_by_id() {
 #[tokio::test]
 async fn merges_and_squashes() {
     let server = MockServer::start().await;
-    mount_project(&server).await;
+    let settings = json!({ "merge_method": "merge", "squash_option": "default_off" });
+    support::mount_project(&server, support::project(settings)).await;
     let route = format!("{MR}/merge");
     expect_write(
         &server,
@@ -346,7 +334,8 @@ async fn merges_and_squashes() {
 #[tokio::test]
 async fn merge_refused_for_a_moved_head_reports_new_commits() {
     let server = MockServer::start().await;
-    mount_project(&server).await;
+    let settings = json!({ "merge_method": "merge", "squash_option": "default_off" });
+    support::mount_project(&server, support::project(settings)).await;
     Mock::given(method("PUT"))
         .and(path(format!("{MR}/merge")))
         .and(header("PRIVATE-TOKEN", TOKEN))
@@ -377,7 +366,8 @@ async fn merge_refused_for_a_moved_head_reports_new_commits() {
 #[tokio::test]
 async fn merge_refused_while_a_push_is_checked_reports_new_commits() {
     let server = MockServer::start().await;
-    mount_project(&server).await;
+    let settings = json!({ "merge_method": "merge", "squash_option": "default_off" });
+    support::mount_project(&server, support::project(settings)).await;
     mount_merge_request(&server, "Title", &json!([])).await;
     Mock::given(method("PUT"))
         .and(path(format!("{MR}/merge")))

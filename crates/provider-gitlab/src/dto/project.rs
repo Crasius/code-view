@@ -1,6 +1,7 @@
 use serde::Deserialize;
 
-/// `/projects` item; the `simple=true` representation carries all of these.
+/// A project from the `simple=true` listing or from `GET /projects/:id`; only the single read
+/// carries the merge settings.
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ProjectDto {
     pub path_with_namespace: String,

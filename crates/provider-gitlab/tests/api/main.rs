@@ -12,5 +12,6 @@ mod pages;
 mod pipelines;
 mod rate_limits;
 mod row_statuses;
+mod setup;
 mod support;
 mod writes;
