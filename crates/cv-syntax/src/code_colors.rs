@@ -84,11 +84,12 @@ pub fn colors(ctx: &egui::Context, language: &str, code: &str) -> Option<Arc<Cod
     cache.entries.insert(key, Entry::Pending, ENTRY_BYTES);
     drop(cache);
     let (language, code, ctx) = (language.to_owned(), code.to_owned(), ctx.clone());
-    color_worker::submit(move |warm| {
+    color_worker::submit(move || {
         let colors = grammar::for_language(&language).map(|grammar| {
             let text = BlobText::from_bytes(code.into_bytes());
             let mut spans = LineSpans::default();
-            highlight::highlight(&text, grammar.syntax, warm.for_grammar(grammar), |chunk| {
+            let working = grammar::compiled(grammar);
+            highlight::highlight(&text, grammar.syntax, &working, |chunk| {
                 spans.append(chunk);
                 true
             });
