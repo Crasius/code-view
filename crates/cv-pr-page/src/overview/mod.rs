@@ -25,13 +25,12 @@ use cv_pr_session::links::{self, LinkedEntry, Sources};
 use cv_pr_session::session::PullRequestSession;
 use cv_pr_threads::ThreadsUi;
 use cv_runtime::background::Background;
-use cv_runtime::intents;
 use cv_runtime::load::Live;
 use cv_services::Services;
 use cv_services::linked::LinkedCache;
 use cv_services::self_review;
 use cv_widgets::splitter::Splitter;
-use cv_widgets::states::{self, Action};
+use cv_widgets::states;
 use cv_widgets::{buttons, scroll, skeleton};
 
 const COLUMN_GAP: f32 = 24.0;
@@ -116,36 +115,14 @@ impl OverviewTab {
         threads: &mut ThreadsUi,
         assistant: &mut Assistant,
     ) -> Option<cv_pr_threads::Jump> {
-        // The header already shows the error text; skeletons here would wait forever.
+        // The header shows the error and its actions; skeletons here would wait forever.
         if session.detail.error().is_some() {
-            let open_label = states::open_on_platform(session.kind);
-            let actions = [
-                Action::primary(icons::ARROW_CLOCKWISE, "Retry"),
-                Action::secondary(cv_widgets::provider_icon::glyph(session.kind), &open_label),
-                Action::secondary(icons::GEAR, "Check connection"),
-            ];
-            let picked = states::message_with_actions(
+            states::message(
                 ui,
                 icons::WARNING,
                 "Pull request unavailable",
                 "Check the number and whether this connection can read the repository.",
-                &actions,
             );
-            match picked {
-                Some(0) => session.refresh(services),
-                Some(1) => {
-                    if let Some(connection) = services.connection(&session.key.connection_id) {
-                        let url = cv_runtime::links::pull_request_link::web_url(
-                            connection,
-                            &session.key.repository_key,
-                            session.key.number,
-                        );
-                        ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-                    }
-                }
-                Some(_) => intents::request_fix(ui.ctx(), &session.key.connection_id),
-                None => {}
-            }
             return None;
         }
         if assistant.is_expanded() && services.settings.assistant.enabled {

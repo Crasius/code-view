@@ -3,6 +3,7 @@ use cv_pr_session::actions::ActionRunner;
 use cv_pr_session::lifecycle::LifecycleAction;
 use cv_pr_session::session::PullRequestSession;
 use cv_pr_session::web_link::WebLink;
+use cv_runtime::intents;
 use cv_runtime::links::pull_request_link;
 use cv_services::Services;
 use cv_widgets::numbers::number_prefix;
@@ -251,14 +252,18 @@ fn load_error(
     let actions = [
         states::Action::primary(icons::ARROW_CLOCKWISE, "Retry"),
         states::Action::secondary(provider_icon::glyph(session.kind), &open_label),
+        states::Action::secondary(icons::GEAR, "Check connection"),
     ];
-    if states::error_with_actions(ui, message, &actions)? == 0 {
-        return Some(HeaderAction::Refresh);
+    match states::error_with_actions(ui, message, &actions)? {
+        0 => return Some(HeaderAction::Refresh),
+        1 => {
+            let connection = services.connection(&session.key.connection_id)?;
+            let key = &session.key;
+            let url = pull_request_link::web_url(connection, &key.repository_key, key.number);
+            ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+        }
+        _ => intents::request_fix(ui.ctx(), &session.key.connection_id),
     }
-    let connection = services.connection(&session.key.connection_id)?;
-    let key = &session.key;
-    let url = pull_request_link::web_url(connection, &key.repository_key, key.number);
-    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
     None
 }
 

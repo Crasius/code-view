@@ -79,7 +79,7 @@ impl BlockFind {
         let step = self.bar.keys(ui, owns_keys, || None);
         let side = self.bar.follow_focus(ui, &panes, None);
         self.focus = Some((panes, side));
-        let source = egui::epaint::util::hash((model.key, Arc::as_ptr(model) as usize));
+        let source = model.key;
         let (ctx, model) = (ui.ctx().clone(), Arc::clone(model));
         self.bar.refresh(ui.ctx(), side, source, move |query| {
             spawn(&ctx, move || {

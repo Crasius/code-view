@@ -6,8 +6,9 @@
 //! The chevron opens a dropdown right below the button (above it when the window ends too soon),
 //! right-aligned with it: the strategies the target branch allows (number keys pick), why one is
 //! preselected, "Always use for <repo>", what the branch forbids with the way to its policies, the
-//! commit message (for strategies that write a commit) and the source branch choice. Ctrl+Enter there arms the button, so keyboard and
-//! mouse confirm the same way. Edits stay for as long as the pull request page lives.
+//! commit message (for strategies that write a commit) and the source branch choice. Ctrl+Enter
+//! there arms the button, so keyboard and mouse confirm the same way. Edits stay for as long as
+//! the pull request page lives.
 //!
 //! While policies still block the pull request, the same button sets the platform's auto-complete
 //! with the chosen strategy and options, and once that is set it cancels it ([`auto_complete`]);
