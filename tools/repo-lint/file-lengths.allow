@@ -4,8 +4,8 @@
 # file shrank without its entry following (`cargo run -p repo-lint -- --shrink-allowlist`).
 # A file back within 700 lines leaves the list. Never add a line here: split the file instead.
 # A file moved with `git mv` keeps its cap under the new path (RL002 follows git's rename).
-909 crates/cv-pr-diff/src/diff_view.rs
-967 crates/cv-pr-rendered/src/markdown_diff.rs
+907 crates/cv-pr-diff/src/diff_view.rs
+965 crates/cv-pr-rendered/src/markdown_diff.rs
 746 crates/cv-pr-files/src/lib.rs
 838 crates/cv-pr-summary/src/lib.rs
 705 crates/cv-pr-pipelines/src/lib.rs
