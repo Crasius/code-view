@@ -211,3 +211,24 @@ pub struct MergeOptions {
     /// A refusal for this reason is [`crate::ProviderError::HeadMoved`].
     pub head_sha: String,
 }
+
+/// Characters of a commit id the app shows: git's own default abbreviation.
+pub const SHORT_SHA_LEN: usize = 7;
+
+/// The first [`SHORT_SHA_LEN`] characters of `sha`, or all of a shorter one.
+pub fn short_sha(sha: &str) -> &str {
+    sha.get(..SHORT_SHA_LEN).unwrap_or(sha)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::short_sha;
+
+    #[test]
+    fn cuts_a_commit_id_to_seven_characters() {
+        assert_eq!(short_sha("0123456789abcdef0123456789abcdef01234567"), "0123456");
+        assert_eq!(short_sha("abc12"), "abc12", "a shorter id stays whole");
+        assert_eq!(short_sha(""), "");
+        assert_eq!(short_sha("ääääääää"), "ääääääää", "no cut inside a character");
+    }
+}
