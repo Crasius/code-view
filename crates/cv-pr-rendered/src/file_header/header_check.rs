@@ -66,7 +66,8 @@ fn services_in(scratch: &ScratchDir) -> Services {
     Services::new(egui::Context::default(), scratch.app_paths(), cv_providers::create_provider)
 }
 
-/// The side the Files tab shows whole: the new one of an added file, the old one of a deleted.
+/// The one version an added or deleted file has: the new one of an added file, the old one of a
+/// deleted.
 fn whole_file_side(file: &ChangedFile) -> Option<DiffSide> {
     match file.kind {
         ChangeKind::Added => Some(DiffSide::New),

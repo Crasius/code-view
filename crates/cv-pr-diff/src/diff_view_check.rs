@@ -21,8 +21,9 @@ use crate::testing::{
 /// A spot in the code area away from every wedge and popover.
 const AWAY: egui::Pos2 = egui::pos2(1000.0, 740.0);
 
-/// Frames of kittest's default 0.25 s through which lines jumped to flash: the flash runs 2.8 s
-/// (`flash::DURATION`), longer than [`settle`] steps.
+/// Steps of kittest's default 0.25 s that outlast the flash of a line jumped to
+/// (`flash::DURATION`); the flash repaints every frame, so [`settle`] alone would exceed its
+/// step limit.
 const FLASH_STEPS: usize = 12;
 
 fn wedge_labels(harness: &Harness<'_, Fixture>) -> Vec<String> {
