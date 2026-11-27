@@ -41,10 +41,25 @@ pub struct ImageFailure {
     /// The host or repository path it was asked from.
     pub place: String,
     pub can_retry: bool,
+    /// What the card offers beside a retry.
+    pub remedy: Remedy,
+}
+
+impl ImageFailure {
+    /// A failure with no remedy beyond a retry.
+    pub fn new(reason: String, place: String, can_retry: bool) -> Self {
+        Self { reason, place, can_retry, remedy: Remedy::None }
+    }
+}
+
+/// The one fix an image's card offers beside a retry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Remedy {
+    None,
     /// The image is private and the connection does not reach it: the card offers to fix its token.
-    pub needs_access: bool,
+    SignIn,
     /// A video that needs ffmpeg, which is not installed: the card offers its install command.
-    pub needs_ffmpeg: bool,
+    InstallFfmpeg,
 }
 
 /// Bumped whenever an image's size became known or changed: views that keep laid-out heights

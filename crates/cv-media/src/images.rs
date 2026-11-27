@@ -34,7 +34,7 @@ use review_core::http::image::{self as remote, Body, Validators};
 use review_core::{Provider, ProviderError};
 use review_git::GitMirror;
 
-use crate::image_state::{ImageFailure, ImageState, bump_image_generation};
+use crate::image_state::{ImageFailure, ImageState, Remedy, bump_image_generation};
 use crate::picture::Picture;
 use crate::video::Clip;
 
@@ -193,13 +193,7 @@ impl ImageStore {
         let is_new = !inner.entries.contains_key(&target.key);
         if is_new {
             if let Fetch::Blocked(reason) = &target.fetch {
-                let failure = ImageFailure {
-                    reason: reason.clone(),
-                    place: target.place.clone(),
-                    can_retry: false,
-                    needs_access: false,
-                    needs_ffmpeg: false,
-                };
+                let failure = ImageFailure::new(reason.clone(), target.place.clone(), false);
                 let entry = Entry::new(Phase::Failed(Arc::new(failure)), pass, now);
                 inner.entries.insert(target.key, entry);
             } else {
@@ -346,7 +340,7 @@ fn settle(inner: &Mutex<Inner>, target: &Target, result: Result<Loaded, ImageFai
                 entry.phase = Phase::Ready(picture);
             }
             Err(failure) => {
-                if failure.needs_access
+                if failure.remedy == Remedy::SignIn
                     && let Fetch::Remote { owner: Some(owner), .. } = &target.fetch
                 {
                     denied = Some(owner.connection_id.clone());
@@ -432,13 +426,7 @@ async fn load(
     if let Some(file) = &target.video {
         return video::load(ctx, target, file).await;
     }
-    let fail = |reason: String, can_retry: bool| ImageFailure {
-        reason,
-        place: target.place.clone(),
-        can_retry,
-        needs_access: false,
-        needs_ffmpeg: false,
-    };
+    let fail = |reason, can_retry| ImageFailure::new(reason, target.place.clone(), can_retry);
     let (bytes, content_type, kept_at, stale) = match (&target.fetch, ahead) {
         (Fetch::Blocked(reason), _) => return Err(fail(reason.clone(), false)),
         // Read ahead and now shown: kept on disk from here on, like a body just downloaded.
@@ -458,7 +446,7 @@ async fn load(
                 let known = &Validators::NONE;
                 let fetched = fetch_remote(url, owner.as_ref(), disk.as_deref(), known, MAX_BYTES)
                     .await
-                    .map_err(|failure| failure.card(&fail))?;
+                    .map_err(|failure| failure.card(&target.place))?;
                 match fetched {
                     Fetched::Changed { bytes, content_type } => (bytes, content_type, None, None),
                     Fetched::Unchanged => {
@@ -583,17 +571,18 @@ enum Fetched {
 struct FetchFailure {
     reason: String,
     can_retry: bool,
-    needs_access: bool,
+    remedy: Remedy,
 }
 
 impl FetchFailure {
     fn new(reason: String, can_retry: bool) -> Self {
-        Self { reason, can_retry, needs_access: false }
+        Self { reason, can_retry, remedy: Remedy::None }
     }
 
-    /// The card `fail` makes of a reason and whether a retry may help.
-    fn card(self, fail: &impl Fn(String, bool) -> ImageFailure) -> ImageFailure {
-        ImageFailure { needs_access: self.needs_access, ..fail(self.reason, self.can_retry) }
+    /// The card of an image asked from `place`.
+    fn card(self, place: &str) -> ImageFailure {
+        let Self { reason, can_retry, remedy } = self;
+        ImageFailure { reason, place: place.to_owned(), can_retry, remedy }
     }
 }
 
@@ -625,9 +614,10 @@ async fn fetch_remote(
             Ok(Fetched::Unchanged)
         }
         Ok(Body::TooLarge(_)) => Err(FetchFailure::new(too_large(limit), false)),
-        Ok(Body::Private) => {
-            Err(FetchFailure { needs_access: true, ..FetchFailure::new(PRIVATE.to_owned(), true) })
-        }
+        Ok(Body::Private) => Err(FetchFailure {
+            remedy: Remedy::SignIn,
+            ..FetchFailure::new(PRIVATE.to_owned(), true)
+        }),
         Err(error) => Err(FetchFailure::new(reason_of(&error), can_retry(&error))),
     }
 }
