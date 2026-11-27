@@ -53,6 +53,21 @@ impl ColdTier {
         let _cold_tier_stays_empty = self.writes.send(Box::new(write));
     }
 
+    /// Waits until the writer thread has handled every write queued before; returns at once when
+    /// it never started. Writes run in order on one thread, so a marker write behind them is
+    /// handled last.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn flush(&self) {
+        let (done, handled) = mpsc::channel::<()>();
+        let marker = move |_: &ColdCache| {
+            let _waiter_gone = done.send(());
+        };
+        if self.writes.send(Box::new(marker)).is_ok() {
+            // An error means the writer thread ended without handling the marker: nothing waits.
+            let _writer_gone = handled.recv();
+        }
+    }
+
     /// The payload stored for `key`. Reads the disk: background threads only, or once at start.
     pub fn read(&self, kind: &str, version: u32, key: &str) -> Option<Vec<u8>> {
         self.cache.read(kind, version, key)
