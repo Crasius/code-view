@@ -20,10 +20,10 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{
     Capabilities, Connection, GitRemote, ItemKind, ItemRef, Label, LinkedItem, LinkedState,
-    MergePolicy, MergeStatus, MergeStrategy, PipelineAttempt, PipelineJob, PipelineRun,
-    ProviderError, ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestState,
-    PullRequestSummary, RerunAction, RerunKind, Result, ReviewThread, ReviewVote, Reviewer,
-    RunStatus, ThreadAnchor, ThreadComment, ThreadOrigin, ThreadStatus, Timestamp, UserIdentity,
+    MergePolicy, MergeStrategy, PipelineAttempt, PipelineJob, PipelineRun, ProviderError,
+    ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestSummary, RerunAction, RerunKind,
+    Result, ReviewThread, ReviewVote, Reviewer, RunStatus, ThreadAnchor, ThreadComment,
+    ThreadOrigin, ThreadStatus, Timestamp, UserIdentity,
 };
 use review_store::AppPaths;
 use time::macros::datetime;
@@ -94,7 +94,7 @@ struct Fixture {
 }
 
 #[test]
-fn clip_audit_every_screen_keeps_its_text_and_controls_inside() {
+fn every_screen_keeps_its_text_and_controls_inside() {
     let scratch = ScratchDir::new("clip-audit");
     let fixture = create_origin(&scratch.path().join("origin"));
     let paths = saved_paths(&scratch, &connections());
@@ -393,7 +393,7 @@ impl Audit {
         harness.key_press(egui::Key::Escape);
         settle(harness);
         let services = &mut harness.state_mut().services;
-        let retry = cv_runtime::toasts::ToastAction::retry(egui::Id::unique("clip_audit.retry"));
+        let retry = cv_runtime::toasts::ToastAction::retry(egui::Id::unique("layout_audit.retry"));
         services.toasts.error(format!("Could not reach {REPOSITORY}: the connection to dev.azure.com was reset while the request was in flight."), retry);
         services.toasts.success(format!("Rerun of {RETRIED_JOB} started."));
         settle(harness);
@@ -477,8 +477,7 @@ fn open(harness: &mut Harness<'_, ReviewApp>, connection_id: &str, repository_ke
 }
 
 fn harness(paths: AppPaths, fixture: Fixture) -> Harness<'static, ReviewApp> {
-    let builder =
-        Harness::builder().with_size(BASE_SIZE).with_step_dt(1.0 / 60.0).allow_missing_glyphs();
+    let builder = Harness::builder().with_size(BASE_SIZE).with_step_dt(1.0 / 60.0);
     let mut harness = app_with(builder, paths, move |connection: Connection, _| {
         Arc::new(Scripted(ClipAuditScript {
             connection_id: connection.id,
@@ -719,12 +718,8 @@ fn summary(number: u64, repository_key: &str, index: usize) -> PullRequestSummar
         "Speed up the composition lookup by caching (PackageId, DepotId) pairs across requests without leaking memory under load",
     ];
     PullRequestSummary {
-        repository_key: repository_key.to_owned(),
-        repository_name: repository_key.rsplit('/').next().unwrap_or(repository_key).to_owned(),
-        number,
         title: titles[index % titles.len()].to_owned(),
         author: person("a1", "Maximiliane Theodora von Hohenzollern-Sigmaringen"),
-        state: PullRequestState::Open,
         is_draft: index % 5 == 3,
         source_branch: SOURCE_BRANCH.to_owned(),
         target_branch: TARGET_BRANCH.to_owned(),
@@ -739,9 +734,7 @@ fn summary(number: u64, repository_key: &str, index: usize) -> PullRequestSummar
             [RunStatus::Failed, RunStatus::Running, RunStatus::Succeeded, RunStatus::Queued]
                 [index % 4],
         ),
-        diff_stat: review_core::DiffStat::default(),
-        head_sha: None,
-        target_sha: None,
+        ..samples::summary(repository_key, number)
     }
 }
 
@@ -1107,10 +1100,8 @@ impl Script for ClipAuditScript {
             description: DESCRIPTION.to_owned(),
             target_sha: self.fixture.target.clone(),
             head_sha: self.fixture.head.clone(),
-            merge_status: MergeStatus::Mergeable,
             git_fetch_refs: vec!["refs/heads/feature".to_owned(), "refs/heads/main".to_owned()],
-            closed_at: None,
-            auto_complete: None,
+            ..samples::detail(repo, number)
         })
     }
 

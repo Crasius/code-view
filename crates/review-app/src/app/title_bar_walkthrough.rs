@@ -38,7 +38,7 @@ fn set_window(harness: &mut Harness<'_, ReviewApp>, is_focused: bool, is_maximiz
 }
 
 #[test]
-fn title_bar_caption_buttons_maximized_and_search() {
+fn caption_buttons_maximized_and_search() {
     let scratch = ScratchDir::new("title-bar");
     let mut harness = harness(&scratch);
 

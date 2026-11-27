@@ -8,11 +8,11 @@
 //! a check. A refresh after the running checks
 //! finished shows their outcome, and asks again only for what was running or failed.
 //!
-//! `cargo test -p review-app pr_list_status -- --nocapture` prints the requests of each listing.
+//! `cargo test -p review-app --bin CodeView app::pr_list_status_walkthrough -- --nocapture` prints the requests of each listing.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
 
 use egui::accesskit::Role;
 use egui_kittest::Harness;
@@ -24,6 +24,7 @@ use wiremock::{Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
 use super::mock_host::MockHost;
+use super::recording::{Recorder, iids, template};
 use super::walkthrough::{app_with, opened_urls, saved_paths, wait_idle, wait_until_unsettled};
 use cv_testkit::{Clicks, ScratchDir, samples};
 use cv_widgets::numbers::number_prefix;
@@ -32,7 +33,7 @@ const ROWS: u64 = 50;
 const STEP_SECONDS: f32 = 0.25;
 
 #[test]
-fn pr_list_status_github_search_rows_bring_their_checks_and_votes() {
+fn github_search_rows_bring_their_checks_and_votes() {
     let host = Host::start("github", ProviderKind::GitHub, github);
     host.enter("listed");
     let mut harness = host.harness(1440.0);
@@ -114,7 +115,7 @@ fn pr_list_status_github_search_rows_bring_their_checks_and_votes() {
 }
 
 #[test]
-fn pr_list_status_gitlab_asks_the_rows_on_screen_in_one_request() {
+fn gitlab_asks_the_rows_on_screen_in_one_request() {
     let host = Host::start("gitlab", ProviderKind::GitLab, gitlab);
     host.enter("listed");
     let mut harness = host.harness(1440.0);
@@ -180,7 +181,7 @@ fn pr_list_status_gitlab_asks_the_rows_on_screen_in_one_request() {
 }
 
 #[test]
-fn pr_list_status_azure_devops_policies_votes_and_a_denied_policy() {
+fn azure_devops_policies_votes_and_a_denied_policy() {
     let host = Host::start("azure", ProviderKind::AzureDevOps, azure);
     host.enter("listed");
     let mut harness = host.harness(1440.0);
@@ -297,7 +298,7 @@ fn assert_github_status_pills(harness: &Harness<'_, ReviewApp>) {
 /// reachable, and nothing in the rows is cut or overlaps.
 #[cfg(debug_assertions)]
 #[test]
-fn pr_list_status_indicators_fit_a_narrow_window() {
+fn indicators_fit_a_narrow_window() {
     let host = Host::start("narrow", ProviderKind::GitHub, github);
     let mut harness = host.harness(1440.0);
     super::clip_check::install(&harness.ctx);
@@ -396,9 +397,8 @@ type Script = fn(&Request, &Scene) -> ResponseTemplate;
 struct Scene {
     base_url: String,
     finished: AtomicBool,
-    /// (phase, endpoint, body) of every request.
-    hits: Mutex<Vec<(String, String, String)>>,
-    phase: Mutex<String>,
+    /// Every request's endpoint, with its body.
+    recorder: Recorder,
 }
 
 struct Responder {
@@ -416,12 +416,7 @@ impl Respond for Responder {
             _ => "",
         };
         let endpoint = format!("{} {}{kind}", request.method, template(request.url.path()));
-        let phase = self.scene.phase.lock().unwrap_or_else(PoisonError::into_inner).clone();
-        self.scene
-            .hits
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push((phase, endpoint, body));
+        self.scene.recorder.record(endpoint, body);
         (self.script)(request, &self.scene)
     }
 }
@@ -459,15 +454,12 @@ impl Host {
     }
 
     fn harness(&self, width: f32) -> Harness<'static, ReviewApp> {
-        let builder = Harness::builder()
-            .with_size([width, 900.0])
-            .with_step_dt(STEP_SECONDS)
-            .allow_missing_glyphs();
+        let builder = Harness::builder().with_size([width, 900.0]).with_step_dt(STEP_SECONDS);
         app_with(builder, self.paths.clone(), cv_providers::create_provider)
     }
 
     fn enter(&self, phase: &str) {
-        *self.scene.phase.lock().unwrap_or_else(PoisonError::into_inner) = phase.to_owned();
+        self.scene.recorder.enter(phase);
     }
 
     fn finish_running_checks(&self) {
@@ -475,25 +467,13 @@ impl Host {
     }
 
     fn endpoints(&self, phase: &str) -> BTreeMap<String, usize> {
-        let mut counts = BTreeMap::new();
-        for (hit, endpoint, _) in
-            self.scene.hits.lock().unwrap_or_else(PoisonError::into_inner).iter()
-        {
-            if hit == phase {
-                *counts.entry(endpoint.clone()).or_default() += 1;
-            }
-        }
-        counts
+        self.scene.recorder.endpoints(phase)
     }
 
     /// The merge requests the statuses requests named.
     fn asked_merge_requests(&self) -> Vec<u64> {
-        let hits = self.scene.hits.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut asked: Vec<u64> = hits
-            .iter()
-            .filter(|(_, endpoint, _)| endpoint.ends_with(" statuses"))
-            .flat_map(|(_, _, body)| iids(body))
-            .collect();
+        let bodies = self.scene.recorder.details(|_, endpoint| endpoint.ends_with(" statuses"));
+        let mut asked: Vec<u64> = bodies.iter().flat_map(|body| iids(body.as_bytes())).collect();
         asked.sort_unstable();
         asked.dedup();
         asked
@@ -509,18 +489,6 @@ impl Host {
             }
         }
     }
-}
-
-/// The merge request iids a GitLab GraphQL request names.
-fn iids(body: &str) -> Vec<u64> {
-    let body: Value = serde_json::from_str(body).unwrap_or_default();
-    body["variables"]["iids"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .filter_map(|iid| iid.parse().ok())
-        .collect()
 }
 
 fn ok(body: Value) -> ResponseTemplate {
@@ -617,11 +585,11 @@ fn gitlab(request: &Request, scene: &Scene) -> ResponseTemplate {
         "/api/graphql" if body.contains("headPipeline") => {
             let finished = scene.finished.load(Ordering::SeqCst);
             let nodes: Vec<Value> =
-                iids(&body).into_iter().map(|iid| gitlab_status(iid, finished)).collect();
+                iids(&request.body).into_iter().map(|iid| gitlab_status(iid, finished)).collect();
             ok(json!({ "data": { "project": { "mergeRequests": { "nodes": nodes } } } }))
         }
         "/api/graphql" if body.contains("diffStatsSummary") => {
-            let nodes: Vec<Value> = iids(&body)
+            let nodes: Vec<Value> = iids(&request.body)
                 .into_iter()
                 .map(|iid| json!({ "iid": iid.to_string(), "diffStatsSummary": { "additions": 3, "deletions": 1, "fileCount": 1 } }))
                 .collect();
@@ -767,20 +735,6 @@ fn azure_evaluations(number: u64, finished: bool) -> Value {
             "type": { "id": "fa4e907d-c16b-4a4c-9dfa-4906e5d171dd", "displayName": "Minimum number of reviewers" },
             "settings": { "minimumApproverCount": 1 } } }
     ])
-}
-
-/// Numbers and long hex segments of a path become placeholders.
-fn template(path: &str) -> String {
-    path.split('/')
-        .map(|segment| {
-            if !segment.is_empty() && segment.bytes().all(|byte| byte.is_ascii_digit()) {
-                ":id"
-            } else {
-                segment
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("/")
 }
 
 fn refresh(harness: &mut Harness<'_, ReviewApp>) {

@@ -5,8 +5,6 @@
 //! platform's merge settings.
 //! `cargo test -p review-app merge_button`
 
-use std::sync::Arc;
-
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -16,7 +14,7 @@ use super::super::walkthrough::{has, opened_urls, press, wait_until};
 use super::{Calls, POLICIES, ReviewApp, button, open, start_on};
 use cv_testkit::{Clicks, ScratchDir};
 
-/// (set, armed set, state line, cancel, armed cancel) as the platform words them.
+/// The merge button's labels as the platform words them.
 struct Words {
     set: &'static str,
     confirm_set: &'static str,
@@ -58,7 +56,7 @@ fn merge_button_sets_and_cancels_auto_complete_on_azure_devops() {
 #[test]
 fn merge_button_enables_and_disables_auto_merge_on_github() {
     let scratch = ScratchDir::new("merge-button-auto-github");
-    let (mut harness, _) = round_trip(&scratch, "auto-github", ProviderKind::GitHub, &GITHUB);
+    let mut harness = round_trip(&scratch, "auto-github", ProviderKind::GitHub, &GITHUB);
     press(&mut harness, super::OPTIONS);
     assert!(
         harness.query_by_label("Delete feature/blocked after merging").is_none(),
@@ -99,7 +97,7 @@ fn round_trip(
     name: &str,
     kind: ProviderKind,
     words: &Words,
-) -> (Harness<'static, ReviewApp>, Arc<Calls>) {
+) -> Harness<'static, ReviewApp> {
     let (mut harness, calls) = start_on(scratch, name, kind, Calls::default());
     open(&mut harness, name, 1);
     wait_until(&mut harness, "the mergeable pull request", |harness| {
@@ -133,7 +131,7 @@ fn round_trip(
     });
     assert_eq!(calls.auto_completes.lock().unwrap()[1], None, "the second call cancels");
     assert!(!has(&harness, words.state), "the state is gone");
-    (harness, calls)
+    harness
 }
 
 /// The squash button's label on `kind`.

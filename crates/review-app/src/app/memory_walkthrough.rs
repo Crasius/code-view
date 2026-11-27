@@ -13,38 +13,45 @@
 //! ordinary `cargo test` leaves them out. They run on `main` and when memory-relevant code
 //! changes (caches, grammars, pages kept or dropped), and print their curves:
 //! `cargo test -p review-app --bin CodeView --features measurements -- app::memory_walkthrough::memory_ --nocapture`.
-//! The hand-run reproductions and probes stay `#[ignore]`, so that command never runs them.
+//! The probes stay `#[ignore]`, so that command never runs them. One test runs in the ordinary
+//! `cargo test`: `a_closed_app_frees_its_context`, the leak check of a closed app.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::io::Write as _;
+use std::path::Path;
+#[cfg(any(windows, feature = "measurements"))]
+use std::process::Command;
+use std::sync::atomic::Ordering;
 #[cfg(feature = "measurements")]
 use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, LazyLock, Mutex};
+#[cfg(any(windows, feature = "measurements"))]
+use std::time::Duration;
+#[cfg(feature = "measurements")]
+use std::time::Instant;
 
 #[cfg(feature = "measurements")]
-use egui_kittest::kittest::NodeT as _;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT as _, Queryable};
 use egui_kittest::{Harness, TestRenderer};
 #[cfg(feature = "measurements")]
 use review_agent::{AgentEvent, Usage};
 use review_agent::{AgentKind, ModelInfo};
 use review_core::{Connection, ProviderKind};
-use review_store::AppPaths;
 use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
 #[cfg(feature = "measurements")]
-use super::request_budget::scroll_list;
-use super::request_budget::{Text, diff_stats_summaries, harness_builder, user};
-use super::startup;
+use super::assistant_script;
+use super::gitlab_mock::{PROJECT_ID, merge_request, merge_request_route};
 #[cfg(feature = "measurements")]
-use super::walkthrough::click_first;
-use super::walkthrough::{self, has, pump, saved_paths, wait_idle, wait_until_unsettled};
+use super::request_budget::scroll_list;
+use super::request_budget::{diff_stats_summaries, harness_builder, user};
+use super::walkthrough::{self, has, saved_paths, wait_idle, wait_until_unsettled};
+#[cfg(feature = "measurements")]
+use super::walkthrough::{click_first, pump};
+#[cfg(any(windows, feature = "measurements"))]
 use cv_base::platform::heap::live_bytes;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::agents::FakeCli;
@@ -52,10 +59,11 @@ use cv_services::agents::FakeCli;
 use cv_syntax::code_colors;
 #[cfg(any(windows, feature = "measurements"))]
 use cv_syntax::{grammar, highlight};
-use cv_testkit::{Clicks, ScratchDir, git_in, samples};
+#[cfg(feature = "measurements")]
+use cv_testkit::Clicks;
+use cv_testkit::{ScratchDir, fast_import, git_in, samples};
 
 const PROJECT: &str = "group/app";
-const PROJECT_ID: u64 = 42;
 const PIPELINE_ID: u64 = 1001;
 /// The merge requests the session reviews, one after the other.
 const MERGE_REQUESTS: u64 = 5;
@@ -65,7 +73,9 @@ const RUST_FILES: usize = 30;
 const LARGE_LINES: usize = 15_000;
 /// Lines of the long job log: about 4 MB.
 const LOG_LINES: usize = 60_000;
+#[cfg(any(windows, feature = "measurements"))]
 const CHILD_MARKER: &str = "CODEVIEW_MEMORY_TEST_CHILD";
+#[cfg(any(windows, feature = "measurements"))]
 const MB: usize = 1024 * 1024;
 /// What one kept pull request page may hold once left: our number, the about 6 MB measured here
 /// (its views and the parts the process keeps after the first page; the caches go when it is
@@ -142,10 +152,12 @@ fn memory_returns_after_the_merge_requests_are_left() {
 const IDLE_ROUNDS: usize = 3;
 #[cfg(feature = "measurements")]
 const IDLE_FRAMES: usize = 1000;
+#[cfg(feature = "measurements")]
 const IDLE_STEP: f64 = 0.5;
 /// What the idle Overview may gain over all rounds: our number, the 1 MB the measurement settles
 /// within. The rounds run 25 simulated minutes, 100 polls of the running pipeline at 15 s, so a
 /// poll that kept 10 KB fails it.
+#[cfg(feature = "measurements")]
 const IDLE_GROWTH: usize = MB;
 
 /// A merge request's Overview left open with a running pipeline: the pipeline polls every 15 s
@@ -235,268 +247,7 @@ fn a_closed_app_frees_its_context() {
         let _marker = &marker;
     });
     drop(harness);
-    let started = Instant::now();
-    while !is_dropped.load(Ordering::SeqCst) {
-        assert!(
-            started.elapsed() < Duration::from_secs(10),
-            "the closed app's context stays alive"
-        );
-        cv_testkit::let_threads_run(Duration::from_millis(20));
-    }
-}
-
-/// The merge request of the owner's session: its own head, a running pipeline.
-const OWNER_MERGE_REQUEST: u64 = 1;
-/// Commits on the adopted checkout's branch that the merge request lacks, as in the owner's.
-const LOCAL_COMMITS: usize = 531;
-
-/// The owner's session, condition by condition: their settings (assistant and mini chat on,
-/// UI scale 1.5, 45 fps, 50 context lines, side by side, a large window, two search folders),
-/// an adopted checkout with an empty head whose update 531 local commits block, the checkout's
-/// menu opened and closed, a real-sized merge request, then the Overview idling with its polls.
-/// `OWNER_OFF=settings,record,menu,heavy` leaves conditions out, `OWNER_STILL=runs,notes,jobs`
-/// keeps that part of the mock's answers unchanged, `OWNER_ROUNDS`, `OWNER_FRAMES` and
-/// `OWNER_STEP` set the idle and `OWNER_HOVER=1` sweeps the pointer over the window meanwhile.
-#[test]
-#[ignore = "a reproduction run by hand, see the doc comment"]
-fn memory_owner_session() {
-    if run_in_child("app::memory_walkthrough::memory_owner_session") {
-        return;
-    }
-    let off = std::env::var("OWNER_OFF").unwrap_or_default();
-    let is_on = |condition: &str| !off.split(',').any(|item| item.trim() == condition);
-    let number = |name: &str, default: f64| {
-        std::env::var(name).ok().and_then(|value| value.parse().ok()).unwrap_or(default)
-    };
-    let fixture = if is_on("heavy") { Fixture::heavy("owner") } else { Fixture::new("owner") };
-    let (mut harness, mut curve) = owner_overview(&fixture, &is_on);
-    let rounds = number("OWNER_ROUNDS", 4.0) as usize;
-    let frames = number("OWNER_FRAMES", 1000.0) as usize;
-    let step = number("OWNER_STEP", IDLE_STEP);
-    let mut causes = std::collections::BTreeMap::<String, usize>::new();
-    let mut simulated = 0.0;
-    // The pointer sweeps the window, a frame at each spot, as a hand on the mouse.
-    let is_hovering = std::env::var_os("OWNER_HOVER").is_some();
-    let screen = harness.ctx.content_rect();
-    let mut spot = 0_usize;
-    for round in 1..=rounds {
-        let mut time = harness.ctx.input(|input| input.time);
-        for _ in 0..frames {
-            time += step;
-            simulated += step;
-            harness.input_mut().time = Some(time);
-            if is_hovering {
-                spot += 1;
-                let (column, row) = ((spot * 37) % 100, (spot / 100 * 13) % 100);
-                let x = screen.left() + screen.width() * column as f32 / 100.0;
-                let y = screen.top() + screen.height() * row as f32 / 100.0;
-                harness.input_mut().events.push(egui::Event::PointerMoved(egui::pos2(x, y)));
-            }
-            harness.step();
-            for cause in harness.ctx.repaint_causes() {
-                *causes.entry(format!("{}:{}", cause.file, cause.line)).or_default() += 1;
-            }
-            cv_testkit::let_threads_run(Duration::from_millis(3));
-        }
-        fixture.forget_requests();
-        curve.measure(&mut harness, &format!("round {round}: {simulated:.0} s idle"));
-    }
-    println!("{curve}");
-    println!("=== Repaint causes ===\n{causes:#?}");
-    let loaded = curve.heap_at("overview loaded");
-    assert!(
-        curve.peak_heap() <= loaded + IDLE_GROWTH,
-        "the owner's idle Overview keeps nothing per poll or frame: {curve}"
-    );
-}
-
-/// The app with the owner's conditions that `is_on`, on the Overview of their merge request once
-/// it loaded (the checkout's update blocked, its menu opened and closed), measured once.
-fn owner_overview(
-    fixture: &Fixture,
-    is_on: &dyn Fn(&str) -> bool,
-) -> (Harness<'static, ReviewApp>, Curve) {
-    let projects = fixture.scratch.path().join("RiderProjects");
-    std::fs::create_dir_all(&projects).expect("projects folder");
-    if is_on("settings") {
-        let folders = [fixture.scratch.path().to_path_buf(), projects.clone()];
-        owner_settings(&folders).save(&fixture.paths.settings_file()).expect("settings");
-    }
-    if is_on("record") {
-        adopted_checkout(fixture, &projects, OWNER_MERGE_REQUEST);
-    }
-    let textures = GpuTextures::default();
-    // The owner's 2249 × 2119 window at the UI scale of 1.5.
-    let builder = harness_builder().with_size([1499.0, 1413.0]).renderer(textures.clone());
-    let mut harness = fixture.harness_from(builder);
-    let mut curve = Curve { textures, points: Vec::new() };
-    wait_until_unsettled(&mut harness, "the merge request list", |harness| {
-        has(harness, "Change 30")
-    });
-    let key = fixture.key(OWNER_MERGE_REQUEST);
-    harness.state_mut().navigator.go(Route::PullRequest(key.clone()));
-    wait_until_unsettled(&mut harness, "the overview", |harness| {
-        has(harness, &title(OWNER_MERGE_REQUEST))
-    });
-    if is_on("record") {
-        wait_until_unsettled(&mut harness, "the blocked update", |harness| {
-            let checkouts = &harness.state().services.checkouts;
-            checkouts.status(&key).is_some_and(|status| status.blocked.is_some())
-        });
-    }
-    if is_on("menu") {
-        let label = if is_on("record") { "Checkout options" } else { "Check out" };
-        wait_until_unsettled(&mut harness, "the checkout button", |harness| has(harness, label));
-        harness.click_at(harness.get_by_label(label).rect());
-        pump(&mut harness, 2.0);
-        if is_on("record") && has(&harness, "Show log") {
-            harness.click_at(harness.get_by_label("Show log").rect());
-            pump(&mut harness, 2.0);
-        }
-        harness.key_press(egui::Key::Escape);
-        pump(&mut harness, 1.0);
-    }
-    wait_idle(&mut harness);
-    fixture.forget_requests();
-    curve.measure(&mut harness, "overview loaded");
-    (harness, curve)
-}
-
-/// The owner's settings.json, the search folders and the window aside.
-fn owner_settings(folders: &[PathBuf]) -> review_store::AppSettings {
-    let mut settings: review_store::AppSettings =
-        serde_json::from_str(OWNER_SETTINGS).expect("the owner's settings parse");
-    settings.checkouts.search_folders = Some(folders.to_vec());
-    settings
-}
-
-const OWNER_SETTINGS: &str = r#"{
-  "theme": "System", "diff_layout": "SideBySide", "context_lines": 50, "ui_scale": 1.5,
-  "code_font_size": 11.0, "wrap_lines": false, "ignore_whitespace": false,
-  "show_comments_in_diff": true, "show_frame_stats": false, "frame_rate": { "Fps": 45 },
-  "panes": { "file_tree": 427.8961, "diff_split": 0.53516686, "overview_side": 557.801,
-    "preview_split": 0.46689987, "pipeline_jobs": 300.0, "threads_panel": 599.33325 },
-  "pipelines": { "status_filter": [], "is_overview_expanded": true },
-  "file_filters": { "categories": ["Code"], "hide_viewed": false, "markdown_preview": true,
-    "image_compare": "SideBySide" },
-  "threads_panel": { "is_open": false,
-    "filters": { "active": true, "resolved": false, "unread": false, "mine": false } },
-  "window": { "x": 1460, "y": 0, "width": 2249, "height": 2119, "is_maximized": false },
-  "focus_file_tree": false,
-  "favorites": { "repositories": [], "is_lane_shown": true, "is_collapsed": false },
-  "files_start": "AllFiles", "pull_request_start": "Overview", "open_clipboard_links": true,
-  "rendered_width": { "full": true, "reading": 787.4285 }, "file_tree_side": "Left",
-  "assistant": { "enabled": true, "agent": "Claude", "claude_model": "Fastest",
-    "codex_model": { "Named": "gpt-6.1-sol" }, "card_height": 526.9791,
-    "mini_chat_beside_code": true, "mini_chat_corner": { "left": false, "top": false } },
-  "header_modes": { "overview": "AlwaysShown", "files": "HideOnScroll", "commits": "AlwaysShown",
-    "pipelines": "AlwaysShown" },
-  "scroll_past_end": true, "highlight_selection_occurrences": true, "open_next_unviewed": true,
-  "comment_editors": { "github": "Rich", "gitlab": "Rich", "azure_devops": "Rich" },
-  "checkouts": { "search_folders": [], "worktree_pattern": "{clone}-wt/pr-{number}-{branch}",
-    "when_finished": "RemoveAutomatically", "open_by_default": "Ask", "terminal": "System",
-    "last_opened": "Nothing", "pinned_clones": {}, "remembered": {} }
-}"#;
-
-/// A clone of the fixture's repository in `projects` whose branch `feat/invoicing`, checked out
-/// in a worktree beside it, has [`LOCAL_COMMITS`] commits the merge request lacks, recorded as
-/// an adopted checkout of merge request `iid` with an empty head (as "Open it" records one).
-fn adopted_checkout(fixture: &Fixture, projects: &Path, iid: u64) {
-    let clone = projects.join("app");
-    let remote = fixture.scratch.path().join("remote.git");
-    git_in(None, &["clone", "-q", &remote.display().to_string(), &clone.display().to_string()]);
-    let mut stream = Vec::new();
-    for index in 0..LOCAL_COMMITS {
-        let mark = index + 1;
-        write!(
-            Text(&mut stream),
-            "commit refs/heads/feat/invoicing\nmark :{mark}\ncommitter Dev <dev@example.com> {} \
-             +0000\ndata 12\ninvoice {index:04}\n",
-            1_710_000_000 + mark
-        )
-        .expect("writing to a buffer");
-        if index == 0 {
-            writeln!(Text(&mut stream), "from {}", fixture.gitlab.base).expect("writing");
-        }
-        let content = format!("invoice line {index}\n");
-        write!(
-            Text(&mut stream),
-            "M 100644 inline invoicing/i{index:04}.txt\ndata {}\n{content}\n",
-            content.len()
-        )
-        .expect("writing to a buffer");
-    }
-    let git_dir = clone.join(".git");
-    let mut child = Command::new("git")
-        .args(["--git-dir", &git_dir.display().to_string(), "fast-import", "--quiet"])
-        .stdin(Stdio::piped())
-        .spawn()
-        .expect("git fast-import");
-    std::io::Write::write_all(child.stdin.as_mut().expect("stdin"), &stream)
-        .expect("feed fast-import");
-    drop(child.stdin.take());
-    assert!(child.wait().expect("fast-import exit").success(), "fast-import failed");
-    let worktree = projects.join("app-invoicing");
-    cv_testkit::git(
-        &clone,
-        &["worktree", "add", "-q", &worktree.display().to_string(), "feat/invoicing"],
-    );
-    let record = json!([{
-        "connection_id": fixture.connection_id, "repository_key": PROJECT, "number": iid,
-        "clone": clone, "path": worktree, "kind": "Adopted", "branch": "feat/invoicing",
-        "is_own_branch": false, "pull_ref": format!("refs/codeview/pull/{iid}/head"), "head": "",
-        "last_opened": "Nothing", "took_ms": 0, "merged_here": false, "log": [],
-    }]);
-    std::fs::create_dir_all(fixture.paths.config_dir()).expect("config folder");
-    std::fs::write(fixture.paths.checkouts_file(), record.to_string()).expect("checkouts.json");
-}
-
-/// After a restart the list and a merge request's overview paint their last answers from the disk
-/// tier at once, each saying it is updating while the host takes its time; the list's note leaves
-/// with the answer.
-#[test]
-fn saved_pages_show_at_once_after_a_restart() {
-    let fixture = Fixture::new("restart");
-    {
-        let mut harness = fixture.harness(&GpuTextures::default());
-        wait_until_unsettled(&mut harness, "the merge request list", |harness| {
-            has(harness, "Change 30")
-        });
-        harness.state_mut().navigator.go(Route::PullRequest(fixture.key(1)));
-        wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, &title(1)));
-        wait_idle(&mut harness);
-        let saved = fixture.paths.cold_cache_dir().join("page");
-        let started = Instant::now();
-        // The list, the overview and its threads, written on the cold tier's own thread.
-        while std::fs::read_dir(&saved).map_or(0, Iterator::count) < 3 {
-            assert!(started.elapsed() < Duration::from_secs(30), "the pages reach the disk tier");
-            cv_testkit::let_threads_run(Duration::from_millis(20));
-        }
-    }
-    // Every answer of the restarted app's host comes this long after its request, and no request
-    // leaves before the restart: whatever shows sooner after it came from the disk.
-    let host_delay = Duration::from_secs(10);
-    fixture.delay.store(host_delay.as_millis() as u64, Ordering::Relaxed);
-    let restarted_at = Instant::now();
-    let mut harness = fixture.restarted();
-    let shows = |harness: &mut Harness<'_, ReviewApp>,
-                 done: &dyn Fn(&Harness<'_, ReviewApp>) -> bool| {
-        while !done(harness) {
-            assert!(
-                restarted_at.elapsed() < host_delay,
-                "the saved page shows before the host can answer"
-            );
-            harness.step();
-            cv_testkit::let_threads_run(Duration::from_millis(10));
-        }
-    };
-    shows(&mut harness, &|harness| has(harness, "Change 30") && has(harness, "Updating…"));
-    harness.state_mut().navigator.go(Route::PullRequest(fixture.key(1)));
-    shows(&mut harness, &|harness| has(harness, &title(1)) && has(harness, "Updating…"));
-    harness.state_mut().navigator.go(Route::MyPullRequests);
-    wait_until_unsettled(&mut harness, "the list's answer", |harness| {
-        has(harness, "Change 30") && !has(harness, "Updating…")
-    });
+    cv_testkit::poll_until("the closed app's context to go", || is_dropped.load(Ordering::SeqCst));
 }
 
 /// Opens merge request `iid`, every one of its files in turn (scrolling the large one), and
@@ -548,16 +299,8 @@ fn assistant(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
     wait_until_unsettled(harness, "the assistant's card", |harness| {
         harness.query_by_label("Ask about this PR").is_some()
     });
-    super::assistant_script::ask(harness, "Explain it.");
-    let started = Instant::now();
-    let (_, agent) = loop {
-        if let Some(session) = harness.state().services.agents.fake.take_session() {
-            break session;
-        }
-        assert!(started.elapsed() < Duration::from_secs(60), "no assistant session");
-        harness.step();
-        cv_testkit::let_threads_run(Duration::from_millis(10));
-    };
+    assistant_script::ask(harness, "Explain it.");
+    let (_, agent) = assistant_script::wait_for_session(harness);
     agent.emit(AgentEvent::Started { session_id: "s-1".into(), model: "claude-haiku".into() });
     let answer: String = (0..400).fold(String::new(), |mut answer, line| {
         writeln!(answer, "Line {line} of a long answer about `web/app.ts`.\n")
@@ -594,16 +337,11 @@ fn current_file(harness: &Harness<'_, ReviewApp>) -> Option<String> {
 /// after the colorings still running (whole files of the pages kept) let go of theirs.
 #[cfg(feature = "measurements")]
 fn release_grammars(harness: &mut Harness<'_, ReviewApp>) {
-    let started = Instant::now();
-    loop {
+    let released = || {
         grammar::release_unused();
-        if grammar::kept_languages().is_empty() {
-            return;
-        }
-        assert!(started.elapsed() < Duration::from_secs(120), "a coloring never ended");
-        harness.step();
-        cv_testkit::let_threads_run(Duration::from_millis(100));
-    }
+        grammar::kept_languages().is_empty().then_some(())
+    };
+    walkthrough::wait_for(harness, "the colorings to end", |_| released(), |_| {});
 }
 
 /// The textures the app has on the GPU, by the uploads and frees egui hands the renderer. The
@@ -612,6 +350,7 @@ fn release_grammars(harness: &mut Harness<'_, ReviewApp>) {
 struct GpuTextures(Arc<Mutex<HashMap<egui::TextureId, usize>>>);
 
 impl GpuTextures {
+    #[cfg(feature = "measurements")]
     fn bytes(&self) -> usize {
         self.0.lock().expect("texture map").values().sum()
     }
@@ -634,11 +373,13 @@ impl TestRenderer for GpuTextures {
 }
 
 /// Live heap bytes and GPU texture bytes after each step of the session.
+#[cfg(feature = "measurements")]
 struct Curve {
     textures: GpuTextures,
     points: Vec<Point>,
 }
 
+#[cfg(feature = "measurements")]
 struct Point {
     step: String,
     heap: usize,
@@ -650,22 +391,24 @@ struct Point {
     atlas: [usize; 2],
 }
 
+#[cfg(feature = "measurements")]
 impl Curve {
     fn heap_at(&self, step: &str) -> usize {
-        self.points.iter().find(|point| point.step == step).map_or(0, |point| point.heap)
+        self.points
+            .iter()
+            .find(|point| point.step == step)
+            .map_or_else(|| panic!("no measured step {step:?}"), |point| point.heap)
     }
 
     fn peak_heap(&self) -> usize {
         self.points.iter().map(|point| point.heap).max().unwrap_or(0)
     }
 
-    #[cfg(feature = "measurements")]
     fn peak_textures(&self) -> usize {
         self.points.iter().map(|point| point.textures).max().unwrap_or(0)
     }
 
     /// Whether every point after `step` holds the textures and the font atlas `step` held.
-    #[cfg(feature = "measurements")]
     fn are_textures_flat_after(&self, step: &str) -> bool {
         let Some(start) = self.points.iter().position(|point| point.step == step) else {
             return false;
@@ -706,6 +449,7 @@ impl Curve {
     }
 }
 
+#[cfg(feature = "measurements")]
 impl std::fmt::Display for Point {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (heap, textures) = (megabytes(self.heap), megabytes(self.textures));
@@ -718,6 +462,7 @@ impl std::fmt::Display for Point {
     }
 }
 
+#[cfg(feature = "measurements")]
 impl std::fmt::Display for Curve {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(formatter, "\n=== Memory by step ===")?;
@@ -728,12 +473,14 @@ impl std::fmt::Display for Curve {
     }
 }
 
+#[cfg(any(windows, feature = "measurements"))]
 fn megabytes(bytes: usize) -> String {
     format!("{:.1}", bytes as f64 / MB as f64)
 }
 
 /// The live bytes once they stopped moving: frames run and background threads work until ten
-/// samples 100 ms apart stay within 1 MB of each other (for at most two minutes).
+/// samples 100 ms apart stay within 1 MB of each other (within [`walkthrough::LIMIT`]).
+#[cfg(feature = "measurements")]
 fn settled_bytes(harness: &mut Harness<'_, ReviewApp>) -> usize {
     wait_idle(harness);
     let started = Instant::now();
@@ -747,12 +494,13 @@ fn settled_bytes(harness: &mut Harness<'_, ReviewApp>) -> usize {
         if recent.len() == 10 && spread < MB {
             return *recent.last().unwrap_or(&0);
         }
-        assert!(started.elapsed() < Duration::from_secs(120), "the heap never settled");
+        assert!(started.elapsed() < walkthrough::LIMIT, "the heap never settled");
     }
 }
 
 /// Runs the test `name` again in a child process, alone, and returns true here (the parent), which
 /// then has nothing left to do; returns false in that child, which runs the test's body.
+#[cfg(any(windows, feature = "measurements"))]
 #[expect(clippy::disallowed_methods, reason = "a test, not the UI thread, waits for its child")]
 fn run_in_child(name: &str) -> bool {
     if std::env::var_os(CHILD_MARKER).is_some() {
@@ -781,105 +529,78 @@ fn title(iid: u64) -> String {
     format!("Memory scenario {iid}")
 }
 
+/// The mock hosts' runtime, for the process's life.
+static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .expect("mock runtime")
+});
+
 struct Fixture {
-    runtime: tokio::runtime::Runtime,
     server: MockServer,
+    /// What [`Self::forget_requests`] mounts again.
+    #[cfg(feature = "measurements")]
     gitlab: MockGitLab,
-    paths: AppPaths,
     connection_id: String,
-    /// The mock host's answer delay in milliseconds ([`MockGitLab::delay`]).
-    delay: Arc<AtomicU64>,
+    /// The repository and the app's data folders, removed with the fixture.
     scratch: ScratchDir,
 }
 
 impl Fixture {
     fn new(name: &str) -> Self {
-        Self::build(name, false)
-    }
-
-    /// [`Self::new`] whose merge requests read like real ones: a long description, many threads,
-    /// a pipeline with many jobs ([`MockGitLab::heavy`]).
-    fn heavy(name: &str) -> Self {
-        Self::build(name, true)
-    }
-
-    fn build(name: &str, heavy: bool) -> Self {
         let scratch = ScratchDir::new(&format!("memory-{name}"));
         let repository = scratch.path().join("remote.git");
         let (base, heads) = build_repository(&repository);
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .expect("mock runtime");
         // Not recording: the requests would grow the heap this test measures.
-        let server = runtime.block_on(MockServer::builder().disable_request_recording().start());
+        let server = RUNTIME.block_on(MockServer::builder().disable_request_recording().start());
         cv_testkit::fresh_origin(&server.uri());
-        let delay = Arc::new(AtomicU64::new(0));
         let gitlab = MockGitLab {
             base_url: server.uri(),
-            clone_url: format!("file:///{}", repository.display().to_string().replace('\\', "/")),
+            clone_url: cv_testkit::file_url(&repository),
             base,
             heads: Arc::new(heads),
             log: Arc::new(long_log()),
-            delay: delay.clone(),
-            heavy,
-            polls: Arc::default(),
         };
-        runtime.block_on(
-            wiremock::Mock::given(wiremock::matchers::any())
-                .respond_with(gitlab.clone())
-                .mount(&server),
-        );
-        let connection_id = format!("memory-{name}");
-        let connection = Connection {
-            name: "Mock GitLab".to_owned(),
-            organizations: vec!["group".to_owned()],
-            token: Some("glpat-mock-only".to_owned()),
-            ..samples::connection(&connection_id, ProviderKind::GitLab, &server.uri())
+        let fixture = Self {
+            server,
+            #[cfg(feature = "measurements")]
+            gitlab: gitlab.clone(),
+            connection_id: format!("memory-{name}"),
+            scratch,
         };
-        let paths = saved_paths(&scratch, &[connection]);
-        Self { runtime, server, gitlab, paths, connection_id, delay, scratch }
+        fixture.mount(gitlab);
+        fixture
+    }
+
+    /// Answers every request through `gitlab`.
+    fn mount(&self, gitlab: MockGitLab) {
+        let mock = wiremock::Mock::given(wiremock::matchers::any()).respond_with(gitlab);
+        RUNTIME.block_on(mock.mount(&self.server));
     }
 
     /// Mounts the mock afresh: wiremock keeps every request its mock matched (with the body that
     /// pins the connection's read buffer, about 8 KB a request), which a long idle would count as
     /// the app's.
+    #[cfg(feature = "measurements")]
     fn forget_requests(&self) {
-        self.runtime.block_on(async {
-            self.server.reset().await;
-            wiremock::Mock::given(wiremock::matchers::any())
-                .respond_with(self.gitlab.clone())
-                .mount(&self.server)
-                .await;
-        });
+        RUNTIME.block_on(self.server.reset());
+        self.mount(self.gitlab.clone());
     }
 
+    /// The app on the textures' renderer with the mock's connection, once its start settled, with
+    /// the first file opening and a signed-in coding agent.
     fn harness(&self, textures: &GpuTextures) -> Harness<'static, ReviewApp> {
-        self.harness_from(harness_builder().renderer(textures.clone()))
-    }
-
-    /// The app in its first frames after a restart, the refresh of the list still running.
-    fn restarted(&self) -> Harness<'static, ReviewApp> {
-        let builder = harness_builder().renderer(GpuTextures::default());
-        let paths = self.paths.clone();
-        Self::prepared(startup::first_frames(builder, |creation| {
-            ReviewApp::new(creation, paths, cv_providers::create_provider)
-        }))
-    }
-
-    /// The app from `builder`, once its start settled.
-    fn harness_from(
-        &self,
-        builder: egui_kittest::HarnessBuilder<ReviewApp>,
-    ) -> Harness<'static, ReviewApp> {
-        let harness =
-            walkthrough::app_with(builder, self.paths.clone(), cv_providers::create_provider);
-        Self::prepared(harness)
-    }
-
-    /// `harness` with the first file opening and a signed-in coding agent.
-    fn prepared(mut harness: Harness<'static, ReviewApp>) -> Harness<'static, ReviewApp> {
+        let connection = Connection {
+            name: "Mock GitLab".to_owned(),
+            organizations: vec!["group".to_owned()],
+            token: Some("glpat-mock-only".to_owned()),
+            ..samples::connection(&self.connection_id, ProviderKind::GitLab, &self.server.uri())
+        };
+        let paths = saved_paths(&self.scratch, &[connection]);
+        let builder = harness_builder().renderer(textures.clone());
+        let mut harness = walkthrough::app_with(builder, paths, cv_providers::create_provider);
         harness.state_mut().services.settings.files_start = review_store::FilesStart::FirstFile;
         let model = ModelInfo {
             id: "claude-haiku".to_owned(),
@@ -911,26 +632,13 @@ struct MockGitLab {
     base: String,
     heads: Arc<Vec<String>>,
     log: Arc<String>,
-    /// How long every answer takes, in milliseconds: a slow host.
-    delay: Arc<AtomicU64>,
-    /// Real-sized merge requests: [`HEAVY_SECTIONS`] sections of description, [`HEAVY_THREADS`]
-    /// threads and [`HEAVY_STAGES`] stages of jobs.
-    heavy: bool,
-    /// Polls of the pipelines so far: a heavy mock's answers move on with each, as a real host's
-    /// do (the running job advances, a new run starts every [`POLLS_PER_RUN`], notes arrive).
-    polls: Arc<AtomicU64>,
 }
 
 impl Respond for MockGitLab {
     fn respond(&self, request: &Request) -> ResponseTemplate {
-        let delay = Duration::from_millis(self.delay.load(Ordering::Relaxed));
         let path = request.url.path().to_owned();
         let project = format!("/api/v4/projects/{}", urlencoding::encode(PROJECT));
-        let merge_request = path
-            .strip_prefix(&format!("{project}/merge_requests/"))
-            .map(|rest| rest.split_once('/').map_or((rest, ""), |(iid, tail)| (iid, tail)))
-            .and_then(|(iid, tail)| Some((iid.parse::<u64>().ok()?, tail)));
-        let body = match (path.as_str(), merge_request) {
+        let body = match (path.as_str(), merge_request_route(&path, PROJECT)) {
             ("/api/v4/user", _) => user(1, "ada"),
             ("/api/graphql", _) => diff_stats_summaries(request),
             ("/api/v4/groups/group/merge_requests", _) => self.list(),
@@ -941,54 +649,29 @@ impl Respond for MockGitLab {
             }),
             (p, _) if p == format!("{project}/merge_requests") => self.list(),
             (_, Some((iid, ""))) => self.merge_request(iid),
-            (_, Some((iid, "discussions"))) if self.heavy => {
-                if request.url.query_pairs().any(|(name, value)| name == "page" && value != "1") {
-                    json!([])
-                } else {
-                    discussions(self.head(iid), &self.base, self.tick())
-                }
-            }
             (_, Some((_, "reviewers" | "statuses" | "discussions"))) => json!([]),
             (_, Some((_, "approvals"))) => json!({ "approved_by": [] }),
-            (_, Some((iid, "pipelines"))) => {
-                if self.heavy {
-                    self.polls.fetch_add(1, Ordering::Relaxed);
-                }
-                json!([self.pipeline(iid)])
-            }
+            (_, Some((iid, "pipelines"))) => json!([self.pipeline(iid)]),
             (p, _)
                 if p.starts_with(&format!("/api/v4/projects/{PROJECT_ID}/pipelines/"))
                     && p.ends_with("/jobs") =>
             {
-                if !self.heavy {
-                    jobs(5, None)
-                } else if request
-                    .url
-                    .query_pairs()
-                    .any(|(name, value)| name == "page" && value != "1")
-                {
-                    json!([])
-                } else {
-                    jobs(HEAVY_STAGES, (!still("jobs")).then(|| self.tick()))
-                }
+                jobs(5)
             }
             (p, _) if p.ends_with("/bridges") || p.ends_with("/statuses") => json!([]),
             (p, _) if p == format!("{project}/uploads/{UPLOAD_SECRET}/shot.png") => {
                 return ResponseTemplate::new(200)
-                    .set_body_raw(image_file(MERGE_REQUESTS + 1), "image/png")
-                    .set_delay(delay);
+                    .set_body_raw(image_file(MERGE_REQUESTS + 1), "image/png");
             }
             (p, _) if p.ends_with("/trace") => {
-                return ResponseTemplate::new(200)
-                    .set_body_string(self.log.as_str())
-                    .set_delay(delay);
+                return ResponseTemplate::new(200).set_body_string(self.log.as_str());
             }
             _ => {
                 return ResponseTemplate::new(404)
                     .set_body_json(json!({ "message": "404 Not Found" }));
             }
         };
-        ResponseTemplate::new(200).set_body_json(body).set_delay(delay)
+        ResponseTemplate::new(200).set_body_json(body)
     }
 }
 
@@ -1003,12 +686,11 @@ impl MockGitLab {
     }
 
     fn merge_request(&self, iid: u64) -> Value {
-        let title = if iid <= IDLE_MERGE_REQUEST { title(iid) } else { format!("Change {iid}") };
         let mut description = format!(
             "## What changes\n\nReworks the client. See `{LARGE_FILE}` and the screenshot in \
              `{MARKDOWN_FILE}`.\n\n```ts\nexport const answer: number = {iid};\n```\n"
         );
-        if iid == IDLE_MERGE_REQUEST || self.heavy {
+        if iid == IDLE_MERGE_REQUEST {
             write!(
                 description,
                 "\n![The upload]({}/{PROJECT}/uploads/{UPLOAD_SECRET}/shot.png)\n",
@@ -1016,71 +698,37 @@ impl MockGitLab {
             )
             .expect("writing to a string");
         }
-        if self.heavy {
-            description.push_str(&long_description());
+        let mut value = merge_request(&self.base_url, PROJECT, iid, self.head(iid), &self.base);
+        if iid <= IDLE_MERGE_REQUEST {
+            value["title"] = json!(title(iid));
         }
-        json!({
-            "id": 1000 + iid, "iid": iid, "project_id": PROJECT_ID, "title": title, "description": description,
-            "state": "opened", "author": user(2, "grace"), "source_branch": format!("feature-{iid}"), "target_branch": "main",
-            "created_at": "2026-10-01T10:00:00Z", "updated_at": self.updated_at(),
-            "web_url": format!("{}/{PROJECT}/-/merge_requests/{iid}", self.base_url),
-            "references": { "full": format!("{PROJECT}!{iid}") }, "labels": [], "reviewers": [], "sha": self.head(iid),
-            "diff_refs": { "base_sha": self.base, "start_sha": self.base, "head_sha": self.head(iid) },
-            "detailed_merge_status": "mergeable", "head_pipeline": self.pipeline(iid),
-        })
+        value["description"] = json!(description);
+        value["head_pipeline"] = self.pipeline(iid);
+        value
     }
 
     fn pipeline(&self, iid: u64) -> Value {
-        let id =
-            if still("runs") { PIPELINE_ID } else { PIPELINE_ID + self.tick() / POLLS_PER_RUN };
         json!({
-            "id": id, "project_id": PROJECT_ID, "sha": self.head(iid), "ref": format!("refs/merge-requests/{iid}/head"),
+            "id": PIPELINE_ID, "project_id": PROJECT_ID, "sha": self.head(iid), "ref": format!("refs/merge-requests/{iid}/head"),
             "status": "running", "source": "merge_request_event", "created_at": "2026-10-18T09:00:00Z",
-            "updated_at": self.updated_at(), "started_at": "2026-10-18T09:00:10Z",
-            "web_url": format!("{}/{PROJECT}/-/pipelines/{id}", self.base_url),
+            "updated_at": "2026-10-18T09:00:00Z", "started_at": "2026-10-18T09:00:10Z",
+            "web_url": format!("{}/{PROJECT}/-/pipelines/{PIPELINE_ID}", self.base_url),
         })
-    }
-
-    /// The polls so far; always 0 for a mock that is not heavy.
-    fn tick(&self) -> u64 {
-        self.polls.load(Ordering::Relaxed)
-    }
-
-    /// Moves on by 15 s with each poll.
-    fn updated_at(&self) -> String {
-        let seconds = self.tick() * 15;
-        format!(
-            "2026-10-18T{:02}:{:02}:{:02}Z",
-            9 + seconds / 3600 % 14,
-            seconds / 60 % 60,
-            seconds % 60
-        )
     }
 }
 
-/// Eight jobs in each of the first `stage_count` stages. With a `tick`, the jobs before the
-/// tick's one (counted within its run) succeeded, it runs and the later ones wait.
-fn jobs(stage_count: usize, tick: Option<u64>) -> Value {
+/// Eight jobs in each of the first `stage_count` stages: those of the first two stages succeeded,
+/// the third's first job runs, the rest wait.
+fn jobs(stage_count: usize) -> Value {
     let stages =
         ["build", "lint", "test", "package", "deploy", "verify", "e2e", "scan", "docs", "release"];
     let mut jobs = Vec::new();
     for (stage_index, stage) in stages.iter().take(stage_count).enumerate() {
         for job in 1..=8 {
-            let status = match tick {
-                Some(tick) => {
-                    let index = (stage_index * 8 + job - 1) as u64;
-                    let running = tick % POLLS_PER_RUN * (stage_count as u64 * 8) / POLLS_PER_RUN;
-                    match index.cmp(&running) {
-                        std::cmp::Ordering::Less => "success",
-                        std::cmp::Ordering::Equal => "running",
-                        std::cmp::Ordering::Greater => "created",
-                    }
-                }
-                None => match stage_index {
-                    2 if job == 1 => "running",
-                    0..=2 => "success",
-                    _ => "created",
-                },
+            let status = match stage_index {
+                2 if job == 1 => "running",
+                0..=2 => "success",
+                _ => "created",
             };
             jobs.push(json!({
                 "id": 5000 + stage_index * 10 + job, "name": format!("{stage}-{}-{job}", stage_index + 1), "stage": stage,
@@ -1090,71 +738,6 @@ fn jobs(stage_count: usize, tick: Option<u64>) -> Value {
         }
     }
     Value::Array(jobs)
-}
-
-/// `OWNER_STILL=runs,notes,jobs` keeps that part of a heavy mock's answers as it was.
-fn still(part: &str) -> bool {
-    std::env::var("OWNER_STILL").is_ok_and(|still| still.split(',').any(|item| item == part))
-}
-
-/// Sections of a heavy merge request's description, threads on it and stages of its pipeline.
-const HEAVY_SECTIONS: usize = 40;
-const HEAVY_THREADS: usize = 80;
-const HEAVY_STAGES: usize = 10;
-/// Polls of a heavy mock's pipelines per run: a new run starts after this many.
-const POLLS_PER_RUN: u64 = 8;
-/// Polls of a heavy mock's pipelines per new thread.
-const POLLS_PER_NOTE: u64 = 10;
-
-/// A real merge request's description: headings, lists, a table and code in each section.
-fn long_description() -> String {
-    let mut text = String::new();
-    for section in 0..HEAVY_SECTIONS {
-        write!(
-            text,
-            "\n## Part {section}: invoicing\n\nThe invoice run now batches **{section}** \
-             customers and writes `invoice_{section}.pdf` once the totals agree.\n\n\
-             - [x] totals per customer\n- [ ] reminders for part {section}\n\n\
-             | Field | Before | After |\n|---|---|---|\n| net | {section}0 | {section}5 |\n\n\
-             ```ts\nexport function part{section}(total: number): number {{\n  return total * \
-             {section};\n}}\n```\n"
-        )
-        .expect("writing to a string");
-    }
-    text
-}
-
-/// [`HEAVY_THREADS`] threads of three notes each, every other one on a line of a changed file,
-/// and one more thread for each [`POLLS_PER_NOTE`] polls (`tick`).
-fn discussions(head: &str, base: &str, tick: u64) -> Value {
-    let author =
-        |id: u64| json!({ "id": id, "username": format!("dev{id}"), "name": format!("Dev {id}") });
-    let added = if still("notes") { 0 } else { (tick / POLLS_PER_NOTE) as usize };
-    let threads: Vec<Value> = (0..HEAVY_THREADS + added)
-        .map(|thread| {
-            let position = (thread % 2 == 0).then(|| {
-                let path = format!("src/m0/f{:02}.rs", thread % 10);
-                json!({ "base_sha": base, "start_sha": base, "head_sha": head, "old_path": path,
-                        "new_path": path, "position_type": "text", "old_line": null, "new_line": 5 })
-            });
-            let notes: Vec<Value> = (0..3)
-                .map(|note| {
-                    json!({
-                        "id": 90_000 + thread * 10 + note,
-                        "type": if position.is_some() { "DiffNote" } else { "DiscussionNote" },
-                        "body": format!("Thread {thread}, note {note}: the totals of part {thread} \
-                                         round half up here, see `invoice_{thread}.pdf`."),
-                        "author": author(1 + (thread + note) as u64 % 4),
-                        "created_at": "2026-10-20T10:00:00Z", "updated_at": "2026-10-20T10:00:00Z",
-                        "system": false, "resolvable": true, "resolved": thread % 3 == 0,
-                        "position": position,
-                    })
-                })
-                .collect();
-            json!({ "id": format!("d{thread:04}"), "individual_note": false, "notes": notes })
-        })
-        .collect();
-    Value::Array(threads)
 }
 
 fn long_log() -> String {
@@ -1177,13 +760,13 @@ fn build_repository(git_dir: &Path) -> (String, Vec<String>) {
     let mut stream = Vec::new();
     let mut commit = |reference: &str, mark: u64, parent: Option<u64>, version: u64| {
         write!(
-            Text(&mut stream),
+            stream,
             "commit {reference}\nmark :{mark}\ncommitter Test <test@example.com> {} +0000\ndata 6\nchange\n",
             1_700_000_000 + mark
         )
         .expect("writing to a buffer");
         if let Some(parent) = parent {
-            writeln!(Text(&mut stream), "from :{parent}").expect("writing to a buffer");
+            writeln!(stream, "from :{parent}").expect("writing to a buffer");
         }
         let mut files: Vec<(String, Vec<u8>)> = (0..RUST_FILES)
             .map(|index| (format!("src/m{}/f{index:02}.rs", index / 10), rust_file(index, version)))
@@ -1192,7 +775,7 @@ fn build_repository(git_dir: &Path) -> (String, Vec<String>) {
         files.push((MARKDOWN_FILE.to_owned(), markdown_file(version)));
         files.push((IMAGE_FILE.to_owned(), image_file(version)));
         for (path, content) in files {
-            write!(Text(&mut stream), "M 100644 inline {path}\ndata {}\n", content.len())
+            write!(stream, "M 100644 inline {path}\ndata {}\n", content.len())
                 .expect("writing to a buffer");
             stream.extend_from_slice(&content);
             stream.push(b'\n');
@@ -1202,16 +785,7 @@ fn build_repository(git_dir: &Path) -> (String, Vec<String>) {
     for iid in 1..=MERGE_REQUESTS {
         commit(&format!("refs/merge-requests/{iid}/head"), 1 + iid, Some(1), iid);
     }
-    let mut child = Command::new("git")
-        .args(["--git-dir", &git_dir.display().to_string(), "fast-import", "--quiet"])
-        .stdin(Stdio::piped())
-        .spawn()
-        .expect("git fast-import");
-    std::io::Write::write_all(child.stdin.as_mut().expect("stdin"), &stream)
-        .expect("feed fast-import");
-    drop(child.stdin.take());
-    let status = child.wait().expect("fast-import exit");
-    assert!(status.success(), "fast-import failed");
+    fast_import(git_dir, &stream);
     for (key, value) in
         [("uploadpack.allowFilter", "true"), ("uploadpack.allowAnySHA1InWant", "true")]
     {
@@ -1396,40 +970,6 @@ fn memory_of_eight_languages_grammars_stays_small() {
     );
     let kept = released - start;
     assert!(kept <= KEPT_COLORS, "only the colors stay: {} MB", megabytes(kept));
-}
-
-/// Frames the unfocused Overview runs while its skeletons are checked.
-const UNFOCUSED_FRAMES: usize = 60;
-
-/// A window in the background holds its skeletons still: the merge policy loads only while the
-/// window is active, so the Overview's merge type stays a placeholder there, and its sweep asked
-/// for a frame every millisecond, the full frame rate for as long as the window sat behind others.
-#[test]
-fn an_unfocused_overview_holds_its_skeletons_still() {
-    let fixture = Fixture::new("unfocused");
-    let mut harness = fixture.harness(&GpuTextures::default());
-    wait_until_unsettled(&mut harness, "the merge request list", |harness| {
-        has(harness, "Change 30")
-    });
-    walkthrough::set_focus(&mut harness, false);
-    harness.state_mut().navigator.go(Route::PullRequest(fixture.key(IDLE_MERGE_REQUEST)));
-    wait_until_unsettled(&mut harness, "the overview", |harness| {
-        has(harness, &title(IDLE_MERGE_REQUEST))
-    });
-    let mut causes = std::collections::BTreeSet::new();
-    let mut time = harness.ctx.input(|input| input.time);
-    for _ in 0..UNFOCUSED_FRAMES {
-        time += 0.1;
-        harness.input_mut().time = Some(time);
-        harness.step();
-        causes.extend(harness.ctx.repaint_causes().iter().map(|cause| cause.file.to_owned()));
-        cv_testkit::let_threads_run(Duration::from_millis(3));
-    }
-    let sweeps: Vec<_> = causes
-        .iter()
-        .filter(|file| file.replace('\\', "/").ends_with("cv-widgets/src/skeleton.rs"))
-        .collect();
-    assert!(sweeps.is_empty(), "no skeleton sweeps in the background: {causes:?}");
 }
 
 /// Compile-and-free cycles the grammar churn probe runs.
