@@ -16,11 +16,12 @@ use super::heights::RowHeights;
 use super::lanes::Lanes;
 use super::model::{Counts, Model, Row};
 use super::{Frame, GUTTER, RIGHT_PADDING, RenderedEvent, STRIPE_WIDTH};
+use cv_base::theme::motion::mix;
 use cv_base::theme::{self, Palette, icons, style};
-use cv_code::diff_paint::{self, mix};
+use cv_code::diff_paint;
 use cv_pr_diff::gap_bar;
-use cv_pr_diff::notice::{self, Action};
 use cv_widgets::numbers::group_digits;
+use cv_widgets::states::{self, Action};
 use cv_widgets::{buttons, focus, glyph};
 
 const WEDGE_WIDTH: f32 = 7.0;
@@ -309,9 +310,9 @@ pub(super) fn show_banner(ui: &mut Ui, rect: Rect, palette: &Palette) -> Option<
 
 /// Neither version renders anything: say so and offer the text diff.
 pub(super) fn show_empty(ui: &mut Ui, palette: &Palette) -> Option<RenderedEvent> {
-    let actions = [Action { icon: icons::FILE_TEXT, label: "Show text diff", is_primary: true }];
+    let actions = [Action::primary(icons::FILE_TEXT, "Show text diff")];
     let detail = "Both versions are empty or hold only comments, which Markdown does not show.";
-    notice::show(
+    states::notice(
         ui,
         icons::FILE_TEXT,
         palette.text_secondary,

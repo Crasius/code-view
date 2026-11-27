@@ -62,7 +62,6 @@ use self::blocks::show_cell;
 use self::find::{BarFrame, BlockFind, FindRows, panes};
 use self::heights::{RowHeights, outward};
 pub use self::inputs::{RenderedEvent, RenderedImages, RenderedInputs};
-use self::keys::ScrollKey;
 use self::lanes::{Areas, Lanes, reading_column, reading_room};
 use self::model::{Cell, Mode, Model, Row};
 use self::rows::{begin_frame, build};
@@ -797,12 +796,12 @@ impl MarkdownDiff {
         if let Some(direction) = navigation::navigation_keys(ui) {
             self.go_to_change(direction);
         }
-        let Some(key) = ScrollKey::read(ui) else {
+        let Some(key) = keys::read(ui) else {
             return;
         };
         let page = (view_height - ARROW_STEP).max(ARROW_STEP);
         let ends = Ends::of(self.heights.tops(), view_height, ui.ctx());
-        self.scroll_to = Some(key.target(self.view_top(), ARROW_STEP, page, ends));
+        self.scroll_to = Some(keys::target(key, self.view_top(), ARROW_STEP, page, ends));
         ui.ctx().request_repaint();
     }
 

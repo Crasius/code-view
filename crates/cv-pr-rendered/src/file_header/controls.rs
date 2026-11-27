@@ -9,17 +9,18 @@ use review_git::ChangedFile;
 use review_store::{AppSettings, DiffLayout};
 
 use super::{
-    CHIP_HEIGHT, CHIP_PADDING, CONTEXT_CHOICES, Fit, HeaderAction, HeaderInputs, LAYOUTS,
-    MARK_VIEWED_HINT, PREVIEW_LABEL, PREVIOUS_CHANGE_HINT, RENDERED_COLUMNS_WIDTH_HINT,
-    RENDERED_CONTEXT_CHOICES, RENDERED_WHITESPACE_HINT, ROW_HEIGHT, SEPARATOR_WIDTH,
-    TOGGLE_ICON_GAP, UNMARK_VIEWED_HINT, Widths, comments_hint, paint_tabular, position_text,
-    selected_context, tabular_width, text_width, viewed_label,
+    CHIP_HEIGHT, CHIP_PADDING, CONTEXT_CHOICES, Fit, HeaderAction, HeaderInputs, LABELLED_LAYOUTS,
+    LAYOUT_SEGMENTS, MARK_VIEWED_HINT, PREVIEW_LABEL, PREVIOUS_CHANGE_HINT,
+    RENDERED_COLUMNS_WIDTH_HINT, RENDERED_CONTEXT_CHOICES, RENDERED_WHITESPACE_HINT, ROW_HEIGHT,
+    SEPARATOR_WIDTH, TOGGLE_ICON_GAP, UNMARK_VIEWED_HINT, Widths, comments_hint, paint_tabular,
+    position_text, selected_context, tabular_width, viewed_label,
 };
 use crate::preview::{self, Preview};
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, icons, motion, style};
 use cv_pr_diff::diff_view::Direction;
 use cv_services::Services;
+use cv_widgets::elide::text_width;
 use cv_widgets::{buttons, focus, row, tabs};
 
 pub(super) fn show(
@@ -279,15 +280,8 @@ fn layout_choices(
             .response
             .on_hover_text(hint);
     }
-    action.layout_changed = if fit.layout_labels {
-        tabs::segmented_with_hints(
-            ui,
-            &mut settings.diff_layout,
-            &LAYOUTS.map(|(layout, _, label, hint)| (layout, label, hint)),
-        )
-    } else {
-        tabs::segmented_icons(ui, &mut settings.diff_layout, &LAYOUTS)
-    };
+    let layouts = if fit.layout_labels { &LABELLED_LAYOUTS } else { &LAYOUT_SEGMENTS };
+    action.layout_changed = tabs::segments(ui, &mut settings.diff_layout, layouts);
 }
 
 /// Always in the same place: off and disabled for files without a preview, on and disabled for
@@ -351,14 +345,9 @@ fn toggle(
     let (rect, response) =
         ui.allocate_exact_size(vec2(width, style::CONTROL_HEIGHT), Sense::click());
     response.widget_info(|| egui::WidgetInfo::selected(role, response.enabled(), is_on, label));
-    let on = motion::toggle(ui.ctx(), response.id.with("toggle_on"), is_on, motion::FAST);
-    let fill =
-        motion::mix(row::state_fill(ui, &response, Color32::TRANSPARENT), palette.selection, on);
-    if fill != Color32::TRANSPARENT {
-        ui.painter().rect_filled(rect, style::RADIUS_CONTROL, fill);
-    }
-    // A disabled toggle fades with its `Ui`.
-    let color = motion::mix(palette.text, palette.accent_text, on);
+    let on = row::toggle_on(ui, &response, is_on);
+    row::paint_toggle_fill(ui, &response, rect, on);
+    let color = row::toggle_color(&palette, &response, on);
     let icon_font = icons::state_font(&palette, icons::SIZE, is_on);
     let Some(text) = face.label else {
         ui.painter().text(rect.center(), Align2::CENTER_CENTER, face.icon, icon_font, color);
@@ -426,5 +415,5 @@ fn whole_file_chip(ui: &mut Ui, side: DiffSide, slot_width: f32) {
 /// A soft fill of `color` for a status chip on the header surface.
 fn chip_fill(palette: &theme::Palette, color: Color32) -> Color32 {
     let amount = if palette.is_dark { 0.18 } else { 0.10 };
-    cv_code::diff_paint::mix(palette.surface, color, amount)
+    motion::mix(palette.surface, color, amount)
 }

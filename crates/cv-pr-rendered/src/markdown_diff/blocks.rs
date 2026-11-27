@@ -9,8 +9,8 @@ use egui::{
     UiBuilder, pos2, vec2,
 };
 
+use cv_base::theme::motion::mix;
 use cv_base::theme::{Palette, icons, style};
-use cv_code::diff_paint::mix;
 use cv_markdown::Marks;
 use cv_pr_threads::markers;
 use cv_widgets::focus;
@@ -142,34 +142,21 @@ pub(super) fn show_cell(
 
 /// Notes the fills of a rendered block that carries layered marks (see [`last_layers`]).
 #[cfg(any(test, feature = "test-support"))]
-pub fn note_layers(ctx: &egui::Context, layers: &[Marks]) {
-    let pass = ctx.cumulative_pass_nr();
+fn note_layers(ctx: &egui::Context, layers: &[Marks]) {
     let colors: Vec<Color32> =
         layers.iter().filter(|layer| !layer.ranges.is_empty()).map(|layer| layer.color).collect();
-    ctx.data_mut(|data| {
-        let notes = data.get_temp_mut_or_default::<LayerNotes>(egui::Id::unique(LAYER_NOTE));
-        if notes.0 != pass {
-            *notes = (pass, Vec::new());
-        }
-        notes.1.push(colors);
-    });
+    cv_base::frame_probe::note(ctx, LAYER_NOTE, colors);
 }
 
 /// The fill colors, layer by layer, of each rendered block the last frame painted with more than
 /// one layer of marks.
 #[cfg(any(test, feature = "test-support"))]
 pub fn last_layers(ctx: &egui::Context) -> Vec<Vec<Color32>> {
-    let (pass, notes) = ctx
-        .data(|data| data.get_temp::<LayerNotes>(egui::Id::unique(LAYER_NOTE)))
-        .unwrap_or_default();
-    if pass + 1 == ctx.cumulative_pass_nr() { notes } else { Vec::new() }
+    cv_base::frame_probe::last(ctx, LAYER_NOTE)
 }
 
 #[cfg(any(test, feature = "test-support"))]
-pub type LayerNotes = (u64, Vec<Vec<Color32>>);
-
-#[cfg(any(test, feature = "test-support"))]
-pub const LAYER_NOTE: &str = "diff_find_layers";
+const LAYER_NOTE: &str = "diff_find_layers";
 
 /// Where a block's gutter control is centered, whether the block is hovered, and the change
 /// marker it shows otherwise, in `color`.

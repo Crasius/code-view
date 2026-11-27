@@ -28,7 +28,7 @@ use super::rows::build;
 use super::{MarkdownDiff, ROW_PAD, RenderedEvent, RenderedImages, RenderedInputs};
 use cv_base::theme::{self, Palette};
 use cv_pr_threads::{ThreadsUi, samples};
-use cv_testkit::frame_bench::{Bench, PATTERNS, Report, SCALES};
+use cv_testkit::frame_bench::{self, Bench, Report, SCALES};
 
 /// What the last frame painted, for tests that look at the geometry.
 #[derive(Debug, Default, Clone)]
@@ -1189,21 +1189,11 @@ fn frame_budget_markdown_diff() {
                 }
                 bench.warm_up(pointer);
             }
-            for (pattern, speed) in PATTERNS {
-                let name = format!(
-                    "markdown diff 5k {layout:?} @{:.0}% {pattern}",
-                    pixels_per_point * 100.0
-                );
-                reports.push(bench.scroll_best(&name, pointer, vec2(0.0, -speed)));
-            }
+            let view = format!("markdown diff 5k {layout:?}");
+            reports.extend(bench.scroll_patterns(&view, pointer, vec2(0.0, -1.0)));
         }
     }
-    for report in &reports {
-        report.print();
-    }
-    for report in &reports {
-        report.assert_within_budget();
-    }
+    frame_bench::finish(&reports);
 }
 
 #[test]

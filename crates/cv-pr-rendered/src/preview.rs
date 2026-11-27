@@ -18,14 +18,15 @@ use cv_base::theme::{self, icons, style};
 use cv_media::images::{self as image_store, Decoded};
 use cv_media::picture::Picture;
 use cv_pr_diff::diff_view::Direction;
-use cv_pr_diff::notice::{self, Action};
 use cv_pr_session::session::PullRequestSession;
 use cv_pr_session::web_link;
 use cv_pr_threads::ThreadsUi;
 use cv_runtime::load::Load;
 use cv_services::Services;
 use cv_widgets::splitter::Splitter;
-use cv_widgets::{skeleton, surfaces, tabs};
+use cv_widgets::states::{self, Action};
+use cv_widgets::tabs::{self, Segment};
+use cv_widgets::{skeleton, surfaces};
 
 mod canvas;
 mod load;
@@ -35,6 +36,12 @@ use load::LoadJob;
 pub use load::load_markdown;
 
 const COLUMN_GAP: f32 = style::SPACE_L;
+/// How a changed image compares its two versions.
+const COMPARE_MODES: [Segment<'static, ImageCompare>; 3] = [
+    Segment::new(ImageCompare::SideBySide, "2-up"),
+    Segment::new(ImageCompare::Swipe, "Swipe"),
+    Segment::new(ImageCompare::OnionSkin, "Onion skin"),
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PreviewKind {
@@ -351,20 +358,15 @@ impl Preview {
     ) {
         let palette = theme::palette(ui.ctx());
         let link = web_link::for_file(session, file);
-        let mut actions =
-            vec![Action { icon: icons::ARROW_CLOCKWISE, label: "Retry", is_primary: true }];
+        let mut actions = vec![Action::primary(icons::ARROW_CLOCKWISE, "Retry")];
         let can_show_diff = kind != PreviewKind::Raster;
         if can_show_diff {
-            actions.push(Action {
-                icon: icons::FILE_TEXT,
-                label: "Show text diff",
-                is_primary: false,
-            });
+            actions.push(Action::secondary(icons::FILE_TEXT, "Show text diff"));
         }
         if let Some(link) = &link {
-            actions.push(Action { icon: link.icon, label: &link.label, is_primary: false });
+            actions.push(Action::secondary(link.icon, &link.label));
         }
-        match notice::show(
+        match states::notice(
             ui,
             icons::WARNING,
             palette.error,
@@ -428,15 +430,7 @@ impl Preview {
                 return false;
             }
         };
-        tabs::segmented(
-            ui,
-            &mut self.compare,
-            &[
-                (ImageCompare::SideBySide, "2-up"),
-                (ImageCompare::Swipe, "Swipe"),
-                (ImageCompare::OnionSkin, "Onion skin"),
-            ],
-        );
+        tabs::segments(ui, &mut self.compare, &COMPARE_MODES);
         ui.add_space(style::SPACE_S);
         match self.compare {
             ImageCompare::SideBySide => {
@@ -542,7 +536,6 @@ mod tests {
     use std::sync::Arc;
 
     use egui::{Color32, ColorImage};
-    use review_core::FileCategory;
     use review_git::{ChangeKind, ChangedFile};
     use review_store::ImageCompare;
 
@@ -563,18 +556,7 @@ mod tests {
     }
 
     fn png(kind: ChangeKind) -> ChangedFile {
-        ChangedFile {
-            path: "assets/logo.png".into(),
-            old_path: None,
-            kind,
-            old_oid: "1".repeat(40),
-            new_oid: "2".repeat(40),
-            additions: None,
-            deletions: None,
-            is_binary: true,
-            category: FileCategory::Assets,
-            whitespace_only: false,
-        }
+        ChangedFile { is_binary: true, ..ChangedFile::sample("assets/logo.png", kind) }
     }
 
     #[test]
@@ -603,13 +585,7 @@ mod tests {
     /// images resolve in the first file's folder.
     #[test]
     fn files_with_the_same_blobs_in_other_folders_load_their_own_preview() {
-        let readme = |path: &str| ChangedFile {
-            path: path.into(),
-            kind: ChangeKind::Added,
-            category: FileCategory::Docs,
-            is_binary: false,
-            ..png(ChangeKind::Added)
-        };
+        let readme = |path: &str| ChangedFile::sample(path, ChangeKind::Added);
         let commits = || Some(("base".to_owned(), "head".to_owned()));
         assert_ne!(
             super::loaded_for(&readme("docs/a/README.md"), commits()),
@@ -622,7 +598,7 @@ mod tests {
     /// only say where its images resolve; a moved comparison reloads behind the shown preview.
     #[test]
     fn moved_commits_keep_the_versions_of_the_file() {
-        let readme = ChangedFile { path: "README.md".into(), ..png(ChangeKind::Modified) };
+        let readme = ChangedFile::sample("README.md", ChangeKind::Modified);
         let at =
             |head: &str| super::loaded_for(&readme, Some(("base".to_owned(), head.to_owned())));
         assert!(super::is_same_versions(&at("head"), &at("pushed")));
