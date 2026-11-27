@@ -251,15 +251,15 @@ fn painted_formats(harness: &Harness<'_>, wanted: &str) -> Vec<egui::TextFormat>
     painted_galleys(harness)
         .iter()
         .flat_map(|galley| {
-            let job = &galley.job;
-            job.sections
+            galley
+                .job
+                .sections
                 .iter()
-                .filter(|section| {
+                .filter(move |section| {
                     let range = section.byte_range.start.0..section.byte_range.end.0;
-                    job.text.get(range) == Some(wanted)
+                    galley.job.text.get(range) == Some(wanted)
                 })
                 .map(|section| section.format.clone())
-                .collect::<Vec<_>>()
         })
         .collect()
 }
