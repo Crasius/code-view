@@ -12,7 +12,7 @@ use egui::{Context, Id, TextureId, Vec2};
 
 use crate::video::Clip;
 
-const GENERATION_ID: &str = "review.markdown.image_generation";
+const GENERATION_ID: &str = "review.image_state.generation";
 
 /// What an image is right now.
 #[derive(Clone)]

@@ -19,11 +19,10 @@ use cv_runtime::cache::memory;
 use egui::{ColorImage, Context, Id, TextureHandle, TextureId, TextureOptions};
 
 use super::Clip;
+use crate::picture::{DECODER_BEHIND, UNSEEN_GAP};
 
 /// Frames waiting in the channel at most: a little slack against a slow pass, little memory.
 const QUEUED: usize = 2;
-/// A video not drawn for longer than this was off screen: the time does not count.
-const UNSEEN_GAP: f64 = 0.25;
 const STORE_ID: &str = "review.video.players";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -247,7 +246,7 @@ impl Player {
                 self.upload(ctx, &frame);
                 None
             }
-            Err(TryRecvError::Empty) => Some(Duration::from_millis(16)),
+            Err(TryRecvError::Empty) => Some(DECODER_BEHIND),
             Err(TryRecvError::Disconnected) => {
                 self.wants_frame = false;
                 None

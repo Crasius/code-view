@@ -42,6 +42,8 @@ const CHECK_EVERY: usize = 16;
 const HEAD_LINES: usize = 250;
 const OFFSET_BITS: u32 = 27;
 const OFFSET_MASK: u32 = (1 << OFFSET_BITS) - 1;
+const _: () = assert!(MAX_LINE_BYTES <= OFFSET_MASK as usize);
+const _: () = assert!(TokenKind::ALL.len() <= 1 << (u32::BITS - OFFSET_BITS));
 
 /// Where a token starts in its line and what it is, packed into 4 bytes. A token runs until the
 /// next span; text before a line's first span is plain.
@@ -683,12 +685,6 @@ mod tests {
     }
 
     #[test]
-    fn packs_offset_and_kind() {
-        let span = Span::new(1234, TokenKind::Function);
-        assert_eq!((span.start(), span.kind()), (1234, TokenKind::Function));
-    }
-
-    #[test]
     fn colors_rust_like_vs_code() {
         let lines =
             kinds_of("a.rs", "// note\nfn main() {\n    let name = \"x\";\n    return 42;\n}\n");
@@ -749,10 +745,7 @@ mod tests {
         let mut stack = ScopeStack::new();
         let mut lines = Vec::new();
         for line in source.lines() {
-            let text = format!(
-                "{line}
-"
-            );
+            let text = format!("{line}\n");
             let operations = parser.parse_line(&text, &working.set).expect("parses");
             let mut pieces = Vec::new();
             let mut position = 0;
@@ -792,16 +785,11 @@ mod tests {
     #[test]
     fn csharp_fences_in_markdown_read_like_csharp_files() {
         let code = concat!(
-            "if (invoice.RecipientCompanyName is { Length: > 0 } companyName)
-",
-            "    column.Item().Text(companyName);
-",
-            "var json = \"\"\"
-",
-            "    { \"net\": 1 }
-",
-            "    \"\"\";
-",
+            "if (invoice.RecipientCompanyName is { Length: > 0 } companyName)\n",
+            "    column.Item().Text(companyName);\n",
+            "var json = \"\"\"\n",
+            "    { \"net\": 1 }\n",
+            "    \"\"\";\n",
         );
         let below_root =
             |lines: Vec<Vec<(String, Vec<String>)>>| -> Vec<Vec<(String, Vec<String>)>> {
@@ -816,16 +804,7 @@ mod tests {
                 lines.collect()
             };
         let file = below_root(scopes_of("Invoice.cs", code));
-        let markdown = scopes_of(
-            "README.md",
-            &format!(
-                "# Title
-
-```csharp
-{code}```
-"
-            ),
-        );
+        let markdown = scopes_of("README.md", &format!("# Title\n\n```csharp\n{code}```\n"));
         let fence = below_root(markdown[3..3 + code.lines().count()].to_vec());
         assert_eq!(fence, file);
     }

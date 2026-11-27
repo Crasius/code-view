@@ -21,10 +21,11 @@ use crate::image_clipboard::Original;
 /// author did not say" (a GIF quirk), so they play at the speed the author saw.
 const SHORTEST_DELAY_SECONDS: f64 = 0.02;
 const SHORT_DELAY_SECONDS: f64 = 0.1;
-/// A streamed animation not drawn for longer than this was off screen: the time does not count.
-const UNSEEN_GAP: f64 = 0.25;
+/// A streamed animation or a video not drawn for longer than this was off screen: the time does
+/// not count.
+pub(crate) const UNSEEN_GAP: f64 = 0.25;
 /// How soon to look again when the decoder has not delivered the next frame yet.
-const DECODER_BEHIND: Duration = Duration::from_millis(16);
+pub(crate) const DECODER_BEHIND: Duration = Duration::from_millis(16);
 
 /// The frames of a long animation, each with its delay in seconds, as a decoder delivers them,
 /// looping.

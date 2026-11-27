@@ -2,7 +2,6 @@
 //! failure becomes an error toast that says why.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use cv_runtime::background::Background;
 use cv_runtime::toasts::Toasts;
@@ -25,12 +24,13 @@ fn frames_until(
     toasts: &mut Toasts,
     done: impl Fn(&ImageClipboard, &Toasts) -> bool,
 ) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !done(clipboard, toasts) {
-        assert!(Instant::now() < deadline, "the copy did not end");
+    cv_testkit::poll_until("the copy to end", || {
+        if done(clipboard, toasts) {
+            return true;
+        }
         clipboard.update(ctx, toasts);
-        cv_testkit::let_threads_run(Duration::from_millis(5));
-    }
+        false
+    });
 }
 
 #[test]

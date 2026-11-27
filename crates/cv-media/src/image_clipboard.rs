@@ -179,8 +179,7 @@ impl ImageClipboard {
     /// Starts the copies asked for since the last frame and toasts the ones that ended. Call once
     /// per frame.
     pub fn update(&self, ctx: &Context, toasts: &mut Toasts) {
-        let requests = ctx
-            .data_mut(|data| data.remove_temp::<Vec<Request>>(Id::unique(REQUESTS_ID)))
+        let requests = cv_base::mailbox::take::<Vec<Request>>(ctx, Id::unique(REQUESTS_ID))
             .unwrap_or_default();
         for request in requests {
             self.start(request);

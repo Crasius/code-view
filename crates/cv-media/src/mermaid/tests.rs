@@ -1,10 +1,8 @@
-use std::time::{Duration, Instant};
-
 use cv_base::theme::Palette;
 use egui::{Context, vec2};
 
 use super::{
-    DiagramRequest, DiagramState, DiagramStore, DiagramTheme, MAX_TEXTURE_EDGE, scale_key,
+    DiagramRequest, DiagramState, DiagramStore, DiagramTheme, MAX_TEXTURE_EDGE, diagram, scale_key,
     texture_scale,
 };
 
@@ -17,24 +15,20 @@ fn settled(
     request: &DiagramRequest<'_>,
     pixel_scale: Option<f32>,
 ) -> DiagramState {
-    let deadline = Instant::now() + Duration::from_secs(30);
-    loop {
+    cv_testkit::poll_for("the diagram to be drawn", || {
         let state = store.state(ctx, request, pixel_scale);
         // Without a pixel scale a drawn diagram stays "drawing", with its size.
         let is_done = match &state {
             DiagramState::Drawing { size } => pixel_scale.is_none() && size.is_some(),
             DiagramState::Ready { .. } | DiagramState::Failed(_) => true,
         };
-        if is_done || Instant::now() > deadline {
-            return state;
-        }
-        cv_testkit::let_threads_run(Duration::from_millis(5));
-    }
+        is_done.then_some(state)
+    })
 }
 
 fn next_pass(ctx: &Context) {
     // No painter takes the textures: their uploads are dropped.
-    ctx.run_ui(egui::RawInput::default(), |_| {}).textures_delta.clear();
+    ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
 }
 
 #[test]
@@ -54,16 +48,14 @@ fn draws_off_the_ui_thread_and_rasterizes_at_the_pixel_scale() {
 
     // Another zoom rasterizes again; meanwhile the old texture stands in.
     assert!(matches!(store.state(&ctx, &request, Some(1.0)), DiagramState::Ready { .. }));
-    let deadline = Instant::now() + Duration::from_secs(30);
-    let smaller = loop {
-        if let DiagramState::Ready { texture, .. } = store.state(&ctx, &request, Some(1.0))
-            && texture.size()[0] < (size.x * 2.0) as usize
-        {
-            break texture;
+    let smaller = cv_testkit::poll_for("the diagram rasterized again at the new scale", || {
+        match store.state(&ctx, &request, Some(1.0)) {
+            DiagramState::Ready { texture, .. } if texture.size()[0] < (size.x * 2.0) as usize => {
+                Some(texture)
+            }
+            _ => None,
         }
-        assert!(Instant::now() < deadline, "rasterized again at the new scale");
-        cv_testkit::let_threads_run(Duration::from_millis(5));
-    };
+    });
     assert_eq!(smaller.size()[0], size.x.ceil() as usize);
 }
 
@@ -106,11 +98,11 @@ fn errors_and_oversized_sources_fail_with_their_cause() {
     else {
         panic!("refused at once")
     };
-    assert!(
-        failure.reason.contains("too large") || failure.reason.contains("lines"),
-        "{failure:?}"
+    assert_eq!(
+        Some(&*failure),
+        diagram::check_source(&huge).err().as_ref(),
+        "refused by the size check, before any renderer"
     );
-    assert!(store.lock().jobs.is_empty(), "never sent to the renderer");
 }
 
 #[test]
@@ -126,9 +118,14 @@ fn textures_not_drawn_lately_go_when_memory_runs_out() {
     assert!(matches!(settled(&store, &ctx, &second, Some(1.0)), DiagramState::Ready { .. }));
     next_pass(&ctx);
     store.state(&ctx, &second, Some(1.0));
-    let inner = store.lock();
-    assert!(inner.entries[&first.key()].texture.is_none(), "the older texture was evicted");
-    assert!(inner.entries[&second.key()].texture.is_some(), "the one drawn this pass stays");
+    assert!(
+        matches!(store.state(&ctx, &first, None), DiagramState::Drawing { size: Some(_) }),
+        "the older texture was evicted"
+    );
+    assert!(
+        matches!(store.state(&ctx, &second, None), DiagramState::Ready { .. }),
+        "the one drawn this pass stays"
+    );
 }
 
 #[test]

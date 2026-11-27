@@ -8,10 +8,10 @@ use egui::{Color32, Vec2, vec2};
 use mermaid_rs_renderer::{ParseError, RenderOptions, Theme};
 
 /// Sources longer than this are not drawn: their source shows instead.
-pub const MAX_SOURCE_BYTES: usize = 64 * 1024;
-pub const MAX_SOURCE_LINES: usize = 2_000;
+const MAX_SOURCE_BYTES: usize = 64 * 1024;
+const MAX_SOURCE_LINES: usize = 2_000;
 /// A diagram laid out wider or taller than this (points) is not drawn.
-pub const MAX_EXTENT: f32 = 20_000.0;
+const MAX_EXTENT: f32 = 20_000.0;
 /// The diagrams' type size at zoom 1, in points.
 const FONT_SIZE: f32 = 14.0;
 /// The system UI fonts of each platform, then the common fallbacks; the renderer measures text in
@@ -20,9 +20,9 @@ const FONT_FAMILY: &str = "\"Segoe UI\", -apple-system, \"SF Pro Text\", \"Helve
 
 /// A drawn diagram: the SVG and its own size in points at zoom 1.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Svg {
-    pub text: String,
-    pub size: Vec2,
+pub(crate) struct Svg {
+    pub(crate) text: String,
+    pub(crate) size: Vec2,
 }
 
 /// Why a diagram is not drawn, for the note above its source.
@@ -70,8 +70,8 @@ pub struct DiagramTheme {
 }
 
 impl DiagramTheme {
-    /// How many colors [`Self::fields`] writes.
-    const FIELDS: usize = 11 + 12;
+    /// How many fields [`Self::fields`] writes: the mode, 10 colors, 12 series colors.
+    const FIELDS: usize = 1 + 10 + 12;
 
     pub fn from_palette(palette: &Palette) -> Self {
         // Series fills carry the text color in their labels (inside a slice and beside it alike):
@@ -116,7 +116,7 @@ impl DiagramTheme {
 
     /// The theme as text fields for the renderer process: a mode flag, then `#rrggbbaa` colors.
     pub fn fields(&self) -> Vec<String> {
-        let mut fields = Vec::with_capacity(Self::FIELDS + 1);
+        let mut fields = Vec::with_capacity(Self::FIELDS);
         fields.push(if self.is_dark { "dark" } else { "light" }.to_owned());
         let colors = [
             self.background,
@@ -218,7 +218,7 @@ impl DiagramTheme {
 }
 
 /// A source too large to draw, or nothing to draw at all: why, before any renderer runs.
-pub fn check_source(source: &str) -> Result<(), DiagramFailure> {
+pub(crate) fn check_source(source: &str) -> Result<(), DiagramFailure> {
     if source.len() > MAX_SOURCE_BYTES {
         return Err(DiagramFailure::new(
             format!("Larger than {} KB, too large to draw", MAX_SOURCE_BYTES / 1024),
@@ -239,7 +239,7 @@ pub fn check_source(source: &str) -> Result<(), DiagramFailure> {
 }
 
 /// Parses, lays out and draws `source` in `theme`.
-pub fn draw(source: &str, theme: &DiagramTheme) -> Result<Svg, DiagramFailure> {
+pub(crate) fn draw(source: &str, theme: &DiagramTheme) -> Result<Svg, DiagramFailure> {
     check_source(source)?;
     let options = RenderOptions { theme: theme.renderer_theme(), ..RenderOptions::modern() };
     let svg = mermaid_rs_renderer::render_strict(source, options)

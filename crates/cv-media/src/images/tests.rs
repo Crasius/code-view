@@ -3,12 +3,11 @@
 //! disk shows at once and is asked about behind it; animations keep every frame within their
 //! budget; "Copy image" gets the full-resolution pixels the textures were scaled down from.
 
-use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use cv_runtime::background::Background;
-use cv_runtime::cache::memory::{self, Holder, TextureMemory};
+use cv_runtime::cache::memory;
 use cv_testkit::ScratchDir;
 use egui::{ColorImage, Context, TextureOptions, vec2};
 use review_core::http::image::Validators;
@@ -105,34 +104,27 @@ impl Fixture {
 
     /// The state once the load settled (ready or failed).
     fn settled(&self, target: &Target) -> ImageState {
-        let deadline = Instant::now() + Duration::from_secs(20);
-        loop {
+        cv_testkit::poll_for("the image load to settle", || {
             let state = self.store.state(&self.ctx, target, false);
-            if !matches!(state, ImageState::Waiting { .. }) || Instant::now() > deadline {
-                return state;
-            }
-            cv_testkit::let_threads_run(Duration::from_millis(10));
-        }
+            (!matches!(state, ImageState::Waiting { .. })).then_some(state)
+        })
     }
 }
 
-/// Waits until `done` holds, at most 20 seconds.
-fn until(mut done: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while !done() && Instant::now() < deadline {
-        cv_testkit::let_threads_run(Duration::from_millis(10));
-    }
-}
-
-/// One pass of `ctx` with the window focused or not.
-fn pass(ctx: &Context, is_focused: bool, run: impl FnMut(&Context)) {
-    let mut input = egui::RawInput::default();
+/// The input of a pass with the window focused or not, at input time `time` when given.
+fn input(is_focused: bool, time: Option<f64>) -> egui::RawInput {
+    let mut input = egui::RawInput { time, ..Default::default() };
     input.viewports.insert(
         egui::ViewportId::ROOT,
         egui::ViewportInfo { focused: Some(is_focused), ..Default::default() },
     );
+    input
+}
+
+/// One pass of `ctx` with the window focused or not, at input time `time` when given.
+fn pass(ctx: &Context, is_focused: bool, time: Option<f64>, run: impl FnMut(&Context)) {
     // No renderer takes the textures here.
-    ctx.run_pass(input, run).textures_delta.clear();
+    ctx.run_pass(input(is_focused, time), run).drop_without_applying_deltas();
 }
 
 #[test]
@@ -145,14 +137,14 @@ fn only_wanted_images_load_once_and_none_while_the_window_is_inactive() {
             ImageState::Waiting { size: None }
         ));
     }
-    pass(&fixture.ctx, false, |ctx| {
+    pass(&fixture.ctx, false, None, |ctx| {
         fixture.store.state(ctx, &target, true);
     });
     // A load turns the entry from Idle to Loading in the same call, and never back to Idle.
     let never_started = matches!(fixture.store.lock().entries[&target.key].phase, Phase::Idle);
     assert!(never_started, "images off screen or behind an inactive window do not load");
 
-    pass(&fixture.ctx, true, |ctx| {
+    pass(&fixture.ctx, true, None, |ctx| {
         fixture.store.state(ctx, &target, true);
         fixture.store.state(ctx, &target, true);
     });
@@ -160,7 +152,7 @@ fn only_wanted_images_load_once_and_none_while_the_window_is_inactive() {
         panic!("the image loads once wanted")
     };
     assert_eq!(size, vec2(40.0, 20.0), "one image pixel per point at zoom 1");
-    pass(&fixture.ctx, true, |ctx| {
+    pass(&fixture.ctx, true, None, |ctx| {
         fixture.store.state(ctx, &target, true);
     });
     assert_eq!(
@@ -175,15 +167,15 @@ fn at_most_four_images_load_at_once() {
     let fixture = Fixture::new(Duration::from_millis(400));
     let targets: Vec<Target> =
         (0..7).map(|index| fixture.target(&format!("{index}.png"))).collect();
-    pass(&fixture.ctx, true, |ctx| {
+    pass(&fixture.ctx, true, None, |ctx| {
         for target in &targets {
             fixture.store.state(ctx, target, true);
         }
     });
-    assert_eq!(fixture.store.in_flight(), super::MAX_IN_FLIGHT);
     let first: Vec<ImageState> =
         targets.iter().map(|target| fixture.settled(target)).take(4).collect();
     assert!(first.iter().all(|state| matches!(state, ImageState::Ready { .. })));
+    assert_eq!(fixture.requests(), super::MAX_IN_FLIGHT, "only four started");
     assert!(
         matches!(fixture.store.state(&fixture.ctx, &targets[6], false), ImageState::Waiting { .. }),
         "the rest waits to be wanted again"
@@ -194,7 +186,7 @@ fn at_most_four_images_load_at_once() {
 fn failures_say_why_and_retry_loads_again() {
     let fixture = Fixture::new(Duration::ZERO);
     let missing = fixture.target("missing.png");
-    pass(&fixture.ctx, true, |ctx| {
+    pass(&fixture.ctx, true, None, |ctx| {
         fixture.store.state(ctx, &missing, true);
     });
     let ImageState::Failed(failure) = fixture.settled(&missing) else { panic!("a 404 fails") };
@@ -218,7 +210,7 @@ fn failures_say_why_and_retry_loads_again() {
         "a retry forgets the failure"
     );
     let before = fixture.requests();
-    pass(&fixture.ctx, true, |ctx| {
+    pass(&fixture.ctx, true, None, |ctx| {
         fixture.store.state(ctx, &missing, true);
     });
     fixture.settled(&missing);
@@ -236,14 +228,7 @@ fn textures_drawn_longest_ago_leave_memory_first_and_keep_their_size() {
         )
     };
     let one = memory::texture_bytes(&texture("probe"));
-    let mut inner = Inner {
-        entries: HashMap::default(),
-        in_flight: 0,
-        textures: TextureMemory::new(Holder::Images, 2 * one),
-        denied: HashMap::default(),
-        ahead: HashMap::default(),
-        reading_ahead: HashSet::default(),
-    };
+    let mut inner = Inner::new(2 * one);
     for (key, used) in [(1, 5), (2, 3), (3, 9)] {
         let texture = texture(&key.to_string());
         inner.textures.add(&texture);
@@ -274,44 +259,33 @@ fn textures_drawn_longest_ago_leave_memory_first_and_keep_their_size() {
 fn textures_nobody_drew_lately_leave_memory_and_keep_their_size() {
     let fixture = Fixture::new(Duration::ZERO);
     let (left, shown) = (fixture.target("left.png"), fixture.target("shown.png"));
-    let at = |seconds: f64| {
-        let mut input = egui::RawInput { time: Some(seconds), ..Default::default() };
-        input.viewports.insert(
-            egui::ViewportId::ROOT,
-            egui::ViewportInfo { focused: Some(true), ..Default::default() },
-        );
-        input
-    };
-    fixture
-        .ctx
-        .run_pass(at(1.0), |ctx| {
-            fixture.store.state(ctx, &left, true);
-            fixture.store.state(ctx, &shown, true);
-        })
-        .textures_delta
-        .clear();
+    pass(&fixture.ctx, true, Some(1.0), |ctx| {
+        fixture.store.state(ctx, &left, true);
+        fixture.store.state(ctx, &shown, true);
+    });
     assert!(matches!(fixture.settled(&left), ImageState::Ready { .. }));
     assert!(matches!(fixture.settled(&shown), ImageState::Ready { .. }));
     let held = fixture.store.lock().textures.held();
-    let pass = |seconds: f64, draw: &Target| {
-        fixture
-            .ctx
-            .run_pass(at(seconds), |ctx| {
-                fixture.store.state(ctx, draw, false);
-            })
-            .textures_delta
-            .clear();
+    let draw_at = |seconds: f64, draw: &Target| {
+        pass(&fixture.ctx, true, Some(seconds), |ctx| {
+            fixture.store.state(ctx, draw, false);
+        });
     };
-    pass(20.0, &shown);
+    draw_at(20.0, &shown);
     fixture.store.release_unseen(20.0);
     assert_eq!(fixture.store.lock().textures.held(), held, "both were drawn within 30 s");
-    pass(1.0 + memory::UNSEEN_TEXTURE_SECONDS, &shown);
+    draw_at(1.0 + memory::UNSEEN_TEXTURE_SECONDS, &shown);
     fixture.store.release_unseen(1.0 + memory::UNSEEN_TEXTURE_SECONDS);
     assert_eq!(fixture.store.lock().textures.held(), held / 2, "the unseen one went");
-    let inner = fixture.store.lock();
-    assert!(matches!(inner.entries[&left.key].phase, Phase::Idle));
-    assert_eq!(inner.entries[&left.key].natural, Some(Natural::Pixels(vec2(40.0, 20.0))));
-    assert!(matches!(inner.entries[&shown.key].phase, Phase::Ready(_)));
+    assert!(fixture.store.picture(left.key).is_none(), "its texture left");
+    assert!(
+        matches!(
+            fixture.store.state(&fixture.ctx, &left, false),
+            ImageState::Waiting { size: Some(size) } if size == vec2(40.0, 20.0)
+        ),
+        "it keeps its size"
+    );
+    assert!(fixture.store.picture(shown.key).is_some(), "the one drawn meanwhile stays");
 }
 
 #[test]
@@ -325,9 +299,7 @@ fn decodes_raster_and_svg_and_refuses_web_pages() {
         "laid out at its full size, one pixel per screen pixel"
     );
 
-    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="90" height="20">
-        <image href="file:///C:/Windows/win.ini" width="10" height="10"/><image xlink:href="https://x.test/a.png" width="10" height="10"/>
-        <rect width="90" height="20" fill="green"/></svg>"#;
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="90" height="20"></svg>"#;
     let decoded = decode(svg, None, 2.0).expect("svg");
     assert_eq!(
         (decoded.frames[0].0.size, decoded.natural.points(1.0)),
@@ -341,6 +313,27 @@ fn decodes_raster_and_svg_and_refuses_web_pages() {
         decode(b"not an image", None, 1.0).err().as_deref(),
         Some("Unsupported image format")
     );
+}
+
+/// An SVG's `<image href>` to a file on this machine is not drawn. The file here is an SVG, the
+/// one kind resvg would draw; a loaded one paints the image red.
+#[test]
+fn svgs_never_load_files_they_point_to() {
+    let folder = ScratchDir::new("svg-href");
+    let red = folder.path().join("red.svg");
+    std::fs::write(
+        &red,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="red"/></svg>"#,
+    )
+    .expect("write the pointed-to file");
+    let svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><image href="{}" width="10" height="10"/></svg>"#,
+        red.display()
+    );
+    let decoded = decode(svg.as_bytes(), None, 1.0).expect("svg");
+    let image = &decoded.frames[0].0;
+    assert_eq!(image.size, [10, 10]);
+    assert_eq!(image.pixels[5 * 10 + 5].a(), 0, "the file it points to stays unread");
 }
 
 /// An image seen once stays on disk past its host's lifetime: the stale copy shows at once, a
@@ -367,16 +360,19 @@ fn stale_copies_show_at_once_and_are_asked_about_behind_them() {
         let file = folder.path().join(name);
         disk::write(&file, &png(10, 10), Some("image/png"), &validators, Some(Duration::ZERO));
         let target = fixture.kept_target(name, &file);
-        pass(&fixture.ctx, true, |ctx| {
+        pass(&fixture.ctx, true, None, |ctx| {
             fixture.store.state(ctx, &target, true);
         });
         let ImageState::Ready { size, .. } = fixture.settled(&target) else {
             panic!("{name}: the stale copy shows")
         };
         assert_eq!(size, vec2(10.0, 10.0), "{name}: the kept copy, not a download");
-        until(|| disk::read(&file).is_some_and(|kept| kept.is_fresh));
-        until(|| size_of(&target) == Some(after));
-        assert_eq!(size_of(&target), Some(after), "{name}");
+        cv_testkit::poll_until(&format!("{name}: the host's answer renewing the copy"), || {
+            disk::read(&file).is_some_and(|kept| kept.is_fresh)
+        });
+        cv_testkit::poll_until(&format!("{name}: the image shown at {after:?}"), || {
+            size_of(&target) == Some(after)
+        });
         assert_eq!(fixture.requests_for(name), 1, "{name}: one question to the host");
         let kept = disk::read(&file).expect("still kept");
         assert!(kept.is_fresh, "{name}: the answer renews the copy");
@@ -436,21 +432,11 @@ fn animations_play_from_their_first_frame_and_hold_still_under_reduced_motion() 
             .mount(&fixture.server),
     );
     let target = fixture.target("clip.gif");
-    let at = |seconds: f64| {
-        let mut input = egui::RawInput { time: Some(seconds), ..Default::default() };
-        input.viewports.insert(
-            egui::ViewportId::ROOT,
-            egui::ViewportInfo { focused: Some(true), ..Default::default() },
-        );
-        input
-    };
     let state_at = |seconds: f64, want: bool| {
         let mut state = None;
-        fixture
-            .ctx
-            .run_pass(at(seconds), |ctx| state = Some(fixture.store.state(ctx, &target, want)))
-            .textures_delta
-            .clear();
+        pass(&fixture.ctx, true, Some(seconds), |ctx| {
+            state = Some(fixture.store.state(ctx, &target, want));
+        });
         state.expect("one pass")
     };
     state_at(1.0, true);
@@ -485,15 +471,7 @@ fn a_video_downloads_into_its_file_and_shows_its_first_frame() {
     let fixture = Fixture::new(Duration::ZERO);
     let folder = ScratchDir::new("image-store-video");
     let tools = crate::video::Tools::locate().expect("ffmpeg installed");
-    let encoded = folder.path().join("source.webm");
-    let status = fixture.runtime.block_on(
-        tokio::process::Command::new(tools.ffmpeg())
-            .args(["-v", "error", "-f", "lavfi", "-i", "testsrc=size=64x48:rate=10", "-t", "1"])
-            .args(["-c:v", "libvpx-vp9", "-y"])
-            .arg(&encoded)
-            .status(),
-    );
-    assert!(status.expect("ffmpeg runs").success());
+    let encoded = fixture.runtime.block_on(crate::video::tests::clip_file(&tools, &folder));
     fixture.runtime.block_on(
         Mock::given(method("GET"))
             .and(path("/demo.webm"))
@@ -507,7 +485,7 @@ fn a_video_downloads_into_its_file_and_shows_its_first_frame() {
     );
     let file = folder.path().join("demo.video");
     let target = Target { video: Some(file.clone()), ..fixture.target("demo.webm") };
-    pass(&fixture.ctx, true, |ctx| {
+    pass(&fixture.ctx, true, None, |ctx| {
         fixture.store.state(ctx, &target, true);
     });
     let ImageState::Ready { size, clip, .. } = fixture.settled(&target) else {
@@ -567,13 +545,13 @@ fn images_read_ahead_wait_in_memory_and_show_without_a_request() {
     let shown = fixture.kept_target("shown.png", &scratch.path().join("shown"));
     let left = fixture.kept_target("left.png", &scratch.path().join("left"));
     fixture.store.fetch_ahead(0.0, vec![shown.clone(), left]);
-    until(|| super::ahead::waiting(&fixture.store) == 2);
+    cv_testkit::poll_until("both bodies read ahead", || super::ahead::waiting(&fixture.store) == 2);
     assert_eq!((super::ahead::waiting(&fixture.store), fixture.requests()), (2, 2));
     assert!(!scratch.path().join("shown").exists(), "nothing read ahead reaches the disk");
     fixture.store.fetch_ahead(1.0, vec![shown.clone()]);
     assert_eq!(fixture.requests(), 2, "a body read ahead already is not read again");
 
-    pass(&fixture.ctx, true, |ctx| {
+    pass(&fixture.ctx, true, None, |ctx| {
         fixture.store.state(ctx, &shown, true);
     });
     assert!(matches!(fixture.settled(&shown), ImageState::Ready { .. }));
