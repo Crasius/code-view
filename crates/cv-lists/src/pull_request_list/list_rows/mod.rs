@@ -515,7 +515,7 @@ fn paint_pull_request(
     let (is_running, failure) =
         hosts.requests.state_of(connection_id, &pull_request.repository_key, pull_request.number);
     let identities = hosts.identities;
-    let me = has_token.then(|| identities.known(connection_id)).flatten();
+    let me = identities.known(connection_id);
     let ask = RowAsk { connection_id, has_token, is_running, failure, me: me.as_ref(), identities };
     let status_row = StatusRow::new(
         connection_id,
@@ -528,7 +528,8 @@ fn paint_pull_request(
     let checks = hosts.statuses.checks(&status_row, pull_request.checks);
     let reviewers = hosts.statuses.reviewers(&status_row, &pull_request.reviewers);
     let required_approvals = hosts.statuses.required_approvals(&status_row);
-    let interest = Interest::of(pull_request, reviewers, required_approvals, me.as_ref());
+    let me = me.as_ref().filter(|_| has_token);
+    let interest = Interest::of(pull_request, reviewers, required_approvals, me);
     let pending =
         hosts.flights.pending_on(connection_id, &pull_request.repository_key, pull_request.number);
     let item = ItemRow {
@@ -552,17 +553,16 @@ fn paint_pull_request(
     let place_of_edge = edge::Place { rect, id, is_last, opacity, number: &number };
     let mut action = edge::paint(ui, &place_of_edge, edge).then_some(ListAction::Retry);
     drawn.keys.drawn(ui, place, id);
-    let navigator = &mut *drawn.navigator;
     match picked {
         Some(RowPick::Open(landing)) => {
             let key = key_of(connection_id, pull_request);
             drawn.painted.opened = Some((key.clone(), pull_request.clone()));
             match landing {
-                Landing::Files => navigator.open_files(key),
-                Landing::Default => navigator.go(Route::PullRequest(key)),
+                Landing::Files => drawn.navigator.open_files(key),
+                Landing::Default => drawn.navigator.go(Route::PullRequest(key)),
             }
         }
-        Some(RowPick::Repository) => navigator.go(Route::RepositoryPullRequests {
+        Some(RowPick::Repository) => drawn.navigator.go(Route::RepositoryPullRequests {
             connection_id: connection_id.clone(),
             repository_key: pull_request.repository_key.clone(),
         }),

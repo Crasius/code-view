@@ -52,7 +52,7 @@ pub struct RowAsk<'a> {
     pub is_running: bool,
     /// Why the row's last request failed.
     pub failure: Option<&'a str>,
-    /// The signed-in user of the connection, once known and while it has a token.
+    /// The signed-in user of the connection, once known.
     pub me: Option<&'a UserIdentity>,
     /// Where the menu asks for the user while `me` is not known.
     pub identities: &'a Identities,
