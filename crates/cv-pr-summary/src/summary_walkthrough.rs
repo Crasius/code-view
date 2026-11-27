@@ -12,12 +12,12 @@ use egui_kittest::kittest::Queryable;
 use review_git::{ChangeKind, ChangedFile};
 use review_store::{DiffLayout, ThemePreference};
 
-use super::SummaryEvent;
 use super::bodies::MAX_BODIES;
 use super::loads::{MAX_RUNNING, MAX_WANTED};
 use super::testing::{
     SIZE, Scene, card_of, cards_shown, file, harness, key, settle, shop_files, ten_thousand_files,
 };
+use super::{MARGIN, SummaryEvent};
 use cv_runtime::background::Background;
 use cv_testkit::frame_bench::{self, Bench, SCALES};
 
@@ -191,6 +191,19 @@ fn only_the_cards_near_the_view_load() {
         "a jump loads the screen it lands on, not the way there: {}",
         started.len()
     );
+
+    // The arrows scroll three rows, Page Down a screen less the card header.
+    let offset = |harness: &Harness<'_, Scene>| harness.state().summary.viewport.top() + MARGIN;
+    key(&mut harness, Key::Home);
+    assert!(offset(&harness).abs() < 0.5, "Home leads to the top: {}", offset(&harness));
+    let geometry = harness.state().summary.geometry.expect("laid out");
+    key(&mut harness, Key::ArrowDown);
+    let rows = 3.0 * geometry.line;
+    assert!((offset(&harness) - rows).abs() < 0.5, "Down scrolls 3 rows: {}", offset(&harness));
+    let screen = harness.state().summary.viewport.height() - geometry.header;
+    key(&mut harness, Key::PageDown);
+    let paged = rows + screen;
+    assert!((offset(&harness) - paged).abs() < 0.5, "Page Down: {} not {paged}", offset(&harness));
 }
 
 /// 10,000 files with about 250,000 changed lines (and one 20,000-line file): every frame looks at

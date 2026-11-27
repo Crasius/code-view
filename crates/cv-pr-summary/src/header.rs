@@ -21,8 +21,11 @@ const LAYOUT_LABELS_SPARE: f32 = 160.0;
 const PREVIEW_HINT: &str = "Show the Markdown files rendered";
 /// Narrowest a middle level of the folder trail is cut to before levels fold into "…".
 const CRUMB_SHORT_WIDTH: f32 = 96.0;
+/// Room around a crumb's label. The 2 points above and below sit under the spacing scale on
+/// purpose: the trail stays one text line high.
 const CRUMB_PADDING: egui::Vec2 = vec2(style::SPACE_XS, 2.0);
-const PADDING_Y: i8 = 10;
+/// The header's padding above its first line and below its second.
+const PADDING_Y: f32 = 10.0;
 /// The horizontal gap between the header's items.
 const ITEM_GAP: f32 = 6.0;
 
@@ -49,7 +52,7 @@ pub fn show(ui: &mut Ui, inputs: &SummaryInputs<'_>, counts: &Counts<'_>) -> Opt
     let mut action = None;
     egui::Frame::new()
         .fill(palette.surface)
-        .inner_margin(egui::Margin::symmetric(style::SPACE_L as i8, PADDING_Y))
+        .inner_margin(egui::Margin::from(vec2(style::SPACE_L, PADDING_Y)))
         .stroke(egui::Stroke::new(1.0, palette.border))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
