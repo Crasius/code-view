@@ -421,21 +421,21 @@ impl MarkdownDiff {
         }
     }
 
-    /// The loaded `model` taken in, once per pair of versions. New texts start at the top (or
-    /// where [`Self::reveal_line`] asked for).
-    fn ensure_model(&mut self, model: &Arc<MarkdownModel>) {
-        if self.model.as_ref().is_some_and(|shown| shown.key == model.key) {
-            return;
+    /// The model held for `model`'s key: the loaded one taken in once per pair of versions, a
+    /// later load of the same keeps the held one. New texts start at the top (or where
+    /// [`Self::reveal_line`] asked for).
+    fn ensure_model(&mut self, model: &Arc<MarkdownModel>) -> Arc<MarkdownModel> {
+        if let Some(shown) = self.model.as_ref().filter(|shown| shown.key == model.key) {
+            return Arc::clone(shown);
         }
-        let pending = self.pending.take().unwrap_or(Place::Top);
-        let viewport = self.viewport;
         *self = Self {
             model: Some(Arc::clone(model)),
-            pending: Some(pending),
-            viewport,
+            pending: Some(self.pending.take().unwrap_or(Place::Top)),
+            viewport: self.viewport,
             find: std::mem::take(&mut self.find),
             ..Self::default()
         };
+        Arc::clone(model)
     }
 
     /// The rows for `key`, built with `threads`; the block at the top of the view stays there.

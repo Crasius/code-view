@@ -89,6 +89,9 @@ fn versions_without_their_model_keep_the_card_loading() {
     let rendered = scene.summary.rendered.get(README).expect("the README card holds its versions");
     let height = embedded::height(&rendered.view);
     assert!(height.abs() < f32::EPSILON, "no blocks laid out without a model: {height}");
+    assert!(scene.summary.rendered.failure(README).is_none(), "not failed: the card waits");
+    let rendered = &mut harness.state_mut().summary.rendered;
+    assert!(rendered.show(README, 1).is_none(), "the card shows its pending rows, not a diff");
 }
 
 /// The rendered height of the README card, Preview on, its versions `versions` and the file view

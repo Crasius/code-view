@@ -24,7 +24,7 @@ mod width;
 
 use super::heights::outward;
 use super::model::{Look, Mode, Row};
-use super::rows::build;
+use super::rows::{begin_frame, build};
 use super::{MarkdownDiff, MarkdownModel, ROW_PAD, RenderedEvent, RenderedImages, RenderedInputs};
 use cv_base::theme::{self, Palette};
 use cv_pr_threads::{ThreadsUi, samples};
@@ -276,6 +276,20 @@ fn blocks_line_up_whatever_scrolls_them() {
     harness.key_press(Key::End);
     harness.run();
     check_aligned(&harness, "at the end");
+}
+
+/// Regression: a reload of the same versions (moved commits) hands in a new model with the same
+/// key; the frame painted that one while the diff kept the one it held.
+#[test]
+fn a_reload_of_the_same_versions_paints_the_held_model() {
+    let (old, new) = sample();
+    let scene = Scene::new(&old, &new, DiffLayout::SideBySide, FULL_FILE_CONTEXT);
+    let (held, reloaded) = (Arc::new(scene.doc.model()), Arc::new(scene.doc.model()));
+    let (ctx, mut view) = (egui::Context::default(), MarkdownDiff::default());
+    let (first, ..) = begin_frame(&mut view, &ctx, &scene.doc.inputs(&held, &[]));
+    assert!(Arc::ptr_eq(&first, &held), "the first load is taken in");
+    let (painted, ..) = begin_frame(&mut view, &ctx, &scene.doc.inputs(&reloaded, &[]));
+    assert!(Arc::ptr_eq(&painted, &held), "the held model is painted, not the reloaded one");
 }
 
 #[test]

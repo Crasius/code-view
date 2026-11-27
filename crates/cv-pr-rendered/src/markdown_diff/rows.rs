@@ -47,8 +47,7 @@ pub(super) fn begin_frame(
     ctx: &egui::Context,
     inputs: &RenderedInputs<'_>,
 ) -> (Arc<MarkdownModel>, Mode, bool) {
-    let model = Arc::clone(inputs.model);
-    diff.ensure_model(&model);
+    let model = diff.ensure_model(inputs.model);
     let mode = Mode::of(model.has_old, model.has_new, inputs.layout);
     diff.follow_thread_visibility(inputs.show_threads);
     let key = RowsKey {

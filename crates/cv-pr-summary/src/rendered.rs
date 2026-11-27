@@ -4,8 +4,9 @@
 //! summary's own scroll area moving it.
 //!
 //! The two versions load from the mirror for the cards that want them, a few at a time, as the
-//! diffs do; the load also parses and lines them up, and a card shows its placeholder until then. A bounded least-recently-shown cache keeps the loaded cards; one dropped keeps its
-//! measured height in the summary, so the cards do not move when it loads again.
+//! diffs do; the load also parses and lines them up, and a card shows its placeholder until then.
+//! A bounded least-recently-shown cache keeps the loaded cards; one dropped keeps its measured
+//! height in the summary, so the cards do not move when it loads again.
 
 use std::collections::HashMap;
 use std::sync::Arc;
