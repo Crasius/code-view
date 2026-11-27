@@ -24,8 +24,10 @@ fetch() {
 for tool in "$@"; do
     case "$tool" in
         cargo-about)
-            name="cargo-about-0.9.3-x86_64-unknown-linux-musl"
-            file="$(fetch "https://github.com/EmbarkStudios/cargo-about/releases/download/0.9.3/$name.tar.gz" \
+            # scripts/check.sh reads the version= lines of this entry, cargo-deny and cargo-shear.
+            version=0.9.3
+            name="cargo-about-$version-x86_64-unknown-linux-musl"
+            file="$(fetch "https://github.com/EmbarkStudios/cargo-about/releases/download/$version/$name.tar.gz" \
                 3ad1e94ea1e63d69d1961f4fb15ccbbe9575d906111f96d2cb4dce6df48f71b4)"
             tar --no-same-owner -xzf "$file" -C "$root/usr/bin" --strip-components=1 "$name/cargo-about"
             ;;
@@ -45,7 +47,6 @@ for tool in "$@"; do
             tar --no-same-owner -xzf "$file" -C "$root/usr/bin" cargo-nextest
             ;;
         cargo-deny)
-            # scripts/check.sh reads the version= lines of this entry and the next one.
             version=0.22.1
             name="cargo-deny-$version-x86_64-unknown-linux-musl"
             file="$(fetch "https://github.com/EmbarkStudios/cargo-deny/releases/download/$version/$name.tar.gz" \

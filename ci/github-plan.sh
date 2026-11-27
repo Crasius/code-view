@@ -13,8 +13,15 @@
 set -eu
 out="${GITHUB_OUTPUT:?Run it in GitHub Actions.}"
 
-# The crates with code under cfg(target_os = "macos") or macOS-only dependencies.
-mac_crates="cv-base cv-editor cv-media cv-settings cv-shell review-app review-core review-store"
+# The crates with code under cfg(target_os = "macos") or macOS-only dependencies: the folders under
+# crates/ whose files name either cfg (vendored code aside), as the package names of their manifests.
+# cfg(unix) code runs on Linux and needs no Mac.
+mac_crates="$(git grep -l -e 'target_os = "macos"' -e 'not(target_os = "linux")' -- 'crates/*' ':!crates/*/vendor/*' |
+    cut -d / -f 2 | sort -u | while IFS= read -r dir; do
+        awk '/^\[package\]/ { p = 1; next } /^\[/ { p = 0 }
+             p && /^name[ \t]*=/ { sub(/^[^"]*"/, ""); sub(/".*/, ""); print; exit }' "crates/$dir/Cargo.toml"
+    done | paste -s -d ' ' -)"
+[ -n "$mac_crates" ] || { echo "github-plan: found no crate with macOS code" >&2; exit 1; }
 mac_filter="$(printf '%s\n' "$mac_crates" | tr ' ' '\n' |
     awk '{ printf "%spackage(=%s)", (NR > 1 ? " | " : ""), $1 }')"
 
@@ -31,7 +38,7 @@ else
         case "$f" in
             crates/* | tools/* | browser-extension/* | .cargo/* | Cargo.toml | Cargo.lock | \
                 rust-toolchain.toml | clippy.toml | rustfmt.toml | .gitattributes | .github/workflows/* | \
-                ci/* | .agents/hooks/* | .config/* | scripts/affected-tests.sh)
+                ci/* | .agents/hooks/* | .config/* | scripts/affected-tests.sh | scripts/check.sh | deny.toml)
                 rust=true
                 ;;
         esac

@@ -1,12 +1,14 @@
 # Code View CI/CD on the project's GitLab instance (docs/release.md, Pipelines).
 # The one runner is shared and busy, so a pipeline runs only what verifies something not yet
 # verified.
-# Merge requests: lint (format, repository rules, both clippy passes) and test (the tests the change
-# needs, scripts/affected-tests.sh) side by side on Linux and the Linux x64 release build when a
-# cargo input changed (.rust-inputs, ci/checks.yml), and a secret scan always. The other platforms'
-# builds wait for a manual start.
+# Merge requests: lint (scripts/check.sh) and test (the tests the change needs,
+# scripts/affected-tests.sh) side by side on Linux when a cargo input changed (.rust-inputs,
+# ci/checks.yml), supply-chain when the dependency set changed, the Linux x64 release build when a
+# release input changed (.release-inputs), and a secret scan always. The other platforms' builds
+# wait for a manual start.
 # main: every push runs the checks with every test and writes the build caches. No release build:
 # the tag builds its own.
+# A scheduled pipeline runs supply-chain alone: advisories appear without a commit.
 # A protected tag vX.Y.Z runs the checks and the release build of every platform and publishes the
 # builds to Creative Downloads (cdl). The instance's only runner is Linux amd64, so the macOS,
 # Windows and Linux arm64 builds are cross-builds.
@@ -22,6 +24,8 @@ workflow:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: never
     - if: $CI_COMMIT_TAG
+    # Before main's rule, so that a schedule writes no cache.
+    - if: $CI_PIPELINE_SOURCE == "schedule"
     # A branch with an open merge request runs as the merge request pipeline, not twice.
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
@@ -60,8 +64,8 @@ include:
 # compiles in lint and test already; build-linux-x64 waits for a manual start then (8 to 13
 # minutes, measured 2026-11-22 to 24).
 .release-inputs:
-  # The manifests (versions, [package.metadata.bundle], the release profile), the lockfile, the
-  # toolchain and cargo's configuration.
+  # The manifests (versions, the release profile), the lockfile, the toolchain and cargo's
+  # configuration.
   - Cargo.toml
   - Cargo.lock
   - crates/*/Cargo.toml
@@ -76,11 +80,13 @@ include:
   # `git grep -l debug_assertions -- 'crates/*.rs'` minus the test-only files.
   - crates/review-app/src/main.rs
   - crates/review-app/src/app.rs
-  # The pipeline and the release scripts with what they read: the notices' licenses and the example
-  # that prints the grammars' notices.
+  # The pipeline and the release scripts with what they read: the macOS bundle, the notices'
+  # licenses and the example that prints the grammars' notices.
   - .gitlab-ci.yml
   - ci/checks.yml
   - ci/build-release.sh
+  - ci/notices.sh
+  - scripts/bundle-macos.sh
   - ci/install-build-deps.sh
   - ci/about.*
   - crates/cv-base/assets/Phosphor-LICENSE-MIT.txt
@@ -108,7 +114,6 @@ include:
 build-linux-x64:
   extends: .release-build
   rules:
-    - if: $CI_COMMIT_TAG || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths: !reference [.release-inputs]
@@ -128,14 +133,12 @@ build-macos:
     PLATFORM: macos
 
 build-windows-x64:
-  extends: .release-build
-  image: $XWIN_IMAGE
+  extends: [.release-build, .xwin-build]
   variables:
     PLATFORM: windows-x64
 
 build-windows-arm64:
-  extends: .release-build
-  image: $XWIN_IMAGE
+  extends: [.release-build, .xwin-build]
   variables:
     PLATFORM: windows-arm64
 
@@ -146,7 +149,7 @@ creative-downloads:
   stage: release
   extends: [.cdl, .release-tag]
   image: $ZIGBUILD_IMAGE
-  needs: [lint, test, secret-scan, build-linux-x64, build-linux-arm64, build-macos, build-windows-x64, build-windows-arm64]
+  needs: [lint, test, secret-scan, supply-chain, build-linux-x64, build-linux-arm64, build-macos, build-windows-x64, build-windows-arm64]
   interruptible: false
   resource_group: creative-downloads
   variables:

@@ -50,6 +50,17 @@ default:
   - .config/**/*
   - .gitattributes
   - scripts/affected-tests.sh
+  - scripts/check.sh
+  - deny.toml
+
+# The downloads every cargo job shares, keyed by the lockfile; lint and test write them in main's
+# pipelines (CACHE_POLICY), every other job only reads them. YAML anchors, since a !reference
+# cannot replace one key of what it names.
+.cargo-downloads: &cargo-downloads
+  key:
+    prefix: cargo-downloads
+    files: [Cargo.lock]
+  paths: [.cargo-home/registry/index, .cargo-home/registry/cache, .cargo-home/git/db]
 
 .rust:
   image: $ZIGBUILD_IMAGE
@@ -61,15 +72,25 @@ default:
     CARGO_PROFILE_TEST_DEBUG: "0"
   before_script:
     - export PATH="$BUILD_DEPS/usr/bin:$PATH"
+  # The release builds read main's downloads; cargo fetches only the crates that link on their
+  # target alone, which lint and test on Linux never download.
   cache:
-    key:
-      prefix: rust-$CI_JOB_NAME_SLUG
-      files: [Cargo.lock, rust-toolchain.toml]
-    policy: $CACHE_POLICY
-    # Downloads only: an archive must fit the runner's 2 GiB (docs/release.md, Runner).
-    paths: [.cargo-home/registry/index, .cargo-home/registry/cache, .cargo-home/git/db, .xwin-cache]
+    - <<: *cargo-downloads
+      policy: pull
   after_script:
     - du -sh target .cargo-home .xwin-cache .build-deps 2>/dev/null || true
+
+# The two Windows builds: the image with cargo-xwin and its download of the Windows SDK and CRT,
+# one cache per job. Only a run by hand on main writes it (CACHE_POLICY), since main's pushes build
+# nothing; the key names the image's version, so bump it with XWIN_IMAGE.
+.xwin-build:
+  image: $XWIN_IMAGE
+  cache:
+    - <<: *cargo-downloads
+      policy: pull
+    - key: xwin-0.23.1-$CI_JOB_NAME_SLUG
+      policy: $CACHE_POLICY
+      paths: [.xwin-cache]
 
 # lint and test run side by side, each in its own pod, each with its own build cache: clippy's
 # check artifacts and the test build share no compiled unit (docs/release.md, Build cache). The
@@ -83,6 +104,9 @@ default:
   image: $RUST_IMAGE
   needs: []
   rules:
+    # A scheduled pipeline runs supply-chain alone.
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths: !reference [.rust-inputs]
@@ -101,18 +125,10 @@ default:
     - du -sh target .cargo-home 2>/dev/null || true
     - sh ci/target-stamp.sh drop-if-cheap
 
-# The downloads both jobs share, and `target` of one job kind: keyed by the lockfile and the
-# toolchain, so a dependency or toolchain change starts that kind cold. Only main's pipelines write
-# them (CACHE_POLICY); a cache of an older commit of main is safe (ci/target-stamp.sh). Each archive
-# stays below the runner's upload limit of 1 GiB (docs/release.md, Runner).
-# The measurements read test's caches with the policy pull: YAML anchors, since a !reference cannot
-# replace one key of what it names.
-.cargo-downloads: &cargo-downloads
-  key:
-    prefix: cargo-downloads
-    files: [Cargo.lock]
-  paths: [.cargo-home/registry/index, .cargo-home/registry/cache, .cargo-home/git/db]
-
+# `target` of one job kind: keyed by the lockfile and the toolchain, so a dependency or toolchain
+# change starts that kind cold. Only main's pipelines write them (CACHE_POLICY); a cache of an older
+# commit of main is safe (ci/target-stamp.sh). Each archive stays below the runner's upload limit of
+# 1 GiB (docs/release.md, Runner). The measurements read test's caches with the policy pull.
 .target-test: &target-test
   key:
     prefix: target-test
@@ -135,7 +151,8 @@ default:
     - target/ci-build-id-bins
     - target/debug/deps/*-????????????????
 
-# Format, repository rules, both clippy passes and the lints of the measurements (ci/lint.sh).
+# The default steps of scripts/check.sh (format, hygiene, repository rules, the clippy passes, the
+# dependency bans and sources) and its step shear (ci/lint.sh).
 lint:
   extends: .cargo-checks
   variables:
@@ -153,6 +170,7 @@ lint:
       # Only what drop-if-cheap removes, so that a kept cache leaves nothing to archive.
       paths: [target/ci-tree.txt, target/ci-build-id, target/ci-build-id-bins, target/debug]
   script:
+    - sh ci/install-build-deps.sh cargo-deny cargo-shear
     - sh ci/lint.sh
 
 # Every test the change needs, with cargo-nextest (ci/test.sh). Its `target` zips to about 1.2 GB,
@@ -178,11 +196,13 @@ test:
       junit: target/nextest/ci/junit.xml
 
 # review-app's heap measurements (ci/measurements.sh), beside test in main's pipelines and by hand
-# in a merge request; never on a tag and never on GitHub. They read test's cache and write none, so on a warm
-# cache they build only what the feature changes and end before test.
+# in a merge request; never on a tag and never on GitHub. They read test's cache and write none,
+# so on a warm cache they build only what the feature changes and end before test.
 measurements:
   extends: .cargo-checks
   rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: manual
@@ -195,7 +215,38 @@ measurements:
     - <<: *target-test-bins
       policy: pull
   script:
+    - sh ci/install-build-deps.sh cargo-nextest
     - sh ci/measurements.sh
+
+# The supply chain (scripts/check.sh advisories licenses): the RustSec advisories of the locked
+# crates, and the licences of the crates that link on each of the six shipped targets, which the
+# release build checks again (ci/notices.sh). It compiles nothing. Advisories appear without a
+# commit, so it also runs alone in a scheduled pipeline. In a merge request only when the
+# dependency set, its configuration or the scripts it runs changed.
+supply-chain:
+  stage: test
+  extends: .rust
+  image: $RUST_IMAGE
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - Cargo.lock
+          - Cargo.toml
+          - crates/*/Cargo.toml
+          - tools/*/Cargo.toml
+          - deny.toml
+          - ci/about.*
+          - ci/install-build-deps.sh
+          - ci/notices.sh
+          - scripts/check.sh
+        compare_to: refs/heads/main
+    - if: $CI_PIPELINE_SOURCE != "merge_request_event"
+  script:
+    - rustup show active-toolchain || rustup toolchain install
+    - sh ci/install-build-deps.sh cargo-deny cargo-about
+    - sh scripts/check.sh advisories licenses
 
 # Secret scan of the full git history, in every pipeline that checks. Findings are redacted in the
 # job log.
@@ -206,6 +257,8 @@ secret-scan:
     entrypoint: [""]
   needs: []
   rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
     - when: on_success
   variables:
     GIT_DEPTH: "0"
