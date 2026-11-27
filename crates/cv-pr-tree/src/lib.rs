@@ -117,9 +117,9 @@ impl FolderMark {
     }
 }
 
-/// `path` lies in `folder` or a folder below it.
+/// `path` lies in `folder` or a folder below it (every path lies below the root, `""`).
 pub fn is_below(path: &str, folder: &str) -> bool {
-    path.strip_prefix(folder).is_some_and(|rest| rest.starts_with('/'))
+    folder.is_empty() || path.strip_prefix(folder).is_some_and(|rest| rest.starts_with('/'))
 }
 
 /// (viewed, total) changed files below every folder, by folder path, over all changed files:
@@ -754,6 +754,7 @@ mod tests {
         assert!(!counts.contains_key("README.md"), "files at the top belong to no folder");
         assert!(is_below("src/app/mod.rs", "src") && !is_below("src-old/a.rs", "src"));
         assert!(!is_below("src", "src"), "a folder is not below itself");
+        assert!(is_below("src/a.rs", ""), "the root holds every path");
     }
 
     /// A folder's mark shows how many of its files are viewed and marks them all at once: some

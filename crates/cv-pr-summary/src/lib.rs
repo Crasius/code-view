@@ -125,8 +125,8 @@ pub struct SummaryInputs<'a> {
     pub order_version: u64,
     /// `""` for the pull request's root.
     pub folder: &'a str,
-    /// What the diffs compare (base, head, how): another value starts over.
-    pub compare: (&'a str, &'a str, DiffOptions),
+    /// What the diffs compare: another value starts over.
+    pub compare: Compare<'a>,
     pub font_size: f32,
     pub thread_counts: &'a HashMap<String, usize>,
     /// The pull request's threads; each card shows the ones on its lines.
@@ -147,6 +147,14 @@ pub struct SummaryInputs<'a> {
     pub platform: ProviderKind,
     /// The reading column of rendered Markdown, as the file view sets it.
     pub rendered_width: RenderedWidth,
+}
+
+/// The two commits the summary's diffs lie between, and how they are worked out.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Compare<'a> {
+    pub base: &'a str,
+    pub head: &'a str,
+    pub options: DiffOptions,
 }
 
 impl SummaryInputs<'_> {
@@ -201,7 +209,9 @@ pub struct FolderSummary {
     index: CardIndex,
     index_dirty: bool,
     geometry: Option<Geometry>,
-    built: Option<(u64, String)>,
+    /// The order version and folder the cards were built for; no version once they must be
+    /// built again.
+    built: Option<(Option<u64>, String)>,
     compare: Option<(String, String, DiffOptions)>,
     /// Exact shapes (inline and side by side) of the cards whose diff was loaded, kept when their
     /// bodies are dropped.
@@ -304,7 +314,7 @@ impl FolderSummary {
         split: &mut f32,
     ) -> Option<SummaryEvent> {
         self.frame += 1;
-        self.follow_compare(inputs.compare);
+        diffs::follow_compare(self, inputs.compare);
         self.loads.receive_spans(&mut self.bodies);
         diffs::finish_loads(self, inputs, source);
         if self.rendered.poll() {
@@ -436,24 +446,11 @@ impl FolderSummary {
         self.index_dirty = true;
     }
 
-    /// A new comparison (live update, another range, other context) makes every diff stale.
-    fn follow_compare(&mut self, compare: (&str, &str, DiffOptions)) {
-        let is_same = self.compare.as_ref().is_some_and(|(base, head, options)| {
-            (base.as_str(), head.as_str(), *options) == compare
-        });
-        if is_same {
-            return;
-        }
-        self.compare = Some((compare.0.to_owned(), compare.1.to_owned(), compare.2));
-        self.loads.start_over();
-        self.bodies.clear();
-        self.rendered.clear();
-        self.shapes.clear();
-        self.heights.clear();
-        self.selected = None;
-        // Keeps the folder: only the shapes are rebuilt, and the anchor keeps the view in place.
+    /// Builds the cards again in the next pass. Keeps the folder: only the shapes are rebuilt, and
+    /// the anchor keeps the view in place.
+    pub fn rebuild(&mut self) {
         if let Some((version, _)) = &mut self.built {
-            *version = u64::MAX;
+            *version = None;
         }
     }
 
@@ -463,7 +460,7 @@ impl FolderSummary {
     }
 
     fn rebuild_if_needed(&mut self, inputs: &SummaryInputs<'_>) {
-        let key = (inputs.order_version, inputs.folder.to_owned());
+        let key = (Some(inputs.order_version), inputs.folder.to_owned());
         if self.built.as_ref() == Some(&key) {
             return;
         }
@@ -687,6 +684,7 @@ impl FolderSummary {
             threads: code.threads,
             is_split: self.split,
             split: frame.split,
+            context: self.context(),
         };
         // Owned, so the card can borrow the rendered cards to show one.
         let rendered_failure = self.rendered.failure(&file.path).map(str::to_owned);

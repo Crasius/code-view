@@ -11,7 +11,7 @@ use review_store::RenderedWidth;
 
 use super::bars::{paint_header, show_banner};
 use super::lanes::{Areas, Lanes, reading_column};
-use super::model::Model;
+use super::model::MarkdownModel;
 use super::rows::begin_frame;
 use super::{Frame, MarkdownDiff, Place, RenderedEvent, RenderedInputs};
 use cv_base::theme;
@@ -110,7 +110,7 @@ fn lay_out(
     ui: &mut Ui,
     inputs: &RenderedInputs<'_>,
     embedding: &Embedding,
-) -> (Arc<Model>, Areas, Lanes) {
+) -> (Arc<MarkdownModel>, Areas, Lanes) {
     let (model, mode, has_banner) = begin_frame(diff, ui.ctx(), inputs);
     diff.pending.take_if(|place| !matches!(place, Place::Thread(_)));
     let full = Rect::from_min_size(embedding.origin, vec2(embedding.width, height(diff).max(1.0)));

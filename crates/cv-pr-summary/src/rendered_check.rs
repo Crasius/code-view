@@ -75,6 +75,25 @@ fn a_folder_without_markdown_has_no_preview_switch() {
     assert!(harness.query_by_label("Preview").is_none(), "it would switch nothing");
 }
 
+/// The paint path builds no model: versions that arrive without the one their load builds keep
+/// the card on its loading placeholder, and nothing is parsed or laid out for them.
+#[test]
+fn versions_without_their_model_keep_the_card_loading() {
+    let mut scene = Scene::new(files(), ThemePreference::Light);
+    scene.source.without_model = true;
+    scene.preview = true;
+    let mut harness = harness(scene, SIZE);
+    settle(&mut harness);
+    let scene = harness.state();
+    assert_eq!(scene.source.rendered, [README], "the versions loaded once");
+    let rendered = scene.summary.rendered.get(README).expect("the README card holds its versions");
+    let height = embedded::height(&rendered.view);
+    assert!(height.abs() < f32::EPSILON, "no blocks laid out without a model: {height}");
+    assert!(scene.summary.rendered.failure(README).is_none(), "not failed: the card waits");
+    let rendered = &mut harness.state_mut().summary.rendered;
+    assert!(rendered.show(README, 1).is_none(), "the card shows its pending rows, not a diff");
+}
+
 /// The rendered height of the README card, Preview on, its versions `versions` and the file view
 /// keeping `context` unchanged lines around each change.
 fn rendered_height(versions: (String, String), context: u32) -> f32 {

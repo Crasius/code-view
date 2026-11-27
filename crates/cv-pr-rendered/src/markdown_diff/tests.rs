@@ -23,9 +23,9 @@ mod past_end;
 mod width;
 
 use super::heights::outward;
-use super::model::{Look, Mode, Model, Row};
-use super::rows::build;
-use super::{MarkdownDiff, ROW_PAD, RenderedEvent, RenderedImages, RenderedInputs};
+use super::model::{Look, Mode, Row};
+use super::rows::{begin_frame, build};
+use super::{MarkdownDiff, MarkdownModel, ROW_PAD, RenderedEvent, RenderedImages, RenderedInputs};
 use cv_base::theme::{self, Palette};
 use cv_pr_threads::{ThreadsUi, samples};
 use cv_testkit::frame_bench::{self, Bench, Report, SCALES};
@@ -98,17 +98,24 @@ impl Doc {
         egui::epaint::util::hash((&self.old, &self.new))
     }
 
-    fn inputs<'a>(&'a self, threads: &'a [&'a ReviewThread]) -> RenderedInputs<'a> {
+    /// The versions parsed and lined up, as the load builds them.
+    fn model(&self) -> MarkdownModel {
+        let (old, new) = (self.old.as_deref(), self.new.as_deref());
+        MarkdownModel::new(self.key(), old, new, ProviderKind::GitHub, &self.images)
+    }
+
+    fn inputs<'a>(
+        &'a self,
+        model: &'a Arc<MarkdownModel>,
+        threads: &'a [&'a ReviewThread],
+    ) -> RenderedInputs<'a> {
         RenderedInputs {
-            key: self.key(),
-            old: self.old.as_deref(),
-            new: self.new.as_deref(),
+            model,
             platform: ProviderKind::GitHub,
             layout: self.layout,
             context: self.context,
             scale: 1.0,
             can_comment: self.can_comment,
-            images: &self.images,
             threads,
             show_threads: self.show_threads,
         }
@@ -117,6 +124,8 @@ impl Doc {
 
 struct Scene {
     doc: Doc,
+    /// The model of `doc`'s versions, built again when they change.
+    model: Option<Arc<MarkdownModel>>,
     view: MarkdownDiff,
     split: f32,
     theme: ThemePreference,
@@ -139,6 +148,7 @@ impl Scene {
                 threads: Vec::new(),
                 show_threads: true,
             },
+            model: None,
             view: MarkdownDiff::default(),
             split: 0.5,
             theme: ThemePreference::Light,
@@ -151,8 +161,13 @@ impl Scene {
 
 fn show(ui: &mut egui::Ui, scene: &mut Scene) {
     theme::activate(ui.ctx(), scene.theme);
+    let key = scene.doc.key();
+    if scene.model.as_ref().is_none_or(|model| model.key != key) {
+        scene.model = Some(Arc::new(scene.doc.model()));
+    }
     let threads: Vec<&ReviewThread> = scene.doc.threads.iter().collect();
-    let inputs = scene.doc.inputs(&threads);
+    let model = scene.model.as_ref().expect("built above");
+    let inputs = scene.doc.inputs(model, &threads);
     if let Some(event) =
         scene.view.show(ui, &inputs, &mut scene.split, &mut scene.width, &mut scene.threads_ui)
     {
@@ -263,6 +278,20 @@ fn blocks_line_up_whatever_scrolls_them() {
     check_aligned(&harness, "at the end");
 }
 
+/// Regression: a reload of the same versions (moved commits) hands in a new model with the same
+/// key; the frame painted that one while the diff kept the one it held.
+#[test]
+fn a_reload_of_the_same_versions_paints_the_held_model() {
+    let (old, new) = sample();
+    let scene = Scene::new(&old, &new, DiffLayout::SideBySide, FULL_FILE_CONTEXT);
+    let (held, reloaded) = (Arc::new(scene.doc.model()), Arc::new(scene.doc.model()));
+    let (ctx, mut view) = (egui::Context::default(), MarkdownDiff::default());
+    let (first, ..) = begin_frame(&mut view, &ctx, &scene.doc.inputs(&held, &[]));
+    assert!(Arc::ptr_eq(&first, &held), "the first load is taken in");
+    let (painted, ..) = begin_frame(&mut view, &ctx, &scene.doc.inputs(&reloaded, &[]));
+    assert!(Arc::ptr_eq(&painted, &held), "the held model is painted, not the reloaded one");
+}
+
 #[test]
 fn a_missing_block_leaves_a_gap_as_tall_as_the_block_across() {
     let (old, new) = sample();
@@ -310,9 +339,8 @@ fn a_missing_block_leaves_a_gap_as_tall_as_the_block_across() {
     );
 }
 
-fn model_of(old: &str, new: &str) -> Model {
-    let scene = Scene::new(old, new, DiffLayout::SideBySide, FULL_FILE_CONTEXT);
-    Model::new(&scene.doc.inputs(&[]))
+fn model_of(old: &str, new: &str) -> MarkdownModel {
+    Scene::new(old, new, DiffLayout::SideBySide, FULL_FILE_CONTEXT).doc.model()
 }
 
 fn looks(rows: &[Row]) -> Vec<[Option<(DiffSide, Look)>; 2]> {
@@ -372,10 +400,7 @@ fn each_layout_marks_added_removed_and_edited_blocks() {
     );
     assert!(new_only.overview.is_focus && new_only.overview.removals == [2]);
 
-    let whole = Model::new(&RenderedInputs {
-        old: None,
-        ..Scene::new(old, new, DiffLayout::SideBySide, 3).doc.inputs(&[])
-    });
+    let whole = Doc { old: None, ..Scene::new(old, new, DiffLayout::SideBySide, 3).doc }.model();
     let whole_rows = build(&whole, Mode::Whole(DiffSide::New), 3, &none, &[]);
     assert!(
         looks(&whole_rows.rows).iter().all(|cells| cells[0] == plain(DiffSide::New)),
@@ -391,7 +416,7 @@ fn a_replaced_image_shows_side_by_side_as_a_change() {
     let text = "# Screens\n\n![Login](./img/login.png)\n\n![Logo](./img/logo.png)\n";
     let mut scene = Scene::new(text, text, DiffLayout::SideBySide, FULL_FILE_CONTEXT);
     let none = HashSet::new();
-    let unchanged = Model::new(&scene.doc.inputs(&[]));
+    let unchanged = scene.doc.model();
     assert!(
         build(&unchanged, Mode::Columns, FULL_FILE_CONTEXT, &none, &[]).hunks.is_empty(),
         "same text, same images"
@@ -401,7 +426,7 @@ fn a_replaced_image_shows_side_by_side_as_a_change() {
         [("./img/login.png".to_owned(), "aaa".to_owned())].into_iter().collect(),
         [("./img/login.png".to_owned(), "bbb".to_owned())].into_iter().collect(),
     ];
-    let model = Model::new(&scene.doc.inputs(&[]));
+    let model = scene.doc.model();
     let rows = build(&model, Mode::Columns, FULL_FILE_CONTEXT, &none, &[]);
     let plain = |side| Some((side, Look::Plain));
     assert_eq!(
@@ -788,8 +813,7 @@ fn the_overview_marks_each_card_and_each_fold_holding_comments() {
     let none = HashSet::new();
     let built = |scene: &Scene| {
         let threads: Vec<&ReviewThread> = scene.doc.threads.iter().collect();
-        let model = Model::new(&scene.doc.inputs(&threads));
-        build(&model, Mode::Columns, scene.doc.context, &none, &threads)
+        build(&scene.doc.model(), Mode::Columns, scene.doc.context, &none, &threads)
     };
     let shown = built(&commented(DiffLayout::SideBySide, FULL_FILE_CONTEXT));
     let cards = positions(&shown.rows, |row| matches!(row, Row::Thread(_)));
