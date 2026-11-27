@@ -65,11 +65,6 @@ impl Tools {
         };
         Some(Self { ffmpeg: find("ffmpeg")?, ffprobe: find("ffprobe")? })
     }
-
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn ffmpeg(&self) -> &Path {
-        &self.ffmpeg
-    }
 }
 
 /// A video ready to play.
@@ -218,4 +213,4 @@ fn fitted([width, height]: [u32; 2], edge: u32) -> [usize; 2] {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

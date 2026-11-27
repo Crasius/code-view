@@ -37,7 +37,7 @@ fn frames_fit_the_pipe_keeping_their_aspect() {
 }
 
 /// Encodes a one-second VP9 clip with the installed ffmpeg.
-async fn clip_file(tools: &Tools, folder: &ScratchDir) -> std::path::PathBuf {
+pub(crate) async fn clip_file(tools: &Tools, folder: &ScratchDir) -> std::path::PathBuf {
     let file = folder.path().join("clip.webm");
     let status = tokio::process::Command::new(&tools.ffmpeg)
         .args(["-v", "error", "-f", "lavfi", "-i", "testsrc=size=64x48:rate=20", "-t", "1"])

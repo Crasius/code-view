@@ -14,7 +14,7 @@
 //! copy and is replaced by the next download.
 
 use std::fs::File;
-use std::io::{Seek, SeekFrom, Write as _};
+use std::io::{self, Seek, SeekFrom, Write as _};
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -64,9 +64,6 @@ pub fn write(
     validators: &Validators,
     max_age: Option<Duration>,
 ) {
-    let Some(folder) = path.parent() else {
-        return;
-    };
     let texts = [validators.etag.as_deref(), validators.last_modified.as_deref(), content_type];
     let mut file = Vec::with_capacity(bytes.len() + 64);
     file.extend_from_slice(MAGIC);
@@ -80,10 +77,16 @@ pub fn write(
     }
     file.extend_from_slice(bytes);
     // A cache that cannot be written only means the image downloads again next time.
-    let temporary = path.with_extension("part");
-    if std::fs::create_dir_all(folder).is_ok() && std::fs::write(&temporary, &file).is_ok() {
-        let _uncached = std::fs::rename(&temporary, path);
-    }
+    let _uncached = write_whole(path, &file);
+}
+
+/// Writes `bytes` to `path` whole or not at all: into a `.part` file beside it, then renamed.
+pub(super) fn write_whole(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let partial = path.with_extension("part");
+    path.parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| std::fs::write(&partial, bytes))
+        .and_then(|()| std::fs::rename(&partial, path))
 }
 
 /// The host said the body at `path` is unchanged: it counts as current for `max_age` again.
@@ -102,7 +105,7 @@ pub fn remove(path: &Path) {
 }
 
 /// Marks the file as read now, for the retention sweep.
-fn touch(path: &Path) {
+pub(super) fn touch(path: &Path) {
     // A time that cannot be set only lets the sweep remove the file sooner.
     let _sooner = File::options()
         .write(true)
