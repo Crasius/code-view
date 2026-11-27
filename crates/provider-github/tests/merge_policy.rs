@@ -4,8 +4,7 @@
 
 use provider_github::GitHubProvider;
 use review_core::{
-    Connection, MergeOptions, MergeStrategy, PolicySource, Provider, ProviderError, ProviderKind,
-    Unreported,
+    Connection, MergeStrategy, PolicySource, Provider, ProviderError, ProviderKind, Unreported,
 };
 use serde_json::{Value, json};
 use wiremock::matchers::{method, path, query_param};
@@ -153,40 +152,4 @@ async fn a_failed_repository_read_is_an_error() {
         .await;
     let result = provider.merge_policy(REPO, "trunk").await;
     assert!(matches!(result, Err(ProviderError::Status { status: 500, .. })), "{result:?}");
-}
-
-#[tokio::test]
-async fn auto_merge_method_is_the_detail_default_and_semi_linear_is_refused() {
-    let (server, provider) = setup(Some("token")).await;
-    let mut pull: Value = serde_json::from_str(include_str!("fixtures/pull_request.json")).unwrap();
-    pull["auto_merge"] = json!({ "enabled_by": { "login": "mona", "id": 1 }, "merge_method": "squash", "commit_title": "T", "commit_message": "" });
-    Mock::given(method("GET"))
-        .and(path(format!("/api/v3/repos/{REPO}/pulls/7")))
-        .respond_with(ResponseTemplate::new(200).set_body_json(pull))
-        .mount(&server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path(format!("/api/v3/repos/{REPO}/pulls/7/reviews")))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
-        .mount(&server)
-        .await;
-    let detail = provider.pull_request(REPO, 7).await.unwrap();
-    let auto_complete = detail.auto_complete.clone().expect("auto-merge is on");
-    assert_eq!(auto_complete.strategy, Some(MergeStrategy::Squash));
-    assert_eq!(auto_complete.set_by.and_then(|user| user.login).as_deref(), Some("mona"));
-    let options = MergeOptions {
-        strategy: MergeStrategy::SemiLinear,
-        delete_source_branch: false,
-        commit_message: None,
-        head_sha: detail.head_sha.clone(),
-    };
-    assert!(matches!(provider.merge(REPO, 7, &options).await, Err(ProviderError::Unsupported(_))));
-    let merges = server
-        .received_requests()
-        .await
-        .unwrap()
-        .iter()
-        .filter(|request| request.url.path().ends_with("/merge"))
-        .count();
-    assert_eq!(merges, 0, "nothing is sent for a method GitHub does not have");
 }

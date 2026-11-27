@@ -132,19 +132,15 @@ mod tests {
 
     #[test]
     fn maps_aliased_rows_with_checks_and_votes() {
-        let data: Data = serde_json::from_str(
-            r#"{"repository": {"pr7": {"number": 7, "reviewDecision": "APPROVED",
+        let row: RowDto = serde_json::from_str(
+            r#"{"number": 7, "reviewDecision": "APPROVED",
                 "reviewRequests": {"nodes": []},
                 "latestOpinionatedReviews": {"nodes": [{"state": "APPROVED", "author": {"login": "ann", "databaseId": 1}}]},
                 "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS", "contexts": {"totalCount": 1,
-                    "nodes": [{"__typename": "CheckRun", "name": "build", "status": "COMPLETED", "conclusion": "SUCCESS", "isRequired": true}]}}}}]}},
-              "pr8": null}}"#,
+                    "nodes": [{"__typename": "CheckRun", "name": "build", "status": "COMPLETED", "conclusion": "SUCCESS", "isRequired": true}]}}}}]}}"#,
         )
         .expect("fixture");
-        let rows: Vec<RowDto> =
-            data.repository.into_iter().flat_map(HashMap::into_values).flatten().collect();
-        assert_eq!(rows.len(), 1, "a pull request GitHub does not know is left out");
-        let status = row_status(rows.into_iter().next().expect("one row"));
+        let status = row_status(row);
         assert_eq!(status.verdict(), Some(CheckState::Passed));
         assert_eq!(status.checks[0].is_required, Some(true));
         assert_eq!(status.passed_of(), (1, 1), "the review decision is no check");

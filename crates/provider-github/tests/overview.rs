@@ -4,8 +4,8 @@
 
 use provider_github::GitHubProvider;
 use review_core::{
-    CheckState, Connection, DiffStat, Provider, ProviderKind, PullRequestQuery, PullRequestScope,
-    RunStatus, StateFilter,
+    CheckState, Connection, DiffStat, Provider, ProviderError, ProviderKind, PullRequestQuery,
+    PullRequestScope, RunStatus, StateFilter,
 };
 use serde_json::{Value, json};
 use wiremock::matchers::{body_string_contains, header, method, path, query_param};
@@ -418,7 +418,7 @@ async fn anonymous_overview_asks_for_a_token_without_a_request() {
         .list_pull_requests(&query(PullRequestScope::Visible))
         .await
         .expect_err("GraphQL needs a token");
-    assert!(error.to_string().contains("token"), "{error}");
+    assert!(matches!(error, ProviderError::Unsupported(_)), "{error:?}");
     assert!(server.received_requests().await.unwrap_or_default().is_empty());
 }
 

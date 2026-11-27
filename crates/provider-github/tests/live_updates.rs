@@ -4,7 +4,7 @@
 //! the server drops.
 
 use provider_github::GitHubProvider;
-use review_core::{Connection, Provider, ProviderKind};
+use review_core::{Connection, Provider, ProviderKind, http};
 use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -78,10 +78,19 @@ async fn an_unchanged_pull_request_is_a_free_304() {
         .await;
     let provider = provider(&server, Some("test-token"));
 
-    let first = provider.revision("contoso/app", 1234).await.expect("first probe");
+    let first = http::for_connection("github-live", provider.revision("contoso/app", 1234))
+        .await
+        .expect("first probe");
     assert_eq!(first.head_sha, "head111");
-    let second = provider.revision("contoso/app", 1234).await.expect("second probe");
+    let second = http::for_connection("github-live", provider.revision("contoso/app", 1234))
+        .await
+        .expect("second probe");
     assert_eq!(second, first, "a 304 answers with the remembered pull request");
+    assert_eq!(
+        http::traffic::of("github-live").expect("counted").not_modified,
+        2,
+        "pull request and reviews"
+    );
 }
 
 #[tokio::test]

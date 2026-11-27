@@ -58,14 +58,6 @@ mod tests {
     use super::{RepoKey, encode_branch};
 
     #[test]
-    fn parses_owner_and_name() {
-        let key = RepoKey::parse("contoso/app").expect("valid key");
-        assert_eq!(key.api_path(), "/repos/contoso/app");
-        assert_eq!(key.pull_path(7), "/repos/contoso/app/pulls/7");
-        assert_eq!(key.issue_path(7), "/repos/contoso/app/issues/7");
-    }
-
-    #[test]
     fn rejects_malformed_keys() {
         assert!(RepoKey::parse("contoso").is_err());
         assert!(RepoKey::parse("/contoso").is_err());

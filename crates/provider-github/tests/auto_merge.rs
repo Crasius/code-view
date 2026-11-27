@@ -98,3 +98,26 @@ async fn disable_sends_the_node_id() {
         .await;
     provider.cancel_auto_complete(REPO, NUMBER).await.expect("auto-merge disabled");
 }
+
+#[tokio::test]
+async fn auto_merge_on_the_detail_names_method_and_author() {
+    let (server, provider) = setup().await;
+    let mut pull: Value =
+        serde_json::from_str(include_str!("fixtures/pull_request.json")).expect("fixture");
+    pull["auto_merge"] = json!({ "enabled_by": { "login": "mona", "id": 1 }, "merge_method": "squash", "commit_title": "T", "commit_message": "" });
+    Mock::given(method("GET"))
+        .and(path(format!("/api/v3/repos/{REPO}/pulls/{NUMBER}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(pull))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!("/api/v3/repos/{REPO}/pulls/{NUMBER}/reviews")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&server)
+        .await;
+    let detail = provider.pull_request(REPO, NUMBER).await.expect("detail");
+    let auto_complete = detail.auto_complete.expect("auto-merge is on");
+    assert_eq!(auto_complete.strategy, Some(MergeStrategy::Squash));
+    assert_eq!(auto_complete.set_by.and_then(|user| user.login).as_deref(), Some("mona"));
+}

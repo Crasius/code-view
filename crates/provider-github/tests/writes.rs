@@ -60,6 +60,13 @@ async fn mount_pull(server: &MockServer, pull: Value) {
     rest("GET", &format!("/pulls/{NUMBER}")).respond_with(ok_json(pull)).mount(server).await;
 }
 
+/// The one page of newest review threads a thread lookup after a new comment reads.
+fn newest_threads(nodes: &Value) -> ResponseTemplate {
+    ok_json(json!({ "data": { "repository": { "pullRequest": { "reviewThreads": {
+        "pageInfo": { "hasPreviousPage": false }, "nodes": nodes
+    } } } } }))
+}
+
 fn review_comment(id: u64, line: u32, side: &str) -> Value {
     json!({
         "id": id, "path": "src/main.rs", "line": line, "side": side, "subject_type": "line",
@@ -165,16 +172,11 @@ async fn create_thread_on_new_line_comments_right_and_resolves_graphql_thread() 
         .and(body_partial_json(
             json!({ "variables": { "owner": "contoso", "name": "app", "number": NUMBER } }),
         ))
-        .respond_with(ok_json(
-            json!({ "data": { "repository": { "pullRequest": { "reviewThreads": {
-            "pageInfo": { "hasPreviousPage": false },
-            "nodes": [{
-                "id": "PRRT_new", "isResolved": false, "isOutdated": false, "path": "src/main.rs",
-                "line": 12, "originalLine": 12, "diffSide": "RIGHT",
-                "comments": { "nodes": [graphql_comment(555)] }
-            }]
-        } } } } }),
-        ))
+        .respond_with(newest_threads(&json!([{
+            "id": "PRRT_new", "isResolved": false, "isOutdated": false, "path": "src/main.rs",
+            "line": 12, "originalLine": 12, "diffSide": "RIGHT",
+            "comments": { "nodes": [graphql_comment(555)] }
+        }])))
         .expect(1)
         .mount(&server)
         .await;
@@ -206,15 +208,7 @@ async fn create_thread_on_old_line_comments_left_and_falls_back_to_rest_id() {
         .expect(1)
         .mount(&server)
         .await;
-    graphql()
-        .respond_with(ok_json(
-            json!({ "data": { "repository": { "pullRequest": { "reviewThreads": {
-            "pageInfo": { "hasPreviousPage": false }, "nodes": []
-        } } } } }),
-        ))
-        .expect(1)
-        .mount(&server)
-        .await;
+    graphql().respond_with(newest_threads(&json!([]))).expect(1).mount(&server).await;
 
     let anchor = ThreadAnchor {
         path: "src/main.rs".to_owned(),
@@ -254,17 +248,12 @@ async fn create_thread_on_a_line_range_sends_start_and_end() {
         .await;
     graphql()
         .and(body_string_contains("startLine originalStartLine startDiffSide"))
-        .respond_with(ok_json(
-            json!({ "data": { "repository": { "pullRequest": { "reviewThreads": {
-            "pageInfo": { "hasPreviousPage": false },
-            "nodes": [{
-                "id": "PRRT_range", "isResolved": false, "isOutdated": false, "path": "src/main.rs",
-                "line": 14, "originalLine": 14, "diffSide": "RIGHT",
-                "startLine": 10, "originalStartLine": 10, "startDiffSide": "RIGHT",
-                "comments": { "nodes": [graphql_comment(557)] }
-            }]
-        } } } } }),
-        ))
+        .respond_with(newest_threads(&json!([{
+            "id": "PRRT_range", "isResolved": false, "isOutdated": false, "path": "src/main.rs",
+            "line": 14, "originalLine": 14, "diffSide": "RIGHT",
+            "startLine": 10, "originalStartLine": 10, "startDiffSide": "RIGHT",
+            "comments": { "nodes": [graphql_comment(557)] }
+        }])))
         .expect(1)
         .mount(&server)
         .await;
@@ -433,40 +422,45 @@ async fn remove_reviewer_deletes_pending_requests() {
     provider.remove_reviewer(REPO, NUMBER, "team:77").await.expect("team");
 }
 
-async fn assert_merge(
-    strategy: MergeStrategy,
-    message: Option<&str>,
-    expected: Value,
-    delete_branch: bool,
-) {
+#[tokio::test]
+async fn merge_with_merge_commit_and_branch_deletion() {
     let (server, provider) = setup().await;
     mount_pull(&server, pull_fixture()).await;
     rest("PUT", &format!("/pulls/{NUMBER}/merge"))
-        .and(body_json(expected))
+        .and(body_json(
+            json!({ "merge_method": "merge", "sha": REVIEWED_SHA, "commit_title": "Merge it" }),
+        ))
         .respond_with(ok_json(json!({ "sha": "merged", "merged": true, "message": "Pull Request successfully merged" })))
         .expect(1)
         .mount(&server)
         .await;
     rest("DELETE", "/git/refs/heads/feature/x")
         .respond_with(ResponseTemplate::new(204))
-        .expect(u64::from(delete_branch))
+        .expect(1)
         .mount(&server)
         .await;
 
     let options = MergeOptions {
-        strategy,
-        delete_source_branch: delete_branch,
-        commit_message: message.map(str::to_owned),
+        strategy: MergeStrategy::Merge,
+        delete_source_branch: true,
+        commit_message: Some("Merge it".to_owned()),
         head_sha: REVIEWED_SHA.to_owned(),
     };
     provider.merge(REPO, NUMBER, &options).await.expect("merge");
 }
 
 #[tokio::test]
-async fn merge_with_merge_commit_and_branch_deletion() {
-    let expected =
-        json!({ "merge_method": "merge", "sha": REVIEWED_SHA, "commit_title": "Merge it" });
-    assert_merge(MergeStrategy::Merge, Some("Merge it"), expected, true).await;
+async fn merge_refuses_semi_linear_without_a_request() {
+    let (server, provider) = setup().await;
+    let options = MergeOptions {
+        strategy: MergeStrategy::SemiLinear,
+        delete_source_branch: true,
+        commit_message: None,
+        head_sha: REVIEWED_SHA.to_owned(),
+    };
+    let result = provider.merge(REPO, NUMBER, &options).await;
+    assert!(matches!(result, Err(ProviderError::Unsupported(_))), "{result:?}");
+    assert!(server.received_requests().await.expect("recording").is_empty());
 }
 
 /// A push after the review moved the head: GitHub answers 409 to the reviewed `sha`, which is
