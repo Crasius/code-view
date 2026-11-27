@@ -1,29 +1,15 @@
 //! The merge policy against a mock GitLab REST API v4: the project's `merge_method` and
 //! `squash_option` (`GET /projects/:id`), and merges checked against them before anything is sent.
 
-use provider_gitlab::GitLabProvider;
-use review_core::{
-    Connection, MergeOptions, MergeStrategy, PolicySource, Provider, ProviderError, ProviderKind,
-    Unreported,
-};
+use review_core::{MergeOptions, MergeStrategy, PolicySource, Provider, ProviderError, Unreported};
 use serde_json::{Value, json};
 use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+use crate::support::{self, TOKEN};
+
 const REPO: &str = "group/sub/project";
 const PROJECT: &str = "/api/v4/projects/group%2Fsub%2Fproject";
-
-fn provider(server: &MockServer, token: Option<&str>) -> GitLabProvider {
-    let connection = Connection {
-        id: "mock".to_owned(),
-        name: "mock".to_owned(),
-        kind: ProviderKind::GitLab,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: token.map(str::to_owned),
-    };
-    GitLabProvider::new(connection, reqwest::Client::new())
-}
 
 fn project(settings: Value) -> Value {
     let mut body = json!({
@@ -53,7 +39,7 @@ async fn semi_linear_project_with_squash_on_by_default() {
         project(json!({ "merge_method": "rebase_merge", "squash_option": "default_on" })),
     )
     .await;
-    let policy = provider(&server, Some("token")).merge_policy(REPO, "main").await.unwrap();
+    let policy = support::provider(&server, Some(TOKEN)).merge_policy(REPO, "main").await.unwrap();
     assert_eq!(policy.source, PolicySource::Reported);
     assert_eq!(policy.allowed, [MergeStrategy::SemiLinear, MergeStrategy::Squash]);
     assert_eq!(policy.default, Some(MergeStrategy::Squash), "default_on pre-ticks squash");
@@ -65,28 +51,12 @@ async fn semi_linear_project_with_squash_on_by_default() {
     );
 }
 
-#[tokio::test]
-async fn squash_always_forces_it_and_never_hides_it() {
-    let server = MockServer::start().await;
-    mount_project(&server, project(json!({ "merge_method": "merge", "squash_option": "always" })))
-        .await;
-    let policy = provider(&server, Some("token")).merge_policy(REPO, "main").await.unwrap();
-    assert_eq!(policy.allowed, [MergeStrategy::Squash]);
-
-    let server = MockServer::start().await;
-    mount_project(&server, project(json!({ "merge_method": "ff", "squash_option": "never" })))
-        .await;
-    let policy = provider(&server, Some("token")).merge_policy(REPO, "main").await.unwrap();
-    assert_eq!(policy.allowed, [MergeStrategy::Rebase]);
-    assert_eq!(policy.default, Some(MergeStrategy::Rebase));
-}
-
 /// Anonymous answers (and low roles) leave the merge settings out: merge commit or squash, not reported.
 #[tokio::test]
 async fn absent_settings_fall_back() {
     let server = MockServer::start().await;
     mount_project(&server, project(json!({}))).await;
-    let policy = provider(&server, None).merge_policy(REPO, "main").await.unwrap();
+    let policy = support::provider(&server, None).merge_policy(REPO, "main").await.unwrap();
     assert_eq!(policy.source, PolicySource::NotReported(Unreported::NoPermission));
     assert_eq!(policy.allowed, [MergeStrategy::Merge, MergeStrategy::Squash]);
     assert!(policy.settings_url.is_some());
@@ -100,7 +70,7 @@ async fn failed_project_read_is_an_error() {
         .respond_with(ResponseTemplate::new(500))
         .mount(&server)
         .await;
-    let result = provider(&server, Some("token")).merge_policy(REPO, "main").await;
+    let result = support::provider(&server, Some(TOKEN)).merge_policy(REPO, "main").await;
     assert!(matches!(result, Err(ProviderError::Status { status: 500, .. })), "{result:?}");
 }
 
@@ -121,7 +91,7 @@ async fn fast_forward_project_merges_rebase_and_refuses_a_merge_commit() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, Some("token"));
+    let provider = support::provider(&server, Some(TOKEN));
     let rebase = MergeOptions {
         strategy: MergeStrategy::Rebase,
         delete_source_branch: true,
@@ -151,7 +121,7 @@ async fn the_git_remote_and_the_merge_policy_share_one_project_request() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, Some("token"));
+    let provider = support::provider(&server, Some(TOKEN));
     let remote = provider.git_remote(REPO).await.expect("the remote");
     assert_eq!(remote.clone_url, "https://gitlab.example.com/group/sub/project.git");
     let policy = provider.merge_policy(REPO, "main").await.expect("the policy");

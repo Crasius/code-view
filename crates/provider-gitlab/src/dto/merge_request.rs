@@ -9,10 +9,8 @@ pub(crate) struct MergeRequestDto {
     pub iid: u64,
     pub project_id: u64,
     /// Differs from `project_id` for merge requests from forks.
-    #[serde(default)]
     pub source_project_id: Option<u64>,
     pub title: String,
-    #[serde(default)]
     pub description: Option<String>,
     /// `opened`, `closed`, `locked` or `merged`.
     pub state: String,
@@ -37,15 +35,10 @@ pub(crate) struct MergeRequestDto {
     pub labels: Vec<LabelRef>,
     #[serde(default)]
     pub reviewers: Vec<UserDto>,
-    #[serde(default)]
     pub references: Option<ReferencesDto>,
-    #[serde(default)]
     pub sha: Option<String>,
-    #[serde(default)]
     pub diff_refs: Option<DiffRefsDto>,
-    #[serde(default)]
     pub detailed_merge_status: Option<String>,
-    #[serde(default)]
     pub merge_status: Option<String>,
     #[serde(default)]
     pub has_conflicts: bool,
@@ -54,22 +47,27 @@ pub(crate) struct MergeRequestDto {
     pub user_notes_count: u64,
     #[serde(default)]
     pub blocking_discussions_resolved: bool,
-    #[serde(default)]
     pub head_pipeline: Option<PipelineDto>,
     /// True while the merge request is set to auto-merge.
     #[serde(default)]
     pub merge_when_pipeline_succeeds: bool,
     /// Who merged it or set it to auto-merge.
-    #[serde(default)]
     pub merge_user: Option<UserDto>,
     /// `merge_user` before GitLab 14.7.
-    #[serde(default)]
     pub merged_by: Option<UserDto>,
     #[serde(default)]
     pub squash: bool,
     /// Whether the merge squashes, the project's squash setting taken into account.
-    #[serde(default)]
     pub squash_on_merge: Option<bool>,
+}
+
+impl MergeRequestDto {
+    /// The commit every part of a merge request compares against: outdated threads, the detail,
+    /// the revision probe and the head pipelines. `diff_refs` names the commit the diff and the
+    /// thread positions refer to; `sha` stands in while GitLab has not computed the refs yet.
+    pub(crate) fn head_sha(&self) -> Option<&str> {
+        self.diff_refs.as_ref().and_then(|refs| refs.head_sha.as_deref()).or(self.sha.as_deref())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -82,11 +80,8 @@ pub(crate) struct ReferencesDto {
 #[derive(Debug, Clone, Deserialize)]
 #[expect(clippy::struct_field_names, reason = "fields mirror the `diff_refs` JSON keys")]
 pub(crate) struct DiffRefsDto {
-    #[serde(default)]
     pub base_sha: Option<String>,
-    #[serde(default)]
     pub start_sha: Option<String>,
-    #[serde(default)]
     pub head_sha: Option<String>,
 }
 
@@ -101,9 +96,7 @@ pub(crate) enum LabelRef {
 pub(crate) struct LabelDto {
     pub name: String,
     /// `#RRGGBB`.
-    #[serde(default)]
     pub color: Option<String>,
-    #[serde(default)]
     pub description: Option<String>,
 }
 
@@ -112,7 +105,6 @@ pub(crate) struct LabelDto {
 pub(crate) struct ReviewerDto {
     pub user: UserDto,
     /// `unreviewed`, `review_started`, `reviewed`, `requested_changes`, `approved`, `unapproved`.
-    #[serde(default)]
     pub state: Option<String>,
 }
 

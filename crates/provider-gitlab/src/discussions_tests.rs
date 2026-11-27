@@ -122,10 +122,17 @@ fn positions_context_line_with_both_lines() {
 }
 
 #[test]
-fn rejects_anchor_without_lines_and_incomplete_refs() {
-    assert!(text_position(&anchor(None, None), &refs()).is_err());
+fn rejects_an_anchor_without_lines() {
+    assert!(matches!(text_position(&anchor(None, None), &refs()), Err(ProviderError::Local(_))));
+}
+
+#[test]
+fn rejects_incomplete_refs() {
     let incomplete = DiffRefsDto { base_sha: None, ..refs() };
-    assert!(text_position(&anchor(None, Some(1)), &incomplete).is_err());
+    assert!(matches!(
+        text_position(&anchor(None, Some(1)), &incomplete),
+        Err(ProviderError::Decode(_))
+    ));
 }
 
 const DISCUSSIONS: &str = r#"[

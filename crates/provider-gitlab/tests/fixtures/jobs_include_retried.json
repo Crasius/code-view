@@ -8,7 +8,7 @@
   "created_at": "2026-10-19T03:05:26.649Z",
   "started_at": "2026-10-19T03:05:27.090Z",
   "finished_at": null,
-  "web_url": "https://gitlab.com/gitlab-org/gitlab/-/jobs/17271932626"
+  "web_url": "https://gitlab.example.com/acme/app/-/jobs/17271932626"
  },
  {
   "id": 17148452847,
@@ -19,7 +19,7 @@
   "created_at": "2026-10-13T17:31:57.626Z",
   "started_at": null,
   "finished_at": null,
-  "web_url": "https://gitlab.com/gitlab-org/gitlab/-/jobs/17148452847"
+  "web_url": "https://gitlab.example.com/acme/app/-/jobs/17148452847"
  },
  {
   "id": 17148452845,
@@ -30,7 +30,7 @@
   "created_at": "2026-10-13T17:31:57.626Z",
   "started_at": null,
   "finished_at": null,
-  "web_url": "https://gitlab.com/gitlab-org/gitlab/-/jobs/17148452845"
+  "web_url": "https://gitlab.example.com/acme/app/-/jobs/17148452845"
  },
  {
   "id": 17148452818,
@@ -41,7 +41,7 @@
   "created_at": "2026-10-13T17:31:57.626Z",
   "started_at": "2026-10-13T17:44:45.707Z",
   "finished_at": "2026-10-13T17:52:19.988Z",
-  "web_url": "https://gitlab.com/gitlab-org/gitlab/-/jobs/17148452818"
+  "web_url": "https://gitlab.example.com/acme/app/-/jobs/17148452818"
  },
  {
   "id": 17148452817,
@@ -52,7 +52,7 @@
   "created_at": "2026-10-13T17:31:57.626Z",
   "started_at": "2026-10-13T17:34:11.007Z",
   "finished_at": "2026-10-13T17:42:13.417Z",
-  "web_url": "https://gitlab.com/gitlab-org/gitlab/-/jobs/17148452817"
+  "web_url": "https://gitlab.example.com/acme/app/-/jobs/17148452817"
  },
  {
   "id": 17148452815,
@@ -63,6 +63,6 @@
   "created_at": "2026-10-13T17:31:57.626Z",
   "started_at": "2026-10-13T17:44:45.570Z",
   "finished_at": "2026-10-13T17:54:30.316Z",
-  "web_url": "https://gitlab.com/gitlab-org/gitlab/-/jobs/17148452815"
+  "web_url": "https://gitlab.example.com/acme/app/-/jobs/17148452815"
  }
 ]

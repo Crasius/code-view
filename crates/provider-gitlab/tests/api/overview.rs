@@ -5,7 +5,7 @@
 
 use provider_gitlab::GitLabProvider;
 use review_core::{
-    Connection, DiffStat, Provider, ProviderKind, PullRequestQuery, PullRequestScope, StateFilter,
+    Connection, DiffStat, Provider, PullRequestQuery, PullRequestScope, StateFilter,
 };
 use serde_json::{Value, json};
 use wiremock::matchers::{
@@ -14,16 +14,14 @@ use wiremock::matchers::{
 };
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn provider(server: &MockServer, organizations: &[&str], token: Option<&str>) -> GitLabProvider {
-    let connection = Connection {
-        id: "overview".to_owned(),
-        name: "Mock GitLab".to_owned(),
-        kind: ProviderKind::GitLab,
-        base_url: server.uri(),
-        organizations: organizations.iter().map(|group| (*group).to_owned()).collect(),
-        token: token.map(str::to_owned),
-    };
-    GitLabProvider::new(connection, reqwest::Client::new())
+use crate::support::{self, TOKEN};
+
+/// The provider on a connection to `groups` (the connection's organizations).
+fn provider(server: &MockServer, groups: &[&str], token: Option<&str>) -> GitLabProvider {
+    support::provider_on(Connection {
+        organizations: groups.iter().map(|group| (*group).to_owned()).collect(),
+        ..support::connection(server, token)
+    })
 }
 
 fn query(scope: PullRequestScope) -> PullRequestQuery {
@@ -61,25 +59,25 @@ async fn mount_user(server: &MockServer, expected: u64) {
 async fn everything_in_a_group_is_one_listing_even_anonymously() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/api/v4/groups/gitlab-org/merge_requests"))
+        .and(path("/api/v4/groups/acme/merge_requests"))
         .and(query_param("state", "opened"))
         .and(query_param("scope", "all"))
         .and(query_param("with_labels_details", "true"))
         .respond_with(listing(vec![
-            merge_request("gitlab-org/cli", 7, 3, 2),
-            merge_request("gitlab-org/gitlab", 9, 8, 5),
+            merge_request("acme/cli", 7, 3, 2),
+            merge_request("acme/app", 9, 8, 5),
         ]))
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["gitlab-org"], None);
+    let provider = provider(&server, &["acme"], None);
 
     let rows =
         provider.list_pull_requests(&query(PullRequestScope::Visible)).await.expect("overview");
     let keys: Vec<(&str, u64)> =
         rows.iter().map(|row| (row.repository_key.as_str(), row.number)).collect();
-    assert_eq!(keys, [("gitlab-org/gitlab", 8), ("gitlab-org/cli", 3)], "newest first");
-    let requests = server.received_requests().await.unwrap_or_default();
+    assert_eq!(keys, [("acme/app", 8), ("acme/cli", 3)], "newest first");
+    let requests = server.received_requests().await.expect("recorded");
     assert!(
         requests.iter().all(|request| request.url.path() != "/api/v4/user"),
         "a group listing needs no user"
@@ -112,7 +110,7 @@ async fn without_groups_everything_is_what_involves_the_user() {
         .expect(2)
         .mount(&server)
         .await;
-    let provider = provider(&server, &[], Some("test-token"));
+    let provider = provider(&server, &[], Some(TOKEN));
 
     let rows =
         provider.list_pull_requests(&query(PullRequestScope::Visible)).await.expect("overview");
@@ -140,7 +138,7 @@ async fn assigned_to_me_filters_by_reviewer_id_and_reads_the_user_once() {
         .expect(3)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["team"], Some("test-token"));
+    let provider = provider(&server, &["team"], Some(TOKEN));
     for _ in 0..3 {
         let rows = provider
             .list_pull_requests(&query(PullRequestScope::ReviewRequested))
@@ -160,7 +158,7 @@ async fn created_by_me_lists_per_group_with_its_scope() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["team"], Some("test-token"));
+    let provider = provider(&server, &["team"], Some(TOKEN));
     let rows = provider
         .list_pull_requests(&query(PullRequestScope::CreatedByMe))
         .await
@@ -190,7 +188,7 @@ async fn the_users_part_of_one_project_is_that_projects_listing() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["team"], Some("test-token"));
+    let provider = provider(&server, &["team"], Some(TOKEN));
     for (role, number) in
         [(PullRequestScope::CreatedByMe, 6), (PullRequestScope::ReviewRequested, 5)]
     {
@@ -209,6 +207,7 @@ async fn diff_stats_of_a_project_are_one_graphql_request() {
     let nodes = json!([
         { "iid": "5", "diffStatsSummary": { "additions": 1240, "deletions": 312, "fileCount": 18 } },
         { "iid": "6", "diffStatsSummary": null },
+        null,
         { "iid": "9", "diffStatsSummary": { "additions": 0, "deletions": 4, "fileCount": 1 } },
     ]);
     Mock::given(method("POST"))
@@ -224,13 +223,13 @@ async fn diff_stats_of_a_project_are_one_graphql_request() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["team"], Some("test-token"));
+    let provider = provider(&server, &["team"], Some(TOKEN));
 
     let stats = provider.diff_stats("team/app", &[5, 6, 9]).await.expect("diff stats");
     assert_eq!(
         stats,
         [(5, DiffStat::new(1240, 312, 18)), (9, DiffStat::new(0, 4, 1))],
-        "a merge request without a diff yet is left out"
+        "a merge request without a diff yet and a null node are left out"
     );
 }
 

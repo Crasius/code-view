@@ -22,7 +22,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::client::ApiClient;
-use crate::graphql::SchemaGaps;
+use crate::graphql::{Nodes, SchemaGaps};
+use crate::merge_requests::reviews::add_approvers;
 
 /// Merge requests one query names at most; the reviewers and stages of each stay small.
 const ROWS_PER_QUERY: usize = 50;
@@ -62,30 +63,13 @@ struct Project {
 }
 
 #[derive(Debug, Deserialize)]
-struct Nodes<T> {
-    #[serde(default = "Vec::new")]
-    nodes: Vec<Option<T>>,
-}
-
-impl<T> Nodes<T> {
-    fn into_items(self) -> impl Iterator<Item = T> {
-        self.nodes.into_iter().flatten()
-    }
-}
-
-#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MergeRequestNode {
     iid: String,
-    #[serde(default)]
     approvals_required: Option<u32>,
-    #[serde(default)]
     approvals_left: Option<u32>,
-    #[serde(default)]
     approved_by: Option<Nodes<UserNode>>,
-    #[serde(default)]
     reviewers: Option<Nodes<UserNode>>,
-    #[serde(default)]
     head_pipeline: Option<PipelineNode>,
 }
 
@@ -95,11 +79,8 @@ struct UserNode {
     /// A global id: `gid://gitlab/User/42`.
     id: String,
     username: String,
-    #[serde(default)]
     name: Option<String>,
-    #[serde(default)]
     avatar_url: Option<String>,
-    #[serde(default)]
     merge_request_interaction: Option<Interaction>,
 }
 
@@ -108,7 +89,6 @@ struct UserNode {
 struct Interaction {
     /// `MergeRequestReviewState`: `APPROVED`, `REQUESTED_CHANGES`, `REVIEWED`, `REVIEW_STARTED`,
     /// `UNAPPROVED`, `UNREVIEWED`.
-    #[serde(default)]
     review_state: Option<String>,
 }
 
@@ -116,7 +96,6 @@ struct Interaction {
 struct PipelineNode {
     /// `PipelineStatusEnum`, upper case.
     status: String,
-    #[serde(default)]
     stages: Option<Nodes<StageNode>>,
 }
 
@@ -124,7 +103,6 @@ struct PipelineNode {
 struct StageNode {
     name: String,
     /// The stage's status in lower case (`success`, `failed`, `running`, ...).
-    #[serde(default)]
     status: Option<String>,
 }
 
@@ -201,8 +179,7 @@ fn status_state(status: &str) -> CheckState {
     }
 }
 
-/// Reviewers with their review states; approvers who are not reviewers are added, since an
-/// approval is a vote.
+/// Reviewers with their review states and the approvers ([`add_approvers`]).
 fn reviewers(
     reviewers: Option<Nodes<UserNode>>,
     approved_by: Option<Nodes<UserNode>>,
@@ -224,18 +201,11 @@ fn reviewers(
             reviewer(&user, vote, web_root)
         })
         .collect();
-    for approver in approved_by.into_iter().flat_map(Nodes::into_items) {
-        let approved = reviewer(&approver, ReviewVote::Approved, web_root);
-        match voted.iter_mut().find(|known| known.identity.id == approved.identity.id) {
-            Some(known) => {
-                known.vote = ReviewVote::Approved;
-                if known.identity.avatar_url.is_none() {
-                    known.identity.avatar_url = approved.identity.avatar_url;
-                }
-            }
-            None => voted.push(approved),
-        }
-    }
+    let approvers = approved_by
+        .into_iter()
+        .flat_map(Nodes::into_items)
+        .map(|approver| reviewer(&approver, ReviewVote::Approved, web_root));
+    add_approvers(&mut voted, approvers);
     voted
 }
 

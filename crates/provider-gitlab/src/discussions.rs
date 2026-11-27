@@ -10,7 +10,7 @@ use review_core::{
 use serde_json::{Value, json};
 
 use crate::client::{ApiClient, merge_request_path};
-use crate::dto::{DiffRefsDto, DiscussionDto, MergeRequestDto, NoteDto, PositionDto};
+use crate::dto::{DiffRefsDto, DiscussionDto, NoteDto, PositionDto};
 use crate::merge_requests::fetch;
 
 const MAX_DISCUSSIONS: usize = 10_000;
@@ -21,11 +21,8 @@ pub(crate) async fn threads(client: &ApiClient, repo: &str, iid: u64) -> Result<
         fetch(client, repo, iid),
         client.get_pages::<DiscussionDto>(&path, &[], MAX_DISCUSSIONS)
     )?;
-    let head_sha = head_sha(&merge_request);
-    Ok(discussions
-        .into_iter()
-        .filter_map(|discussion| to_thread(discussion, head_sha.as_deref()))
-        .collect())
+    let head_sha = merge_request.head_sha();
+    Ok(discussions.into_iter().filter_map(|discussion| to_thread(discussion, head_sha)).collect())
 }
 
 pub(crate) async fn create_thread(
@@ -124,11 +121,6 @@ fn discussions_path(repo: &str, iid: u64) -> String {
 
 fn discussion_path(repo: &str, iid: u64, thread_id: &str) -> String {
     format!("{}/{}", discussions_path(repo, iid), urlencoding::encode(thread_id))
-}
-
-fn head_sha(merge_request: &MergeRequestDto) -> Option<String> {
-    let from_refs = merge_request.diff_refs.as_ref().and_then(|refs| refs.head_sha.clone());
-    from_refs.or_else(|| merge_request.sha.clone())
 }
 
 /// `position` JSON for a text diff note. Line numbers go exactly as the anchor says:

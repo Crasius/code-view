@@ -2,26 +2,15 @@
 //! the merge request, its reviewers and approvals, never the discussions. `.expect(n)` is
 //! verified when the server drops.
 
-use provider_gitlab::GitLabProvider;
-use review_core::{Connection, Provider, ProviderKind};
+use review_core::Provider;
 use serde_json::{Value, json};
 use wiremock::matchers::{method, path, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+use crate::support::{self, TOKEN};
+
 const REPO: &str = "group/sub/project";
 const MR: &str = "/api/v4/projects/group%2Fsub%2Fproject/merge_requests/7";
-
-fn provider(server: &MockServer) -> GitLabProvider {
-    let connection = Connection {
-        id: "live".to_owned(),
-        name: "mock".to_owned(),
-        kind: ProviderKind::GitLab,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: Some("test-token".to_owned()),
-    };
-    GitLabProvider::new(connection, reqwest::Client::new())
-}
 
 fn merge_request(head: &str, notes: u64) -> Value {
     json!({
@@ -78,7 +67,7 @@ async fn a_new_comment_changes_the_marker_and_a_push_the_head() {
         ],
     )
     .await;
-    let provider = provider(&server);
+    let provider = support::provider(&server, Some(TOKEN));
 
     let opened = provider.revision(REPO, 7).await.expect("probe");
     assert_eq!(opened.head_sha, "head1");

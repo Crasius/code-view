@@ -26,26 +26,35 @@ pub(crate) struct Envelope<T> {
     pub(crate) errors: Vec<GraphqlError>,
 }
 
+/// A GraphQL connection's `nodes`. GitLab types list items as nullable, so a `null` item is
+/// skipped instead of failing the whole answer.
+#[derive(Debug, Deserialize)]
+pub(crate) struct Nodes<T> {
+    // Not `default`: serde would then bound `T: Default`.
+    #[serde(default = "Vec::new")]
+    nodes: Vec<Option<T>>,
+}
+
+impl<T> Nodes<T> {
+    pub(crate) fn into_items(self) -> impl Iterator<Item = T> {
+        self.nodes.into_iter().flatten()
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct GraphqlError {
     pub(crate) message: String,
-    #[serde(default)]
     extensions: Option<Extensions>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Extensions {
-    #[serde(default)]
     code: Option<String>,
-    #[serde(default)]
     type_name: Option<String>,
-    #[serde(default)]
     field_name: Option<String>,
     /// For `argumentNotAccepted`: the field (or its alias) the argument was given to.
-    #[serde(default)]
     name: Option<String>,
-    #[serde(default)]
     argument_name: Option<String>,
 }
 

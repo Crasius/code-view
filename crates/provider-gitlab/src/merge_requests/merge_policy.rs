@@ -179,10 +179,10 @@ mod tests {
         assert!(ff.check(MergeStrategy::Rebase).is_ok());
         assert!(ff.check(MergeStrategy::Squash).is_ok());
         assert!(
-            ff.check(MergeStrategy::Merge).is_err(),
+            matches!(ff.check(MergeStrategy::Merge), Err(ProviderError::Unsupported(_))),
             "a fast-forward project writes no merge commit"
         );
         let always = ProjectMerge::of(&project(Some("merge"), Some("always"))).unwrap();
-        assert!(always.check(MergeStrategy::Merge).is_err());
+        assert!(matches!(always.check(MergeStrategy::Merge), Err(ProviderError::Unsupported(_))));
     }
 }

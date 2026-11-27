@@ -3,26 +3,15 @@
 //! graphql-ruby's static validation writes for an unknown field, as a Community Edition host
 //! answers for the Premium approval counts. `.expect(n)` is verified when the server drops.
 
-use provider_gitlab::GitLabProvider;
-use review_core::{CheckState, Connection, Provider, ProviderKind, ReviewVote, RowStatus};
+use review_core::{CheckState, Provider, ReviewVote, RowStatus};
 use serde_json::Value;
 use wiremock::matchers::{body_partial_json, body_string_contains, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
-const ROWS: &str = include_str!("fixtures/graphql_row_statuses.json");
-const UNKNOWN_FIELD: &str = include_str!("fixtures/graphql_unknown_field.json");
+use crate::support::{self, TOKEN};
 
-fn provider(server: &MockServer) -> GitLabProvider {
-    let connection = Connection {
-        id: "rows".to_owned(),
-        name: "Mock GitLab".to_owned(),
-        kind: ProviderKind::GitLab,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: Some("test-token".to_owned()),
-    };
-    GitLabProvider::new(connection, reqwest::Client::new())
-}
+const ROWS: &str = include_str!("../fixtures/graphql_row_statuses.json");
+const UNKNOWN_FIELD: &str = include_str!("../fixtures/graphql_unknown_field.json");
 
 fn answer(json: &str) -> ResponseTemplate {
     ResponseTemplate::new(200)
@@ -62,7 +51,10 @@ async fn rows_get_stages_approvals_and_votes_in_one_request() {
         .mount(&server)
         .await;
 
-    let statuses = provider(&server).row_statuses("group/app", &[4, 5]).await.expect("statuses");
+    let statuses = support::provider(&server, Some(TOKEN))
+        .row_statuses("group/app", &[4, 5])
+        .await
+        .expect("statuses");
 
     let (iid, status) = statuses.first().expect("first row");
     assert_eq!(*iid, 4);
@@ -105,7 +97,7 @@ async fn a_host_without_the_approval_counts_still_gets_its_checks_and_votes() {
         .expect(2)
         .mount(&server)
         .await;
-    let provider = provider(&server);
+    let provider = support::provider(&server, Some(TOKEN));
 
     for load in ["first", "second"] {
         let statuses = provider.row_statuses("group/app", &[4, 5]).await.expect(load);
@@ -134,7 +126,7 @@ async fn an_unknown_field_the_query_needs_is_reported() {
         .mount(&server)
         .await;
 
-    let result = provider(&server).row_statuses("group/app", &[4]).await;
+    let result = support::provider(&server, Some(TOKEN)).row_statuses("group/app", &[4]).await;
 
     let message = result.expect_err("no data").to_string();
     assert!(
