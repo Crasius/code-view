@@ -449,8 +449,9 @@ mod tests {
         assert!(tree.iter().all(|stage| stage.reruns.is_empty()));
     }
 
-    /// A public build, 1639558, fetched anonymously on 2026-10-19 and trimmed: stage "Build" was retried; its job "Source-Build (Managed)" failed in both attempts,
-    /// "Code check" ran once and stays in attempt 1. "Platform tests" passed on its retry.
+    /// A public build, 1639558, fetched anonymously on 2026-10-19 and trimmed: stage "Build" was
+    /// retried; its job "Source-Build (Managed)" failed in both attempts, "Code check" ran once and
+    /// stays in attempt 1. "Platform tests" passed on its retry.
     const RETRIED_FIXTURE: &str = include_str!("../../tests/fixtures/timeline_1639558.json");
     /// `GET build/builds/1639558/timeline/6884a131-…`: the first attempt of stage "Build".
     const ATTEMPT_1_FIXTURE: &str =

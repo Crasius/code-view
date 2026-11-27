@@ -130,8 +130,9 @@ async fn fetch_pages(
 
 /// The changed files of each pull request: the latest iteration's changes against the common
 /// commit (`$compareTo` left at its default, 0), two requests per pull request below
-/// [`CHANGES_PAGE_SIZE`](crate::dto::iteration::CHANGES_PAGE_SIZE) files. Azure DevOps counts no lines. Iterations need sign-in even on
-/// public projects, so an anonymous connection learns nothing here.
+/// [`CHANGES_PAGE_SIZE`](crate::dto::iteration::CHANGES_PAGE_SIZE) files. Azure DevOps counts
+/// no lines. Iterations need sign-in even on public projects, so an anonymous connection learns
+/// nothing here.
 pub(crate) async fn diff_stats(
     client: &Client,
     repo: &str,

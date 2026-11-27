@@ -142,7 +142,8 @@ impl Build {
     /// Whether the build ran for an Azure Repos repository. A project's pipelines can build GitHub
     /// repositories too, whose pull request builds use the same `refs/pull/{number}/merge` names:
     /// in a public project that also builds GitHub repositories, each one's pull request #N lands
-    /// there. Those are never the builds of an Azure Repos pull request. Builds that name no repository type count as ours.
+    /// there. Those are never the builds of an Azure Repos pull request. Builds that name no
+    /// repository type count as ours.
     pub fn is_azure_repos(&self) -> bool {
         self.repository.kind.as_deref().is_none_or(|kind| kind.eq_ignore_ascii_case("TfsGit"))
     }
