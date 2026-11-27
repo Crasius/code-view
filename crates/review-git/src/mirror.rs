@@ -254,7 +254,7 @@ impl GitMirror {
 
     /// Phase 2: renames, line counts and whitespace-only marks. Files whose blobs are local count
     /// at once, the files [`Self::want`] names next, the rest download in chunks, and `publish`
-    /// gets the list after each chunk while blobs download ([`crate::line_counts`]). The result
+    /// gets the list after each chunk while blobs download (`crate::line_counts`). The result
     /// equals one `git diff-tree -M --numstat`.
     pub async fn changed_files_detailed(
         &self,
@@ -566,7 +566,7 @@ fn mirror_dir(cache_root: &Path, clone_url: &str) -> PathBuf {
 
 /// The part of a clone URL a mirror's folder is named after: without scheme, user, trailing slash
 /// and `.git`. Byte-stable on purpose, since it names existing folders; comparing a user's remotes
-/// is [`crate::checkout::remotes::repository_id`].
+/// is `crate::checkout::remotes::repository_id`.
 fn repository_of(clone_url: &str) -> &str {
     let without_scheme = clone_url.split_once("://").map_or(clone_url, |(_, rest)| rest);
     let without_user = without_scheme.split_once('@').map_or(without_scheme, |(_, rest)| rest);

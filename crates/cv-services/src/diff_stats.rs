@@ -10,18 +10,18 @@
 //!   row's "Count lines".
 //! - Azure DevOps reports no lines: the changed files of the latest iteration (with a token), then
 //!   the lines from git. From the local mirror when it holds both commits and the changed blobs (no
-//!   network), else, for pull requests of at most [`AUTO_COUNT_FILES`] files, by preparing the
+//!   network), else, for pull requests of at most `AUTO_COUNT_FILES` files, by preparing the
 //!   mirror the way the pull request's page does: opening it then finds commits, blobs and the file
 //!   list ready. Larger ones wait for "Count lines".
 //! - GitHub rows of a repository's REST listing wait for "Count lines" (one request each).
 //!
 //! Favorites (pull requests of a starred repository) are always counted on their own, whatever
 //! their size and whether the connection has a token: GitLab's one request per project, Azure
-//! DevOps' lines from git also beyond [`AUTO_COUNT_FILES`], one request per GitHub REST row. At most
-//! [`MAX_FAVORITES_RUNNING`] of them count at once, so the other cards' rows keep their turn.
+//! DevOps' lines from git also beyond `AUTO_COUNT_FILES`, one request per GitHub REST row. At most
+//! `MAX_FAVORITES_RUNNING` of them count at once, so the other cards' rows keep their turn.
 //!
 //! A row the pointer rests on is prepared the same way ahead of the click ([`warm`]), the line
-//! counts left out for pull requests over [`AUTO_COUNT_FILES`] files.
+//! counts left out for pull requests over `AUTO_COUNT_FILES` files.
 
 use std::collections::HashMap;
 use std::sync::Arc;

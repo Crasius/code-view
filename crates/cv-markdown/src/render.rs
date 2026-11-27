@@ -63,7 +63,7 @@ struct BlockHeights {
 }
 
 /// Words of one rendered block filled with `color` behind the text: byte ranges of its
-/// [`Block::plain_text`]. A block takes several layers (its changed words, the find bar's hits
+/// `Block::plain_text`. A block takes several layers (its changed words, the find bar's hits
 /// over them); where they overlap, a later layer is blended over an earlier one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Marks {

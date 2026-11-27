@@ -153,7 +153,7 @@ default:
     - target/debug/deps/*-????????????????
 
 # The default steps of scripts/check.sh (format, hygiene, repository rules, the clippy passes, the
-# dependency bans and sources) and its step shear (ci/lint.sh).
+# dependency bans and sources, rustdoc) and its step shear (ci/lint.sh).
 lint:
   extends: .cargo-checks
   variables:

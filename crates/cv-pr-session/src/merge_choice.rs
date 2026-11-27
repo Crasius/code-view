@@ -136,7 +136,7 @@ pub fn message_label(strategy: MergeStrategy) -> Option<&'static str> {
     }
 }
 
-/// The repository's short name for "Always use for <repository>": its last path segment.
+/// The repository's short name for "Always use for `<repository>`": its last path segment.
 pub fn repository_name(repository: &str) -> &str {
     repository.rsplit('/').next().unwrap_or(repository)
 }

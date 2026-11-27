@@ -4,15 +4,15 @@
 //! A card at the end of the Overview's side column (below Reviewers, Labels and Linked), which
 //! Alt+A or its expand button widens into a full-height panel; the conversation is the same in
 //! both. One conversation per pull request and agent, kept across restarts
-//! ([`review_store::AssistantChats`], written on the background by [`transcript::saver`]); the next
+//! ([`review_store::AssistantChats`], written on the background by `transcript::saver`); the next
 //! question continues the CLI's own session.
 //!
-//! A question walks through: checkout of the head ([`checkout`], under the cache folder) → the
+//! A question walks through: checkout of the head (`checkout`, under the cache folder) → the
 //! CLI found and its models listed ([`cv_services::agents`]) → a session started with the
-//! pull request's [`brief`] → the answer streaming in ([`transcript`]). Each step runs on the
-//! background ([`runner`]); [`Assistant::update`] advances them every frame on every tab, so an
+//! pull request's `brief` → the answer streaming in (`transcript`). Each step runs on the
+//! background (`runner`); [`Assistant::update`] advances them every frame on every tab, so an
 //! answer keeps arriving while the Files tab shows. A step that cannot go on (no CLI, no sign-in,
-//! a failed checkout, a stopped agent) shows its own fix ([`Block`]).
+//! a failed checkout, a stopped agent) shows its own fix (`Block`).
 //!
 //! Answers cite code as `path:line`; [`citations`] checks each against the checkout and links the
 //! ones that exist into the Files tab, where the [`mini`] chat can keep the answer beside the code.

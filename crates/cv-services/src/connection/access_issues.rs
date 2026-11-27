@@ -1,5 +1,5 @@
 //! Token problems seen at runtime. Every provider the app hands out is wrapped in
-//! [`WatchedProvider`], which records 401/403 answers, explained by the provider, per connection.
+//! `WatchedProvider`, which records 401/403 answers, explained by the provider, per connection.
 //! Listings that succeeded but left pull requests out for lack of access (SAML single sign-on) are
 //! recorded the same way. The access banner turns them into a "Fix token" action and the
 //! problem's own actions ("Authorize for acme"); saving the connection clears them.

@@ -11,7 +11,7 @@
 //! version with its changes in the accent color and a red wedge where blocks were removed (hover
 //! it to read them, click it to see them side by side).
 //!
-//! Comment threads sit under the block of their line, as in the text diff (see [`threads`]); a
+//! Comment threads sit under the block of their line, as in the text diff (see `threads`); a
 //! fold counts the ones it hides. With "Show comments in the diff" off, a count in a block's gutter
 //! stands for its threads and shows them there on a click.
 //!

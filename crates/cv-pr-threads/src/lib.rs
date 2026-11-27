@@ -3,7 +3,7 @@
 //! (read marks, unsent drafts, posts in flight, the user's comments being edited or deleted).
 //!
 //! Everything here reads threads generically from the session: a reload or a live merge that
-//! brings new comments only changes what [`ThreadsUi::new_comments`] reports, nothing else.
+//! brings new comments only changes what `ThreadsUi::new_comments` reports, nothing else.
 
 #![forbid(unsafe_code)]
 // RS-LINT-02: egui lays out in f32 points while rows, columns and line numbers are usize or u32.

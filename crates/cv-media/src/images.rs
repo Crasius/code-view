@@ -1,24 +1,24 @@
 //! Loads the images rendered Markdown embeds and keeps them as textures; videos load the same way
-//! and show their first frame until they play ([`video`]).
+//! and show their first frame until they play (`video`).
 //!
 //! An image loads only when its widget is about to be seen ([`ImageStore::state`] with `want`),
-//! while the window is active, and at most [`MAX_IN_FLIGHT`] at a time; one already loading is
+//! while the window is active, and at most `MAX_IN_FLIGHT` at a time; one already loading is
 //! never asked for twice. Remote images go through the connection's provider, which adds its
 //! credentials for the connection's own hosts only (and signs private attachments right before
 //! they load), or anonymously; repository files come from the local mirror. A private image the
 //! connection cannot reach fails with the sign-in its connection needs. Bodies over
-//! [`MAX_BYTES`] are refused, decoding runs off the UI thread ([`decode`]), and large images are
+//! `MAX_BYTES` are refused, decoding runs off the UI thread (`decode`), and large images are
 //! scaled down to [`MAX_TEXTURE_EDGE`]. A short animation keeps one texture per frame, a long one
 //! plays in one texture a decoder streams into; either plays from its first frame once it is asked
 //! for after a load. File previews decode and upload the same way ([`decode()`], [`upload`]). Textures live in memory up to
-//! [`MEMORY_LIMIT`] (least recently drawn go first) and only while they are drawn: one nobody drew
+//! `MEMORY_LIMIT` (least recently drawn go first) and only while they are drawn: one nobody drew
 //! for [`memory::UNSEEN_TEXTURE_SECONDS`] goes too ([`ImageStore::release_unseen`]). An image that
 //! comes back loads again at the size it had, so nothing moves; remote bodies are also kept on
-//! disk ([`disk`]), so that costs no download. A kept body past its host's lifetime is shown at
+//! disk (`disk`), so that costs no download. A kept body past its host's lifetime is shown at
 //! once all the same and asked about behind it with its validators: a `304` renews it, a changed
 //! body replaces file and texture, and a failed question (offline, rate-limited) keeps it.
 //!
-//! Images may also be read ahead, before any widget asks ([`ahead`]): such a body waits in memory
+//! Images may also be read ahead, before any widget asks (`ahead`): such a body waits in memory
 //! for a while, and the first load that asks for it takes it instead of downloading.
 
 use std::collections::{HashMap, HashSet};
@@ -68,7 +68,7 @@ pub struct Owner {
 pub enum Fetch {
     /// An absolute http(s) address as written: through `owner`'s provider (credentials for its own
     /// hosts only, signed addresses where the platform signs them), anonymously without one.
-    /// `disk` keeps the body between runs ([`disk`]).
+    /// `disk` keeps the body between runs (`disk`).
     Remote { url: String, owner: Option<Owner>, disk: Option<PathBuf> },
     /// `path` in `commit` of the local repository mirror.
     Git { git: Arc<GitMirror>, commit: String, path: String },
@@ -184,7 +184,7 @@ impl ImageStore {
     }
 
     /// The image's state; with `want`, one not loaded yet starts loading when the window is
-    /// active and fewer than [`MAX_IN_FLIGHT`] loads run.
+    /// active and fewer than `MAX_IN_FLIGHT` loads run.
     pub fn state(&self, ctx: &Context, target: &Target, want: bool) -> ImageState {
         let pass = ctx.cumulative_pass_nr();
         let now = ctx.input(|input| input.time);
@@ -236,7 +236,7 @@ impl ImageStore {
 
     /// Lets go of the textures nobody drew for [`memory::UNSEEN_TEXTURE_SECONDS`] up to input time
     /// `now` (the pages that showed them were left), and of the bodies read ahead longer than
-    /// [`AHEAD_SECONDS`] ago. Call once per frame; it looks once a second.
+    /// `AHEAD_SECONDS` ago. Call once per frame; it looks once a second.
     pub fn release_unseen(&self, now: f64) {
         let mut inner = self.lock();
         let Inner { entries, textures, ahead, .. } = &mut *inner;
@@ -283,7 +283,7 @@ impl ImageStore {
     }
 
     /// Reads the bodies of the remote `targets` ahead into memory, where they wait for a while for
-    /// a load to take them ([`ahead`]); `now` is the input time.
+    /// a load to take them (`ahead`); `now` is the input time.
     pub fn fetch_ahead(&self, now: f64, targets: Vec<Target>) {
         ahead::fetch(self, now, targets);
     }

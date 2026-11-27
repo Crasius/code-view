@@ -1,7 +1,7 @@
 #!/bin/sh
 # check.sh: the one entry point for the repository's checks, for contributors, lanes and both CIs.
 #
-#   sh scripts/check.sh [--base <rev>]            the static gate: fmt hygiene repo-lint clippy deps
+#   sh scripts/check.sh [--base <rev>]            the static gate: fmt hygiene repo-lint clippy deps doc
 #   sh scripts/check.sh [--base <rev>] <step>...  only the named steps; also advisories,
 #                                                 licenses, shear, test
 #   sh scripts/check.sh --changed [--base <rev>]  rustfmt on the changed .rs files, clippy on their crates
@@ -17,7 +17,7 @@
 # shear is not in the default list: cargo-shear is not installed on the machine whose local checks
 # are the gate, so CI runs it by name (`sh scripts/check.sh shear`).
 # CARGO_BUILD_JOBS limits cargo's jobs; the script passes no -j. CHECK_BUILD_SECONDS=<file>
-# receives the seconds the clippy step took (ci/target-stamp.sh).
+# receives the seconds the compile steps (clippy, doc) took together (ci/target-stamp.sh).
 # --changed is what .agents/hooks/rust-stop-gate.sh (the Stop hook) and a lane's turn end run:
 # exit 0 = clean (one line on stdout names what it checked), 2 = findings on stderr, 1 = clippy did
 # not run (stderr says why).
@@ -29,13 +29,13 @@ set -u
 nl='
 '
 
-usage_line='usage: sh scripts/check.sh [--base <rev>] [fmt|hygiene|repo-lint|clippy|deps|advisories|licenses|shear|test]... | --changed [--base <rev>] | --list'
+usage_line='usage: sh scripts/check.sh [--base <rev>] [fmt|hygiene|repo-lint|clippy|deps|doc|advisories|licenses|shear|test]... | --changed [--base <rev>] | --list'
 usage() {
   printf 'check: %s\n%s\n' "$1" "$usage_line" >&2
   exit 2
 }
 
-default_steps="fmt hygiene repo-lint clippy deps"
+default_steps="fmt hygiene repo-lint clippy deps doc"
 mode=steps
 base=""
 steps=""
@@ -48,7 +48,7 @@ while [ $# -gt 0 ]; do
     --list) mode=list; shift ;;
     --changed) mode=changed; shift ;;
     -h | --help) printf '%s\n' "$usage_line"; exit 0 ;;
-    fmt | hygiene | repo-lint | clippy | deps | advisories | licenses | shear | test) steps="$steps $1"; shift ;;
+    fmt | hygiene | repo-lint | clippy | deps | doc | advisories | licenses | shear | test) steps="$steps $1"; shift ;;
     *) usage "unknown step or option $1" ;;
   esac
 done
@@ -122,6 +122,8 @@ step_commands() {
     # Without the inclusion graphs: the duplicate-version warnings alone print 12,000 lines of them
     # on a passing run. `cargo deny check bans` by hand shows who pulls a crate in.
     deps) echo 'cargo deny --locked check --hide-inclusion-graph bans sources' ;;
+    # Broken intra-doc links and stray HTML in doc comments, private items included.
+    doc) echo 'RUSTDOCFLAGS="-D warnings" cargo doc --locked --workspace --no-deps --document-private-items' ;;
     advisories) echo 'cargo deny --locked check --hide-inclusion-graph advisories' ;;
     # The release build's notices for all six shipped targets at once, so that a licence outside
     # ci/about.toml fails before the release tag; the file itself is scratch.
@@ -147,6 +149,7 @@ step_commands() {
 
 results=""
 failed=0
+build_seconds=""
 record() {
   results="$results$(printf '%-11s %s' "$1" "$2")$nl"
 }
@@ -189,9 +192,9 @@ run_step() {
   done
   IFS=$old_ifs
   set +f
-  if [ "$step" = clippy ] && [ -n "${CHECK_BUILD_SECONDS:-}" ]; then
-    echo "$(($(date +%s) - started))" >"$CHECK_BUILD_SECONDS"
-  fi
+  case $step in
+    clippy | doc) build_seconds=$((${build_seconds:-0} + $(date +%s) - started)) ;;
+  esac
   [ "$status" = PASS ] || failed=1
   record "$step" "$status"
 }
@@ -328,5 +331,8 @@ esac
 for step in ${steps:-$default_steps}; do
   run_step "$step"
 done
+if [ -n "$build_seconds" ] && [ -n "${CHECK_BUILD_SECONDS:-}" ]; then
+  echo "$build_seconds" >"$CHECK_BUILD_SECONDS"
+fi
 printf '\n== check: summary\n%s' "$results"
 exit "$failed"

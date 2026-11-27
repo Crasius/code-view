@@ -1,8 +1,8 @@
 //! The memory journal: the app writes down what it holds, so a window that grew over hours tells
 //! afterwards which part grew, without anyone watching it. One line at start, one every
-//! [`TICK`], and one whenever the private bytes pass a new [`RISE_STEP`] above the first reading,
+//! `TICK`, and one whenever the private bytes pass a new `RISE_STEP` above the first reading,
 //! so a fast rise shows between two ticks. The file (`AppPaths::memory_journal_file`) moves aside
-//! once it reaches [`ROTATE_AT`]; the one before it goes. A line holds numbers only:
+//! once it reaches `ROTATE_AT`; the one before it goes. A line holds numbers only:
 //!
 //! ```text
 //! 2026-10-28T12:05:00Z tick uptime_s=300 private=183500800 live=96468992 images=0 diagrams=0
@@ -14,7 +14,7 @@
 //! ([`cv_base::platform::heap`]). The reason is `start`, `tick` or `rise`. Texture bytes are what
 //! egui has handed to the GPU (width × height × bytes per pixel), the font atlas included.
 //!
-//! Its own thread wakes every [`CHECK`], reads the private bytes and writes when a line is due; the
+//! Its own thread wakes every `CHECK`, reads the private bytes and writes when a line is due; the
 //! UI thread never waits on it.
 
 use std::fs::{self, OpenOptions};

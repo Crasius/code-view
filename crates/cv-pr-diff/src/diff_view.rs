@@ -7,11 +7,11 @@
 //! moving the rows below in one jump; the cached row height follows the ease, so rows above the
 //! view and the scroll offset stay put.
 //!
-//! The view keeps its rows in [`rows::DiffRows`] (built when what they show changes), their tops
-//! in [`offsets::RowOffsets`], where the view is in [`place::Place`] and the selection in
-//! [`selecting::Selecting`]. Code rows paint in [`code_rows`], comment cards and the new comment
-//! in [`card_rows`], removed lines of New only in [`removals`]; [`panes`] holds the sides and their
-//! sideways scrolling, [`requests`] what other views ask for. This module lays the rows out and
+//! The view keeps its rows in `rows::DiffRows` (built when what they show changes), their tops
+//! in `offsets::RowOffsets`, where the view is in `place::Place` and the selection in
+//! `selecting::Selecting`. Code rows paint in `code_rows`, comment cards and the new comment
+//! in `card_rows`, removed lines of New only in `removals`; `panes` holds the sides and their
+//! sideways scrolling, `requests` what other views ask for. This module lays the rows out and
 //! paints the ones in view.
 
 mod card_rows;
@@ -96,7 +96,7 @@ pub struct DiffView {
     /// The rows and what is worked out with them, built again when what they show changes.
     built: DiffRows,
     offsets: RowOffsets,
-    /// Comment card heights by thread id (the new comment's under [`COMPOSER_KEY`]).
+    /// Comment card heights by thread id (the new comment's under `COMPOSER_KEY`).
     cards: CardHeights,
     selecting: Selecting,
     sideways: Sideways,

@@ -1,6 +1,6 @@
 //! Moving the window from egui, through the system's own window drag.
 //!
-//! [`DragArea`]: an app-drawn title bar where the system has no hit-test hook for it (macOS).
+//! `DragArea`: an app-drawn title bar where the system has no hit-test hook for it (macOS).
 //! Pressing on the bar and dragging starts the drag, a double click zooms the window (maximizes or
 //! restores it). Presses on the bar's widgets (the holes) stay theirs, as on the Windows title bar.
 //!
@@ -67,7 +67,7 @@ fn drag_area_mark(id: Id) -> Id {
     id.with("is_window_drag_area")
 }
 
-/// `id` is a [`DragArea`]: it senses clicks for the double click that zooms, but it is the title
+/// `id` is a `DragArea`: it senses clicks for the double click that zooms, but it is the title
 /// bar, no control, so it keeps the arrow cursor instead of the pointing hand.
 pub(crate) fn is_drag_area(ctx: &egui::Context, id: Id) -> bool {
     ctx.data(|data| data.get_temp::<bool>(drag_area_mark(id))).unwrap_or(false)
@@ -97,7 +97,7 @@ fn press_id() -> Id {
 }
 
 /// Follows a press on `response` (a widget sensing clicks or drags): held still for
-/// [`LONG_PRESS`], it sends [`ViewportCommand::StartDrag`] once. Returns true from then until the
+/// `LONG_PRESS`, it sends [`ViewportCommand::StartDrag`] once. Returns true from then until the
 /// release frame included: the caller drops its pressed and hover look and ignores the click.
 /// While armed the cursor is the grabbing hand. Repaints only while a press is pending, once at
 /// its deadline.

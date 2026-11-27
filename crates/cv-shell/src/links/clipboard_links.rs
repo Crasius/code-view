@@ -85,7 +85,7 @@ pub(crate) fn request(ctx: &egui::Context, request: Request) {
     mailbox::post(ctx, Id::unique(REQUEST_ID), request);
 }
 
-/// The pending [`request`], at most once.
+/// The pending `request`, at most once.
 pub fn take_request(ctx: &egui::Context) -> Option<Request> {
     mailbox::take::<Request>(ctx, Id::unique(REQUEST_ID))
 }

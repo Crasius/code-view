@@ -3,7 +3,7 @@
 //! comes to the front and opens the link like a command-line link.
 //!
 //! The endpoint is local to the user: a named pipe only its owner may open on Windows, a Unix
-//! socket in a folder only its owner may enter elsewhere ([`platform`]). The first instance listens
+//! socket in a folder only its owner may enter elsewhere (`platform`). The first instance listens
 //! on a thread of its own that blocks in accept, so it costs nothing while idle and the UI thread
 //! never waits on it; each connection is read on a short-lived thread, so a client that stalls
 //! holds up nobody.

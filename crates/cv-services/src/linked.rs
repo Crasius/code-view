@@ -1,7 +1,7 @@
 //! Title and state of linked pull requests, issues and work items, shared by every page.
 //!
 //! Nothing here runs on its own: a screen asks for the items it shows ([`LinkedCache::request`]),
-//! one batched request per connection goes out, and the answers stay for [`FRESH_FOR`]. Asking
+//! one batched request per connection goes out, and the answers stay for `FRESH_FOR`. Asking
 //! again within that time costs nothing; after it, the next ask refetches. Failures stay until
 //! the user retries, so a broken host is not hammered.
 
@@ -75,7 +75,7 @@ impl LinkedCache {
     }
 
     /// Starts one request for the `references` of one connection that are unknown or older than
-    /// [`FRESH_FOR`]. With `retry`, failed ones go out again too. Returns whether a request started.
+    /// `FRESH_FOR`. With `retry`, failed ones go out again too. Returns whether a request started.
     pub fn request(
         &mut self,
         background: &Background,

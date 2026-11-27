@@ -84,7 +84,7 @@ fn platform_link(
     });
 }
 
-/// "Ana wants to merge [feature] → [main]" after the author's avatar, the branches as chips that
+/// "Ana wants to merge `[feature]` → `[main]`" after the author's avatar, the branches as chips that
 /// copy their name, then the slot of the spinner that turns while an action runs (`is_busy`).
 /// `reserved` is the room the checkout chip after the line needs.
 fn author_line(ui: &mut Ui, summary: &PullRequestSummary, is_busy: bool, reserved: f32) {

@@ -1,13 +1,13 @@
 //! "Copy image": an image's full-resolution pixels on the system clipboard, as an image rather than
 //! a link. Textures are scaled down to [`images::MAX_TEXTURE_EDGE`] and their pixels leave the
 //! heap, so a picture keeps the body it was decoded from ([`Original`]), and a copy decodes that
-//! again, unscaled ([`images::full_pixels`]): a raster image's own pixels (an animation's first
+//! again, unscaled (`images::full_pixels`): a raster image's own pixels (an animation's first
 //! frame), an SVG drawn at the screen's pixel density.
 //!
 //! Widgets ask with [`request`]. Once per frame [`ImageClipboard::update`] starts each request on
 //! the background runtime, so the UI thread never waits for decoding or the clipboard, and turns
 //! each result into a toast: "Image copied", or why not with Retry and the image's link. Test
-//! builds write to a [`FakeClipboard`], never to the system clipboard.
+//! builds write to a `FakeClipboard`, never to the system clipboard.
 
 #[cfg(not(any(test, feature = "test-support")))]
 use std::borrow::Cow;
@@ -164,7 +164,7 @@ pub struct ImageClipboard {
 }
 
 impl ImageClipboard {
-    /// Copies to the system clipboard; test builds to a [`FakeClipboard`].
+    /// Copies to the system clipboard; test builds to a `FakeClipboard`.
     pub fn new(spawner: Spawner) -> Self {
         #[cfg(any(test, feature = "test-support"))]
         {

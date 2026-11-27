@@ -45,7 +45,7 @@ const TEXT_OPTICAL_SIZE: f32 = 10.5;
 pub(crate) fn prepare_environment() {}
 
 /// The window keeps its native frame; [`integrate_title_bar`] takes the caption off once it exists.
-/// It opens without taking the foreground when the launcher asked for that ([`startup`]).
+/// It opens without taking the foreground when the launcher asked for that (`startup`).
 pub fn viewport(builder: ViewportBuilder) -> ViewportBuilder {
     builder.with_active(startup::launch_activates(startup::launch_show_command()))
 }

@@ -1,5 +1,5 @@
 //! System fonts read at start-up instead of being embedded (the platform names them, see
-//! [`platform::font_sources`]: Segoe UI Variable and Cascadia Mono on Windows, San Francisco and
+//! `platform::font_sources`: Segoe UI Variable and Cascadia Mono on Windows, San Francisco and
 //! SF Mono or Menlo on macOS, Cantarell or Ubuntu or Noto Sans and DejaVu Sans Mono on Linux), plus
 //! the Phosphor icon font as a fallback in every family so icons render inline. A variable UI font
 //! serves both weights from one file, so it is loaded once.
@@ -11,7 +11,7 @@
 //!
 //! Phosphor's Regular, Bold and Fill weights are bundled. They share one set of codepoints, so only
 //! one weight can be the inline fallback: Bold, the resting weight of icons at text size (see
-//! [`super::icons`]). Each weight also gets its own family ([`super::icons::Weight::family`]) that
+//! [`super::icons`]). Each weight also gets its own family (`super::icons::Weight::family`) that
 //! icon painters select explicitly.
 
 use std::sync::Arc;

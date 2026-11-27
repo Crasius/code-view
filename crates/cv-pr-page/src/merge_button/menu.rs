@@ -1,5 +1,5 @@
 //! The dropdown's lines about the choice: why a strategy is preselected, "Always use for
-//! <repo>", and the way to the branch's policies.
+//! `<repo>`", and the way to the branch's policies.
 
 use egui::{RichText, Ui};
 use review_core::{MergePolicy, MergeStrategy, ProviderKind};
@@ -10,7 +10,7 @@ use cv_pr_session::merge_choice::{self, Reason};
 use cv_services::Services;
 use cv_widgets::{buttons, checkbox};
 
-/// Why `current` is preselected, and (where there is a choice) "Always use for <repo>".
+/// Why `current` is preselected, and (where there is a choice) "Always use for `<repo>`".
 pub(crate) fn favourite(
     ui: &mut Ui,
     page: Page<'_>,

@@ -80,7 +80,7 @@ fn add_body(
     summary.bodies.insert(path, body, summary.frame, &keep);
 }
 
-/// The expanded cards on screen and one screen around it, nearest first (see [`Loads::plan`]).
+/// The expanded cards on screen and one screen around it, nearest first (see `Loads::plan`).
 pub(crate) fn plan_wanted(summary: &mut FolderSummary, inputs: &SummaryInputs<'_>) {
     let (slots, collapsed, files) = (&summary.slots, &summary.collapsed, inputs.files);
     let is_expanded = |card: usize| !collapsed.contains(&files[slots[card].file].path);

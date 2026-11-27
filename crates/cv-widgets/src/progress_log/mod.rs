@@ -1,6 +1,6 @@
 //! The live log of long git work (getting a pull request's changes, checking it out): timestamped
 //! monospace lines, git's progress lines overwriting themselves like git's own `\r`, bounded to
-//! [`MAX_LINES`]. Every line passes [`redact()`] on its way in, so neither the screen nor "Copy
+//! `MAX_LINES`. Every line passes [`redact()`] on its way in, so neither the screen nor "Copy
 //! log" ever carries a token: URL userinfo, `Authorization` headers, `http.extraHeader` and `-c`
 //! config values, token query parameters and token-shaped words are replaced.
 

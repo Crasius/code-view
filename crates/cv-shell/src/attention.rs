@@ -1,7 +1,7 @@
 //! Moments that tell where the user goes next, so the app can refresh before they get there.
 //!
 //! - [`Cue::Returned`]: the first input after [`PAUSE`] without any, or the window becoming active
-//!   again after it was inactive (minimized, covered, unfocused) for at least [`AWAY`], or after
+//!   again after it was inactive (minimized, covered, unfocused) for at least `AWAY`, or after
 //!   such a pause. What is on screen may be old by now; the page shown refreshes at once and the
 //!   pages likely next warm in the background. The time away is measured from the frame the window
 //!   went inactive in, so it holds however long eframe ran no frames meanwhile.

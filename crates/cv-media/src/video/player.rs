@@ -1,7 +1,7 @@
 //! Plays a [`Clip`]: ffmpeg decodes from a position and writes raw RGBA frames at the clip's
-//! frame rate into a pipe; a reader thread hands them over through a channel [`QUEUED`] frames
+//! frame rate into a pipe; a reader thread hands them over through a channel `QUEUED` frames
 //! deep, so ffmpeg blocks, and costs nothing, while nobody takes frames (paused, or off screen).
-//! Each pass the UI takes the frame due at the playback [`Clock`] and uploads it into the one
+//! Each pass the UI takes the frame due at the playback `Clock` and uploads it into the one
 //! texture the player owns.
 //!
 //! Time a video was not drawn does not count: one scrolled away pauses where it was and goes on

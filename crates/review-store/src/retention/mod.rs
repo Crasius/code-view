@@ -9,9 +9,9 @@
 //!   least recently read go first;
 //! - everything of a removed connection;
 //! - everything of a merged or closed pull request, or one whose source branch is gone, at once
-//!   (see [`sweep`]).
+//!   (see `sweep`).
 //!
-//! Deleting renames into `cache\trash` and lets a low-priority thread do the rest (see [`trash`]).
+//! Deleting renames into `cache\trash` and lets a low-priority thread do the rest (see `trash`).
 
 mod files;
 mod leases;

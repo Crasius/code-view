@@ -135,7 +135,7 @@ impl FilesTab {
         resume::last_tab(self)
     }
 
-    /// Saves where the user is (see [`resume::remember_place`]).
+    /// Saves where the user is (see `resume::remember_place`).
     pub fn remember_place(&mut self, services: &mut Services, tab: PullRequestTab) {
         resume::remember_place(self, services, tab);
     }
@@ -162,7 +162,7 @@ impl FilesTab {
         self.diffs.has_cached_diff(path)
     }
 
-    /// The page went out of sight: see [`tab::hibernate`].
+    /// The page went out of sight: see `tab::hibernate`.
     pub fn hibernate(&mut self) {
         tab::hibernate::hibernate(self);
     }

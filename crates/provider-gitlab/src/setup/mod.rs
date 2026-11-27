@@ -188,7 +188,7 @@ pub(crate) async fn discover(client: &ApiClient) -> Result<Vec<ScopeCandidate>> 
         .collect())
 }
 
-/// GitLab's 403 answers: legacy `insufficient_scope` and fine-grained "requires … [Permission]".
+/// GitLab's 403 answers: legacy `insufficient_scope` and fine-grained "requires … `[Permission]`".
 pub(crate) fn explain(error: &ProviderError) -> Option<AccessProblem> {
     let ProviderError::Status { status: 403, body, .. } = error else {
         return generic_denial(error);

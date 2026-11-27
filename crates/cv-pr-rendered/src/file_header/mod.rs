@@ -3,7 +3,7 @@
 //!
 //! Every item's width is known before anything is drawn. The controls take theirs from the right,
 //! the title gets the rest, and where the bar is too narrow the least important items shrink to an
-//! icon or give way first (see [`Fit`]), so nothing is ever drawn over anything else.
+//! icon or give way first (see `Fit`), so nothing is ever drawn over anything else.
 //!
 //! The bar keeps one shape for every file: the plan depends only on the bar's width, controls that
 //! don't apply to a file (or not yet, while its diff loads) stay in place disabled, and the change

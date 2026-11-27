@@ -2,7 +2,7 @@
 //! (`list_rows::dwell` tells which): that row and the one painted above and below it, each as deep
 //! as an open of it is likely ([`Interest::depth`]):
 //! - [`Depth::Meta`]: the detail (description, reviewers, all the header shows) and the web images
-//!   its description shows ([`ImageStore::fetch_ahead`], kept in memory for a while only).
+//!   its description shows (`ImageStore::fetch_ahead`, kept in memory for a while only).
 //! - [`Depth::Full`]: that, then the mirror with both commits and their merge base, and for small
 //!   pull requests the counted file list ([`diff_stats::warm`]).
 //!

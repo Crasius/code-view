@@ -1,6 +1,6 @@
 //! The browser extension's side in Code View (`browser-extension/`, `docs/browser-extension.md`):
-//! the native messaging host the browser starts ([`host`], over [`framing`]), the answer it gives
-//! ([`link_check`]), the pull requests the app itself opened in the browser ([`passes`]), the
+//! the native messaging host the browser starts ([`host`], over `framing`), the answer it gives
+//! (`link_check`), the pull requests the app itself opened in the browser ([`passes`]), the
 //! registration with Chrome and Edge ([`registration`]) and the extension's files, unpacked for
 //! "Load unpacked" ([`extension_files`]). The Settings row lives with Settings
 //! (`cv-settings`, `settings/browser_extension/`).

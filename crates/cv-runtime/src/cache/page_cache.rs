@@ -9,7 +9,7 @@
 //! ([`ColdTier`]) as they arrive, so after a restart a page paints the last answer at once and
 //! refreshes in place (it counts as stale, so the refresh starts and the page shows it is
 //! refreshing). The answers saved last are read once at start, the most recently written first,
-//! up to [`SAVED_BYTES`], and decoded when a page first asks. Pipelines, file lists and commits
+//! up to `SAVED_BYTES`, and decoded when a page first asks. Pipelines, file lists and commits
 //! stay in memory: rarely revisited, or listed again by the mirror in milliseconds.
 //!
 //! Keys name a route part ([`list_part`], [`pull_request_part`]).

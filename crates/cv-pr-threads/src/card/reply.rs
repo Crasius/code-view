@@ -21,7 +21,7 @@ pub(crate) enum FailureAction {
     FixToken,
 }
 
-/// "Not sent: <reason>. Your text is kept." with Retry, and Fix token or Edit as the way out.
+/// "Not sent: `<reason>`. Your text is kept." with Retry, and Fix token or Edit as the way out.
 pub(crate) fn failure_row(ui: &mut Ui, message: &str, needs_token: bool) -> Option<FailureAction> {
     let palette = theme::palette(ui.ctx());
     let mut action = None;

@@ -13,7 +13,7 @@
 //! opens it while the diff has the keyboard or the pointer, with the selected text in the field;
 //! Esc or its close button closes it and hands the keyboard back to the diff. Enter and F3 go to
 //! the next hit, Shift with either to the previous one, wrapping around; Alt+C switches Match
-//! case while the widget has the keyboard. Typing searches once it pauses for [`TYPING_PAUSE`];
+//! case while the widget has the keyboard. Typing searches once it pauses for `TYPING_PAUSE`;
 //! the option searches at once.
 //!
 //! The widget paints after the rows, so it is on top of them and takes its own clicks; what its

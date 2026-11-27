@@ -36,7 +36,7 @@ thread_local! {
     static CAPTION_WINDOW: RefCell<Option<Weak<NSWindow>>> = const { RefCell::new(None) };
 }
 
-/// Found through the `PATH` that [`prepare_environment`] completes.
+/// Found through the `PATH` that `prepare_environment` completes.
 pub const AZURE_CLI: &str = "az";
 pub const HAS_SAVE_DIALOG: bool = true;
 /// A clone's folder as Settings › Local checkouts shows it in its example.

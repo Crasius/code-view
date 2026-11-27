@@ -76,7 +76,7 @@ pub enum Registry {
 
 impl Registry {
     /// The current user's registration on this system. Tests use it only in the live check run by
-    /// hand; the others keep the registry in memory ([`MemoryKeys`]) and their files in scratch
+    /// hand; the others keep the registry in memory (`MemoryKeys`) and their files in scratch
     /// folders.
     #[cfg_attr(
         windows,

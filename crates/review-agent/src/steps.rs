@@ -24,7 +24,7 @@ pub enum StepOutcome {
 impl StepKind {
     /// The kind of a tool by its name: Claude Code's tools (`Read`, `Grep`, `Bash`, ...) and
     /// Codex's item types (`commandExecution`, `fileChange`, ...). Codex's commands are
-    /// [`StepKind::of_command`] when Codex parsed what they do.
+    /// `StepKind::of_command` when Codex parsed what they do.
     pub fn of_tool(tool: &str) -> Self {
         match tool {
             "Read" | "NotebookRead" | "LS" | "imageView" => Self::Read,

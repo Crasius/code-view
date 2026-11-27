@@ -5,7 +5,7 @@
 //!
 //! The chevron opens a dropdown right below the button (above it when the window ends too soon),
 //! right-aligned with it: the strategies the target branch allows (number keys pick), why one is
-//! preselected, "Always use for <repo>", what the branch forbids with the way to its policies, the
+//! preselected, "Always use for `<repo>`", what the branch forbids with the way to its policies, the
 //! commit message (for strategies that write a commit) and the source branch choice. Ctrl+Enter
 //! there arms the button, so keyboard and mouse confirm the same way. Edits stay for as long as
 //! the pull request page lives.
@@ -596,7 +596,7 @@ impl MergeButton {
         }
     }
 
-    /// "Delete <branch> after merging", remembered for the repository.
+    /// "Delete `<branch>` after merging", remembered for the repository.
     fn source_branch_choice(&mut self, ui: &mut Ui, page: Page<'_>, services: &mut Services) {
         let Page { session, detail, .. } = page;
         let scope = scope(session);

@@ -1,5 +1,5 @@
 //! Mailboxes for asking another page to open something: the connection setup at a token step or
-//! for a new cloud connection ([`request_fix`], [`request_add`]), Settings at a section or at the
+//! for a new cloud connection ([`request_fix`], `request_add`), Settings at a section or at the
 //! keyboard shortcuts ([`request_settings_section`], [`request_shortcuts`]), and the title bar's
 //! search ([`open_search`]).
 //!
@@ -43,7 +43,7 @@ pub(crate) fn request_add(ctx: &egui::Context, request: AddRequest) {
     mailbox::post(ctx, Id::unique(ADD_REQUEST_ID), request);
 }
 
-/// The pending [`request_add`], at most once.
+/// The pending `request_add`, at most once.
 pub fn take_add_request(ctx: &egui::Context) -> Option<AddRequest> {
     mailbox::take(ctx, Id::unique(ADD_REQUEST_ID))
 }

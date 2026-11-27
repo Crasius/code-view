@@ -36,7 +36,7 @@ pub(super) const PAGE_SIZE: usize = 100;
 /// A card on screen asks its listing again this often with a token. Our number: the page shown
 /// stays current without the user's F5 (a return to the window refreshes it at once anyway), at one
 /// listing per card on screen, plus the checks of its rows on screen where the listing cannot show
-/// a vote ([`super::statuses`]).
+/// a vote (`super::statuses`).
 pub const LIST_INTERVAL: Duration = Duration::from_secs(120);
 /// The same without a token. Our number, the pipelines' anonymous one: GitHub allows 60 anonymous
 /// requests an hour, which the pull request page's probe shares.

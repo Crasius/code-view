@@ -7,7 +7,7 @@
 //! pending item fires once, [`CATCH_UP_STAGGER`] apart, and the normal schedule resumes from there.
 //! eframe runs no frames at all while the window is minimized; an item whose interval passed
 //! meanwhile fires on the first frame after, however long the gap was (entries age only while
-//! frames run, see [`FORGET_AFTER`]). The user coming back after a pause or to the window
+//! frames run, see `FORGET_AFTER`). The user coming back after a pause or to the window
 //! ([`RefreshScheduler::wake`], `cv_shell::attention`) catches up the same way, before the interval.
 //! User actions (clicks, Retry, posting) never go through here and are never paused.
 //!

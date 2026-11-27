@@ -15,7 +15,7 @@ A native, low-footprint pull request review desktop app for Azure DevOps, GitHub
 - Never print, store or reuse auth tokens. Never read cookies. Never call an API with a browser session. The owner does every interactive login.
 
 ## Done
-- `sh scripts/check.sh` passes (format, hygiene, repo-lint, the clippy passes, the dependency bans; `--list` names the commands): zero errors, zero warnings, zero findings (rule `rust`, RS-AGENT-01). The Stop hook checks the changed files before the main session's turn ends; a lane runs the same gate itself (rule `lanes`).
+- `sh scripts/check.sh` passes (format, hygiene, repo-lint, the clippy passes, the dependency bans, rustdoc; `--list` names the commands): zero errors, zero warnings, zero findings (rule `rust`, RS-AGENT-01). The Stop hook checks the changed files before the main session's turn ends; a lane runs the same gate itself (rule `lanes`).
 - Read the full error first. Fix the root cause. Add no special-case patch and no catch-all that hides a broken path.
 - Rebuild the release binary, stop running instances, start the new one and tell the owner what changed ("Ship" in rule `rust`). "It compiles" is not "done". UI is proven by kittest assertions; agents never take or read screenshots, the owner gives the UI feedback (rule `ui`).
 - Name the evidence for each claim. Mark everything you did not check as NOT-VERIFIED.

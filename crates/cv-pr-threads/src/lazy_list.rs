@@ -1,6 +1,6 @@
 //! Long lists of blocks of different heights (the Threads panel's rows, the overview's cards)
 //! that lay out only the blocks near the view. A block laid out once keeps its height; while it
-//! is farther than [`AHEAD_SCREENS`] from the view it takes that much space and nothing else, so
+//! is farther than `AHEAD_SCREENS` from the view it takes that much space and nothing else, so
 //! a review with hundreds of threads costs what the few on screen cost. A block's height is
 //! measured again whenever it comes near the view, which corrects a height that changed while it
 //! was away (a new reply, another width).

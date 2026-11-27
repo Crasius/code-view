@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use super::Effect;
 use cv_runtime::route::PullRequestKey;
 
-/// The writes on their way and those landed since the last [`Flights::take_landed`].
+/// The writes on their way and those landed since the last `Flights::take_landed`.
 #[derive(Default)]
 pub struct Flights {
     shared: Arc<Mutex<Board>>,

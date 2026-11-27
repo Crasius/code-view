@@ -16,7 +16,7 @@ use crate::{AppPaths, atomic_file};
 ///
 /// Stored per connection (`viewed\<connection>\<pull request>.json`) so removing a connection
 /// removes its marks; files from before that layout move into their connection's folder on first
-/// load ([`FlatLayout`]). Retention drops a pull request's marks after 90 days without use.
+/// load (`FlatLayout`). Retention drops a pull request's marks after 90 days without use.
 pub struct ViewedFiles {
     file: PathBuf,
     stored: StoredViewed,

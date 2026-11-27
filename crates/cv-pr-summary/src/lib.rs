@@ -32,7 +32,7 @@
 //! and the line under the pointer stays put.
 //!
 //! With the header's Preview on, a Markdown file's card shows its rendered diff instead of its
-//! lines ([`rendered`]): its height comes from its blocks as they are measured, kept like a code
+//! lines (`rendered`): its height comes from its blocks as they are measured, kept like a code
 //! card's, and commenting on a block opens the file's text diff at its lines, as in the file view.
 #![forbid(unsafe_code)]
 // RS-LINT-02: egui lays out in f32 points while line counts are u32 and indices usize.
@@ -421,7 +421,7 @@ impl FolderSummary {
     /// The user's layout changed (or is known for the first time): every card takes its shape for
     /// it, from its diff where that was loaded. Heights measured for the other layout's widths are
     /// laid out again; the index keeps the card at the top of the view in place, and its rows keep
-    /// the line at the top (see [`DiffView`]'s scroll request).
+    /// the line at the top (see `DiffView`'s scroll request).
     fn follow_layout(&mut self, inputs: &SummaryInputs<'_>, is_split: bool) {
         if self.split == is_split {
             return;

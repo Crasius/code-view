@@ -223,7 +223,7 @@ async fn keep(cache: &Cache, key: u64, response: Response) -> Result<Fetched> {
     Ok(fetched)
 }
 
-/// Bytes of the answers kept for revalidation, at most [`MAX_CACHED_BYTES`].
+/// Bytes of the answers kept for revalidation, at most `MAX_CACHED_BYTES`.
 pub fn cached_bytes() -> usize {
     Cache::shared().store().bytes
 }

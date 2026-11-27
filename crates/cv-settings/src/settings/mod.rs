@@ -3,7 +3,7 @@
 //! keyboard shortcuts.
 //!
 //! A sidebar lists the sections and searches them; the page shows one section, or the rows that
-//! match the search grouped by section. Every setting is one row of [`rows`], drawn the same way
+//! match the search grouped by section. Every setting is one row of `rows`, drawn the same way
 //! in both views. Only sections whose settings change how something looks get a preview column:
 //! Appearance a sample diff, Merging the merge button. Without room for it the preview moves above
 //! the rows. Adding, editing and fixing a connection runs through the onboarding wizard, which

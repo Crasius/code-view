@@ -311,7 +311,7 @@ fn estimate_height(code: &str) -> f32 {
         .clamp(MIN_ESTIMATE, MAX_ESTIMATE)
 }
 
-/// "Diagram not drawn: <cause>, line 3." above the source, with Copy source and, when drawing
+/// "Diagram not drawn: `<cause>`, line 3." above the source, with Copy source and, when drawing
 /// again may help, Retry.
 fn failure_note(
     ui: &mut Ui,
