@@ -3,7 +3,6 @@
 //!
 //! The shared fixture lives in [`crate::testing`].
 
-use cv_base::theme;
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
 use cv_pr_threads::samples;
@@ -13,8 +12,6 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{DiffSide, ReviewThread, ThreadStatus};
 
-use crate::diff_view::DiffInputs;
-use crate::find::FindInputs;
 use crate::testing::{
     Fixture, NEW, OLD, PATH, fixture, fixture_of, harness, harness_sized, line_of, settle,
     thread_on_old_line, whole_file_fixture,
@@ -187,68 +184,33 @@ fn a_file_with_one_version_shows_each_of_its_lines() {
 /// Under load the contents came late and focus mode's counter went missing.
 #[test]
 fn the_change_in_focus_survives_rows_rebuilt_for_late_contents_and_threads() {
-    struct Late {
-        fixture: Fixture,
-        has_contents: bool,
-    }
-    let mut harness = Harness::builder()
-        .with_size([1180.0, 760.0])
-        .with_context_setup(|ctx| {
-            theme::fonts::install(ctx);
-            theme::motion::set_reduced(ctx, false);
-        })
-        .build_ui_state(
-            |ui, state: &mut Late| {
-                theme::activate(ui.ctx(), state.fixture.theme);
-                let fixture = &mut state.fixture;
-                let threads: Vec<&ReviewThread> = fixture.threads.iter().collect();
-                let inputs = DiffInputs {
-                    diff: &fixture.diff,
-                    contents: state.has_contents.then_some(&fixture.contents),
-                    threads: &threads,
-                    layout: fixture.layout,
-                    font_size: 13.0,
-                    wrap: false,
-                    can_comment: true,
-                    can_comment_outside_hunks: true,
-                    path: PATH,
-                    old_path: None,
-                    line_spans: None,
-                    show_threads: true,
-                    find: FindInputs::default(),
-                };
-                fixture.view.show(ui, &inputs, &mut fixture.split, &mut fixture.threads_ui);
-            },
-            Late { fixture: fixture(Layout::SideBySide), has_contents: false },
-        );
+    let mut late = fixture(Layout::SideBySide);
+    late.has_contents = false;
+    let mut harness = harness(late);
     settle(&mut harness);
     for _ in 0..2 {
         harness.key_press(egui::Key::N);
         settle(&mut harness);
     }
-    let position = harness.state().fixture.view.change_position();
+    let position = harness.state().view.change_position();
     assert_eq!(position.0, 2, "N twice: {position:?}");
 
     harness.state_mut().has_contents = true;
     settle(&mut harness);
-    assert_eq!(harness.state().fixture.view.change_position(), position, "the contents arrived");
+    assert_eq!(harness.state().view.change_position(), position, "the contents arrived");
     let line = line_of(OLD, "println!");
-    harness.state_mut().fixture.threads.push(thread_on_old_line(line, "Keep the trace?"));
+    harness.state_mut().threads.push(thread_on_old_line(line, "Keep the trace?"));
     settle(&mut harness);
-    assert_eq!(harness.state().fixture.view.change_position(), position, "a thread arrived");
+    assert_eq!(harness.state().view.change_position(), position, "a thread arrived");
     harness.key_press(egui::Key::N);
     settle(&mut harness);
-    assert_eq!(
-        harness.state().fixture.view.change_position().0,
-        3,
-        "N goes on from the change in focus"
-    );
+    assert_eq!(harness.state().view.change_position().0, 3, "N goes on from the change in focus");
 
     // A layout switch builds other changes: the count starts over.
-    harness.state_mut().fixture.layout = Layout::Inline;
-    harness.state_mut().fixture.view.relayout();
+    harness.state_mut().layout = Layout::Inline;
+    harness.state_mut().view.relayout();
     settle(&mut harness);
-    assert_eq!(harness.state().fixture.view.change_position().0, 0);
+    assert_eq!(harness.state().view.change_position().0, 0);
 }
 
 /// A new code size keeps the line under the pointer under it, as a browser zooms around the
