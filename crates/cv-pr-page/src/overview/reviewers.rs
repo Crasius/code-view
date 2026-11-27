@@ -249,11 +249,11 @@ fn add_me_offer(
     actions: &ActionRunner,
 ) -> Option<AddMe> {
     let connection_id = &session.key.connection_id;
-    let identities = Identities::of(ui.ctx());
-    if session.has_token && identities.state(connection_id).is_none() {
-        identities.ask(connection_id);
-        identities.start_asked(services);
+    if session.has_token && services.identities.state(connection_id).is_none() {
+        services.identities.ask(connection_id);
+        Identities::start_asked(services);
     }
+    let identities = &services.identities;
     let ticket = ui.ctx().data(|data| data.get_temp::<Ticket>(self_review_id(session)));
     let is_running = ticket.is_some_and(|ticket| actions.is_running(ticket));
     let has_added = ticket.and_then(|ticket| actions.outcome(ticket)) == Some(true);

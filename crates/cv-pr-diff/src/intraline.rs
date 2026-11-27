@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use similar::{ChangeTag, TextDiff};
+use similar::{Algorithm, ChangeTag, TextDiff};
 
 /// Lines longer than this are highlighted as a whole; word diffs on minified code cost too much.
 const MAX_LINE_BYTES: usize = 2_000;
@@ -18,7 +18,8 @@ pub fn compute(old: &str, new: &str) -> Highlights {
     if is_too_long || old == new {
         return Highlights::default();
     }
-    let diff = TextDiff::from_unicode_words(old, new);
+    // The shortest edit script: `Algorithm::Myers` may give it up on expensive searches.
+    let diff = TextDiff::configure().algorithm(Algorithm::RawMyers).diff_unicode_words(old, new);
     let mut highlights = Highlights::default();
     let mut old_offset = 0;
     let mut new_offset = 0;

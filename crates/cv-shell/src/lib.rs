@@ -1,4 +1,4 @@
-//! Window chrome: the navigation rail and the breadcrumbs (their trail and the routes are
+//! Window chrome: the navigation rail and the [`breadcrumbs`] (their trail and the routes are
 //! `cv_runtime`'s), the app-wide input behaviors ([`input`], contextual [`zoom`], pull request
 //! [`links`]), the single instance and the browser extension's side ([`browser`]). The title bar
 //! lives in the bin.
@@ -12,6 +12,7 @@
 )]
 
 pub mod attention;
+pub mod breadcrumbs;
 pub mod browser;
 pub mod focus_mode;
 pub mod frame_pacing;
@@ -21,6 +22,5 @@ pub mod links;
 pub mod nav_rail;
 pub mod rate_limit_banner;
 pub mod single_instance;
-pub mod top_bar;
 pub mod window_placement;
 pub mod zoom;

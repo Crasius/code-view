@@ -7,7 +7,7 @@
 //! depending on the page.
 
 use cv_services::Services;
-use cv_services::self_review::{self, Identities, Standing};
+use cv_services::self_review::{self, Standing};
 use cv_services::writes::{Added, Effect};
 use review_core::{ProviderKind, PullRequestState, ReviewVote};
 
@@ -47,16 +47,6 @@ pub enum NewReviewer {
 }
 
 impl LifecycleAction {
-    pub fn run(
-        self,
-        session: &PullRequestSession,
-        services: &Services,
-        actions: &mut ActionRunner,
-    ) {
-        // A write that did not start (another one runs) is visible as the busy header.
-        self.start(session, services, actions);
-    }
-
     /// The write's name in "<name> failed: <reason>".
     pub fn name(&self) -> &'static str {
         match self {
@@ -136,7 +126,7 @@ impl LifecycleAction {
                 let connection_id = session.key.connection_id.clone();
                 let future = self_review::add_me(
                     provider,
-                    Identities::of(&ctx),
+                    services.identities.clone(),
                     connection_id,
                     repository,
                     number,

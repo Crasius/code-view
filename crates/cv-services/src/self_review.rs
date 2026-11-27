@@ -4,7 +4,7 @@
 //! ([`ReviewVote::None`]).
 //!
 //! Who "me" is comes from [`Provider::current_user`], once per connection and run, in
-//! [`Identities`]; the Reviewers card and the list rows share it through egui memory. The request itself
+//! [`Identities`], held by [`Services::identities`] for every view. The request itself
 //! is [`add_me`]: it reads the user (the platform answers from its own cache where it has one),
 //! reads the pull request, and asks [`Provider::add_reviewer`] with the user's login only when
 //! they are not a reviewer yet, so a vote already cast is never reset (an Azure DevOps reviewer
@@ -52,20 +52,22 @@ pub struct RowAsk<'a> {
     pub is_running: bool,
     /// Why the row's last request failed.
     pub failure: Option<&'a str>,
+    /// The signed-in user of the connection, once known.
+    pub me: Option<&'a UserIdentity>,
+    /// Where the menu asks for the user while `me` is not known.
+    pub identities: &'a Identities,
 }
 
 /// The row menu's entry: "Add me as reviewer", off with its reason where it cannot work, "Review
 /// pending" once the user is a reviewer without a vote, nothing for the author or a voter. True
 /// when it was clicked. Opening the menu asks who the user is; [`Identities::start_asked`] loads it.
 pub fn menu_entry(ui: &mut egui::Ui, summary: &PullRequestSummary, row: &RowAsk<'_>) -> bool {
-    let identities = Identities::of(ui.ctx());
     if row.has_token {
-        identities.ask(row.connection_id);
+        row.identities.ask(row.connection_id);
     }
-    let me = identities.known(row.connection_id);
     let is_checking = row.has_token
-        && matches!(identities.state(row.connection_id), Some(Me::Asked | Me::Loading));
-    match standing(summary, me.as_ref()) {
+        && matches!(row.identities.state(row.connection_id), Some(Me::Asked | Me::Loading));
+    match standing(summary, row.me) {
         Standing::Reviewer(ReviewVote::None) => {
             let palette = theme::palette(ui.ctx());
             let (icon, _) = badges::vote_icon(ReviewVote::None, &palette);
@@ -182,21 +184,15 @@ pub enum Me {
     Failed,
 }
 
-/// The signed-in user per connection id, shared by every view through egui memory and filled by
-/// background tasks. Kept for the run: a token saved for another account shows after a restart
-/// or after the next "Add me as reviewer", which reads the user again.
+/// The signed-in user per connection id, shared by every view through [`Services::identities`]
+/// and filled by background tasks. Kept for the run: a token saved for another account shows
+/// after a restart or after the next "Add me as reviewer", which reads the user again.
 #[derive(Clone, Default)]
 pub struct Identities {
     by_connection: Arc<Mutex<HashMap<String, Me>>>,
 }
 
 impl Identities {
-    pub fn of(ctx: &egui::Context) -> Self {
-        ctx.data_mut(|data| {
-            data.get_temp_mut_or_default::<Self>(Id::unique("self_review_me")).clone()
-        })
-    }
-
     /// The user of `connection_id` once known.
     pub fn known(&self, connection_id: &str) -> Option<UserIdentity> {
         match self.lock().get(connection_id) {
@@ -214,9 +210,11 @@ impl Identities {
         self.lock().entry(connection_id.to_owned()).or_insert(Me::Asked);
     }
 
-    /// Loads every asked user in the background; each wakes the UI once when it arrives.
-    pub fn start_asked(&self, services: &mut Services) {
-        let asked: Vec<String> = self
+    /// Loads every asked user of [`Services::identities`] in the background; each wakes the UI
+    /// once when it arrives.
+    pub fn start_asked(services: &mut Services) {
+        let identities = services.identities.clone();
+        let asked: Vec<String> = identities
             .lock()
             .iter()
             .filter(|(_, me)| matches!(me, Me::Asked))
@@ -226,8 +224,8 @@ impl Identities {
             let Some(provider) = services.provider(&connection_id) else {
                 continue;
             };
-            self.lock().insert(connection_id.clone(), Me::Loading);
-            let identities = self.clone();
+            identities.lock().insert(connection_id.clone(), Me::Loading);
+            let identities = identities.clone();
             services.background.spawner().spawn(async move {
                 let me = provider.current_user().await.map_or(Me::Failed, Me::Known);
                 identities.lock().insert(connection_id, me);
@@ -261,10 +259,9 @@ impl RowRequests {
             return;
         };
         self.failed.remove(&key);
-        let identities = Identities::of(&services.background.ctx());
         let future = add_me(
             provider,
-            identities,
+            services.identities.clone(),
             key.connection_id.clone(),
             key.repository_key.clone(),
             key.number,
@@ -362,11 +359,13 @@ fn retry_id(key: &PullRequestKey) -> Id {
 
 #[cfg(test)]
 mod tests {
-    use cv_testkit::samples;
+    use cv_runtime::route::PullRequestKey;
+    use cv_testkit::{ScratchDir, samples};
     use review_core::{PullRequestSummary, ReviewVote, Reviewer, UserIdentity};
 
     use super::{Standing, standing};
-    use crate::person;
+    use crate::writes::{self, Answer, Effect};
+    use crate::{Services, person};
 
     fn summary(author: UserIdentity, reviewers: Vec<Reviewer>) -> PullRequestSummary {
         PullRequestSummary { author, reviewers, ..samples::summary("cli/cli", 7) }
@@ -390,5 +389,32 @@ mod tests {
         // A team named like the user is not the user.
         let team = summary(ana, vec![reviewer(person("1", "x"), ReviewVote::None, true)]);
         assert_eq!(standing(&team, Some(&me)), Standing::Outside);
+    }
+
+    /// Whether an approval of `key` that lands now is logged, which takes a known "me".
+    fn approval_is_logged(services: &mut Services, key: &PullRequestKey) -> bool {
+        services.writes.flights.start(key, &Effect::Vote(ReviewVote::Approved)).land(true);
+        assert!(writes::land(services), "the approval landed");
+        let mut detail = samples::detail(&key.repository_key, key.number);
+        let now = services.now();
+        services.writes.settle_detail(key, &mut detail, Answer::Host { asked_at: now - 1.0 }, now)
+    }
+
+    #[test]
+    fn a_user_learned_by_a_write_task_is_known_to_the_next_landing_without_a_frame() {
+        let dir = ScratchDir::new("self-review-identities");
+        let mut services =
+            Services::new(egui::Context::default(), dir.app_paths(), cv_providers::create_provider);
+        let key = PullRequestKey {
+            connection_id: "gh".into(),
+            repository_key: "cli/cli".into(),
+            number: 7,
+        };
+        assert!(!approval_is_logged(&mut services, &key), "not logged while the user is unknown");
+
+        // What `add_me`'s task holds: a handle of the services' identities.
+        let task_side = services.identities.clone();
+        task_side.learned("gh", person("1", "ada"));
+        assert!(approval_is_logged(&mut services, &key), "logged with the learned user");
     }
 }

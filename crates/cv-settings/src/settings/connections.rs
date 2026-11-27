@@ -17,15 +17,6 @@ use crate::onboarding;
 const FACT_LABEL_WIDTH: f32 = 128.0;
 /// Where a failure toast's Retry asks for the failed removal once more.
 const RETRY_REMOVAL_ID: &str = "connections.remove.retry";
-/// Where a removal leaves the removed connection for the app ([`take_removed`]).
-const REMOVED_ID: &str = "connections.removed";
-
-/// The connection removed in this frame, at most once. The app closes its pull request pages and
-/// only then lets retention delete its data, so no last save of a page (drafts, read marks) lands
-/// after the deletion and brings its folder back.
-pub fn take_removed(ctx: &egui::Context) -> Option<String> {
-    ctx.data_mut(|data| data.remove_temp::<String>(egui::Id::unique(REMOVED_ID)))
-}
 
 pub enum ListAction {
     Add,
@@ -40,12 +31,19 @@ pub struct ConnectionList {
     confirming_removal: Option<String>,
     /// The connection whose removal failed last, for Retry.
     failed_removal: Option<String>,
+    /// The connection removed this frame, until the app takes it ([`Self::take_removed`]).
+    removed: Option<String>,
 }
 
 impl ConnectionList {
     /// Opens `connection_id`'s facts, as when the user clicked its row.
     pub fn expand(&mut self, connection_id: &str) {
         self.expanded = Some(connection_id.to_owned());
+    }
+
+    /// The connection removed this frame, at most once (`SettingsPage::take_removed_connection`).
+    pub fn take_removed(&mut self) -> Option<String> {
+        self.removed.take()
     }
 
     pub fn show(&mut self, ui: &mut Ui, services: &mut Services) -> Option<ListAction> {
@@ -77,7 +75,11 @@ impl ConnectionList {
             }
         });
         if let Some(connection_id) = removed {
-            if !remove(ui.ctx(), services, &connection_id) {
+            if remove(services, &connection_id) {
+                // Its mirrors, logs, viewed marks, drafts and read marks go once its pages are
+                // closed.
+                self.removed = Some(connection_id);
+            } else {
                 self.failed_removal = Some(connection_id);
             }
             self.expanded = None;
@@ -284,14 +286,10 @@ fn facts(ui: &mut Ui, connection: &Connection, problem: Option<&AccessProblem>, 
 
 /// Removes the connection with everything kept for it, and says how that went; false when it
 /// failed.
-fn remove(ctx: &egui::Context, services: &mut Services, connection_id: &str) -> bool {
+fn remove(services: &mut Services, connection_id: &str) -> bool {
     match services.connections.remove(connection_id) {
         Ok(()) => {
             services.providers.remove(connection_id);
-            // Its mirrors, logs, viewed marks, drafts and read marks go once its pages are closed.
-            ctx.data_mut(|data| {
-                data.insert_temp(egui::Id::unique(REMOVED_ID), connection_id.to_owned());
-            });
             // Its favorites, collapsed card and saved filters go with it.
             let connections = &services.connections;
             services.settings.retain_connections(|id| connections.find(id).is_some());

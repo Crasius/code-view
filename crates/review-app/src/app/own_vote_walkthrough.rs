@@ -12,7 +12,6 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, open_pull_request};
 use super::walkthrough::{app, press, settle_background, wait_until};
-use cv_services::self_review::Identities;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -72,7 +71,7 @@ fn own_vote_reviewer_on_github_keeps_both_votes() {
     open_pull_request(&mut harness);
 
     wait_until(&mut harness, "who the user is", |harness| {
-        Identities::of(&harness.ctx).known("gh").is_some()
+        harness.state().services.identities.known("gh").is_some()
     });
     wait_until(&mut harness, "Approve on for a reviewer", |harness| {
         approve_buttons(harness).is_some_and(|enabled| enabled.iter().all(|is_on| *is_on))

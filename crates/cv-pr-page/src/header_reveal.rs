@@ -40,10 +40,9 @@
 
 use egui::{Id, Key, Modifiers, Pos2, Rangef, Rect, Ui, UiBuilder, UiKind, UiStackInfo};
 
-use review_store::HeaderMode;
+use review_store::{HeaderMode, PullRequestTab as Tab};
 
 use cv_base::theme::motion;
-use cv_runtime::route::PullRequestTab as Tab;
 
 /// After this long without scroll input the scrolling counts as stopped, even without the end of
 /// the gesture (wheels without phases).

@@ -13,7 +13,7 @@ use super::walkthrough::app_with;
 use cv_base::platform;
 use cv_runtime::route::{Landing, PullRequestKey, Route};
 use cv_runtime::trail::Trail;
-use cv_shell::top_bar;
+use cv_shell::breadcrumbs;
 use cv_testkit::{Clicks, ScratchDir};
 use cv_widgets::focus;
 
@@ -69,7 +69,12 @@ fn harness(scratch: &ScratchDir, width: f32) -> Harness<'static, ReviewApp> {
     let mut levels: Vec<(String, &'static str)> =
         FOLDERS.iter().map(|folder| ((*folder).to_owned(), "Files in this folder")).collect();
     levels.push((FILE.to_owned(), "The open file"));
-    top_bar::publish_trail(&harness.ctx, &pull_request(), "Summary of all changed files", levels);
+    breadcrumbs::publish_trail(
+        &harness.ctx,
+        &pull_request(),
+        "Summary of all changed files",
+        levels,
+    );
     settle(&mut harness);
     harness
 }
@@ -206,7 +211,7 @@ fn breadcrumbs_fold_into_an_overflow_list_and_stay_clear_of_the_caption() {
             settle(&mut harness);
             let level = FOLDERS.iter().position(|other| other == folder).map(|index| index + 1);
             assert_eq!(
-                top_bar::take_trail_click(&harness.ctx),
+                breadcrumbs::take_trail_click(&harness.ctx),
                 level,
                 "{width}: a folded folder opens that folder"
             );
@@ -245,7 +250,7 @@ fn the_files_trail_ends_at_the_pull_request_whose_crumb_leads_to_all_files() {
     let scratch = ScratchDir::new("files-crumb");
     let mut harness = harness(&scratch, 1440.0);
     // A file is open: the Files tab names no folders, only the way back to all files.
-    top_bar::publish_trail(
+    breadcrumbs::publish_trail(
         &harness.ctx,
         &pull_request(),
         "Summary of all changed files",
@@ -256,10 +261,10 @@ fn the_files_trail_ends_at_the_pull_request_whose_crumb_leads_to_all_files() {
     assert_eq!(names, [review_core::APP_NAME, CONNECTION, REPOSITORY, PULL_REQUEST]);
     harness.click_at(harness.get_by_role_and_label(Role::Link, PULL_REQUEST).rect());
     settle(&mut harness);
-    assert_eq!(top_bar::take_trail_click(&harness.ctx), Some(0), "the summary of all files");
+    assert_eq!(breadcrumbs::take_trail_click(&harness.ctx), Some(0), "the summary of all files");
 
     // At the top of the Files tab the pull request is the current page, not a link.
-    top_bar::publish_trail(&harness.ctx, &pull_request(), "", Vec::new());
+    breadcrumbs::publish_trail(&harness.ctx, &pull_request(), "", Vec::new());
     settle(&mut harness);
     assert!(harness.query_by_role_and_label(Role::Link, PULL_REQUEST).is_none());
 }

@@ -49,11 +49,9 @@ pub enum Target {
 
 /// The connection and pull request `url` names; sends nothing.
 pub fn locate(url: &str, connections: &[Connection]) -> Target {
-    let Ok(key) = pull_request_link::resolve(url, connections) else {
-        return pull_request_link::unconnected_cloud_link(url, connections)
-            .map_or(Target::NotAPullRequest, |(kind, organization)| {
-                Target::NotConnected(AddRequest { kind, organization })
-            });
+    let Some(key) = pull_request_link::resolve(url, connections) else {
+        return pull_request_link::unconnected_cloud_link(url)
+            .map_or(Target::NotAPullRequest, Target::NotConnected);
     };
     let connection = connections
         .iter()

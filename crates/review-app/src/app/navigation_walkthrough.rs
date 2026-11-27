@@ -15,13 +15,13 @@ use review_core::{
     Capabilities, Connection, GitRemote, ItemKind, ItemRef, LinkedItem, LinkedState, ProviderKind,
     PullRequestDetail, PullRequestSummary, Result, RunStatus,
 };
-use review_store::AppPaths;
+use review_store::{AppPaths, PullRequestTab};
 
 use super::ReviewApp;
 use super::scripted_platforms::{Origin, origin};
 use super::walkthrough::{app_with, saved_paths, settle_background, wait_until};
 use cv_base::platform;
-use cv_runtime::route::{PullRequestKey, PullRequestTab, Route};
+use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{Clicks, ScratchDir, samples};
 

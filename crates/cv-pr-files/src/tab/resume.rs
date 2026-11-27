@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use review_git::ChangedFile;
-use review_store::{AppSettings, FilesStart, LastTab, PullRequestStart};
+use review_store::{AppSettings, FilesStart, PullRequestStart, PullRequestTab};
 
 use super::review::viewed::ViewedMarks;
 use super::start::Start;
@@ -38,13 +38,13 @@ impl Resume {
 }
 
 /// The tab the user left the pull request on, if they ever left it.
-pub fn last_tab(tab: &FilesTab) -> Option<LastTab> {
+pub fn last_tab(tab: &FilesTab) -> Option<PullRequestTab> {
     tab.viewed.last_place().map(|place| place.tab)
 }
 
 /// Saves where the user is: `shown`, and the open file once the tab chose it (until then, the file
 /// to resume stays saved).
-pub fn remember_place(tab: &mut FilesTab, services: &mut Services, shown: LastTab) {
+pub fn remember_place(tab: &mut FilesTab, services: &mut Services, shown: PullRequestTab) {
     let file = if tab.start == Start::Undecided { &tab.resume.file } else { &tab.selected_path };
     tab.viewed.remember_place(services, shown, file.as_deref());
 }
