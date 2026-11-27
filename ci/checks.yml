@@ -6,7 +6,8 @@ variables:
   # rust-toolchain.toml pins.
   RUST_IMAGE: rust:1.99.1-bookworm@sha256:7085845219c18e7c5b1f34ed9ce89b84f822f2e3d54a02774cedc996ac0f304f
   ZIGBUILD_IMAGE: ghcr.io/rust-cross/cargo-zigbuild:0.24.0@sha256:eb5578cfc06e070a09deb7b5852474bd128a4e561f9f123261b5ed2405e478b1
-  XWIN_IMAGE: ghcr.io/rust-cross/cargo-xwin:0.23.1@sha256:9856b895265d4966f212228ba64802cf89337e2a2a537aa2533c1b8784cbc81b
+  XWIN_VERSION: "0.23.1"
+  XWIN_IMAGE: ghcr.io/rust-cross/cargo-xwin:$XWIN_VERSION@sha256:9856b895265d4966f212228ba64802cf89337e2a2a537aa2533c1b8784cbc81b
   # Moves only the downloaded crates into the cache; rustup and the cargo plugins stay in the image.
   CARGO_HOME: $CI_PROJECT_DIR/.cargo-home
   CARGO_TERM_COLOR: always
@@ -82,13 +83,13 @@ default:
 
 # The two Windows builds: the image with cargo-xwin and its download of the Windows SDK and CRT,
 # one cache per job. Only a run by hand on main writes it (CACHE_POLICY), since main's pushes build
-# nothing; the key names the image's version, so bump it with XWIN_IMAGE.
+# nothing; the key names the image's version.
 .xwin-build:
   image: $XWIN_IMAGE
   cache:
     - <<: *cargo-downloads
       policy: pull
-    - key: xwin-0.23.1-$CI_JOB_NAME_SLUG
+    - key: xwin-$XWIN_VERSION-$CI_JOB_NAME_SLUG
       policy: $CACHE_POLICY
       paths: [.xwin-cache]
 

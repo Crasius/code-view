@@ -14,7 +14,8 @@ set -eu
 out="${GITHUB_OUTPUT:?Run it in GitHub Actions.}"
 
 # The crates with code under cfg(target_os = "macos") or macOS-only dependencies: the folders under
-# crates/ whose files name either cfg (vendored code aside), as the package names of their manifests.
+# crates/ whose files name either cfg (vendored code aside), as the package names of their
+# manifests.
 # cfg(unix) code runs on Linux and needs no Mac.
 mac_crates="$(git grep -l -e 'target_os = "macos"' -e 'not(target_os = "linux")' -- 'crates/*' ':!crates/*/vendor/*' |
     cut -d / -f 2 | sort -u | while IFS= read -r dir; do

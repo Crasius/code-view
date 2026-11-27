@@ -2,7 +2,8 @@
 # check.sh: the one entry point for the repository's checks, for contributors, lanes and both CIs.
 #
 #   sh scripts/check.sh [--base <rev>]            the static gate: fmt hygiene repo-lint clippy deps
-#   sh scripts/check.sh [--base <rev>] <step>...  only the named steps; also advisories, licenses, shear, test
+#   sh scripts/check.sh [--base <rev>] <step>...  only the named steps; also advisories,
+#                                                 licenses, shear, test
 #   sh scripts/check.sh --changed [--base <rev>]  rustfmt on the changed .rs files, clippy on their crates
 #   sh scripts/check.sh --list                    every step with its commands
 #
@@ -10,9 +11,9 @@
 # failed, 2 = a usage error. --base is repo-lint's allowlist base and the fork point `test` and
 # --changed compare with; without it repo-lint and `test` take main when it resolves, else HEAD,
 # and --changed looks at the uncommitted files only.
-# A missing tool (cargo-deny, cargo-about, cargo-shear): without CI set the step prints SKIPPED with the install
-# command and the summary lists it as NOT-VERIFIED, the exit code stays; with CI set the step
-# fails. The versions come from ci/install-build-deps.sh, the one place that pins them.
+# A missing tool (cargo-deny, cargo-about, cargo-shear): without CI set the step prints SKIPPED
+# with the install command and the summary lists it as NOT-VERIFIED, the exit code stays; with CI
+# set the step fails. The versions come from ci/install-build-deps.sh, the one place that pins them.
 # shear is not in the default list: cargo-shear is not installed on the machine whose local checks
 # are the gate, so CI runs it by name (`sh scripts/check.sh shear`).
 # CARGO_BUILD_JOBS limits cargo's jobs; the script passes no -j. CHECK_BUILD_SECONDS=<file>
