@@ -16,7 +16,7 @@ pub fn hide_std_console(_command: &mut std::process::Command) {}
 
 /// Starts `command` and leaves a thread that waits for it, so the finished child is reaped instead
 /// of staying a zombie until the app exits.
-pub fn spawn_reaped(command: &mut std::process::Command) -> std::io::Result<()> {
+pub(crate) fn spawn_reaped(command: &mut std::process::Command) -> std::io::Result<()> {
     let mut child = command.spawn()?;
     std::thread::spawn(move || child.wait());
     Ok(())
@@ -29,7 +29,7 @@ pub fn downloads_dir() -> Option<PathBuf> {
 }
 
 /// The window chrome draws with no font of its own.
-pub fn register_chrome_fonts(_fonts: &mut FontDefinitions) {}
+pub(crate) fn register_chrome_fonts(_fonts: &mut FontDefinitions) {}
 
 /// No placement: the window opens where the system puts it (centered at the default size).
 pub enum PlacedWindow {}

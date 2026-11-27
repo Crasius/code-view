@@ -22,10 +22,11 @@ use objc2::rc::Weak;
 use objc2_app_kit::{NSView, NSWindow};
 use review_store::checkouts::TerminalChoice;
 
+pub(crate) use super::portable::register_chrome_fonts;
 use super::portable::spawn_reaped;
 pub use super::portable::{
     DialogOwner, FrameHold, PlacedWindow, dialog_owner, downloads_dir, hide_console,
-    hide_std_console, register_chrome_fonts,
+    hide_std_console,
 };
 use super::window_drag::DragArea;
 use super::{FontFace, FontSources, PageSwipe, SaveRequest, VariableUiFont};
@@ -50,7 +51,7 @@ const FONT_DIR: &str = "/System/Library/Fonts";
 
 /// Adds [`TOOL_DIRS`] to `PATH`, so `gh`, `az` and a Homebrew `git` start from the Dock as they do
 /// from a terminal. Call first in `main`, before any other thread runs.
-pub fn prepare_environment() {
+pub(crate) fn prepare_environment() {
     let current = std::env::var_os("PATH").unwrap_or_default();
     let mut dirs: Vec<PathBuf> = std::env::split_paths(&current).collect();
     for dir in TOOL_DIRS {
@@ -95,7 +96,7 @@ pub fn open_terminal(dir: &Path, program: &str, args: &[String]) -> std::io::Res
 /// San Francisco (variable; Helvetica where it is missing), SF Mono where installed, else Menlo or
 /// Monaco, and Apple Symbols. No emoji face: Apple Color Emoji holds bitmaps only, which egui does
 /// not draw; egui's bundled emoji font stays the fallback.
-pub fn font_sources() -> FontSources {
+pub(crate) fn font_sources() -> FontSources {
     let face = |file: &str, index: u32| FontFace { path: Path::new(FONT_DIR).join(file), index };
     FontSources {
         variable_ui: Some(VariableUiFont { face: face("SFNS.ttf", 0), optical_size: None }),
@@ -108,7 +109,7 @@ pub fn font_sources() -> FontSources {
 }
 
 /// "Reduce motion" is on (System Settings → Accessibility → Display).
-pub fn prefers_reduced_motion() -> bool {
+pub(crate) fn prefers_reduced_motion() -> bool {
     objc2_app_kit::NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion()
 }
 

@@ -10,10 +10,10 @@ use std::process::Command;
 use egui::{Rangef, Rect, Ui, ViewportBuilder};
 use review_store::checkouts::TerminalChoice;
 
+pub(crate) use super::portable::register_chrome_fonts;
 use super::portable::spawn_reaped;
 pub use super::portable::{
     DialogOwner, FrameHold, PlacedWindow, dialog_owner, hide_console, hide_std_console,
-    register_chrome_fonts,
 };
 use super::{FontFace, FontSources, SaveRequest, VariableUiFont};
 
@@ -56,7 +56,7 @@ const CODE_FACES: [&str; 4] = [
 const SYMBOL_FACES: [&str; 2] = ["DejaVuSans.ttf", "NotoSansSymbols2-Regular.ttf"];
 
 /// The environment as started: apps started from the desktop see the session's `PATH`.
-pub fn prepare_environment() {}
+pub(crate) fn prepare_environment() {}
 
 /// The system's window, named with the app's id: Wayland compositors and X11 docks match it to a
 /// `de.crasius.codeview.desktop` file for the icon and the window grouping.
@@ -90,7 +90,7 @@ pub fn open_terminal(dir: &Path, program: &str, args: &[String]) -> std::io::Res
 }
 
 /// The desktop's interface and monospace fonts as fontconfig resolves them, then the usual files.
-pub fn font_sources() -> FontSources {
+pub(crate) fn font_sources() -> FontSources {
     let interface = gnome_font("font-name").unwrap_or_else(|| "sans-serif".to_owned());
     let monospace = gnome_font("monospace-font-name").unwrap_or_else(|| "monospace".to_owned());
     let regular = fc_match(&format!("{interface}:weight=regular"));
@@ -126,7 +126,7 @@ pub fn font_sources() -> FontSources {
 
 /// GNOME's Settings → Accessibility → "Reduce Animation" (the interface's `enable-animations`
 /// key) is on. Read once at start-up; desktops without the key animate.
-pub fn prefers_reduced_motion() -> bool {
+pub(crate) fn prefers_reduced_motion() -> bool {
     gsettings("org.gnome.desktop.interface", "enable-animations")
         .is_some_and(|value| value == "false")
 }

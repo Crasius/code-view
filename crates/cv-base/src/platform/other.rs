@@ -8,10 +8,11 @@ use std::process::Command;
 use egui::{Rangef, Rect, Ui, ViewportBuilder};
 use review_store::checkouts::TerminalChoice;
 
+pub(crate) use super::portable::register_chrome_fonts;
 use super::portable::spawn_reaped;
 pub use super::portable::{
     DialogOwner, FrameHold, PlacedWindow, dialog_owner, downloads_dir, hide_console,
-    hide_std_console, register_chrome_fonts,
+    hide_std_console,
 };
 use super::{FontSources, SaveRequest};
 
@@ -23,7 +24,7 @@ pub const EXAMPLE_CLONE: &str = "/home/you/src/login-app";
 pub const TERMINALS: &[(TerminalChoice, &str)] = &[(TerminalChoice::System, "xterm")];
 
 /// The environment as started.
-pub fn prepare_environment() {}
+pub(crate) fn prepare_environment() {}
 
 /// The system's window as it is.
 pub fn viewport(builder: ViewportBuilder) -> ViewportBuilder {
@@ -41,12 +42,12 @@ pub fn open_terminal(dir: &Path, program: &str, args: &[String]) -> std::io::Res
 }
 
 /// None: egui's bundled fonts serve the text.
-pub fn font_sources() -> FontSources {
+pub(crate) fn font_sources() -> FontSources {
     FontSources::default()
 }
 
 /// No system setting the app reads.
-pub fn prefers_reduced_motion() -> bool {
+pub(crate) fn prefers_reduced_motion() -> bool {
     false
 }
 
