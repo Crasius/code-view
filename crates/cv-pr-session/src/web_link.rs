@@ -1,5 +1,7 @@
-//! Links to a changed file on its hosting platform, offered wherever the app cannot show a file
-//! itself (binary content, failed loads), named after the platform.
+//! Addresses on the pull request's platform: the pull request itself, a changed file the app
+//! cannot show (binary content, failed loads), a repository file at a line (the assistant's
+//! citations) and a file as the browser shows it raw (Markdown images). Link labels name the
+//! platform.
 
 use cv_runtime::links::pull_request_link::repository_root;
 use review_core::ProviderKind;

@@ -54,11 +54,10 @@ pub(crate) fn act(
         }
         Action::SwitchModel(choice) => {
             assistant.chat.model = choice;
-            // A running CLI keeps its model: the next question starts it again, resumed.
-            if !assistant.is_busy() {
-                assistant.runner.end();
-                assistant.model_in_use = None;
-            }
+            // The chip offers no model while an answer runs; the next question starts the CLI on
+            // this one, resumed.
+            assistant.runner.end();
+            assistant.model_in_use = None;
         }
         Action::NewConversation => new_conversation(assistant),
         Action::UndoNewConversation => undo_new_conversation(assistant),

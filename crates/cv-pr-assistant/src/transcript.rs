@@ -188,9 +188,12 @@ pub(crate) fn now_ms() -> u64 {
     u64::try_from(since_epoch.as_millis()).unwrap_or(u64::MAX)
 }
 
-/// A conversation read from disk: a turn the app closed during counts as stopped.
+/// A conversation read from disk or shown again: a turn the app closed during counts as stopped.
+/// Its open thinking keeps no length, since the clock ran on while nothing was thinking.
 pub(crate) fn settle_loaded(chat: &mut Chat) {
-    stop(chat);
+    if let Some(turn) = running(chat) {
+        turn.end = TurnEnd::Stopped;
+    }
 }
 
 #[cfg(test)]
@@ -290,7 +293,12 @@ mod tests {
 
         let mut loaded = Chat { agent: AgentKind::Codex, ..Chat::default() };
         begin(&mut loaded, TurnKind::Question, "Cut off", None, String::new());
+        apply_at(&mut loaded, AgentEvent::Thinking("x".into()), 0);
         settle_loaded(&mut loaded);
         assert_eq!(loaded.turns[0].end, TurnEnd::Stopped, "the app closed during the turn");
+        assert_eq!(
+            loaded.turns[0].steps[0].duration_ms, None,
+            "thinking cut off by the close has no known length"
+        );
     }
 }

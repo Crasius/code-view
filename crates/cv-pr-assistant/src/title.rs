@@ -20,26 +20,6 @@ use super::{Action, Assistant};
 pub(crate) const NEW_SHORTCUT: &str = shortcut!(command "N");
 pub(crate) const NEW_KEY: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::N);
 
-/// A title-line button clicked this frame.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum TitleClick {
-    Expand,
-    Collapse,
-    Terminal,
-    NewConversation,
-}
-
-impl TitleClick {
-    pub(super) fn action(self) -> Action {
-        match self {
-            Self::Expand => Action::Expand,
-            Self::Collapse => Action::Collapse,
-            Self::Terminal => Action::ContinueInTerminal,
-            Self::NewConversation => Action::NewConversation,
-        }
-    }
-}
-
 /// What a title line shows besides its buttons, read before the card or panel borrows the
 /// assistant.
 pub struct TitleLine {
@@ -58,7 +38,7 @@ impl TitleLine {
 /// What the title line gave this frame: the button clicked, and the chip, whose menu the
 /// conversation's head opens.
 pub struct TitleOutput {
-    pub(super) click: Option<TitleClick>,
+    pub(super) click: Option<Action>,
     pub(super) chip: Response,
 }
 
@@ -67,14 +47,14 @@ pub fn card_action(ui: &mut Ui, line: &TitleLine) -> TitleOutput {
     let tooltip = format!("Expand ({OPEN_SHORTCUT})");
     let expand = buttons::icon(ui, icons::ARROWS_OUT_SIMPLE, &tooltip).clicked();
     let others = terminal_new_and_chip(ui, line);
-    if expand { TitleOutput { click: Some(TitleClick::Expand), ..others } } else { others }
+    if expand { TitleOutput { click: Some(Action::Expand), ..others } } else { others }
 }
 
 /// The panel's title-line controls, as the card's with collapse in place of expand.
 pub(super) fn panel_action(ui: &mut Ui, line: &TitleLine) -> TitleOutput {
     let collapse = buttons::icon(ui, icons::ARROWS_IN_SIMPLE, "Collapse (Esc)").clicked();
     let others = terminal_new_and_chip(ui, line);
-    if collapse { TitleOutput { click: Some(TitleClick::Collapse), ..others } } else { others }
+    if collapse { TitleOutput { click: Some(Action::Collapse), ..others } } else { others }
 }
 
 /// "Continue in terminal", then "New conversation" left of it, then the chip.
@@ -84,9 +64,9 @@ fn terminal_new_and_chip(ui: &mut Ui, line: &TitleLine) -> TitleOutput {
     let new = buttons::icon(ui, icons::PLUS, &tooltip).clicked();
     let chip = chip::in_title(ui, &line.chip);
     let click = if terminal {
-        Some(TitleClick::Terminal)
+        Some(Action::ContinueInTerminal)
     } else {
-        new.then_some(TitleClick::NewConversation)
+        new.then_some(Action::NewConversation)
     };
     TitleOutput { click, chip }
 }

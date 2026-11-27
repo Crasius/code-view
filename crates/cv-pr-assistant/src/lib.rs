@@ -271,7 +271,6 @@ impl Assistant {
             RunnerEvent::CheckoutFailed(message) => {
                 self.block = Some(Block::Checkout(message));
             }
-            RunnerEvent::SessionStarted => {}
             RunnerEvent::SessionFailed(error) => self.fail(&error),
             RunnerEvent::Agent(event) => match transcript::apply(&mut self.chat, event) {
                 Applied::Progress => {}

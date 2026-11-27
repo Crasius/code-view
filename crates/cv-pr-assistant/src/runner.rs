@@ -26,7 +26,6 @@ type Batch = (Vec<AgentEvent>, UnboundedReceiver<AgentEvent>);
 pub(crate) enum RunnerEvent {
     CheckoutReady(Checkout),
     CheckoutFailed(String),
-    SessionStarted,
     SessionFailed(AgentError),
     Agent(AgentEvent),
 }
@@ -169,7 +168,6 @@ impl Runner {
                     self.session = Some(session);
                     self.resting = Some(events);
                     self.starting = None;
-                    finished.push(RunnerEvent::SessionStarted);
                 }
                 TaskPoll::Done(Err(error)) => {
                     self.starting = None;
