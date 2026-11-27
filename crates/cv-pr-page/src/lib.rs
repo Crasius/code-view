@@ -38,7 +38,8 @@ use self::overview::{LinkedAction, OverviewTab, PipelineRequest};
 use self::vote_comment::VoteComposer;
 use cv_base::theme::{icons, motion, style};
 use cv_editor::markdown_editor::{Person, PullRequestContext};
-use cv_pr_assistant::{Assistant, citations};
+use cv_pr_assistant::Assistant;
+use cv_pr_assistant::citations::{self, CitedLines};
 use cv_pr_files::FilesTab;
 use cv_pr_pipelines::PipelinesTab;
 use cv_pr_session::actions::{ActionRunner, Refresh};
@@ -328,12 +329,12 @@ impl TabParts<'_> {
         &mut self,
         ctx: &egui::Context,
         tab: &mut Tab,
-        cited: Option<(String, u32, u32)>,
+        cited: Option<CitedLines>,
         is_assistant_on: bool,
     ) {
-        if let Some((path, start, end)) = cited {
-            self.assistant.follow_citation(&path, start, end);
-            self.files.show_lines(&path, start, end);
+        if let Some(lines) = cited {
+            self.assistant.follow_citation(&lines);
+            self.files.show_lines(&lines.path, lines.first, lines.last);
             *tab = Tab::Files;
         }
         let requested = assistant_link::take_request(ctx);
@@ -395,8 +396,8 @@ impl TabParts<'_> {
                 if self.files.take_overview_request() {
                     *tab = Tab::Overview;
                 }
-                if let Some((path, first, last)) = self.assistant.mini_chat(ui, session, services) {
-                    self.files.show_lines(&path, first, last);
+                if let Some(lines) = self.assistant.mini_chat(ui, session, services) {
+                    self.files.show_lines(&lines.path, lines.first, lines.last);
                 }
             }
             Tab::Commits => match commits::show(ui, session) {
@@ -593,7 +594,7 @@ fn follow_links(
     services: &mut Services,
     navigator: &mut Navigator,
     here: &Here,
-) -> Option<(String, u32, u32)> {
+) -> Option<CitedLines> {
     let mut cited = None;
     if let Some(text) = cv_markdown::take_in_app_request(ctx) {
         match citations::parse_target(&text) {

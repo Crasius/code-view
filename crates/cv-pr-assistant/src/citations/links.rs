@@ -82,14 +82,15 @@ struct CitationLinks {
 
 impl LinkResolver for CitationLinks {
     fn resolve(&self, target: &str) -> Option<ResolvedLink> {
-        let Some((path, start, end)) = citations::parse_target(target) else {
+        let Some(citations::CitedLines { path, first, last }) = citations::parse_target(target)
+        else {
             return self.inner.as_ref().and_then(|inner| inner.resolve(target));
         };
         let web_url =
-            web_link::line_url(self.kind, &self.pull_request_url, &path, &self.head, start)
+            web_link::line_url(self.kind, &self.pull_request_url, &path, &self.head, first)
                 .unwrap_or_else(|| self.pull_request_url.clone());
         let lines =
-            if start == end { format!("line {start}") } else { format!("lines {start}–{end}") };
+            if first == last { format!("line {first}") } else { format!("lines {first}–{last}") };
         let (in_app, title) = if self.changed.contains(&path) {
             (InApp::Yes, format!("{path}, {lines}: open in the Files tab"))
         } else {

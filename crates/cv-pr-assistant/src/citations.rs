@@ -171,11 +171,19 @@ pub(crate) fn target(path: &str, start: u32, end: u32) -> String {
     format!("{SCHEME}{path}#{start}-{end}")
 }
 
+/// The lines a citation link names: a file of the checkout and a 1-based, inclusive range.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CitedLines {
+    pub path: String,
+    pub first: u32,
+    pub last: u32,
+}
+
 /// Path and lines of a citation link's target; `None` for every other target.
-pub fn parse_target(target: &str) -> Option<(String, u32, u32)> {
+pub fn parse_target(target: &str) -> Option<CitedLines> {
     let (path, lines) = target.strip_prefix(SCHEME)?.rsplit_once('#')?;
-    let (start, end) = lines.split_once('-')?;
-    Some((path.to_owned(), start.parse().ok()?, end.parse().ok()?))
+    let (first, last) = lines.split_once('-')?;
+    Some(CitedLines { path: path.to_owned(), first: first.parse().ok()?, last: last.parse().ok()? })
 }
 
 /// A citation link [`link`] wrote into an answer.
@@ -183,9 +191,7 @@ pub fn parse_target(target: &str) -> Option<(String, u32, u32)> {
 pub(crate) struct Linked {
     /// The link's text as it reads, without the backticks of a code span.
     pub(crate) shown: String,
-    pub(crate) path: String,
-    pub(crate) start: u32,
-    pub(crate) end: u32,
+    pub(crate) lines: CitedLines,
     /// Where the link starts in the text.
     pub(crate) at: usize,
 }
@@ -204,9 +210,9 @@ pub(crate) fn linked(text: &str) -> Vec<Linked> {
         from = target_at + target_end;
         let open = text.get(..close).and_then(|before| before.rfind('['));
         let target = text.get(target_at..from).and_then(parse_target);
-        if let (Some(open), Some((path, start, end))) = (open, target) {
+        if let (Some(open), Some(lines)) = (open, target) {
             let shown = text.get(open + 1..close).unwrap_or_default().trim_matches('`').to_owned();
-            found.push(Linked { shown, path, start, end, at: open });
+            found.push(Linked { shown, lines, at: open });
         }
     }
     found
@@ -285,7 +291,10 @@ mod tests {
             "See [`src/a.rs:3`](<codeview-cite:src/a.rs#3-3>) and src/gone.rs:9 or \
              [src/b.rs:1-2](<codeview-cite:src/b.rs#1-2>)."
         );
-        assert_eq!(parse_target("codeview-cite:src/b.rs#1-2"), Some(("src/b.rs".into(), 1, 2)));
+        assert_eq!(
+            parse_target("codeview-cite:src/b.rs#1-2"),
+            Some(CitedLines { path: "src/b.rs".into(), first: 1, last: 2 })
+        );
         assert_eq!(parse_target("https://x.test"), None);
     }
 
@@ -295,7 +304,9 @@ mod tests {
         let linked = linked(&link(text, &find(text)));
         let read: Vec<(&str, &str, u32, u32)> = linked
             .iter()
-            .map(|link| (link.shown.as_str(), link.path.as_str(), link.start, link.end))
+            .map(|link| {
+                (link.shown.as_str(), link.lines.path.as_str(), link.lines.first, link.lines.last)
+            })
             .collect();
         assert_eq!(read, [("src/a.rs:3", "src/a.rs", 3, 3), ("src/b.rs:1-2", "src/b.rs", 1, 2)]);
         assert_eq!(linked[0].at, 4, "where the link starts");

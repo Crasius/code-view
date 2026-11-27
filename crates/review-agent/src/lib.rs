@@ -98,3 +98,26 @@ pub fn terminal_command(kind: AgentKind, session_id: Option<&str>) -> (String, V
         AgentKind::Codex => (program, vec!["resume".to_owned(), session_id.to_owned()]),
     }
 }
+
+/// The command that signs the agent's CLI in, run in a terminal: program and arguments.
+pub fn sign_in_command(kind: AgentKind) -> (String, Vec<String>) {
+    let program = locate::program_name(kind).to_owned();
+    match kind {
+        AgentKind::Claude => (program, Vec::new()),
+        AgentKind::Codex => (program, vec!["login".to_owned()]),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sign_in_starts_each_cli_in_its_login() {
+        let commands = AgentKind::ALL.map(sign_in_command);
+        assert_eq!(
+            commands,
+            [("claude".to_owned(), Vec::new()), ("codex".to_owned(), vec!["login".to_owned()])]
+        );
+    }
+}
