@@ -1044,9 +1044,9 @@ dependencies = [
  "egui",
  "egui_kittest",
  "pulldown-cmark",
- "reqwest",
  "review-core",
  "review-store",
+ "url",
  "urlencoding",
 ]
 

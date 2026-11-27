@@ -550,7 +550,7 @@ fn is_web(src: &str) -> bool {
 
 /// The host of an absolute address, else the source as written.
 fn host_of(src: &str) -> String {
-    reqwest::Url::parse(src)
+    url::Url::parse(src)
         .ok()
         .and_then(|url| url.host_str().map(str::to_owned))
         .unwrap_or_else(|| src.to_owned())
