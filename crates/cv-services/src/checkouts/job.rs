@@ -12,7 +12,7 @@ use review_git::checkout::{self, CheckoutError, Done, Event, Made, Request, Targ
 use review_store::checkouts::OpenWith;
 use tokio::sync::oneshot;
 
-use cv_runtime::background::{Background, Task, TaskPoll};
+use cv_runtime::background::{Background, TASK_LOST, Task, TaskPoll};
 use cv_runtime::route::PullRequestKey;
 use cv_widgets::progress_log::{LineKind, ProgressLog, format_duration};
 
@@ -47,7 +47,7 @@ pub struct Plan {
 impl Plan {
     /// Where the clone keeps the pull request's head.
     pub fn pull_ref(&self) -> String {
-        format!("refs/codeview/pull/{}/head", self.key.number)
+        super::pull_ref(self.key.number)
     }
 }
 
@@ -223,10 +223,11 @@ pub struct Job {
     phase: JobPhase,
 }
 
-/// How a polled job ended this frame.
-pub enum Outcome {
-    Done { done: Done, took: Duration, log: Vec<String> },
-    Failed,
+/// A checkout that succeeded this frame.
+pub struct Finished {
+    pub done: Done,
+    pub took: Duration,
+    pub log: Vec<String>,
 }
 
 impl Job {
@@ -297,7 +298,8 @@ impl Job {
         }
     }
 
-    pub fn poll(&mut self) -> Option<Outcome> {
+    /// The run's result once it succeeded; a failure shows in [`Job::phase`].
+    pub fn poll(&mut self) -> Option<Finished> {
         let task = self.task.as_mut()?;
         let ended = match task.poll() {
             TaskPoll::Pending => return None,
@@ -313,14 +315,13 @@ impl Job {
                 progress.succeed(now);
                 let took = progress.elapsed(now);
                 let log = progress.log.text().lines().map(str::to_owned).collect();
-                return Some(Outcome::Done { done, took, log });
+                return Some(Finished { done, took, log });
             }
             Some(Ended::Cancelled) => Failure::Cancelled,
             Some(Ended::Failed(error)) => self.failure(error),
-            None => Failure::Git {
-                title: "The checkout stopped".into(),
-                message: "The background task stopped unexpectedly.".into(),
-            },
+            None => {
+                Failure::Git { title: "The checkout stopped".into(), message: TASK_LOST.into() }
+            }
         };
         let message = match &failure {
             Failure::Git { message, .. } => message.clone(),
@@ -330,7 +331,7 @@ impl Job {
         };
         self.progress().fail(&message, now);
         self.phase = JobPhase::Failed(failure);
-        Some(Outcome::Failed)
+        None
     }
 
     fn failure(&self, error: CheckoutError) -> Failure {
