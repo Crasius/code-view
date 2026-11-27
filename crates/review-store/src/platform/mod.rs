@@ -46,7 +46,7 @@ pub(crate) struct DataRoots {
     pub cache: PathBuf,
 }
 
-/// The XDG base directories, for [`linux`] and [`other`]: `$XDG_CONFIG_HOME` (`~/.config`) and
+/// The XDG base directories, for `linux` and `other`:`$XDG_CONFIG_HOME` (`~/.config`) and
 /// `$XDG_CACHE_HOME` (`~/.cache`).
 #[cfg(not(any(windows, target_os = "macos")))]
 fn xdg_data_roots() -> DataRoots {
