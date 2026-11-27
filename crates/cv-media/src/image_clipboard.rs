@@ -47,7 +47,7 @@ pub struct Pixels {
 }
 
 /// Where a copied image goes: the system clipboard, or a fake in tests.
-pub trait ImageSink: Send + Sync {
+pub(crate) trait ImageSink: Send + Sync {
     /// Puts `pixels` on the clipboard; else why not, for the toast.
     fn set_image(&self, pixels: &Pixels) -> Result<(), String>;
 }
@@ -102,7 +102,8 @@ impl FakeClipboard {
     }
 
     /// Every copy from now on fails with `reason`.
-    pub fn fail_with(&self, reason: &str) {
+    #[cfg(test)]
+    pub(crate) fn fail_with(&self, reason: &str) {
         *self.failure.lock().unwrap_or_else(PoisonError::into_inner) = Some(reason.to_owned());
     }
 }

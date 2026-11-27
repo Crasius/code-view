@@ -17,16 +17,16 @@ mod inline;
 
 use std::sync::Arc;
 
-pub use self::inline::{Inline, Run};
+pub(crate) use self::inline::{Inline, Run};
 
 /// A hard line break inside a block's text (`\` + newline in Markdown, Shift+Enter).
-pub const HARD_BREAK: char = '\u{2028}';
+pub(crate) const HARD_BREAK: char = '\u{2028}';
 /// The char an atom occupies in a block's text.
-pub const ATOM_CHAR: char = '\u{FFFC}';
+pub(crate) const ATOM_CHAR: char = '\u{FFFC}';
 
 /// An inline mark besides links.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Mark {
+pub(crate) enum Mark {
     Bold,
     Italic,
     Underline,
@@ -38,7 +38,7 @@ pub enum Mark {
 }
 
 impl Mark {
-    pub const ALL: [Mark; 8] = [
+    pub(crate) const ALL: [Mark; 8] = [
         Mark::Bold,
         Mark::Italic,
         Mark::Underline,
@@ -55,24 +55,24 @@ impl Mark {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
-pub struct Link {
+pub(crate) struct Link {
     pub url: String,
     pub title: String,
 }
 
 /// The marks of a run: a set of [`Mark`]s and an optional link.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
-pub struct Marks {
+pub(crate) struct Marks {
     bits: u16,
     pub link: Option<Arc<Link>>,
 }
 
 impl Marks {
-    pub fn has(&self, mark: Mark) -> bool {
+    pub(crate) fn has(&self, mark: Mark) -> bool {
         self.bits & mark.bit() != 0
     }
 
-    pub fn set(&mut self, mark: Mark, is_on: bool) {
+    pub(crate) fn set(&mut self, mark: Mark, is_on: bool) {
         if is_on {
             self.bits |= mark.bit();
         } else {
@@ -81,7 +81,7 @@ impl Marks {
     }
 
     /// [`Self::set`] for a toggle: subscript and superscript exclude each other.
-    pub fn switch(&mut self, mark: Mark, is_on: bool) {
+    pub(crate) fn switch(&mut self, mark: Mark, is_on: bool) {
         self.set(mark, is_on);
         if is_on {
             match mark {
@@ -93,25 +93,25 @@ impl Marks {
     }
 
     #[must_use]
-    pub fn with(mut self, mark: Mark) -> Self {
+    pub(crate) fn with(mut self, mark: Mark) -> Self {
         self.set(mark, true);
         self
     }
 
     #[must_use]
-    pub fn without(mut self, mark: Mark) -> Self {
+    pub(crate) fn without(mut self, mark: Mark) -> Self {
         self.set(mark, false);
         self
     }
 
-    pub fn is_plain(&self) -> bool {
+    pub(crate) fn is_plain(&self) -> bool {
         self.bits == 0 && self.link.is_none()
     }
 }
 
 /// A run that stands for one char of text.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Atom {
+pub(crate) enum Atom {
     /// `key` is the login (GitHub, GitLab) or the identity id (Azure DevOps).
     Mention {
         key: String,
@@ -128,7 +128,7 @@ pub enum Atom {
 
 /// A GitHub alert (`> [!NOTE]`) a quote starts with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Alert {
+pub(crate) enum Alert {
     Note,
     Tip,
     Important,
@@ -137,7 +137,7 @@ pub enum Alert {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ListKind {
+pub(crate) enum ListKind {
     Bullet,
     /// With the list's first number.
     Ordered(u64),
@@ -145,7 +145,7 @@ pub enum ListKind {
 
 /// A container a block sits in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Container {
+pub(crate) enum Container {
     Quote(Option<Alert>),
     /// `head` marks the first block of the item (where its marker is); `task` is the item's
     /// checkbox, on every block of the item.
@@ -159,7 +159,7 @@ pub enum Container {
 impl Container {
     /// Whether a block in `self` belongs to the same container as one in `previous`: same quote,
     /// or the same item (not a new item's head) of the same kind of list.
-    pub fn continues(&self, previous: &Container) -> bool {
+    pub(crate) fn continues(&self, previous: &Container) -> bool {
         match (self, previous) {
             (Container::Quote(alert), Container::Quote(before)) => alert == before,
             (Container::Item { list, head: false, .. }, Container::Item { list: before, .. }) => {
@@ -170,7 +170,7 @@ impl Container {
     }
 
     /// Whether `self` is a new item in the same list as `previous`.
-    pub fn is_next_item_of(&self, previous: &Container) -> bool {
+    pub(crate) fn is_next_item_of(&self, previous: &Container) -> bool {
         matches!(
             (self, previous),
             (Container::Item { list, head: true, .. }, Container::Item { list: before, .. })
@@ -178,13 +178,13 @@ impl Container {
         )
     }
 
-    pub fn is_item(&self) -> bool {
+    pub(crate) fn is_item(&self) -> bool {
         matches!(self, Container::Item { .. })
     }
 }
 
 /// Bullets continue bullets and numbers continue numbers, whatever number an item was given.
-pub fn same_list(a: ListKind, b: ListKind) -> bool {
+pub(crate) fn same_list(a: ListKind, b: ListKind) -> bool {
     matches!(
         (a, b),
         (ListKind::Bullet, ListKind::Bullet) | (ListKind::Ordered(_), ListKind::Ordered(_))
@@ -192,7 +192,7 @@ pub fn same_list(a: ListKind, b: ListKind) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Kind {
+pub(crate) enum Kind {
     Paragraph,
     Heading(u8),
     /// A fenced code block with its info string.
@@ -206,29 +206,29 @@ pub enum Kind {
 
 impl Kind {
     /// Blocks whose content is plain source: no marks, no input rules, Enter adds a line.
-    pub fn is_source(&self) -> bool {
+    pub(crate) fn is_source(&self) -> bool {
         matches!(self, Kind::Code(_) | Kind::Html | Kind::Table)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Block {
+pub(crate) struct Block {
     pub kind: Kind,
     pub nesting: Vec<Container>,
     pub content: Inline,
 }
 
 impl Block {
-    pub fn paragraph(nesting: Vec<Container>, content: Inline) -> Self {
+    pub(crate) fn paragraph(nesting: Vec<Container>, content: Inline) -> Self {
         Self { kind: Kind::Paragraph, nesting, content }
     }
 
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.content.len()
     }
 
     /// The innermost list item, with its depth in `nesting`.
-    pub fn item(&self) -> Option<(usize, Container)> {
+    pub(crate) fn item(&self) -> Option<(usize, Container)> {
         self.nesting
             .iter()
             .enumerate()
@@ -240,41 +240,41 @@ impl Block {
 
 /// A place in the document: a block and a char offset in it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Pos {
+pub(crate) struct Pos {
     pub block: usize,
     pub offset: usize,
 }
 
 impl Pos {
-    pub const fn new(block: usize, offset: usize) -> Self {
+    pub(crate) const fn new(block: usize, offset: usize) -> Self {
         Self { block, offset }
     }
 }
 
 /// The selection: `anchor` stays where it started, `head` moves with the caret.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Selection {
+pub(crate) struct Selection {
     pub anchor: Pos,
     pub head: Pos,
 }
 
 impl Selection {
-    pub const fn caret(pos: Pos) -> Self {
+    pub(crate) const fn caret(pos: Pos) -> Self {
         Self { anchor: pos, head: pos }
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.anchor == self.head
     }
 
     /// Start and end, in document order.
-    pub fn ordered(&self) -> (Pos, Pos) {
+    pub(crate) fn ordered(&self) -> (Pos, Pos) {
         if self.anchor <= self.head { (self.anchor, self.head) } else { (self.head, self.anchor) }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Document {
+pub(crate) struct Document {
     pub blocks: Vec<Arc<Block>>,
 }
 
@@ -285,29 +285,29 @@ impl Default for Document {
 }
 
 impl Document {
-    pub fn block(&self, index: usize) -> &Block {
+    pub(crate) fn block(&self, index: usize) -> &Block {
         &self.blocks[index.min(self.blocks.len() - 1)]
     }
 
-    pub fn block_mut(&mut self, index: usize) -> &mut Block {
+    pub(crate) fn block_mut(&mut self, index: usize) -> &mut Block {
         let last = self.blocks.len() - 1;
         Arc::make_mut(&mut self.blocks[index.min(last)])
     }
 
-    pub fn end(&self) -> Pos {
+    pub(crate) fn end(&self) -> Pos {
         let last = self.blocks.len() - 1;
         Pos::new(last, self.blocks[last].len())
     }
 
     /// `pos` moved inside the document.
-    pub fn clamp(&self, pos: Pos) -> Pos {
+    pub(crate) fn clamp(&self, pos: Pos) -> Pos {
         let block = pos.block.min(self.blocks.len() - 1);
         Pos::new(block, pos.offset.min(self.blocks[block].len()))
     }
 
     /// Keeps the invariants edits rely on: at least one block, and an item's first block is its
     /// head (a block whose item does not continue the previous block's starts a new item).
-    pub fn normalize(&mut self) {
+    pub(crate) fn normalize(&mut self) {
         if self.blocks.is_empty() {
             *self = Self::default();
             return;

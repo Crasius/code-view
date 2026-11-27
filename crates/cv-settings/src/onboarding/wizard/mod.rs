@@ -49,7 +49,7 @@ impl Step {
 
 /// Where an edit of an existing connection starts.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EditStart {
+pub(crate) enum EditStart {
     /// Change host or token.
     Token,
     /// Re-run the access check with the stored token.
@@ -58,7 +58,7 @@ pub enum EditStart {
     Fix(Option<AccessProblem>),
 }
 
-pub enum WizardOutcome {
+pub(crate) enum WizardOutcome {
     Open,
     Cancelled,
     Saved { name: String },
@@ -107,7 +107,7 @@ struct VaultChoice {
     clippy::struct_excessive_bools,
     reason = "independent flags of separate wizard steps (first run, token reveal, scope choice, custom name); none of them combine into a state"
 )]
-pub struct Wizard {
+pub(crate) struct Wizard {
     existing: Option<Connection>,
     is_first_run: bool,
     problem: Option<AccessProblem>,
@@ -140,7 +140,7 @@ pub struct Wizard {
 
 impl Wizard {
     /// A new connection, from the platform step.
-    pub fn new(cli_tools: CliTools) -> Self {
+    pub(crate) fn new(cli_tools: CliTools) -> Self {
         Self {
             existing: None,
             is_first_run: false,
@@ -173,11 +173,11 @@ impl Wizard {
     }
 
     /// The first connection of a profile without any: no way out but through the steps.
-    pub fn first_run(cli_tools: CliTools) -> Self {
+    pub(crate) fn first_run(cli_tools: CliTools) -> Self {
         Self { is_first_run: true, ..Self::new(cli_tools) }
     }
 
-    pub fn edit(connection: &Connection, cli_tools: CliTools, start: EditStart) -> Self {
+    pub(crate) fn edit(connection: &Connection, cli_tools: CliTools, start: EditStart) -> Self {
         let is_cloud =
             connection.base_url().eq_ignore_ascii_case(connection.kind.default_base_url());
         let hosting = if is_cloud { Hosting::Cloud } else { Hosting::SelfHosted };
@@ -213,7 +213,7 @@ impl Wizard {
 
     /// A new connection to `kind`'s cloud host (and `organization` on Azure DevOps), starting at
     /// the sign-in step; platform and host stay a step back in the stepper.
-    pub fn for_cloud(
+    pub(crate) fn for_cloud(
         kind: ProviderKind,
         organization: Option<String>,
         cli_tools: CliTools,
@@ -228,7 +228,7 @@ impl Wizard {
         wizard
     }
 
-    pub fn show(&mut self, ui: &mut Ui, services: &mut Services) -> WizardOutcome {
+    pub(crate) fn show(&mut self, ui: &mut Ui, services: &mut Services) -> WizardOutcome {
         self.poll();
         if matches!(self.vault, VaultCheck::Idle) {
             self.start_vault_check(services);

@@ -12,7 +12,7 @@ use crate::onboarding::host::Hosting;
 use crate::onboarding::parts::{self, Tone};
 
 /// Returns the saved connection's name.
-pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) -> Option<String> {
+pub(crate) fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) -> Option<String> {
     let Ok(host) = wizard.resolved() else {
         wizard.step = Step::Host;
         return None;

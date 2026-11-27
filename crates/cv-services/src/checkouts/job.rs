@@ -46,7 +46,7 @@ pub struct Plan {
 
 impl Plan {
     /// Where the clone keeps the pull request's head.
-    pub fn pull_ref(&self) -> String {
+    pub(crate) fn pull_ref(&self) -> String {
         super::pull_ref(self.key.number)
     }
 }
@@ -135,7 +135,7 @@ impl JobProgress {
         now.saturating_duration_since(self.step_started)
     }
 
-    pub fn is_ended(&self) -> bool {
+    pub(crate) fn is_ended(&self) -> bool {
         self.ended_after.is_some()
     }
 
@@ -224,14 +224,14 @@ pub struct Job {
 }
 
 /// A checkout that succeeded this frame.
-pub struct Finished {
+pub(crate) struct Finished {
     pub done: Done,
     pub took: Duration,
     pub log: Vec<String>,
 }
 
 impl Job {
-    pub fn start(plan: Plan, background: &Background) -> Self {
+    pub(crate) fn start(plan: Plan, background: &Background) -> Self {
         let progress = Arc::new(Mutex::new(JobProgress::new(&plan, Instant::now())));
         let (cancel, cancelled) = oneshot::channel();
         let request = Request {
@@ -291,7 +291,7 @@ impl Job {
     }
 
     /// Stops the git work; what it made is taken away before the job reports "Cancelled".
-    pub fn cancel(&mut self) {
+    pub(crate) fn cancel(&mut self) {
         if let Some(cancel) = self.cancel.take() {
             // The task may have ended a moment ago; then there is nothing left to stop.
             let _already_ended = cancel.send(());
@@ -299,7 +299,7 @@ impl Job {
     }
 
     /// The run's result once it succeeded; a failure shows in [`Job::phase`].
-    pub fn poll(&mut self) -> Option<Finished> {
+    pub(crate) fn poll(&mut self) -> Option<Finished> {
         let task = self.task.as_mut()?;
         let ended = match task.poll() {
             TaskPoll::Pending => return None,

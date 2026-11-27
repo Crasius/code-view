@@ -212,7 +212,7 @@ impl Units {
     }
 
     /// Every image source of unit `index`, as written, in reading order.
-    pub fn image_sources(&self, index: usize) -> Vec<&str> {
+    pub(crate) fn image_sources(&self, index: usize) -> Vec<&str> {
         let mut sources = Vec::new();
         if let Some(unit) = self.units.get(index) {
             match (&self.blocks[unit.block], unit.item) {

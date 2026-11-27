@@ -13,7 +13,9 @@ use review_agent::{
 use tokio::sync::mpsc::UnboundedReceiver;
 
 #[cfg(any(test, feature = "test-support"))]
-pub use crate::agents_fake::{FakeAgents, FakeCli, FakeTerminal};
+pub(crate) use crate::agents_fake::FakeAgents;
+#[cfg(any(test, feature = "test-support"))]
+pub use crate::agents_fake::{FakeCli, FakeTerminal};
 use cv_runtime::background::{Background, Task, TaskPoll};
 
 /// A started session and its events, or why it did not start.
@@ -119,7 +121,7 @@ impl AgentDirectory {
     }
 
     /// The installed CLI of `kind`, once found.
-    pub fn cli(&mut self, kind: AgentKind, background: &Background) -> Option<AgentCli> {
+    pub(crate) fn cli(&mut self, kind: AgentKind, background: &Background) -> Option<AgentCli> {
         match self.detection(kind, background) {
             Detection::Installed(cli) => Some(cli.clone()),
             Detection::Checking | Detection::Missing(_) => None,
@@ -190,7 +192,7 @@ impl AgentDirectory {
         not(any(test, feature = "test-support")),
         expect(clippy::unused_self, reason = "test builds record the terminals they hold")
     )]
-    pub fn open_shell(
+    pub(crate) fn open_shell(
         &self,
         dir: &std::path::Path,
         terminal: review_store::checkouts::TerminalChoice,

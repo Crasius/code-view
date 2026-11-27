@@ -255,7 +255,14 @@ fn diagram_actions(
         }
     };
     let rect = response.rect;
-    let copy = corner_button(ui, diagram, rect, 0, icons::COPY, "Copy source");
+    let copy_button = FloatButton {
+        id: diagram.id.with(("button", 0)),
+        slot: 0,
+        icon: icons::COPY,
+        label: "Copy source",
+        copied: Some(diagram.id),
+    };
+    let copy = float_button(ui, rect, &copy_button, diagram.palette);
     let toggle = corner_button(ui, diagram, rect, 1, icons::CODE, "Show source");
     let enlarged =
         can_enlarge && corner_button(ui, diagram, rect, 2, icons::CORNERS_OUT, "Enlarge").clicked();
@@ -358,7 +365,8 @@ fn copy_source(ctx: &egui::Context, diagram: &Diagram<'_>) {
 }
 
 /// Button `slot` (0 is the corner, counting leftwards) of the diagram's corner buttons
-/// ([`float_button`]). Slot 0 of the source view is the code block's own copy button.
+/// ([`float_button`]), without a "Copied" state: the copy button sets its own. Slot 0 of the
+/// source view is the code block's own copy button.
 fn corner_button(
     ui: &Ui,
     diagram: &Diagram<'_>,
@@ -367,13 +375,8 @@ fn corner_button(
     icon: &str,
     label: &str,
 ) -> Response {
-    let button = FloatButton {
-        id: diagram.id.with(("button", slot)),
-        slot,
-        icon,
-        label,
-        copied: (icon == icons::COPY).then_some(diagram.id),
-    };
+    let button =
+        FloatButton { id: diagram.id.with(("button", slot)), slot, icon, label, copied: None };
     float_button(ui, block, &button, diagram.palette)
 }
 

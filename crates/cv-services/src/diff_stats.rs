@@ -44,7 +44,7 @@ use crate::writes::Answer;
 
 /// Azure DevOps pull requests with at most this many changed files have their lines counted on
 /// their own: their blobs download quickly, and their page reuses them.
-pub const AUTO_COUNT_FILES: u64 = 20;
+pub(crate) const AUTO_COUNT_FILES: u64 = 20;
 /// Automatic counts in flight at once; further rows wait their turn.
 const MAX_RUNNING: usize = 4;
 /// Of those, at most this many for favorites: the rows of the other cards always have the rest.
@@ -548,6 +548,12 @@ pub fn poll(services: &mut Services) {
 
 /// How full the size column's bar is for `total` changed lines: logarithmic, so a one-line fix
 /// still shows and everything from 5,000 lines on fills it.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    reason = "a fraction of the bar's width: the line count only needs f64 precision, the result \
+              is in 0..=1"
+)]
 pub fn bar_fraction(total: u64) -> f32 {
     ((total as f64 + 1.0).log10() / 5001f64.log10()).min(1.0) as f32
 }

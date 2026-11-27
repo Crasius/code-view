@@ -26,7 +26,7 @@ use super::rows::CheckoutRow;
 
 /// The control of Local checkouts row `id`; true when its link to the Assistant section was
 /// clicked.
-pub fn control(ui: &mut Ui, id: CheckoutRow, services: &mut Services) -> bool {
+pub(crate) fn control(ui: &mut Ui, id: CheckoutRow, services: &mut Services) -> bool {
     let mut changed = false;
     let mut opens_assistant = false;
     match id {

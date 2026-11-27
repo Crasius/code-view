@@ -2,13 +2,6 @@
 //! coding agents, the user's writes, line counts and persistence.
 
 #![forbid(unsafe_code)]
-// RS-LINT-02: the size column's bar turns a line count into a fraction of its width
-// (diff_stats::bar_fraction).
-#![expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_precision_loss,
-    reason = "egui pixel math converts between f32 points and integer counts"
-)]
 
 pub mod agent_names;
 pub mod agents;

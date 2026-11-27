@@ -256,7 +256,7 @@ fn ten_thousand_files_side_by_side_cost_what_is_on_screen() {
         let summary = &harness.state().summary;
         most = (most.0.max(cards_shown(summary)), most.1.max(summary.rows_painted));
         assert!(summary.loads.wanted().len() <= MAX_WANTED);
-        assert!(summary.bodies_kept() <= MAX_BODIES, "{} bodies kept", summary.bodies_kept());
+        assert!(summary.bodies.len() <= MAX_BODIES, "{} bodies kept", summary.bodies.len());
         assert!(summary.loads.running() <= MAX_RUNNING);
     };
     let before = harness.state().source.started.len();

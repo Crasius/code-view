@@ -23,7 +23,7 @@ const CODE_SIZE: f32 = style::BODY_SIZE - CODE_SIZE_DELTA;
 
 /// Parsed structure and galley of the editor's current text.
 #[derive(Clone, Default)]
-pub struct WriteCache {
+pub(crate) struct WriteCache {
     chunks: Chunks,
     /// A rebuilt font atlas invalidates the galleys kept here.
     atlas: AtlasWatch,
@@ -34,16 +34,16 @@ pub struct WriteCache {
 }
 
 impl WriteCache {
-    pub fn load(ui: &Ui, id: egui::Id) -> Self {
+    pub(crate) fn load(ui: &Ui, id: egui::Id) -> Self {
         ui.data(|data| data.get_temp(id)).unwrap_or_default()
     }
 
-    pub fn store(self, ui: &Ui, id: egui::Id) {
+    pub(crate) fn store(self, ui: &Ui, id: egui::Id) {
         ui.data_mut(|data| data.insert_temp(id, self));
     }
 
     /// The structure of `text`; only the chunks an edit touched are parsed again.
-    pub fn model_for(&mut self, text: &str) -> Arc<Model> {
+    pub(crate) fn model_for(&mut self, text: &str) -> Arc<Model> {
         self.chunks.update(text);
         self.chunks.model.clone()
     }
@@ -95,7 +95,7 @@ impl WriteCache {
 }
 
 /// The layouter handed to `TextEdit`.
-pub fn layouter(
+pub(crate) fn layouter(
     cache: &mut WriteCache,
     palette: Palette,
 ) -> impl FnMut(&Ui, &dyn TextBuffer, f32) -> Arc<Galley> + '_ {

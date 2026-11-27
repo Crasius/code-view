@@ -14,7 +14,7 @@ use cv_runtime::background::{Background, TASK_LOST, Task, TaskPoll};
 use cv_runtime::load::Load;
 
 /// How long an answer counts as current.
-pub const FRESH_FOR: f64 = 10.0 * 60.0;
+pub(crate) const FRESH_FOR: f64 = 10.0 * 60.0;
 
 /// What the cache knows about one item.
 #[derive(Debug, Clone, Copy, PartialEq)]

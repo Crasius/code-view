@@ -15,7 +15,7 @@ use cv_pr_diff::diff_view::DiffView;
 use cv_syntax::highlight::LineSpans;
 
 /// Bodies kept at most: more than the cards one screen and the screens around it hold.
-pub const MAX_BODIES: usize = 160;
+pub(crate) const MAX_BODIES: usize = 160;
 const MAX_BYTES: usize = 96 * 1024 * 1024;
 /// What the diff view keeps per row: the row, its offset, its columns and changed words.
 const ROW_BYTES: usize = std::mem::size_of::<Row>() + 16;
@@ -24,7 +24,7 @@ const LFS_POINTER: &str = "version https://git-lfs.github.com/spec/v1";
 
 /// Why a loaded card shows a placeholder instead of code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Placeholder {
+pub(crate) enum Placeholder {
     Binary,
     /// A Git LFS pointer: the content lives on the LFS server.
     Lfs,
@@ -37,7 +37,7 @@ pub enum Placeholder {
     },
 }
 
-pub struct CardBody {
+pub(crate) struct CardBody {
     pub diff: Arc<FileDiff>,
     /// The file view's diff view in its compact layout (inline or side by side): it paints the
     /// rows and takes comments on them as the file view does.
@@ -55,7 +55,7 @@ pub struct CardBody {
 
 impl CardBody {
     /// The body of `diff`; `is_forced` when the user asked to see a change above the inline limit.
-    pub fn new(diff: Arc<FileDiff>, context: u32, is_forced: bool) -> Self {
+    pub(crate) fn new(diff: Arc<FileDiff>, context: u32, is_forced: bool) -> Self {
         let placeholder = placeholder_for(&diff, is_forced);
         let shape = |split| {
             if placeholder.is_some() {
@@ -78,7 +78,7 @@ impl CardBody {
     }
 
     /// The code rows and separators inline and side by side, without comment cards.
-    pub fn shapes(&self) -> Shapes {
+    pub(crate) fn shapes(&self) -> Shapes {
         self.shapes
     }
 
@@ -103,10 +103,10 @@ impl Drop for CardBody {
 
 /// Set once the card is gone, so its queued coloring returns at once.
 #[derive(Clone, Default)]
-pub struct Cancel(pub Arc<AtomicBool>);
+pub(crate) struct Cancel(pub Arc<AtomicBool>);
 
 impl Cancel {
-    pub fn cancel(&self) {
+    pub(crate) fn cancel(&self) {
         self.0.store(true, Ordering::Relaxed);
     }
 }
@@ -134,7 +134,7 @@ fn placeholder_for(diff: &FileDiff, is_forced: bool) -> Option<Placeholder> {
 
 /// Card bodies by path, the least recently shown dropped first.
 #[derive(Default)]
-pub struct BodyCache {
+pub(crate) struct BodyCache {
     entries: HashMap<String, CardBody>,
     bytes: usize,
 }
@@ -145,18 +145,18 @@ impl BodyCache {
         self.entries.len()
     }
 
-    pub fn contains(&self, path: &str) -> bool {
+    pub(crate) fn contains(&self, path: &str) -> bool {
         self.entries.contains_key(path)
     }
 
     /// The body of `path`, marked as shown in `frame`.
-    pub fn show(&mut self, path: &str, frame: u64) -> Option<&mut CardBody> {
+    pub(crate) fn show(&mut self, path: &str, frame: u64) -> Option<&mut CardBody> {
         let body = self.entries.get_mut(path)?;
         body.last_shown = frame;
         Some(body)
     }
 
-    pub fn get_mut(&mut self, path: &str) -> Option<&mut CardBody> {
+    pub(crate) fn get_mut(&mut self, path: &str) -> Option<&mut CardBody> {
         self.entries.get_mut(path)
     }
 
@@ -167,7 +167,7 @@ impl BodyCache {
 
     /// Adds a body; then drops the least recently shown ones beyond the limits, never one shown in
     /// `frame`, wanted (`keep`) or with a new comment being written in it.
-    pub fn insert(
+    pub(crate) fn insert(
         &mut self,
         path: String,
         mut body: CardBody,
@@ -200,7 +200,7 @@ impl BodyCache {
 
     /// Takes out `path`'s body when its diff, loaded before the lines were counted, showed it too
     /// large, so it is built again in full; returns its changed lines.
-    pub fn take_too_large(&mut self, path: &str) -> Option<u32> {
+    pub(crate) fn take_too_large(&mut self, path: &str) -> Option<u32> {
         let Some(Placeholder::TooLarge { changed }) = self.entries.get(path)?.placeholder else {
             return None;
         };
@@ -211,7 +211,7 @@ impl BodyCache {
     }
 
     /// The spans arrived for `path`: they count towards the memory too.
-    pub fn set_spans(&mut self, path: &str, spans: LineSpans) {
+    pub(crate) fn set_spans(&mut self, path: &str, spans: LineSpans) {
         if let Some(body) = self.entries.get_mut(path) {
             self.bytes -= body.counted;
             body.spans = Some(Arc::new(spans));
@@ -222,7 +222,7 @@ impl BodyCache {
     }
 
     /// Stops the coloring queued for every body, e.g. while the file view takes the coloring thread.
-    pub fn cancel_coloring(&mut self) {
+    pub(crate) fn cancel_coloring(&mut self) {
         for body in self.entries.values_mut() {
             if let Some(coloring) = body.coloring.take() {
                 coloring.cancel();
@@ -236,7 +236,7 @@ impl BodyCache {
         self.entries.values().any(|body| body.coloring.is_some())
     }
 
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.entries.clear();
         self.bytes = 0;
     }

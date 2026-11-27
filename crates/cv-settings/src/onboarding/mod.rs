@@ -26,12 +26,12 @@ use egui::{Response, Ui};
 
 pub use banner::show as show_banner;
 pub use cli::CliTools;
-pub use renewal::{CliRenewal, uses_azure_cli};
-pub use wizard::{EditStart, Wizard, WizardOutcome};
+pub(crate) use renewal::{CliRenewal, uses_azure_cli};
+pub(crate) use wizard::{EditStart, Wizard, WizardOutcome};
 
 /// "Fix token" for a 401/403 message about `connection_id`; clicking it calls
 /// [`intents::request_fix`].
-pub fn fix_token_button(ui: &mut Ui, connection_id: &str) -> Response {
+pub(crate) fn fix_token_button(ui: &mut Ui, connection_id: &str) -> Response {
     let response = buttons::primary_icon(ui, icons::KEY, "Fix token")
         .on_hover_text("Open the connection setup with what the token is missing");
     if response.clicked() {

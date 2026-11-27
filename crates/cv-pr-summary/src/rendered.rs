@@ -16,7 +16,8 @@ use review_core::ReviewThread;
 use review_git::ChangedFile;
 use review_store::{AppSettings, DiffLayout};
 
-use super::code::{self, CodeOutput, ThreadsByPath};
+use super::card::BodyOutput;
+use super::code::{self, ThreadsByPath};
 use super::layout::{self, Geometry};
 use super::{FolderSummary, SummaryInputs};
 use cv_pr_rendered::markdown_diff::embedded::{self, Embedding};
@@ -29,17 +30,17 @@ use cv_runtime::load::Load;
 /// Loaded cards kept at most: the rendered cards on screen and one screen around it.
 const MAX_CARDS: usize = 24;
 /// Loads running at once.
-pub const MAX_RUNNING: usize = 4;
+pub(crate) const MAX_RUNNING: usize = 4;
 
 /// A Markdown file's card: its versions while they load, then the rendered diff of them.
-pub struct RenderedCard {
+pub(crate) struct RenderedCard {
     content: Load<Arc<Loaded>>,
     pub view: MarkdownDiff,
     last_shown: u64,
 }
 
 /// What a rendered card needs from the frame besides the summary's inputs.
-pub struct RenderedFrame<'a> {
+pub(crate) struct RenderedFrame<'a> {
     pub file: &'a ChangedFile,
     pub inputs: &'a SummaryInputs<'a>,
     /// The threads on the file.
@@ -52,7 +53,7 @@ pub struct RenderedFrame<'a> {
 }
 
 #[derive(Default)]
-pub struct RenderedCards {
+pub(crate) struct RenderedCards {
     /// Preview was on in the last frame.
     is_on: bool,
     cards: HashMap<String, RenderedCard>,
@@ -62,19 +63,19 @@ pub struct RenderedCards {
 
 impl RenderedCards {
     /// Preview is `is_on` this frame; true when it was switched since the last one.
-    pub fn follow(&mut self, is_on: bool) -> bool {
+    pub(crate) fn follow(&mut self, is_on: bool) -> bool {
         std::mem::replace(&mut self.is_on, is_on) != is_on
     }
 
     /// A new comparison: every card shows other versions.
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.cards.clear();
         self.failed.clear();
     }
 
     /// Takes in the versions that arrived; returns whether any did, so the cards are laid out
     /// again. A failure is kept for its card.
-    pub fn poll(&mut self) -> bool {
+    pub(crate) fn poll(&mut self) -> bool {
         let mut arrived = false;
         let failed = &mut self.failed;
         self.cards.retain(|path, card| {
@@ -92,18 +93,18 @@ impl RenderedCards {
     }
 
     /// Loads on their way.
-    pub fn running(&self) -> usize {
+    pub(crate) fn running(&self) -> usize {
         self.cards.values().filter(|card| card.content.is_loading()).count()
     }
 
     /// `path`'s versions are neither loaded, on their way nor failed.
-    pub fn needs_load(&self, path: &str) -> bool {
+    pub(crate) fn needs_load(&self, path: &str) -> bool {
         !self.cards.contains_key(path) && !self.failed.contains_key(path)
     }
 
     /// Takes the load of `path`'s versions; then drops the least recently shown cards beyond the
     /// limit, never one shown in `frame` or wanted (`keep`).
-    pub fn start(
+    pub(crate) fn start(
         &mut self,
         path: String,
         content: Load<Arc<Loaded>>,
@@ -127,18 +128,18 @@ impl RenderedCards {
     }
 
     /// `path`'s card once its versions are there, lined up, marked as shown in `frame`.
-    pub fn show(&mut self, path: &str, frame: u64) -> Option<&mut RenderedCard> {
+    pub(crate) fn show(&mut self, path: &str, frame: u64) -> Option<&mut RenderedCard> {
         let card = self.cards.get_mut(path).filter(|card| card.model().is_some())?;
         card.last_shown = frame;
         Some(card)
     }
 
-    pub fn failure(&self, path: &str) -> Option<&str> {
+    pub(crate) fn failure(&self, path: &str) -> Option<&str> {
         self.failed.get(path).map(String::as_str)
     }
 
     /// The card's Retry: its versions load again once it is wanted.
-    pub fn retry(&mut self, path: &str) {
+    pub(crate) fn retry(&mut self, path: &str) {
         self.failed.remove(path);
     }
 
@@ -156,7 +157,7 @@ impl RenderedCard {
 
     /// Lays the card's blocks near the view out without painting them (see
     /// [`embedded::prepare`]); returns their height and where they want the view.
-    pub fn prepare(
+    pub(crate) fn prepare(
         &mut self,
         ui: &mut Ui,
         frame: &RenderedFrame<'_>,
@@ -173,14 +174,14 @@ impl RenderedCard {
     }
 
     /// Paints the card's blocks in `body`, clipped to `clip`, as a card's code rows are.
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut Ui,
         body: Rect,
         clip: Rect,
         frame: &RenderedFrame<'_>,
         threads_ui: &mut ThreadsUi,
-    ) -> CodeOutput {
+    ) -> BodyOutput {
         let mut event = None;
         if let Some(model) = self.model() {
             // The whole visible part of the summary: where the view's top is matters, not the card's.
@@ -193,7 +194,7 @@ impl RenderedCard {
                 })
                 .inner;
         }
-        CodeOutput {
+        BodyOutput {
             event: None,
             rendered: event,
             split: None,
@@ -239,7 +240,7 @@ fn inputs<'a>(model: &'a Arc<MarkdownModel>, frame: &RenderedFrame<'a>) -> Rende
 
 /// Preview was switched: the Markdown cards change between their lines and their rendered
 /// diff, so their heights are measured again.
-pub fn follow_preview(summary: &mut FolderSummary, inputs: &SummaryInputs<'_>) {
+pub(crate) fn follow_preview(summary: &mut FolderSummary, inputs: &SummaryInputs<'_>) {
     if !summary.rendered.follow(inputs.preview) {
         return;
     }
@@ -254,7 +255,7 @@ pub fn follow_preview(summary: &mut FolderSummary, inputs: &SummaryInputs<'_>) {
 
 /// `FolderSummary::lay_out_bodies` for the loaded rendered cards near the view: their blocks near the
 /// view are measured, and their heights go into the index.
-pub fn lay_out_rendered(
+pub(crate) fn lay_out_rendered(
     summary: &mut FolderSummary,
     ui: &mut Ui,
     inputs: &SummaryInputs<'_>,

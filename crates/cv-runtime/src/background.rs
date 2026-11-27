@@ -20,7 +20,7 @@ pub struct Background {
 const WORKER_THREADS: usize = 2;
 
 /// How long the app's exit waits for the kept tasks; our own budget, a write takes milliseconds.
-pub const EXIT_WAIT: Duration = Duration::from_secs(2);
+pub(crate) const EXIT_WAIT: Duration = Duration::from_secs(2);
 
 /// The kept tasks not ended yet, and the signal each one gives when it ends.
 type Kept = Arc<(Mutex<usize>, Condvar)>;

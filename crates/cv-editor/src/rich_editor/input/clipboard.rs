@@ -10,7 +10,7 @@ use crate::rich_editor::model::{Block, Document, HARD_BREAK, Inline, Link, Marks
 use crate::rich_editor::{State, parse, serialize};
 
 /// The selection as Markdown for the clipboard; `None` without a selection.
-pub fn copy(state: &State) -> Option<String> {
+pub(crate) fn copy(state: &State) -> Option<String> {
     if state.selection.is_empty() {
         return None;
     }
@@ -20,7 +20,7 @@ pub fn copy(state: &State) -> Option<String> {
 
 /// A URL pasted over a selection links it; Markdown is read as Markdown; other text is plain,
 /// one paragraph per line.
-pub fn paste(state: &mut State, context: &CommandContext<'_>, text: &str) {
+pub(crate) fn paste(state: &mut State, context: &CommandContext<'_>, text: &str) {
     let text = text.replace("\r\n", "\n").replace('\r', "\n");
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -47,7 +47,7 @@ pub fn paste(state: &mut State, context: &CommandContext<'_>, text: &str) {
     });
 }
 
-pub fn is_url(text: &str) -> bool {
+pub(crate) fn is_url(text: &str) -> bool {
     (text.starts_with("https://") || text.starts_with("http://"))
         && !text.contains(char::is_whitespace)
 }

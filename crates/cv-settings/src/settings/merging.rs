@@ -13,7 +13,7 @@ use review_core::{MergeStrategy, ProviderKind};
 use super::rows::MergingRow;
 
 /// Platforms of the saved connections, each once, in the app's platform order.
-pub fn connected_kinds(services: &Services) -> Vec<ProviderKind> {
+pub(crate) fn connected_kinds(services: &Services) -> Vec<ProviderKind> {
     ProviderKind::ALL
         .into_iter()
         .filter(|kind| services.connections.all().iter().any(|connection| connection.kind == *kind))
@@ -21,7 +21,7 @@ pub fn connected_kinds(services: &Services) -> Vec<ProviderKind> {
 }
 
 /// The strategies a favourite can name on `kind`: everything its API can merge with.
-pub fn choices(kind: ProviderKind) -> &'static [MergeStrategy] {
+pub(crate) fn choices(kind: ProviderKind) -> &'static [MergeStrategy] {
     match kind {
         ProviderKind::GitHub => {
             &[MergeStrategy::Merge, MergeStrategy::Squash, MergeStrategy::Rebase]
@@ -42,7 +42,7 @@ fn short(strategy: MergeStrategy, kind: ProviderKind) -> &'static str {
 }
 
 /// The control of Merging row `id`; `previewed` follows the platform the user works on.
-pub fn control(
+pub(crate) fn control(
     ui: &mut Ui,
     id: MergingRow,
     services: &mut Services,

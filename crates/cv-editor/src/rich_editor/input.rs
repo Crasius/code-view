@@ -7,9 +7,9 @@ mod keys;
 
 use egui::{Pos2, Ui};
 
-pub use self::clipboard::is_url;
+pub(crate) use self::clipboard::is_url;
 use self::clipboard::{copy, paste};
-pub use self::keys::take_commands;
+pub(crate) use self::keys::take_commands;
 use super::caret::{self, Direction};
 use super::edit::rules;
 use super::edit::structure::{self, ListStyle};
@@ -20,7 +20,7 @@ use super::{Popup, State};
 
 /// A caret move.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Motion {
+pub(crate) enum Motion {
     Left,
     Right,
     Up,
@@ -37,7 +37,7 @@ pub enum Motion {
 
 /// What the editor does: from a key, a toolbar button, a menu entry or a click.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Command {
+pub(crate) enum Command {
     Insert(String),
     Enter,
     LineBreak,
@@ -75,14 +75,14 @@ pub enum Command {
 
 /// How the commands of one frame ran.
 #[derive(Default)]
-pub struct Ran {
+pub(crate) struct Ran {
     pub is_changed: bool,
     pub copied: Option<String>,
 }
 
 /// What a command runs with: the `Ui` for caret moves through the layout, the content's origin
 /// and page height, the clock for undo grouping.
-pub struct CommandContext<'a> {
+pub(crate) struct CommandContext<'a> {
     pub ui: &'a Ui,
     /// The content's top-left (screen coordinates).
     pub origin: Pos2,
@@ -91,7 +91,7 @@ pub struct CommandContext<'a> {
 }
 
 /// Runs `commands` on the editor.
-pub fn run(state: &mut State, context: &CommandContext<'_>, commands: Vec<Command>) -> Ran {
+pub(crate) fn run(state: &mut State, context: &CommandContext<'_>, commands: Vec<Command>) -> Ran {
     let mut ran = Ran::default();
     for command in commands {
         let version = state.version;
@@ -106,38 +106,53 @@ fn selected_blocks(state: &State) -> (usize, usize) {
     (from.block, to.block)
 }
 
-/// Records an undo step of `kind`, then runs `change` and moves the caret where it says.
+/// Records `before`, the document and selection ahead of a command, as an undo step of `kind`
+/// when the command changed the document; a refused command ends the open group instead.
+/// Returns whether the document changed.
+fn commit(
+    state: &mut State,
+    context: &CommandContext<'_>,
+    kind: EditKind,
+    block: usize,
+    before: &(Document, Selection),
+) -> bool {
+    if state.doc == before.0 {
+        state.history.break_group();
+        return false;
+    }
+    state.history.record(&before.0, before.1, kind, block, context.now);
+    state.changed();
+    true
+}
+
+/// Runs `change`, moves the caret where it says and records an undo step of `kind`.
 fn edit(
     state: &mut State,
     context: &CommandContext<'_>,
     kind: EditKind,
     change: impl FnOnce(&mut Document, Selection) -> Pos,
 ) {
-    state.history.record(
-        &state.doc,
-        state.selection,
-        kind,
-        state.selection.head.block,
-        context.now,
-    );
+    let before = (state.doc.clone(), state.selection);
+    let block = state.selection.head.block;
     let caret = change(&mut state.doc, state.selection);
     state.selection = Selection::caret(state.doc.clamp(caret));
-    state.stored = None;
-    state.changed();
+    if commit(state, context, kind, block, &before) {
+        state.stored = None;
+    }
 }
 
-/// Records an undo step, then runs a block-level `change` over the selected blocks.
+/// Runs a block-level `change` over the selected blocks and records an undo step.
 fn restructure(
     state: &mut State,
     context: &CommandContext<'_>,
     change: impl FnOnce(&mut Document, usize, usize),
 ) {
+    let before = (state.doc.clone(), state.selection);
     let (first, last) = selected_blocks(state);
-    state.history.record(&state.doc, state.selection, EditKind::Other, first, context.now);
     change(&mut state.doc, first, last);
     let (from, to) = state.selection.ordered();
     state.selection = Selection { anchor: state.doc.clamp(from), head: state.doc.clamp(to) };
-    state.changed();
+    commit(state, context, EditKind::Other, first, &before);
 }
 
 fn run_one(state: &mut State, context: &CommandContext<'_>, command: Command, ran: &mut Ran) {
@@ -189,12 +204,8 @@ fn run_one(state: &mut State, context: &CommandContext<'_>, command: Command, ra
         Command::Indent { outdent } => indent(state, context, outdent),
         Command::ToggleTask(index) => {
             let before = (state.doc.clone(), state.selection);
-            if structure::toggle_task(&mut state.doc, index) {
-                state.history.record(&before.0, before.1, EditKind::Other, index, context.now);
-                state.changed();
-            } else {
-                state.history.break_group();
-            }
+            structure::toggle_task(&mut state.doc, index);
+            commit(state, context, EditKind::Other, index, &before);
         }
         Command::Undo => {
             if state.history.undo(&mut state.doc, &mut state.selection) {
@@ -219,7 +230,7 @@ fn run_one(state: &mut State, context: &CommandContext<'_>, command: Command, ra
 
 /// What typing left: the caret, the marks for the text typed next, and the document and
 /// selection an input rule rewrote, when one fired.
-pub struct Typed {
+pub(crate) struct Typed {
     pub caret: Pos,
     pub stored: Option<Marks>,
     pub before_rule: Option<(Document, Selection)>,
@@ -227,7 +238,7 @@ pub struct Typed {
 
 /// Types `text` over `selection` with the `stored` marks (or the marks at the selection's start),
 /// then runs the input rule the text completes.
-pub fn type_into(
+pub(crate) fn type_into(
     doc: &mut Document,
     selection: Selection,
     stored: Option<Marks>,
@@ -322,17 +333,12 @@ fn indent(state: &mut State, context: &CommandContext<'_>, outdent: bool) {
     }
     let (first, last) = selected_blocks(state);
     let before = (state.doc.clone(), state.selection);
-    let moved = if outdent {
-        structure::outdent(&mut state.doc, first, last)
+    if outdent {
+        structure::outdent(&mut state.doc, first, last);
     } else {
-        structure::indent(&mut state.doc, first, last)
-    };
-    if moved {
-        state.history.record(&before.0, before.1, EditKind::Other, first, context.now);
-        state.changed();
-    } else {
-        state.history.break_group();
+        structure::indent(&mut state.doc, first, last);
     }
+    commit(state, context, EditKind::Other, first, &before);
 }
 
 fn toggle_mark(state: &mut State, context: &CommandContext<'_>, mark: Mark) {
@@ -346,17 +352,12 @@ fn toggle_mark(state: &mut State, context: &CommandContext<'_>, mark: Mark) {
         return;
     }
     let before = (state.doc.clone(), state.selection);
-    if edit_ops::toggle_mark(&mut state.doc, state.selection, mark) {
-        let block = state.selection.head.block;
-        state.history.record(&before.0, before.1, EditKind::Other, block, context.now);
-        state.changed();
-    } else {
-        state.history.break_group();
-    }
+    edit_ops::toggle_mark(&mut state.doc, state.selection, mark);
+    commit(state, context, EditKind::Other, state.selection.head.block, &before);
 }
 
 /// The link at the caret: its range in the caret's block and the link.
-pub fn link_at(doc: &Document, caret: Pos) -> Option<(std::ops::Range<usize>, Link)> {
+pub(crate) fn link_at(doc: &Document, caret: Pos) -> Option<(std::ops::Range<usize>, Link)> {
     let content = &doc.block(caret.block).content;
     let found = content
         .link_range(caret.offset)
@@ -442,7 +443,12 @@ fn move_caret(state: &mut State, context: &CommandContext<'_>, motion: Motion, e
 }
 
 /// The person chosen in the mention list replaces `@query`.
-pub fn choose_mention(state: &mut State, context: &CommandContext<'_>, start: Pos, key: String) {
+pub(crate) fn choose_mention(
+    state: &mut State,
+    context: &CommandContext<'_>,
+    start: Pos,
+    key: String,
+) {
     let caret = state.selection.head;
     if caret.block != start.block || caret.offset <= start.offset {
         return;

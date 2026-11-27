@@ -14,7 +14,7 @@ use super::rows::{Placement, Row, RowId};
 
 /// The groups of the table, in the order the section shows them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShortcutGroup {
+pub(crate) enum ShortcutGroup {
     App,
     List,
     PullRequest,
@@ -25,7 +25,7 @@ pub enum ShortcutGroup {
 
 impl ShortcutGroup {
     /// The heading of the group, also a search keyword of its rows.
-    pub const fn title(self) -> &'static str {
+    pub(crate) const fn title(self) -> &'static str {
         match self {
             Self::App => "Anywhere",
             Self::List => "Pull request lists",
@@ -37,7 +37,7 @@ impl ShortcutGroup {
     }
 }
 
-pub struct Shortcut {
+pub(crate) struct Shortcut {
     pub group: ShortcutGroup,
     pub label: &'static str,
     pub description: &'static str,
@@ -80,7 +80,7 @@ const FORWARD_KEYS: &[&str] = &[
     "Swipe left with two fingers",
 ];
 
-pub const SHORTCUTS: &[Shortcut] = &[
+pub(crate) const SHORTCUTS: &[Shortcut] = &[
     entry(ShortcutGroup::App, "Back", BACK_DESCRIPTION, BACK_KEYS),
     entry(ShortcutGroup::App, "Forward", "Returns after Back; a new step clears it.", FORWARD_KEYS),
     entry(
@@ -364,7 +364,7 @@ pub const SHORTCUTS: &[Shortcut] = &[
 ];
 
 /// The table as rows of the Keyboard and mouse section.
-pub fn rows() -> impl Iterator<Item = Row> {
+pub(crate) fn rows() -> impl Iterator<Item = Row> {
     SHORTCUTS.iter().enumerate().map(|(index, shortcut)| Row {
         id: RowId::Shortcut(index),
         category: Category::Keyboard,
@@ -376,7 +376,7 @@ pub fn rows() -> impl Iterator<Item = Row> {
 }
 
 /// Where a new group starts in the section view.
-pub fn group_of(index: usize) -> Option<ShortcutGroup> {
+pub(crate) fn group_of(index: usize) -> Option<ShortcutGroup> {
     let group = SHORTCUTS.get(index)?.group;
     let is_first =
         index == 0 || SHORTCUTS.get(index - 1).is_some_and(|before| before.group != group);
@@ -386,7 +386,7 @@ pub fn group_of(index: usize) -> Option<ShortcutGroup> {
 /// The key caps of entry `index`, right to left as the row lays them out. An assistant shortcut
 /// while the assistant is off shows them inactive, after "Turned off", which leads to the switch;
 /// returns whether that was clicked.
-pub fn keys(ui: &mut Ui, index: usize, is_assistant_on: bool) -> bool {
+pub(crate) fn keys(ui: &mut Ui, index: usize, is_assistant_on: bool) -> bool {
     let Some(shortcut) = SHORTCUTS.get(index) else {
         return false;
     };

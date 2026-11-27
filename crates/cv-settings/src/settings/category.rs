@@ -3,7 +3,7 @@
 use cv_base::theme::icons;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Category {
+pub(crate) enum Category {
     #[default]
     Connections,
     Appearance,
@@ -17,7 +17,7 @@ pub enum Category {
 }
 
 impl Category {
-    pub const ALL: [Self; 9] = [
+    pub(crate) const ALL: [Self; 9] = [
         Self::Connections,
         Self::Appearance,
         Self::Merging,
@@ -29,7 +29,7 @@ impl Category {
         Self::Keyboard,
     ];
 
-    pub fn title(self) -> &'static str {
+    pub(crate) fn title(self) -> &'static str {
         match self {
             Self::Connections => "Connections",
             Self::Appearance => "Appearance",
@@ -43,7 +43,7 @@ impl Category {
         }
     }
 
-    pub fn icon(self) -> &'static str {
+    pub(crate) fn icon(self) -> &'static str {
         match self {
             Self::Connections => icons::PLUGS,
             Self::Appearance => icons::PALETTE,
@@ -58,7 +58,7 @@ impl Category {
     }
 
     /// One sentence under the section's title; Connections writes its own (it names the token store).
-    pub fn intro(self) -> &'static str {
+    pub(crate) fn intro(self) -> &'static str {
         match self {
             Self::Connections => "One connection per account and host.",
             Self::Appearance => "The sample redraws with every choice.",
@@ -81,7 +81,7 @@ impl Category {
     }
 
     /// Id salt of the section's scroll area, so each keeps its own position.
-    pub fn scroll_id(self) -> &'static str {
+    pub(crate) fn scroll_id(self) -> &'static str {
         match self {
             Self::Connections => "settings_connections",
             Self::Appearance => "settings_appearance",
@@ -96,12 +96,12 @@ impl Category {
     }
 
     /// Sections whose settings change how something looks get a preview beside them.
-    pub fn has_preview(self) -> bool {
+    pub(crate) fn has_preview(self) -> bool {
         matches!(self, Self::Appearance | Self::Merging)
     }
 
     /// The sections offered: Merging only once a connection exists, since it lists their platforms.
-    pub fn available(has_connections: bool) -> impl Iterator<Item = Self> {
+    pub(crate) fn available(has_connections: bool) -> impl Iterator<Item = Self> {
         Self::ALL.into_iter().filter(move |category| has_connections || *category != Self::Merging)
     }
 }

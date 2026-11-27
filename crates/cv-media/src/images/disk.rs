@@ -27,7 +27,7 @@ const MAGIC: &[u8; 4] = b"CVI2";
 const EXPIRY_AT: u64 = 4;
 
 /// A body read back from disk.
-pub struct Kept {
+pub(crate) struct Kept {
     pub bytes: Vec<u8>,
     pub content_type: Option<String>,
     pub validators: Validators,
@@ -36,7 +36,7 @@ pub struct Kept {
 }
 
 /// The body kept at `path`, fresh or stale; `None` when there is none or it cannot be read.
-pub fn read(path: &Path) -> Option<Kept> {
+pub(crate) fn read(path: &Path) -> Option<Kept> {
     let file = std::fs::read(path).ok()?;
     let (magic, rest) = file.split_first_chunk::<4>()?;
     if magic != MAGIC {
@@ -57,7 +57,7 @@ pub fn read(path: &Path) -> Option<Kept> {
 
 /// Keeps `bytes` at `path` for `max_age` (none: [`DEFAULT_MAX_AGE`]); a zero age keeps a copy that
 /// is asked about on every load.
-pub fn write(
+pub(crate) fn write(
     path: &Path,
     bytes: &[u8],
     content_type: Option<&str>,
@@ -90,7 +90,7 @@ pub(super) fn write_whole(path: &Path, bytes: &[u8]) -> io::Result<()> {
 }
 
 /// The host said the body at `path` is unchanged: it counts as current for `max_age` again.
-pub fn renew(path: &Path, max_age: Option<Duration>) {
+pub(crate) fn renew(path: &Path, max_age: Option<Duration>) {
     // A lifetime that cannot be written only means the next load asks again.
     let _asks_again = File::options().write(true).open(path).and_then(|mut file| {
         file.seek(SeekFrom::Start(EXPIRY_AT))?;
@@ -100,7 +100,7 @@ pub fn renew(path: &Path, max_age: Option<Duration>) {
 
 /// Lets go of a body that does not decode; one that cannot be removed fails the same way next
 /// time, which is what the card says.
-pub fn remove(path: &Path) {
+pub(crate) fn remove(path: &Path) {
     let _kept = std::fs::remove_file(path);
 }
 

@@ -16,7 +16,7 @@ use crate::onboarding::parts;
 const TOP_ENDPOINTS: usize = 5;
 const STAT_COLUMNS: usize = 4;
 
-pub fn show(ui: &mut Ui, services: &Services) {
+pub(crate) fn show(ui: &mut Ui, services: &Services) {
     let palette = theme::palette(ui.ctx());
     // Counts refresh while the section is shown; elsewhere it costs nothing.
     ui.ctx().request_repaint_after(Duration::from_secs(1));

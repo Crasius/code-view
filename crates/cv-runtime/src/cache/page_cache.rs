@@ -12,7 +12,7 @@
 //! up to [`SAVED_BYTES`], and decoded when a page first asks. Pipelines, file lists and commits
 //! stay in memory: rarely revisited, or listed again by the mirror in milliseconds.
 //!
-//! Keys name a route part, e.g. `pulls|{connection}|Visible|Open` or `pr|{key}|detail`.
+//! Keys name a route part ([`list_part`], [`pull_request_part`]).
 //!
 //! Every answer is stamped with the time it was asked for as well as the time it arrived, and
 //! [`PageCache::put_answer`] never lets an answer replace one that was asked for later. A warm-up

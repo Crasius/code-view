@@ -13,7 +13,7 @@ use super::RenderOptions;
 use super::test_document;
 
 const SAMPLE: &str = "\
-This **automated pull request**, created by **1ES**, is part of the **[Inventory-As-Code](https://aka.ms/iac)** onboarding.
+This **automated pull request**, created by **Fabrikam Bots**, is part of the **[Inventory as Code](https://example.com/iac)** onboarding.
 
 #🚀 What's Changing?
 
@@ -25,7 +25,7 @@ retired. You'll manage repository inventory directly via source code and this li
 ##1. Review the YAML file(s)
 
 1. Ensure the metadata is accurate.
-2. Run `dotnet build` locally, see https://aka.ms/inventory-as-code.
+2. Run `dotnet build` locally, see https://example.com/inventory-as-code.
    - nested bullet
    - another nested bullet
 

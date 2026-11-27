@@ -26,7 +26,7 @@ pub(super) enum HtmlTag {
 
 /// An inline HTML tag that marks its text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HtmlMark {
+pub(crate) enum HtmlMark {
     /// `<ins>` (GitHub, GitLab) or `<u>` (Azure DevOps).
     Underline,
     Subscript,
@@ -36,12 +36,12 @@ pub enum HtmlMark {
 
 /// How deep a run sits inside each HTML mark, so nested tags close in order.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct HtmlMarks {
+pub(crate) struct HtmlMarks {
     depths: [u8; 4],
 }
 
 impl HtmlMarks {
-    pub fn has(self, mark: HtmlMark) -> bool {
+    pub(crate) fn has(self, mark: HtmlMark) -> bool {
         self.depths.get(mark as usize).is_some_and(|depth| *depth > 0)
     }
 

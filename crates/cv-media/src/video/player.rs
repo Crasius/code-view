@@ -34,13 +34,13 @@ pub enum Status {
 
 /// Where playback is: `at` seconds into the clip at input time `since` while it plays.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct Clock {
+pub(crate) struct Clock {
     at: f64,
     since: Option<f64>,
 }
 
 impl Clock {
-    pub fn position(self, now: f64) -> f64 {
+    pub(crate) fn position(self, now: f64) -> f64 {
         self.at + self.since.map_or(0.0, |since| (now - since).max(0.0))
     }
 
@@ -134,7 +134,7 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(clip: Arc<Clip>) -> Self {
+    pub(crate) fn new(clip: Arc<Clip>) -> Self {
         Self {
             clip,
             clock: Clock::default(),

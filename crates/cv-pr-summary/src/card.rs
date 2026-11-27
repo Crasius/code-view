@@ -14,6 +14,8 @@ use super::layout::{self, Geometry, Shape};
 use super::rendered::RenderedCard;
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, Palette, fonts, icons, style};
+use cv_pr_diff::diff_view::DiffEvent;
+use cv_pr_rendered::markdown_diff::RenderedEvent;
 use cv_pr_tree::rows;
 use cv_widgets::numbers::group_digits;
 use cv_widgets::{focus, row};
@@ -28,7 +30,7 @@ const VIEW_HEIGHT: f32 = 28.0;
 const NAME_SIZE: f32 = style::BODY_SIZE;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CardAction {
+pub(crate) enum CardAction {
     Toggle,
     View,
     Retry,
@@ -37,7 +39,7 @@ pub enum CardAction {
 }
 
 /// What the body of a card shows this frame.
-pub enum Body<'a> {
+pub(crate) enum Body<'a> {
     Loaded(&'a mut CardBody),
     /// A Markdown file's rendered diff, its versions loaded.
     Rendered(&'a mut RenderedCard),
@@ -51,7 +53,7 @@ pub enum Body<'a> {
 }
 
 /// The body of a card without a loaded diff.
-pub fn placeholder_body<'a>(
+pub(crate) fn placeholder_body<'a>(
     file: &ChangedFile,
     is_forced: bool,
     failure: Option<&'a str>,
@@ -67,7 +69,7 @@ pub fn placeholder_body<'a>(
     }
 }
 
-pub struct CardView<'a> {
+pub(crate) struct CardView<'a> {
     pub file: &'a ChangedFile,
     /// The card without the gap below it.
     pub rect: Rect,
@@ -80,16 +82,38 @@ pub struct CardView<'a> {
 }
 
 /// What a loaded card's body shows.
-pub enum Content<'a> {
+pub(crate) enum Content<'a> {
     Code(&'a mut CardBody),
     Rendered(&'a mut RenderedCard),
 }
 
-/// Paints a loaded card's code or rendered diff in the body rect, clipped to the second rect.
-pub type CodeRows<'a> = dyn FnMut(&mut Ui, Rect, Rect, Content<'_>) + 'a;
+/// What a loaded card's body did this frame: code rows or rendered blocks.
+pub(crate) struct BodyOutput {
+    pub event: Option<DiffEvent>,
+    /// What the user did in a rendered card (see [`super::rendered`]).
+    pub rendered: Option<RenderedEvent>,
+    /// The share the user moved the boundary between the sides to, and whether they let go.
+    pub split: Option<f32>,
+    pub split_committed: bool,
+    /// Code rows painted.
+    #[cfg(test)]
+    pub rows: usize,
+    /// The rows' height, comment cards included.
+    pub height: f32,
+    /// Where the rows want the view scrolled: y below the body's top for the view's top.
+    pub scroll: Option<f32>,
+    pub has_selection: bool,
+}
 
-/// Paints the card and returns what the user did with it; `code` paints a loaded card's rows.
-pub fn show(ui: &mut Ui, view: CardView<'_>, code: &mut CodeRows<'_>) -> Option<CardAction> {
+/// Paints a loaded card's code or rendered diff in the body rect, clipped to the second rect.
+pub(crate) type BodyPaint<'a> = dyn FnMut(&mut Ui, Rect, Rect, Content<'_>) + 'a;
+
+/// Paints the card and returns what the user did with it; `paint` paints a loaded card's body.
+pub(crate) fn show(
+    ui: &mut Ui,
+    view: CardView<'_>,
+    paint: &mut BodyPaint<'_>,
+) -> Option<CardAction> {
     let palette = theme::palette(ui.ctx());
     let rect = view.rect;
     let header = Rect::from_min_size(rect.min, vec2(rect.width(), view.geometry.header));
@@ -102,7 +126,7 @@ pub fn show(ui: &mut Ui, view: CardView<'_>, code: &mut CodeRows<'_>) -> Option<
         let clip = body.shrink2(vec2(1.0, 0.0)).intersect(ui.clip_rect());
         if clip.is_positive() {
             let area = BodyArea { body, clip };
-            let shown = body_rows(ui, area, view.body, view.shape, view.geometry, view.file, code);
+            let shown = body_rows(ui, area, view.body, view.shape, view.geometry, view.file, paint);
             action = action.or(shown);
         }
     }
@@ -339,7 +363,7 @@ fn body_rows(
     shape: Shape,
     geometry: &Geometry,
     file: &ChangedFile,
-    code: &mut CodeRows<'_>,
+    paint: &mut BodyPaint<'_>,
 ) -> Option<CardAction> {
     let BodyArea { body, clip } = area;
     let notice = match content {
@@ -354,12 +378,12 @@ fn body_rows(
             Some(Placeholder::Unchanged) => Notice::unchanged(file),
             Some(Placeholder::TooLarge { changed }) => Notice::too_large(changed),
             None => {
-                code(ui, body, clip, Content::Code(card));
+                paint(ui, body, clip, Content::Code(card));
                 return None;
             }
         },
         Body::Rendered(card) => {
-            code(ui, body, clip, Content::Rendered(card));
+            paint(ui, body, clip, Content::Rendered(card));
             return None;
         }
         Body::Pending => {

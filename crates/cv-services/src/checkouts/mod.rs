@@ -25,8 +25,9 @@ use review_store::checkouts::{
     CheckoutKind, CheckoutRecord, CheckoutRecords, CheckoutSettings, OpenWith,
 };
 
-pub use self::clones::{FolderPurpose, Found, KnownRepository, Query};
-pub use self::finish::Offer;
+pub(crate) use self::clones::KnownRepository;
+pub use self::clones::{FolderPurpose, Found, Query};
+pub(crate) use self::finish::Offer;
 pub use self::job::{Failure, Job, JobPhase, JobProgress, Place, Plan, StepState};
 pub use self::upkeep::{RemovalState, Status, reason};
 use cv_base::platform;
@@ -50,7 +51,7 @@ impl Checkouts {
     /// The saved records; none (and why) when the file cannot be read. Their log lines are
     /// redacted once here, for a file an earlier build wrote with raw lines; lines added later are
     /// redacted where they are built. A failed save of the redacted file is the message then.
-    pub fn open(paths: &AppPaths) -> (Self, Option<String>) {
+    pub(crate) fn open(paths: &AppPaths) -> (Self, Option<String>) {
         let file = paths.checkouts_file();
         let (records, error) = match CheckoutRecords::load(file.clone()) {
             Ok(mut records) => {
@@ -287,7 +288,7 @@ pub fn terminal_name(settings: &CheckoutSettings) -> String {
 
 /// Moves finished checkouts, updates, removals, lookups and folder dialogs into the state; a
 /// finished checkout opens what it was asked to. Call once per frame.
-pub fn poll(services: &mut Services) {
+pub(crate) fn poll(services: &mut Services) {
     services.checkouts.clones.poll();
     poll_finished(services);
     let changes = services.checkouts.upkeep.poll();

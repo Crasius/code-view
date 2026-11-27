@@ -75,8 +75,8 @@ use review_git::{ChangedFile, DiffOptions, FileDiff};
 use review_store::{DiffLayout, RenderedWidth};
 
 use self::bodies::{BodyCache, CardBody};
-use self::card::{Body, CardAction, CardView, Content};
-use self::code::{CardCode, CodeOutput, ThreadsByPath};
+use self::card::{Body, BodyOutput, CardAction, CardView, Content};
+use self::code::{CardCode, ThreadsByPath};
 use self::header::HeaderAction;
 use self::layout::{CardIndex, Geometry, HEIGHT_EPSILON, Shape, Shapes, note_height};
 use self::loads::Loads;
@@ -298,11 +298,6 @@ impl FolderSummary {
         self.loads.forget_motion();
     }
 
-    #[cfg(test)]
-    pub fn bodies_kept(&self) -> usize {
-        self.bodies.len()
-    }
-
     /// `split` is the old side's share of a side-by-side card, the file view's; the user can drag it
     /// in any card.
     pub fn show(
@@ -448,7 +443,7 @@ impl FolderSummary {
 
     /// Builds the cards again in the next pass. Keeps the folder: only the shapes are rebuilt, and
     /// the anchor keeps the view in place.
-    pub fn rebuild(&mut self) {
+    pub(crate) fn rebuild(&mut self) {
         if let Some((version, _)) = &mut self.built {
             *version = None;
         }
@@ -712,9 +707,9 @@ impl FolderSummary {
             body,
             geometry,
         };
-        let mut code_output = None;
+        let mut output = None;
         let mut rows = |ui: &mut Ui, body: Rect, clip: Rect, content: Content<'_>| {
-            code_output = Some(match content {
+            output = Some(match content {
                 Content::Code(card_body) => {
                     code::show(ui, body, clip, card_body, &code, threads_ui)
                 }
@@ -722,9 +717,9 @@ impl FolderSummary {
             });
         };
         let action = card::show(ui, view, &mut rows);
-        if let Some(output) = code_output {
+        if let Some(output) = output {
             let laid_out = rect.height() - geometry.header;
-            self.take_code_output(
+            self.take_body_output(
                 ui.ctx(),
                 (slot.file, &file.path),
                 top + geometry.header,
@@ -738,16 +733,16 @@ impl FolderSummary {
         }
     }
 
-    /// Takes in what the rows of the card of `file` (its index and path) did: their height
-    /// (`laid_out` was the one the index had), a scroll they asked for below `body_top`, a new
+    /// Takes in what the body of the card of `file` (its index and path) did: its height
+    /// (`laid_out` was the one the index had), a scroll it asked for below `body_top`, a new
     /// selection, a boundary drag, a thread event, what was done in a rendered card.
-    fn take_code_output(
+    fn take_body_output(
         &mut self,
         ctx: &egui::Context,
         (file, path): (usize, &str),
         body_top: f32,
         laid_out: f32,
-        output: CodeOutput,
+        output: BodyOutput,
         pass: &mut Pass,
     ) {
         #[cfg(test)]

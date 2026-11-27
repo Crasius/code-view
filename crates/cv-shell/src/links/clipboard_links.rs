@@ -25,13 +25,13 @@ use cv_base::theme::icons;
 use cv_runtime::background::{Task, TaskPoll};
 use cv_runtime::intents::AddRequest;
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_runtime::toasts::{ToastAction, Toasts, WaysOut};
+use cv_runtime::toasts::{ToastAction, Toasts};
 use cv_services::Services;
 
-use super::link_access::{self, AccessCheck, Denial, Target, Verdict};
+use super::link_access::{self, AccessCheck, Target, Verdict, short_name};
 
 /// Longer texts are no link someone copied to open; they are not looked at.
-pub const MAX_TEXT: usize = 2048;
+pub(crate) const MAX_TEXT: usize = 2048;
 
 const REQUEST_ID: &str = "review.clipboard_links.request";
 
@@ -51,7 +51,7 @@ impl ClipboardSource for SystemClipboard {
 
 /// What one copied URL names. Anything else (several words, texts over [`MAX_TEXT`]) is
 /// [`Target::NotAPullRequest`].
-pub fn classify(text: &str, connections: &[Connection]) -> Target {
+pub(crate) fn classify(text: &str, connections: &[Connection]) -> Target {
     let url = text.trim();
     let is_one_url = (url.starts_with("https://") || url.starts_with("http://"))
         && !url.contains(char::is_whitespace);
@@ -62,7 +62,7 @@ pub fn classify(text: &str, connections: &[Connection]) -> Target {
 }
 
 /// The host a setup for `request` connects to, for the toast: `github.com`, `dev.azure.com/contoso`.
-pub fn host_label(request: &AddRequest) -> String {
+pub(crate) fn host_label(request: &AddRequest) -> String {
     let base = request.kind.default_base_url();
     let host = base.split_once("://").map_or(base, |(_, host)| host);
     match (&request.organization, request.kind) {
@@ -81,7 +81,7 @@ pub enum Request {
 }
 
 /// Leaves `request` for the app, which takes it before the next page runs.
-pub fn request(ctx: &egui::Context, request: Request) {
+pub(crate) fn request(ctx: &egui::Context, request: Request) {
     mailbox::post(ctx, Id::unique(REQUEST_ID), request);
 }
 
@@ -116,11 +116,6 @@ pub fn turn_off(services: &mut Services) {
         "Copied pull request links no longer open. Settings → Links turns it back on.",
         vec![settings],
     );
-}
-
-/// `widgets #7`: the repository's last segment and the number.
-fn short_name(key: &PullRequestKey) -> String {
-    format!("{} #{}", key.repository_key.rsplit('/').next().unwrap_or_default(), key.number)
 }
 
 /// Reads the clipboard when the window gains focus, checks a copied pull request link and hands
@@ -170,7 +165,7 @@ impl ClipboardWatch {
         let key = match access {
             Verdict::Open(key) | Verdict::Unknown(key) => key,
             Verdict::NoAccess { key, denial } => {
-                refuse(services, &key, denial);
+                link_access::announce_refusal(services, &key, denial);
                 return None;
             }
         };
@@ -251,36 +246,6 @@ impl ClipboardWatch {
             }
         });
     }
-}
-
-/// The toast for a copied link the connection's token cannot read: why, then the page on its
-/// platform and the token setup of that connection.
-pub(crate) fn refuse(services: &mut Services, key: &PullRequestKey, denial: Denial) {
-    let Some(connection) = services.connection(&key.connection_id) else {
-        return;
-    };
-    let (name, connection) = (short_name(key), &connection.name);
-    let text = match denial {
-        Denial::NotFound => format!(
-            "{name} did not open: connection {connection} cannot find it. It does not exist, or \
-             the token cannot see its repository."
-        ),
-        Denial::Forbidden => {
-            format!(
-                "{name} did not open: the token of connection {connection} has no access to it."
-            )
-        }
-        Denial::TokenRefused => {
-            format!("{name} did not open: the host refused the token of connection {connection}.")
-        }
-    };
-    let fix = ToastAction::fix_token(&key.connection_id);
-    let ways_out =
-        match ToastAction::open_pull_request(services.connection(&key.connection_id), key, None) {
-            Some(page) => WaysOut::new(page).and(fix),
-            None => fix.into(),
-        };
-    services.toasts.error(text, ways_out);
 }
 
 fn hash(text: &str) -> u64 {

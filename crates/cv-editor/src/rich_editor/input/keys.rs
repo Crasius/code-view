@@ -15,7 +15,7 @@ fn is_word_modifier(modifiers: Modifiers) -> bool {
 }
 
 /// Takes this frame's events the focused editor handles out of the input.
-pub fn take_commands(ui: &Ui, state: &mut State) -> Vec<Command> {
+pub(crate) fn take_commands(ui: &Ui, state: &mut State) -> Vec<Command> {
     let mut commands = Vec::new();
     let is_mention_open = matches!(state.popup, Popup::Mention { .. });
     let mut ime = Vec::new();

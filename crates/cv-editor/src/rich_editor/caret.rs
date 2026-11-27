@@ -10,14 +10,14 @@ use super::layout::{Laid, LayoutCache};
 use super::model::{Document, Pos, Selection};
 
 /// Where block `index` and its galley sit, from the content's top-left `origin`.
-pub struct Placed {
+pub(crate) struct Placed {
     pub laid: std::sync::Arc<Laid>,
     pub top: f32,
     /// Top-left of the galley.
     pub galley_origin: Pos2,
 }
 
-pub fn place(
+pub(crate) fn place(
     layout: &mut LayoutCache,
     ctx: &Context,
     doc: &Document,
@@ -31,7 +31,7 @@ pub fn place(
 }
 
 /// The block whose box holds `y` (content coordinates), the nearest at the ends.
-pub fn block_at_y(layout: &mut LayoutCache, doc: &Document, y: f32) -> usize {
+pub(crate) fn block_at_y(layout: &mut LayoutCache, doc: &Document, y: f32) -> usize {
     let offsets = layout.offsets(doc);
     let after = offsets.tops.partition_point(|top| *top <= y);
     let index = after.saturating_sub(1);
@@ -46,13 +46,13 @@ pub fn block_at_y(layout: &mut LayoutCache, doc: &Document, y: f32) -> usize {
 
 /// Which way a caret move goes: up, to the row's start or to the char before, or the reverse.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Direction {
+pub(crate) enum Direction {
     Backward,
     Forward,
 }
 
 /// The position under `point` (screen coordinates).
-pub fn pos_at(
+pub(crate) fn pos_at(
     layout: &mut LayoutCache,
     ctx: &Context,
     doc: &Document,
@@ -66,7 +66,7 @@ pub fn pos_at(
 }
 
 /// The caret's rectangle at `pos` (screen coordinates), one line high.
-pub fn caret_rect(
+pub(crate) fn caret_rect(
     layout: &mut LayoutCache,
     ctx: &Context,
     doc: &Document,
@@ -80,7 +80,7 @@ pub fn caret_rect(
 
 /// One row up (`Backward`) or down, keeping the column `x` (screen coordinates), across
 /// blocks. Returns the new position and the column to keep.
-pub fn vertical(
+pub(crate) fn vertical(
     layout: &mut LayoutCache,
     ctx: &Context,
     doc: &Document,
@@ -119,7 +119,7 @@ pub fn vertical(
 }
 
 /// The start (`Backward`) or end of the row `pos` is on.
-pub fn row_edge(
+pub(crate) fn row_edge(
     layout: &mut LayoutCache,
     ctx: &Context,
     doc: &Document,
@@ -137,7 +137,7 @@ pub fn row_edge(
 }
 
 /// A page up (`Backward`) or down: the position `height` above or below the caret.
-pub fn page(
+pub(crate) fn page(
     layout: &mut LayoutCache,
     ctx: &Context,
     doc: &Document,
@@ -179,7 +179,7 @@ fn class(ch: char) -> CharClass {
 }
 
 /// Ctrl+Left: the start of the word before the caret, or the end of the block before.
-pub fn word_left(doc: &Document, pos: Pos) -> Pos {
+pub(crate) fn word_left(doc: &Document, pos: Pos) -> Pos {
     if pos.offset == 0 {
         return match pos.block.checked_sub(1) {
             Some(before) => Pos::new(before, doc.block(before).len()),
@@ -200,7 +200,7 @@ pub fn word_left(doc: &Document, pos: Pos) -> Pos {
 }
 
 /// Ctrl+Right: the end of the word after the caret, or the start of the next block.
-pub fn word_right(doc: &Document, pos: Pos) -> Pos {
+pub(crate) fn word_right(doc: &Document, pos: Pos) -> Pos {
     let chars: Vec<char> = doc.block(pos.block).content.text().chars().collect();
     if pos.offset >= chars.len() {
         return if pos.block + 1 < doc.blocks.len() { Pos::new(pos.block + 1, 0) } else { pos };
@@ -218,7 +218,7 @@ pub fn word_right(doc: &Document, pos: Pos) -> Pos {
 }
 
 /// The word (or run of spaces or punctuation) at `pos`, for a double click.
-pub fn word_at(doc: &Document, pos: Pos) -> Selection {
+pub(crate) fn word_at(doc: &Document, pos: Pos) -> Selection {
     let chars: Vec<char> = doc.block(pos.block).content.text().chars().collect();
     let Some(kind) = chars
         .get(pos.offset)
@@ -239,7 +239,7 @@ pub fn word_at(doc: &Document, pos: Pos) -> Selection {
 }
 
 /// The char before (`Backward`) or after `pos`, across block boundaries.
-pub fn step(doc: &Document, pos: Pos, direction: Direction) -> Pos {
+pub(crate) fn step(doc: &Document, pos: Pos, direction: Direction) -> Pos {
     let pos = doc.clamp(pos);
     if direction == Direction::Forward {
         if pos.offset < doc.block(pos.block).len() {
@@ -259,4 +259,4 @@ pub fn step(doc: &Document, pos: Pos, direction: Direction) -> Pos {
 }
 
 /// The size of the area the caret is scrolled into view with: a line above and below.
-pub const SCROLL_MARGIN: Vec2 = vec2(0.0, 24.0);
+pub(crate) const SCROLL_MARGIN: Vec2 = vec2(0.0, 24.0);

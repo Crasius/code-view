@@ -12,7 +12,7 @@ use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
 
 /// Inline formatting the toolbar can toggle off again when the cursor is inside it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InlineKind {
+pub(crate) enum InlineKind {
     Bold,
     Italic,
     Strike,
@@ -21,7 +21,7 @@ pub enum InlineKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InlineSpan {
+pub(crate) struct InlineSpan {
     pub kind: InlineKind,
     /// Byte range including the markers.
     pub range: Range<usize>,
@@ -30,7 +30,7 @@ pub struct InlineSpan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CodeBlock {
+pub(crate) struct CodeBlock {
     /// Byte range of the whole block, fences included, without the trailing newline.
     pub block: Range<usize>,
     /// Byte range of the content lines (for Enter's auto indent, Tab and smart paste).
@@ -39,7 +39,7 @@ pub struct CodeBlock {
 }
 
 #[derive(Debug, Default)]
-pub struct Model {
+pub(crate) struct Model {
     pub spans: Vec<InlineSpan>,
     /// Byte ranges of the headings.
     pub headings: Vec<Range<usize>>,
@@ -53,7 +53,7 @@ pub struct Model {
 
 impl Model {
     /// Appends `other`, parsed from the part of a longer text that starts at `byte`.
-    pub fn append(&mut self, other: &Model, byte: usize) {
+    pub(crate) fn append(&mut self, other: &Model, byte: usize) {
         let shift = |range: &Range<usize>| range.start + byte..range.end + byte;
         self.spans.extend(
             other.spans.iter().map(|span| InlineSpan { range: shift(&span.range), ..span.clone() }),
@@ -69,7 +69,12 @@ impl Model {
     }
 
     /// The innermost span of `kind` that contains the byte range `start..end`.
-    pub fn span_around(&self, kind: InlineKind, start: usize, end: usize) -> Option<&InlineSpan> {
+    pub(crate) fn span_around(
+        &self,
+        kind: InlineKind,
+        start: usize,
+        end: usize,
+    ) -> Option<&InlineSpan> {
         self.spans
             .iter()
             .filter(|span| span.kind == kind && span.range.start <= start && end <= span.range.end)
@@ -77,17 +82,17 @@ impl Model {
     }
 
     /// Whether the character at `byte` (the last one when `byte` is the end) is in a heading.
-    pub fn is_in_heading(&self, byte: usize, text_len: usize) -> bool {
+    pub(crate) fn is_in_heading(&self, byte: usize, text_len: usize) -> bool {
         let probe = if byte < text_len { byte } else { byte.saturating_sub(1) };
         self.headings.iter().any(|heading| heading.contains(&probe))
     }
 
-    pub fn is_in_code_block(&self, byte: usize) -> bool {
+    pub(crate) fn is_in_code_block(&self, byte: usize) -> bool {
         self.code_blocks.iter().any(|code| code.content.start <= byte && byte <= code.content.end)
     }
 }
 
-pub fn parse(text: &str) -> Model {
+pub(crate) fn parse(text: &str) -> Model {
     let mut builder = Builder { text, model: Model::default() };
     builder.walk();
     builder.model

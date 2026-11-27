@@ -15,13 +15,17 @@ pub struct MirrorRegistry {
 }
 
 impl MirrorRegistry {
-    pub fn new(root: PathBuf) -> Self {
+    pub(crate) fn new(root: PathBuf) -> Self {
         Self { root, mirrors: Mutex::new(HashMap::new()) }
     }
 
     /// The mirror of `remote`, stamped as used now by `usage` (retention keeps it a month from
     /// here, and drops the pull request's refs once it finished).
-    pub async fn open(&self, remote: &GitRemote, usage: &MirrorUse<'_>) -> Result<Arc<GitMirror>> {
+    pub(crate) async fn open(
+        &self,
+        remote: &GitRemote,
+        usage: &MirrorUse<'_>,
+    ) -> Result<Arc<GitMirror>> {
         let mirror = self.open_unstamped(remote).await?;
         Self::record_use(&mirror, usage);
         Ok(mirror)
@@ -47,7 +51,7 @@ impl MirrorRegistry {
 
     /// The mirror of `remote` when a pull request page made one before; never creates one, and
     /// reading from it keeps no pull request's data alive.
-    pub async fn existing(&self, remote: &GitRemote) -> Result<Option<Arc<GitMirror>>> {
+    pub(crate) async fn existing(&self, remote: &GitRemote) -> Result<Option<Arc<GitMirror>>> {
         let mut mirrors = self.mirrors.lock().await;
         if let Some(mirror) = mirrors.get(&remote.clone_url) {
             return Ok(Some(mirror.clone()));

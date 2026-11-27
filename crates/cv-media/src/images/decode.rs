@@ -71,7 +71,7 @@ pub fn decode(
 
 /// The full-resolution pixels of `original`, never scaled down to a texture: a raster image's own
 /// pixels (an animation's first frame), an SVG drawn at `pixels_per_point`.
-pub fn full_pixels(original: &Original, pixels_per_point: f32) -> Result<Pixels, String> {
+pub(crate) fn full_pixels(original: &Original, pixels_per_point: f32) -> Result<Pixels, String> {
     let bytes = &original.bytes;
     if is_svg(&head(bytes), original.content_type.as_deref()) {
         let (tree, natural) = svg_tree(bytes)?;
@@ -223,7 +223,7 @@ fn decode_animation(
 
 /// Decodes `stream` over and over on a thread of its own, handing over each frame with its delay;
 /// the thread ends when nobody takes them any more, or at a damaged frame.
-pub fn spawn_frames(stream: Stream) -> FrameFeed {
+pub(crate) fn spawn_frames(stream: Stream) -> FrameFeed {
     let (sender, frames) = mpsc::sync_channel(QUEUED_FRAMES);
     let decoder = move || {
         loop {

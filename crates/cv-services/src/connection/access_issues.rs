@@ -55,7 +55,7 @@ impl AccessIssues {
 /// Everything holding it (open pull request pages, their loads, caches) reaches the connection's
 /// newest settings: [`Self::replace`] swaps the provider underneath, and each call takes the
 /// provider of the moment.
-pub struct WatchedProvider {
+pub(crate) struct WatchedProvider {
     inner: RwLock<Arc<dyn Provider>>,
     /// The platform's, fixed for the handle's lifetime (a connection never changes its platform).
     capabilities: Capabilities,
@@ -64,14 +64,18 @@ pub struct WatchedProvider {
 }
 
 impl WatchedProvider {
-    pub fn new(inner: Arc<dyn Provider>, connection_id: String, issues: AccessIssues) -> Self {
+    pub(crate) fn new(
+        inner: Arc<dyn Provider>,
+        connection_id: String,
+        issues: AccessIssues,
+    ) -> Self {
         let capabilities = inner.capabilities().clone();
         Self { inner: RwLock::new(inner), capabilities, connection_id, issues }
     }
 
     /// Calls from now on go to `inner` (built for the connection's new settings); calls already
     /// running finish with the provider they started with.
-    pub fn replace(&self, inner: Arc<dyn Provider>) {
+    pub(crate) fn replace(&self, inner: Arc<dyn Provider>) {
         *self.inner.write().unwrap_or_else(PoisonError::into_inner) = inner;
     }
 

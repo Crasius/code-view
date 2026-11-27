@@ -20,7 +20,7 @@ use review_store::{
 use super::rows::{self, AppearanceRow, Row};
 
 /// The control of Appearance row `id`; a switch takes its name from `row`.
-pub fn control(ui: &mut Ui, id: AppearanceRow, row: &Row, services: &mut Services) {
+pub(crate) fn control(ui: &mut Ui, id: AppearanceRow, row: &Row, services: &mut Services) {
     let settings = &mut services.settings;
     let changed = match id {
         AppearanceRow::Theme => tabs::segments(

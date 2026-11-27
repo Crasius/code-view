@@ -71,7 +71,7 @@ pub struct Marks {
     pub color: Color32,
 }
 
-pub struct Renderer {
+pub(crate) struct Renderer {
     palette: Palette,
     id: Id,
     next: usize,
@@ -113,14 +113,14 @@ impl Renderer {
     }
 
     /// Top-level tables may grow to `breakout` wide, centered on the text, rather than scroll.
-    pub fn with_breakout(mut self, breakout: f32) -> Self {
+    pub(crate) fn with_breakout(mut self, breakout: f32) -> Self {
         self.breakout = breakout;
         self
     }
 
     /// Relative image paths resolve against `base`; images get a `border` in that color; `anchor`
     /// says who keeps the reader's place when an image above the view changes height.
-    pub fn with_images(
+    pub(crate) fn with_images(
         mut self,
         base: Option<ImageBase>,
         border: Option<Color32>,
@@ -133,14 +133,14 @@ impl Renderer {
     }
 
     /// Fills the words of the layers `marks` of the next block shown with [`Self::show_unit`].
-    pub fn with_marks(mut self, marks: impl IntoIterator<Item = Marks>) -> Self {
+    pub(crate) fn with_marks(mut self, marks: impl IntoIterator<Item = Marks>) -> Self {
         self.marks = marks.into_iter().collect();
         self
     }
 
     /// One piece of a rendered diff: a top-level block, or with `item` one item of a top-level
     /// list (numbered as in the whole list).
-    pub fn show_unit(&mut self, ui: &mut Ui, block: &Block, item: Option<usize>) {
+    pub(crate) fn show_unit(&mut self, ui: &mut Ui, block: &Block, item: Option<usize>) {
         let look =
             Look { size: self.px(tokens::BODY_SIZE), strong: false, color: self.palette.text };
         self.cursor = 0;
@@ -192,7 +192,7 @@ impl Renderer {
     }
 
     /// Lays out the document `blocks`, identified by `document` (a hash of its source).
-    pub fn show(&mut self, ui: &mut Ui, blocks: &[Block], document: u64) {
+    pub(crate) fn show(&mut self, ui: &mut Ui, blocks: &[Block], document: u64) {
         let look =
             Look { size: self.px(tokens::BODY_SIZE), strong: false, color: self.palette.text };
         ui.vertical(|ui| {

@@ -13,7 +13,7 @@ const MAX_REQUEST: u32 = 64 * 1024;
 const MAX_ANSWER: usize = 1024 * 1024;
 
 /// The next message's bytes, or `None` once the browser closed stdin between messages.
-pub fn read_message(input: &mut impl Read) -> io::Result<Option<Vec<u8>>> {
+pub(crate) fn read_message(input: &mut impl Read) -> io::Result<Option<Vec<u8>>> {
     let mut length = [0_u8; 4];
     if !fill_or_end(input, &mut length)? {
         return Ok(None);
@@ -31,7 +31,7 @@ pub fn read_message(input: &mut impl Read) -> io::Result<Option<Vec<u8>>> {
 }
 
 /// Writes `json` as one message and flushes it, so the browser gets it at once.
-pub fn write_message(output: &mut impl Write, json: &[u8]) -> io::Result<()> {
+pub(crate) fn write_message(output: &mut impl Write, json: &[u8]) -> io::Result<()> {
     if json.len() > MAX_ANSWER {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
