@@ -33,7 +33,7 @@ fn body(ui: &mut Ui, text: &str) {
 }
 
 /// Paths, file lines or commits in the code font, the first [`MAX_LISTED`] of them.
-fn listing(ui: &mut Ui, lines: &[String]) {
+fn listing(ui: &mut Ui, lines: &[impl AsRef<str>]) {
     let palette = theme::palette(ui.ctx());
     let frame = egui::Frame::new()
         .fill(palette.surface_subtle)
@@ -46,7 +46,7 @@ fn listing(ui: &mut Ui, lines: &[String]) {
         for line in lines.iter().take(MAX_LISTED) {
             ui.add(
                 egui::Label::new(
-                    RichText::new(redact(line)).font(theme::fonts::code_font(style::SMALL_SIZE)),
+                    RichText::new(redact(line.as_ref())).font(theme::fonts::code_font(style::SMALL_SIZE)),
                 )
                 .truncate(),
             );
@@ -76,7 +76,7 @@ fn two_buttons(ui: &mut Ui, primary: (&str, Act), secondary: (&str, Act)) -> Opt
 }
 
 /// The clone has uncommitted changes, so switching it is refused.
-pub(super) fn dirty(ui: &mut Ui, clone: &Path, files: &[String]) -> Option<Act> {
+pub(super) fn dirty(ui: &mut Ui, clone: &Path, files: &[&str]) -> Option<Act> {
     let palette = theme::palette(ui.ctx());
     let count = files.len();
     let title = format!(

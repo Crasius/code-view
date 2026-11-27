@@ -33,8 +33,8 @@ impl TreeState {
     }
 
     /// The changed tracked files' lines, untracked ones left out.
-    pub fn tracked_changes(&self) -> Vec<String> {
-        self.changes.iter().filter(|line| !line.starts_with("??")).cloned().collect()
+    pub fn tracked_changes(&self) -> impl Iterator<Item = &str> + '_ {
+        self.changes.iter().map(String::as_str).filter(|line| !line.starts_with("??"))
     }
 }
 
@@ -268,7 +268,7 @@ mod tests {
         assert_eq!(state.branch.as_deref(), Some("main"));
         assert_eq!(state.changes, ["M  src/a.rs", "?? notes.md"]);
         assert!(!state.is_clean());
-        assert_eq!(state.tracked_changes(), ["M  src/a.rs"]);
+        assert_eq!(state.tracked_changes().collect::<Vec<_>>(), ["M  src/a.rs"]);
 
         let untracked = parse_status("## feature/x\n?? scratch.txt\n");
         assert_eq!(untracked.branch.as_deref(), Some("feature/x"));

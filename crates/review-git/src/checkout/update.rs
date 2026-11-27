@@ -103,7 +103,9 @@ pub async fn update(
     let tree = LocalRepo::new(&path);
     let state = tree.state().await?;
     if !state.is_clean() {
-        return Ok(UpdateOutcome::Blocked(Blocked::Changed(state.tracked_changes())));
+        return Ok(UpdateOutcome::Blocked(Blocked::Changed(
+            state.tracked_changes().map(str::to_owned).collect(),
+        )));
     }
     let moved = if is_fast_forward {
         let merge = ["merge", "--ff-only", "--no-edit", request.head.as_str()];

@@ -407,7 +407,7 @@ async fn the_survey_tells_a_fork_from_a_branch_of_the_repository() {
 
     write(&fixture.clone, "src/app.rs", "fn main() { changed() }\n");
     let dirty = survey(&found, "feature", 7).await.expect("surveyed");
-    assert_eq!(dirty.state.tracked_changes(), [" M src/app.rs"]);
+    assert_eq!(dirty.state.tracked_changes().collect::<Vec<_>>(), [" M src/app.rs"]);
 }
 
 /// Regression: a clone opened through a symbolic link (git prints the resolved path) was taken
