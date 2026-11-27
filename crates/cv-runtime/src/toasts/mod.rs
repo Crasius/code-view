@@ -41,7 +41,8 @@ enum Severity {
 struct Toast {
     text: String,
     severity: Severity,
-    /// The input time of the first frame shown after it came; `None` until then.
+    /// The input time the toast's age counts from: its first shown frame, moved
+    /// forward while the pointer holds it. `None` until first shown.
     shown_at: Option<f64>,
     actions: Vec<ToastAction>,
 }

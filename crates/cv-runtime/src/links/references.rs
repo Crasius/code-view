@@ -153,7 +153,10 @@ mod tests {
     use super::{find, ticket_keys};
 
     fn refs(text: &str, platform: review_core::ProviderKind) -> Vec<&str> {
-        find(text, platform).into_iter().filter_map(|range| text.get(range)).collect()
+        find(text, platform)
+            .into_iter()
+            .map(|range| text.get(range).expect("find returns char boundaries"))
+            .collect()
     }
 
     #[test]
