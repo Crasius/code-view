@@ -101,7 +101,7 @@ cv-pr-page = { path = "crates/cv-pr-page" }
 
 arboard = { version = "3.7", default-features = false }
 async-trait = "0.1.92"
-base64 = "0.22"
+base64 = "0.23"
 bytes = "1"
 eframe = { version = "0.37", default-features = false, features = ["glow", "accesskit", "clipboard", "links", "default_fonts"] }
 # The monochrome Noto Emoji and emoji-icon-font close the fallback chains on systems whose own

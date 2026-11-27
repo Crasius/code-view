@@ -3932,7 +3932,7 @@ name = "provider-azure"
 version = "0.1.2"
 dependencies = [
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "futures-util",
  "reqwest",
  "review-core",
@@ -3949,7 +3949,7 @@ name = "provider-github"
 version = "0.1.2"
 dependencies = [
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "reqwest",
  "review-core",
  "serde",
@@ -3966,7 +3966,7 @@ name = "provider-gitlab"
 version = "0.1.2"
 dependencies = [
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "reqwest",
  "review-core",
  "serde",
@@ -4368,7 +4368,7 @@ dependencies = [
 name = "review-store"
 version = "0.1.2"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "review-core",
  "secret-service",
  "security-framework",
