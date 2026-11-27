@@ -29,7 +29,7 @@ use cv_runtime::intents;
 use cv_runtime::load::Live;
 use cv_services::Services;
 use cv_services::linked::LinkedCache;
-use cv_services::self_review::{self, Identities};
+use cv_services::self_review;
 use cv_widgets::splitter::Splitter;
 use cv_widgets::states::{self, Action};
 use cv_widgets::{buttons, scroll, skeleton};
@@ -268,7 +268,8 @@ impl OverviewTab {
                     vote: ReviewVote::Approved,
                     comment: None,
                 };
-                approve.run(session, services, actions);
+                // A write that did not start (another one runs) is visible as the busy header.
+                approve.start(session, services, actions);
             }
             Some(MergeStatusAction::OpenOnPlatform) => {
                 if let Some(detail) = session.detail.ready() {
@@ -293,7 +294,7 @@ impl OverviewTab {
         threads: &mut ThreadsUi,
     ) -> Option<cv_pr_threads::Jump> {
         const TITLE: &str = "Description";
-        let me = Identities::of(ui.ctx()).known(&session.key.connection_id);
+        let me = services.identities.known(&session.key.connection_id);
         let can_approve = session.has_token
             && session.capabilities.votes.contains(&ReviewVote::Approved)
             && session.detail.ready().is_some_and(|detail| {

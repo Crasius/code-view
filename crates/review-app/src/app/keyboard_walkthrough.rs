@@ -10,12 +10,13 @@
 use egui::{Event, Key, Modifiers, Role, Vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
+use review_store::PullRequestTab;
 
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, OWNER, REPOSITORY, open_pull_request, search_row};
 use super::walkthrough::{app, type_into, wait_until};
 use cv_base::platform::shortcut;
-use cv_runtime::route::{PullRequestTab, Route};
+use cv_runtime::route::Route;
 use cv_testkit::ScratchDir;
 
 #[test]

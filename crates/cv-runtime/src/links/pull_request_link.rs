@@ -7,38 +7,26 @@
 
 use review_core::{Connection, ItemKind, ItemRef, ProviderKind};
 
+use crate::intents::AddRequest;
 use crate::route::PullRequestKey;
 
 /// Finds the connection whose host serves `url` and the pull request it names.
 /// Connections with a token win over anonymous ones on the same host.
-pub fn resolve(url: &str, connections: &[Connection]) -> Result<PullRequestKey, String> {
-    let url = url.trim();
-    let address = url.split(['?', '#']).next().unwrap_or_default().trim_end_matches('/');
-    let mut candidates: Vec<&Connection> = connections.iter().collect();
-    candidates.sort_by_key(|connection| connection.token().is_none());
-    for connection in candidates {
-        let Some(path) = web_path(address, connection) else {
-            continue;
-        };
-        let Some((repository_key, number)) = parse_path(connection.kind, &path) else {
-            continue;
-        };
-        return Ok(PullRequestKey { connection_id: connection.id.clone(), repository_key, number });
-    }
-    Err(format!("No saved connection can open {url}. Add a connection for its host here."))
+pub fn resolve(url: &str, connections: &[Connection]) -> Option<PullRequestKey> {
+    resolve_item(url, connections).filter(|(_, item)| item.kind == ItemKind::PullRequest).map(
+        |(connection_id, item)| PullRequestKey {
+            connection_id,
+            repository_key: item.repository_key,
+            number: item.number,
+        },
+    )
 }
 
-/// A pull request on a platform's cloud host (github.com, gitlab.com, dev.azure.com and
-/// `{org}.visualstudio.com`) that no saved connection serves: the platform and, for Azure DevOps,
-/// the organization, so the connection setup can start with them. Other hosts give `None`: their
+/// For a URL no saved connection resolved: a pull request on a platform's cloud host (github.com,
+/// gitlab.com, dev.azure.com and `{org}.visualstudio.com`), as the connection setup that starts
+/// with its platform and, for Azure DevOps, its organization. Other hosts give `None`: their
 /// platform is unknown without a connection.
-pub fn unconnected_cloud_link(
-    url: &str,
-    connections: &[Connection],
-) -> Option<(ProviderKind, Option<String>)> {
-    if resolve(url, connections).is_ok() {
-        return None;
-    }
+pub fn unconnected_cloud_link(url: &str) -> Option<AddRequest> {
     ProviderKind::ALL.into_iter().find_map(|kind| {
         let cloud = Connection {
             id: String::new(),
@@ -48,19 +36,19 @@ pub fn unconnected_cloud_link(
             organizations: Vec::new(),
             token: None,
         };
-        let key = resolve(url, std::slice::from_ref(&cloud)).ok()?;
+        let key = resolve(url, std::slice::from_ref(&cloud))?;
         let organization = (kind == ProviderKind::AzureDevOps)
-            .then(|| key.repository_key.split('/').next().unwrap_or_default().to_owned());
-        Some((kind, organization))
+            .then_some(key.repository_key.as_str())
+            .and_then(|repository_key| repository_key.split('/').next())
+            .map(str::to_owned);
+        Some(AddRequest { kind, organization })
     })
 }
 
 /// The connection and item a pull request, issue or work item URL names, like [`resolve`].
 pub fn resolve_item(url: &str, connections: &[Connection]) -> Option<(String, ItemRef)> {
-    let address = url.trim().split(['?', '#']).next().unwrap_or_default().trim_end_matches('/');
-    let mut candidates: Vec<&Connection> = connections.iter().collect();
-    candidates.sort_by_key(|connection| connection.token().is_none());
-    candidates.into_iter().find_map(|connection| {
+    let address = address(url);
+    candidates(connections).into_iter().find_map(|connection| {
         let path = web_path(address, connection)?;
         let item = match parse_path(connection.kind, &path) {
             Some((repository_key, number)) => {
@@ -75,12 +63,7 @@ pub fn resolve_item(url: &str, connections: &[Connection]) -> Option<(String, It
 /// The item's page on its platform, the inverse of [`resolve_item`].
 pub fn item_web_url(connection: &Connection, item: &ItemRef) -> String {
     let base = connection.base_url();
-    let encoded = |key: &str| {
-        key.split('/')
-            .map(|segment| urlencoding::encode(segment).into_owned())
-            .collect::<Vec<_>>()
-            .join("/")
-    };
+    let encoded = |key: &str| encode_path(key.split('/'));
     match (item.kind, connection.kind) {
         (ItemKind::PullRequest, _) => web_url(connection, &item.repository_key, item.number),
         (ItemKind::WorkItem, _) => {
@@ -97,27 +80,42 @@ pub fn item_web_url(connection: &Connection, item: &ItemRef) -> String {
 /// The pull request's page on its platform, the inverse of [`resolve`].
 pub fn web_url(connection: &Connection, repository_key: &str, number: u64) -> String {
     let base = connection.base_url();
-    let encoded = |segments: &[&str]| {
-        segments
-            .iter()
-            .map(|segment| urlencoding::encode(segment).into_owned())
-            .collect::<Vec<_>>()
-            .join("/")
-    };
     let segments: Vec<&str> = repository_key.split('/').collect();
     match (connection.kind, segments.as_slice()) {
         (ProviderKind::AzureDevOps, [organization, project, repository]) => {
             format!(
                 "{base}/{}/_git/{}/pullrequest/{number}",
-                encoded(&[organization, project]),
-                encoded(&[repository])
+                encode_path([*organization, *project]),
+                encode_path([*repository])
             )
         }
         (ProviderKind::GitLab, _) => {
-            format!("{base}/{}/-/merge_requests/{number}", encoded(&segments))
+            format!("{base}/{}/-/merge_requests/{number}", encode_path(segments))
         }
-        _ => format!("{base}/{}/pull/{number}", encoded(&segments)),
+        _ => format!("{base}/{}/pull/{number}", encode_path(segments)),
     }
+}
+
+/// `url` without surrounding space, query, fragment and trailing slashes.
+fn address(url: &str) -> &str {
+    let url = url.trim();
+    url.split_once(['?', '#']).map_or(url, |(address, _)| address).trim_end_matches('/')
+}
+
+/// The saved connections in the order they are tried: those with a token first.
+fn candidates(connections: &[Connection]) -> Vec<&Connection> {
+    let mut candidates: Vec<&Connection> = connections.iter().collect();
+    candidates.sort_by_key(|connection| connection.token().is_none());
+    candidates
+}
+
+/// The segments, each percent-encoded, joined by `/`.
+fn encode_path<'a>(segments: impl IntoIterator<Item = &'a str>) -> String {
+    segments
+        .into_iter()
+        .map(|segment| urlencoding::encode(segment).into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// The path below the connection's web root, with legacy `{org}.visualstudio.com` hosts
@@ -220,6 +218,7 @@ mod tests {
     use review_core::{Connection, ItemKind, ProviderKind};
 
     use super::{item_web_url, resolve, resolve_item, unconnected_cloud_link, web_url};
+    use crate::intents::AddRequest;
 
     #[test]
     fn resolves_links_of_every_platform() {
@@ -257,7 +256,7 @@ mod tests {
             ),
         ];
         for (url, connection_id, repository_key, number) in cases {
-            let key = resolve(url, &connections).unwrap_or_else(|error| panic!("{url}: {error}"));
+            let key = resolve(url, &connections).unwrap_or_else(|| panic!("{url}"));
             assert_eq!(
                 (key.connection_id.as_str(), key.repository_key.as_str(), key.number),
                 (connection_id, repository_key, number),
@@ -285,7 +284,7 @@ mod tests {
             ("https://tfs.example.com/tfs/Coll/_git/Web/pullrequest/5", "server", "Coll/Web/Web"),
         ];
         for (url, connection_id, repository_key) in cases {
-            let key = resolve(url, &connections).unwrap_or_else(|error| panic!("{url}: {error}"));
+            let key = resolve(url, &connections).unwrap_or_else(|| panic!("{url}"));
             assert_eq!(
                 (key.connection_id.as_str(), key.repository_key.as_str(), key.number),
                 (connection_id, repository_key, 5),
@@ -413,10 +412,6 @@ mod tests {
 
     #[test]
     fn names_the_cloud_platform_of_links_without_a_connection() {
-        let connections = [
-            connection("ghe", ProviderKind::GitHub, "https://git.example.com"),
-            connection("gl-self", ProviderKind::GitLab, "https://gitlab.example.com"),
-        ];
         let cases = [
             ("https://github.com/cli/cli/pull/3/files", ProviderKind::GitHub, None),
             ("https://gitlab.com/group/app/-/merge_requests/4", ProviderKind::GitLab, None),
@@ -433,34 +428,21 @@ mod tests {
         ];
         for (url, kind, organization) in cases {
             assert_eq!(
-                unconnected_cloud_link(url, &connections),
-                Some((kind, organization.map(str::to_owned))),
+                unconnected_cloud_link(url),
+                Some(AddRequest { kind, organization: organization.map(str::to_owned) }),
                 "{url}"
             );
         }
-        // Served by a connection, on an unknown host, or no pull request: nothing to set up.
-        assert_eq!(
-            unconnected_cloud_link("https://git.example.com/team/app/pull/8", &connections),
-            None
-        );
-        assert_eq!(
-            unconnected_cloud_link(
-                "https://gitlab.example.com/a/b/-/merge_requests/2",
-                &connections
-            ),
-            None
-        );
-        assert_eq!(unconnected_cloud_link("https://example.org/a/b/pull/1", &connections), None);
-        assert_eq!(
-            unconnected_cloud_link("https://github.com/cli/cli/issues/1", &connections),
-            None
-        );
+        // On an unknown host, or no pull request: nothing to set up.
+        assert_eq!(unconnected_cloud_link("https://git.example.com/team/app/pull/8"), None);
+        assert_eq!(unconnected_cloud_link("https://example.org/a/b/pull/1"), None);
+        assert_eq!(unconnected_cloud_link("https://github.com/cli/cli/issues/1"), None);
     }
 
     #[test]
     fn rejects_unknown_hosts_and_paths() {
         let connections = [connection("gh", ProviderKind::GitHub, "https://github.com")];
-        assert!(resolve("https://example.com/a/b/pull/1", &connections).is_err());
-        assert!(resolve("https://github.com/a/b/issues/1", &connections).is_err());
+        assert!(resolve("https://example.com/a/b/pull/1", &connections).is_none());
+        assert!(resolve("https://github.com/a/b/issues/1", &connections).is_none());
     }
 }

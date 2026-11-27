@@ -4,15 +4,12 @@
 //! back from the local mirror in tens of milliseconds, and the preview drops what it loaded for a
 //! file no longer open. The open file, the scroll position, the viewed marks and every draft stay,
 //! so the page shows again where the user left it, the open file's diff loading into the same view.
-//! The page's own impl, which hands down to this one, lives in `cv-pr-page` (`hibernate.rs`).
-
-use cv_runtime::cache::memory::Hibernate;
+//! The page's `PullRequestPage::hibernate` (`cv-pr-page`) hands down to this one.
 
 use crate::FilesTab;
 
-impl Hibernate for FilesTab {
-    fn hibernate(&mut self) {
-        self.diffs.hibernate();
-        self.preview.hibernate(self.selected_path.as_deref());
-    }
+/// The body of [`FilesTab::hibernate`].
+pub(crate) fn hibernate(tab: &mut FilesTab) {
+    tab.diffs.hibernate();
+    tab.preview.hibernate(tab.selected_path.as_deref());
 }

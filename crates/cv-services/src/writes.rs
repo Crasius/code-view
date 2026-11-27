@@ -488,11 +488,9 @@ pub fn is_listed_in(state: PullRequestState, filter: StateFilter) -> bool {
 /// calls it before it polls its answers.
 pub fn land(services: &mut Services) -> bool {
     let landed = services.writes.flights.take_landed();
-    let ctx = services.background.ctx();
-    let identities = self_review::Identities::of(&ctx);
     let is_landed = !landed.is_empty();
     for (key, effect) in landed {
-        let me = identities.known(&key.connection_id);
+        let me = services.identities.known(&key.connection_id);
         record(services, &key, effect, me);
     }
     is_landed

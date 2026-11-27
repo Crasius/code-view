@@ -6,14 +6,16 @@
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_store::{AppPaths, AppSettings, LastPlace, LastTab, PullRequestStart, ViewedFiles};
+use review_store::{
+    AppPaths, AppSettings, LastPlace, PullRequestStart, PullRequestTab, ViewedFiles,
+};
 
 use super::ReviewApp;
 use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
 use super::walkthrough::{
     app, files_tab, press_role, settle_background, shows_file_view, shows_folder_view, wait_until,
 };
-use cv_runtime::route::{PullRequestTab, Route};
+use cv_runtime::route::Route;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -128,7 +130,7 @@ fn open_resume_a_vanished_file_falls_back_to_the_first_file() {
     let paths = paths(&scratch);
     let mut viewed =
         ViewedFiles::load(&paths, &key.connection_id, &key.storage_key()).expect("the marks' file");
-    let gone = LastPlace { tab: LastTab::Files, file: Some("gone/removed.rs".to_owned()) };
+    let gone = LastPlace { tab: PullRequestTab::Files, file: Some("gone/removed.rs".to_owned()) };
     viewed.set_last_place(gone).expect("saved");
 
     let mut harness = app(&scratch, std::slice::from_ref(&connection));
@@ -139,7 +141,7 @@ fn open_resume_a_vanished_file_falls_back_to_the_first_file() {
         ViewedFiles::load(&paths, &key.connection_id, &key.storage_key()).expect("the marks' file");
     assert_eq!(
         saved.last_place(),
-        Some(&LastPlace { tab: LastTab::Files, file: Some(FIRST.to_owned()) }),
+        Some(&LastPlace { tab: PullRequestTab::Files, file: Some(FIRST.to_owned()) }),
         "the place shown now is saved"
     );
 }
