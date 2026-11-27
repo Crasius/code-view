@@ -52,6 +52,11 @@ while [ $# -gt 0 ]; do
 done
 [ "$mode" = steps ] || [ -z "$steps" ] || usage "--$mode takes no steps"
 
+# CHECK_BUILD_SECONDS is written after the cd below, so a relative path is made absolute first.
+case ${CHECK_BUILD_SECONDS:-} in
+  '' | /* | [A-Za-z]:[/\\]*) ;;
+  *) CHECK_BUILD_SECONDS=$PWD/$CHECK_BUILD_SECONDS ;;
+esac
 root=$(git rev-parse --show-toplevel 2>/dev/null) || usage "not inside a git work tree"
 cd "$root" || exit 2
 
