@@ -20,6 +20,7 @@ use review_git::FULL_FILE_CONTEXT;
 use review_store::{DiffLayout, RenderedWidth, ThemePreference};
 
 mod past_end;
+mod placed_scroll;
 mod width;
 
 use super::heights::outward;

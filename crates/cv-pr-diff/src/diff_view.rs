@@ -342,20 +342,18 @@ impl DiffView {
             .wrap_columns
             .map(|columns| columns.map(|columns| columns as f32 * metrics.char_width + 0.5));
         let ends = Ends::of(self.offsets.as_slice(), screen.content.height(), inputs.past_end);
-        let mut scroll = egui::ScrollArea::vertical()
+        let scroll = egui::ScrollArea::vertical()
             .id_salt("diff_scroll")
             .auto_shrink(false)
             .scroll_source(egui::scroll_area::ScrollSource::MOUSE_WHEEL)
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
-        if let Some(offset) = self.place.scroll_to.take() {
-            scroll = scroll.vertical_scroll_offset(offset);
-        }
+        let placed = self.place.scroll_to.take();
         self.removal.begin_frame();
         // Inline, New only and a whole added or deleted file show one full-width pane, without a splitter.
         let single_pane = inputs.layout.is_single_pane();
         let output = ui
             .scope_builder(UiBuilder::new().max_rect(screen.content), |ui| {
-                scroll.show_viewport(ui, |ui, viewport| {
+                cv_widgets::scroll::placed(ui, scroll, placed).show_viewport(ui, |ui, viewport| {
                     ui.set_min_height(ends.height);
                     let frame = Frame {
                         origin: ui.max_rect().min,

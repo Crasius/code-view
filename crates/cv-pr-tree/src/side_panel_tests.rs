@@ -216,3 +216,49 @@ fn category_dropdown_filters_with_mouse_and_keyboard() {
     harness.run_steps(2);
     assert!(harness.state().tree.filter.hide_viewed);
 }
+
+/// Where the row of the file named `name` shows.
+fn row_top(harness: &Harness<'_, Scene>, name: &str) -> Option<f32> {
+    harness
+        .query_all_by_role(Role::TreeItem)
+        .find(|node| node.accesskit_node().label().is_some_and(|label| label.contains(name)))
+        .map(|node| node.rect().top())
+}
+
+/// A go to file into a collapsed folder opens it and scrolls to the file in one frame: the rows
+/// grow past the end of the frame before, and the file's row stays where it went in every frame
+/// after, without springing back towards the old end.
+#[test]
+fn going_to_a_file_in_a_collapsed_folder_keeps_its_row_in_place() {
+    let mut harness = harness(320.0);
+    let files: Vec<ChangedFile> = ["alpha/a", "zulu/z"]
+        .into_iter()
+        .flat_map(|prefix| {
+            (0..60).map(move |index| {
+                let path = format!("{prefix}_{index:03}.rs");
+                file(&path, ChangeKind::Modified, Some((4, 2)), FileCategory::Code)
+            })
+        })
+        .collect();
+    let target = files.iter().position(|file| file.path == "zulu/z_030.rs").expect("listed");
+    let scene = harness.state_mut();
+    scene.files = Arc::new(files);
+    scene.tree.collapsed.insert("zulu".to_owned());
+    scene.tree.collapse_version += 1;
+    harness.run_steps(2);
+    assert!(row_top(&harness, "z_030.rs").is_none(), "its folder is collapsed");
+
+    let tree = &mut harness.state_mut().tree;
+    tree.reveal("zulu/z_030.rs");
+    tree.scroll_to(target);
+    harness.step();
+    let placed = row_top(&harness, "z_030.rs").expect("the file's row shows");
+    for step in 0..12 {
+        harness.step();
+        let after = row_top(&harness, "z_030.rs");
+        assert!(
+            after.is_some_and(|after| (after - placed).abs() < 0.5),
+            "step {step} after the go to: the row moved from {placed} to {after:?}"
+        );
+    }
+}

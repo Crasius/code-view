@@ -529,7 +529,7 @@ impl LogViewer {
         }
         let row_height = (font.size * 1.5).round();
         let line_count = log.file.line_count();
-        let scroll = self.scroll_area(ui, line_count, row_height);
+        let (scroll, placed) = self.scroll_area(ui, line_count, row_height);
         let look = LineLook {
             font: &font,
             palette: &palette,
@@ -542,13 +542,18 @@ impl LogViewer {
         };
         let text_id = text_id(ui);
         let mut read_error = None;
-        let output = scroll.show_rows(ui, row_height, line_count, |ui, range| {
-            if let Err(error) = self.ensure_window(log, range.clone()) {
-                read_error = Some(error.to_string());
-                return None;
-            }
-            self.visible_lines(ui, &look, range, line_count, text_id)
-        });
+        let output = ui
+            .scope(|ui| {
+                let scroll = cv_widgets::scroll::placed(ui, scroll, placed);
+                scroll.show_rows(ui, row_height, line_count, |ui, range| {
+                    if let Err(error) = self.ensure_window(log, range.clone()) {
+                        read_error = Some(error.to_string());
+                        return None;
+                    }
+                    self.visible_lines(ui, &look, range, line_count, text_id)
+                })
+            })
+            .inner;
         #[cfg(any(test, feature = "test-support"))]
         note_top_line(ui, output.state.clamped_offset().y, row_height);
         let limit = output.content_size.y - output.inner_rect.height();
@@ -569,9 +574,14 @@ impl LogViewer {
         output.inner.map_or(Lines::Unread { is_retried: false }, Lines::Shown)
     }
 
-    /// The scroll area over every line, moved to the end of a live log, a match or the first
-    /// error, or where dragging a selection past the edge takes it.
-    fn scroll_area(&mut self, ui: &Ui, line_count: usize, row_height: f32) -> egui::ScrollArea {
+    /// The scroll area over every line, and the offset it goes to this frame: the end of a live
+    /// log, a match or the first error, or where dragging a selection past the edge takes it.
+    fn scroll_area(
+        &mut self,
+        ui: &Ui,
+        line_count: usize,
+        row_height: f32,
+    ) -> (egui::ScrollArea, Option<f32>) {
         // A live log follows its end while the view is there; scrolled up, it keeps its place.
         let scroll = egui::ScrollArea::both()
             .id_salt("log_lines")
@@ -579,19 +589,14 @@ impl LogViewer {
             .stick_to_bottom(self.fetch.is_live);
         if std::mem::take(&mut self.fetch.to_end) && self.fetch.is_live {
             // Past the end on purpose: the area clamps it to the end, which then sticks.
-            return scroll.vertical_scroll_offset(
-                (line_count as f32 + 1.0) * (row_height + ui.spacing().item_spacing.y),
-            );
+            let end = (line_count as f32 + 1.0) * (row_height + ui.spacing().item_spacing.y);
+            return (scroll, Some(end));
         }
         if let Some(line) = self.scroll_to.take() {
             let height = ui.available_height();
-            return scroll
-                .vertical_scroll_offset((line as f32 * row_height - height / 3.0).max(0.0));
+            return (scroll, Some((line as f32 * row_height - height / 3.0).max(0.0)));
         }
-        match self.selecting.scroll_offset.take() {
-            Some(offset) => scroll.vertical_scroll_offset(offset),
-            None => scroll,
-        }
+        (scroll, self.selecting.scroll_offset.take())
     }
 
     /// The lines in `range`, read in by [`Self::ensure_window`], under one widget (`text_id`)
@@ -698,6 +703,9 @@ mod copy_tests;
 
 #[cfg(test)]
 mod frame_budget;
+
+#[cfg(test)]
+mod placed_scroll_tests;
 
 #[cfg(test)]
 mod selection_tests;

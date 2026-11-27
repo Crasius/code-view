@@ -371,12 +371,9 @@ impl FileTree {
                 |row| matches!(row, TreeRow::File { index, .. } if *index as usize == file_index),
             )
         });
-        let mut scroll = egui::ScrollArea::vertical().id_salt("file_tree").auto_shrink(false);
-        if let Some(row_index) = scroll_target {
-            let height = ui.available_height();
-            scroll = scroll
-                .vertical_scroll_offset((row_index as f32 * ROW_HEIGHT - height / 2.0).max(0.0));
-        }
+        let scroll = egui::ScrollArea::vertical().id_salt("file_tree").auto_shrink(false);
+        let height = ui.available_height();
+        let placed = scroll_target.map(|row| (row as f32 * ROW_HEIGHT - height / 2.0).max(0.0));
         let columns = CountColumns::measure(ui, self.widest_counts);
         goto::follow_search(self);
         let highlighted = goto::highlighted(self);
@@ -384,6 +381,7 @@ impl FileTree {
         ui.scope(|ui| {
             // `show_rows` adds the item spacing between rows; rows touch instead.
             ui.spacing_mut().item_spacing.y = 0.0;
+            let scroll = cv_widgets::scroll::placed(ui, scroll, placed);
             scroll.show_rows(ui, ROW_HEIGHT, self.rows.len(), |ui, range| {
                 for row in &self.rows[range] {
                     let at = egui::Rect::from_min_size(
