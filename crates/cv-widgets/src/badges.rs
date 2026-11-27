@@ -43,7 +43,10 @@ pub fn label_fill(label: &Label, palette: &Palette) -> Color32 {
     let base = label
         .color
         .as_deref()
-        .and_then(|hex| HexColor::from_str_without_hash(hex.trim_start_matches('#')).ok())
+        .map(|hex| hex.trim_start_matches('#'))
+        // ecolor's integer parse also takes a leading `+`, which is no colour.
+        .filter(|digits| digits.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .and_then(|digits| HexColor::from_str_without_hash(digits).ok())
         .map_or(palette.text_secondary, |hex| hex.color());
     if palette.is_dark { base.gamma_multiply(0.45) } else { base.gamma_multiply(0.22) }
 }
@@ -113,12 +116,26 @@ mod tests {
 
     #[test]
     fn a_label_is_tinted_with_its_hex_color_with_or_without_the_hash() {
-        let red = Color32::from_rgb(0xD7, 0x3A, 0x4A).gamma_multiply(0.22);
-        assert_eq!(fill(Some("d73a4a")), red);
-        assert_eq!(fill(Some("#d73a4a")), red);
-        assert_eq!(fill(Some("#f00")), Color32::from_rgb(0xFF, 0, 0).gamma_multiply(0.22));
+        let cases = [
+            ("f00", Color32::from_rgb(0xFF, 0, 0)),
+            ("f008", Color32::from_rgba_unmultiplied(0xFF, 0, 0, 0x88)),
+            ("d73a4a", Color32::from_rgb(0xD7, 0x3A, 0x4A)),
+            ("d73a4a80", Color32::from_rgba_unmultiplied(0xD7, 0x3A, 0x4A, 0x80)),
+        ];
+        for (digits, color) in cases {
+            let tinted = color.gamma_multiply(0.22);
+            assert_eq!(fill(Some(digits)), tinted, "{digits}");
+            assert_eq!(fill(Some(&format!("#{digits}"))), tinted, "#{digits}");
+        }
+    }
+
+    #[test]
+    fn a_label_colour_that_is_not_hex_digits_falls_back_to_the_secondary_text() {
         let fallback = Palette::LIGHT.text_secondary.gamma_multiply(0.22);
+        assert_eq!(fill(Some("+abcde")), fallback);
+        assert_eq!(fill(Some("#+abcde")), fallback);
         assert_eq!(fill(Some("not a colour")), fallback);
+        assert_eq!(fill(Some("abcde")), fallback);
         assert_eq!(fill(None), fallback);
     }
 }

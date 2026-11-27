@@ -52,6 +52,8 @@ pub struct Palette {
     pub error: Color32,
     /// Behind an error message, with `error` text on it.
     pub error_surface: Color32,
+    /// ANSI magenta in pipeline logs: 4.5:1 or more on `ground` and `surface`.
+    pub log_magenta: Color32,
     /// The filled star of a favorite repository: amber, 3:1 or more on `surface`, `hover` and `selection`.
     pub favorite: Color32,
     /// Azure DevOps' brand blue for its platform mark: 3:1 or more on `surface`, `hover` and `selection`.
@@ -149,6 +151,7 @@ impl Palette {
         warning_text: Color32::from_rgb(0x8A, 0x5A, 0x00),
         error: Color32::from_rgb(0xC4, 0x31, 0x4B),
         error_surface: Color32::from_rgb(0xFB, 0xE9, 0xEB),
+        log_magenta: Color32::from_rgb(0x9C, 0x2F, 0xB0),
         favorite: Color32::from_rgb(0xB4, 0x53, 0x09),
         platform_azure: Color32::from_rgb(0x00, 0x78, 0xD4),
         platform_gitlab: Color32::from_rgb(0xE2, 0x43, 0x29),
@@ -210,6 +213,7 @@ impl Palette {
         warning_text: Color32::from_rgb(0xE8, 0xC5, 0x5A),
         error: Color32::from_rgb(0xF1, 0x70, 0x7B),
         error_surface: Color32::from_rgb(0x3D, 0x23, 0x26),
+        log_magenta: Color32::from_rgb(0xD9, 0x7C, 0xE6),
         favorite: Color32::from_rgb(0xF5, 0xB5, 0x4A),
         platform_azure: Color32::from_rgb(0x3A, 0x96, 0xDD),
         platform_gitlab: Color32::from_rgb(0xFC, 0x6D, 0x26),
@@ -296,6 +300,8 @@ mod tests {
                 ("success text", palette.success, palette.success_surface, 4.5),
                 ("error text", palette.error, palette.error_surface, 4.5),
                 ("warning text", palette.warning_text, palette.warning_surface, 4.5),
+                ("log magenta on ground", palette.log_magenta, palette.ground, 4.5),
+                ("log magenta on surface", palette.log_magenta, palette.surface, 4.5),
                 ("resolved check", palette.success_on_badge, palette.success_badge, 3.0),
             ] {
                 let ratio = contrast_ratio(foreground, background);
