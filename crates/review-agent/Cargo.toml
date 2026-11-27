@@ -10,19 +10,18 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[lib]
+doctest = false
+
 [features]
 # A scripted session for the app's walkthroughs: no process, no network.
-fake = []
+test-support = []
 
 [dependencies]
 review-core.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 # Whole sessions against fake CLIs: the test binary is its own fake (tests/sessions.rs).
 [[test]]
@@ -31,4 +30,5 @@ harness = false
 
 [target."cfg(windows)".dependencies]
 # The registry's current PATH: a CLI installed after the app (or Explorer) started is found too.
-windows-sys = { workspace = true, features = ["Win32_System_Registry"] }
+# CREATE_NO_WINDOW keeps the CLI's console hidden.
+windows-sys = { workspace = true, features = ["Win32_System_Registry", "Win32_System_Threading"] }

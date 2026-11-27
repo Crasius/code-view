@@ -26,7 +26,7 @@ review-agent.workspace = true
 review-core.workspace = true
 review-git.workspace = true
 # Copies images to the system clipboard (src/image_clipboard.rs).
-arboard.workspace = true
+arboard = { workspace = true, features = ["image-data"] }
 egui.workspace = true
 image.workspace = true
 mermaid-rs-renderer.workspace = true

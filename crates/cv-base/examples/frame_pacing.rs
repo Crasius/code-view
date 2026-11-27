@@ -5,7 +5,7 @@
 //!
 //! ```text
 //! cargo run --release -p cv-base --example frame_pacing -- glow 6
-//! cargo run --release -p cv-base --example frame_pacing -- wgpu 6
+//! cargo run --release -p cv-base --features wgpu --example frame_pacing -- wgpu 6
 //! ```
 //!
 //! The window must stay visible (not minimized, not covered) for vsync to pace it.
@@ -28,6 +28,7 @@ fn main() -> eframe::Result<()> {
     let backend = args.next().unwrap_or_else(|| "glow".to_owned());
     let seconds: f64 = args.next().and_then(|value| value.parse().ok()).unwrap_or(6.0);
     let renderer = match backend.as_str() {
+        #[cfg(feature = "wgpu")]
         "wgpu" => eframe::Renderer::Wgpu,
         _ => eframe::Renderer::Glow,
     };
@@ -62,15 +63,18 @@ struct Probe {
 
 impl Probe {
     fn new(creation: &eframe::CreationContext<'_>, backend: String, seconds: f64) -> Self {
-        let adapter = if let Some(gl) = creation.gl.as_deref() {
+        let adapter = creation.gl.as_deref().map(|gl| {
             let gl::DriverStrings { version, renderer, .. } = gl::driver_strings(gl);
             format!("OpenGL {version} · {renderer}")
-        } else if let Some(state) = &creation.wgpu_render_state {
-            let info = state.adapter.get_info();
-            format!("wgpu {:?} · {} · {:?}", info.backend, info.name, info.device_type)
-        } else {
-            "unknown".to_owned()
-        };
+        });
+        #[cfg(feature = "wgpu")]
+        let adapter = adapter.or_else(|| {
+            creation.wgpu_render_state.as_ref().map(|state| {
+                let info = state.adapter.get_info();
+                format!("wgpu {:?} · {} · {:?}", info.backend, info.name, info.device_type)
+            })
+        });
+        let adapter = adapter.unwrap_or_else(|| "unknown".to_owned());
         Self {
             backend,
             adapter,

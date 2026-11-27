@@ -1,11 +1,11 @@
 [package]
 name = "repo-lint"
-description = "Repository rules that clippy cannot check: file length bands, names, crate direction, unsafe placement."
+description = "The repository rules clippy cannot check (tools/repo-lint/README.md)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
+publish.workspace = true
 
 [lints]
 workspace = true

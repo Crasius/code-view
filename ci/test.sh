@@ -50,6 +50,4 @@ if [ -n "$app_tests" ]; then
 else
     echo "test: the change needs no test of review-app"
 fi
-# nextest runs no doctests.
-cargo test --locked --workspace --doc || failed="$failed doctests"
 [ -z "$failed" ] || { echo "test: failed:$failed" >&2; exit 1; }

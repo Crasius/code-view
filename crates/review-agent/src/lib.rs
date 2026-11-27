@@ -27,7 +27,7 @@ mod steps;
 pub use error::AgentError;
 pub use locate::find_program;
 pub use review_core::{AgentKind, ModelChoice};
-#[cfg(feature = "fake")]
+#[cfg(feature = "test-support")]
 pub use session::FakeAgent;
 pub use session::{AgentEvent, Session, SessionConfig, ToolStep, Usage};
 pub use steps::{StepKind, StepOutcome};

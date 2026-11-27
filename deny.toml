@@ -1,0 +1,39 @@
+# cargo-deny: advisories, bans and sources of the dependency graph. Licences are not checked
+# here; ci/about.toml is the one list of accepted licences.
+
+[graph]
+# The six triples the app ships for, so platform-only crates (rustls on Linux, the Keychain
+# on macOS) are checked too.
+targets = [
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
+
+[advisories]
+yanked = "deny"
+unmaintained = "all"
+# Each entry has no fixed version to move to; it names the crate that pulls it in.
+ignore = [
+    { id = "RUSTSEC-2025-0141", reason = "bincode 1 is unmaintained; the vendored syntect (crates/review-grammars/vendor/syntect) uses it for its grammar dumps" },
+    { id = "RUSTSEC-2024-0320", reason = "yaml-rust is unmaintained; the vendored syntect's yaml-load feature uses it to read grammars" },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained; fontdb pulls it in for mermaid-rs-renderer and the SVG stack" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant is unmaintained; accesskit_unix (through accesskit_winit) pulls it in on Linux" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names is unmaintained; accesskit_unix (through accesskit_winit) pulls it in on Linux" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive is unmaintained; accesskit_unix (through accesskit_winit) pulls it in on Linux" },
+]
+
+[bans]
+# Crates in the lock in more than one version sit nearly all below winit, accesskit and the SVG
+# stack, where no change here can remove them: report them, do not fail on them.
+multiple-versions = "warn"
+wildcards = "deny"
+# Path dependencies inside the workspace carry no version; they are not wildcards.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

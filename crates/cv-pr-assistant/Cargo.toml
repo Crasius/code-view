@@ -49,5 +49,6 @@ cv-widgets = { workspace = true, features = ["test-support"] }
 cv-providers.workspace = true
 cv-testkit.workspace = true
 # The runner's tests drive a scripted agent session, no CLI process.
-review-agent = { workspace = true, features = ["fake"] }
+review-agent = { workspace = true, features = ["test-support"] }
+review-git = { workspace = true, features = ["test-support"] }
 time.workspace = true
