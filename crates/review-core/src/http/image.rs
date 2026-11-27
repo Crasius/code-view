@@ -324,10 +324,7 @@ mod tests {
     /// of reqwest's text leaves the signature out of the whole message.
     #[tokio::test]
     async fn the_cause_of_a_failed_request_leaves_the_query_out() {
-        let port = {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
-            listener.local_addr().expect("bound address").port()
-        };
+        let port = crate::error::closed_port();
         let url = format!("http://127.0.0.1:{port}/1/2-a.png?jwt=signature");
         let error = get(url, 100, &Anonymous).await.unwrap_err();
         let ProviderError::Network(message) = &error else { panic!("{error:?}") };
