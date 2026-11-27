@@ -15,7 +15,7 @@ use review_core::{MergeOptions, PullRequestDetail, PullRequestState, PullRequest
 
 use crate::checkout::{self, CheckoutButton};
 use crate::merge_button::MergeButton;
-use crate::vote_comment;
+use crate::vote_comment::{self, VoteComposer};
 
 /// The platform mark before the state pill, sized to the title line.
 const PLATFORM_MARK_SIZE: f32 = 20.0;
@@ -145,10 +145,11 @@ fn branch_widths(room: f32, source: f32, target: f32, least: f32) -> (f32, f32) 
     (source, target.min(room - source).max(least))
 }
 
-/// The header's buttons that keep state across frames: the merge button of an open pull request
-/// and the checkout button.
+/// The header's buttons that keep state across frames: the merge button of an open pull request,
+/// the vote composer and the checkout button.
 pub struct Buttons<'a> {
     pub merge: Option<&'a mut MergeButton>,
+    pub vote: &'a mut VoteComposer,
     pub checkout: &'a mut CheckoutButton,
 }
 
@@ -328,7 +329,7 @@ fn command_bar(
     buttons: Buttons<'_>,
     services: &mut Services,
 ) -> Option<HeaderAction> {
-    let Buttons { merge, checkout } = buttons;
+    let Buttons { merge, vote, checkout } = buttons;
     let mut action = None;
     let is_open = detail.summary.state == PullRequestState::Open;
     let can_write = session.has_token && !actions.is_busy();
@@ -384,7 +385,7 @@ fn command_bar(
         {
             action = Some(HeaderAction::Merge(options));
         }
-        let vote_action = vote_comment::show(ui, session, detail, can_write, services);
+        let vote_action = vote_comment::show(ui, session, detail, can_write, vote, services);
         action = action.or(vote_action);
     }
     checkout.show(ui, session, detail, services);

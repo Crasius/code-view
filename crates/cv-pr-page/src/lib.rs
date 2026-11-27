@@ -34,6 +34,7 @@ use self::header_reveal::HeaderReveal;
 use self::live::{Activity, Drafts, LiveAction, LiveUpdates};
 use self::merge_button::MergeButton;
 use self::overview::{LinkedAction, OverviewTab, PipelineRequest};
+use self::vote_comment::VoteComposer;
 use cv_base::theme::{icons, motion, style};
 use cv_editor::markdown_editor::{Person, PullRequestContext};
 use cv_pr_assistant::{Assistant, citations};
@@ -84,8 +85,8 @@ pub struct PullRequestPage {
     assistant: Assistant,
     /// How far the header slid away with the scrolling.
     header_reveal: HeaderReveal,
-    /// The vote composer under the header holds text, as of the last frame.
-    has_vote_text: bool,
+    /// The vote composer under the header and its unsent text.
+    vote: VoteComposer,
 }
 
 impl PullRequestPage {
@@ -116,7 +117,7 @@ impl PullRequestPage {
             live: LiveUpdates::default(),
             assistant,
             header_reveal: HeaderReveal::default(),
-            has_vote_text: false,
+            vote: VoteComposer::default(),
         }
     }
 
@@ -149,7 +150,7 @@ impl PullRequestPage {
     /// A comment, reply, reviewer or label edit is open, a post is on its way, or the merge
     /// button is in use: nothing should take the page away or reload it underneath.
     pub fn has_unsent_input(&self) -> bool {
-        self.has_vote_text
+        self.vote.has_unsent_text()
             || has_unsent_input(&self.overview, &self.files, &self.threads, self.merge.as_ref())
     }
 
@@ -194,7 +195,7 @@ impl PullRequestPage {
             live,
             assistant,
             header_reveal,
-            has_vote_text,
+            vote,
             checkout,
         } = self;
         let session = match session {
@@ -230,13 +231,12 @@ impl PullRequestPage {
         let picked = band::tab_key(&ctx).map(|picked| *tab = picked).is_some();
         let item_spacing = ui.spacing().item_spacing.y;
         ui.spacing_mut().item_spacing.y = 0.0;
-        let parts = band::Parts { session, services, actions, threads, files, merge, checkout };
+        let parts =
+            band::Parts { session, services, actions, threads, files, merge, vote, checkout };
         let clicked = !is_focused && band::show(ui, parts, header_reveal, tab);
         if picked || clicked {
             *tab_entered_at = Some(now);
         }
-        // The composer keeps its draft in focus mode too, where the band is left out.
-        *has_vote_text = vote_comment::has_unsent_text(&ctx, key);
         threads_panel_key(ui, services, threads, *tab);
         overview.header_hidden = if is_focused { 0.0 } else { header_reveal.drawn_hidden() };
         let (card_top, card_width) = live_card_place(ui, is_focused);

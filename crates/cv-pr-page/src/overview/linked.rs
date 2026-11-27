@@ -423,11 +423,7 @@ mod tests {
                 slots.label_rect
             );
             assert!(!slots.label_rect.intersects(pill), "{:?} overlaps {pill:?}", slots.label_rect);
-            assert!(
-                slots.label.ends_with("data-loader#59") || slots.label.ends_with("#59"),
-                "keeps the number: {}",
-                slots.label
-            );
+            assert!(slots.label.ends_with("#59"), "keeps the number: {}", slots.label);
             assert!(slots.label.contains('…'), "cut: {}", slots.label);
             assert!(
                 slots.title_rect.right() <= pill.left(),

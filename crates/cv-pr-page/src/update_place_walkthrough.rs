@@ -4,7 +4,8 @@
 //! an update comes in: the live probe, the refresh after the user's own write, and F5; for changes
 //! of the pull request's metadata, a comment elsewhere, a target branch that moved on, and a push
 //! that does not touch the open file, both for a code diff and a rendered Markdown file. The header
-//! keeps its height and its slid-away state, so nothing under it moves on screen either.
+//! keeps its height and its slid-away state, so nothing under it moves on screen either. Text in
+//! the vote composer stays through F5 and a switch to another tab.
 //!
 //! Offline: a scripted provider serves the pull request from a local git repository the mirror
 //! fetches from. The clock is the harness's simulated frames; between two frames the answers get
@@ -34,7 +35,7 @@ use crate::PullRequestPage;
 use cv_base::theme;
 use cv_pr_session::actions::Refresh;
 use cv_pr_threads::samples;
-use cv_runtime::route::{Navigator, PullRequestKey};
+use cv_runtime::route::{Navigator, PullRequestKey, PullRequestTab as Tab};
 use cv_services::Services;
 use cv_services::writes::Effect;
 use cv_shell::focus_mode::{self, Surface};
@@ -205,6 +206,35 @@ fn a_push_leaves_a_rendered_markdown_file_in_place() {
             },
         );
     }
+}
+
+/// Text typed into the vote composer lives with the page: F5 and a switch to another tab keep it,
+/// as they keep the page.
+#[test]
+fn the_vote_composers_text_survives_a_reload_and_a_tab_switch() {
+    let mut app = App::start("keep-vote-draft");
+    assert!(!app.page().has_unsent_input(), "nothing is typed yet");
+    app.harness.click_at(app.harness.get_by_label("More votes").rect());
+    app.frame_until("the vote menu", |app| app.shows("Approve with comment…"));
+    app.harness.click_at(app.harness.get_by_label("Approve with comment…").rect());
+    app.frame_until("the focused composer", |app| app.harness.ctx.text_edit_focused());
+    app.harness.event(egui::Event::Text("Ship it once the cache is warm.".to_owned()));
+    app.frame();
+    assert!(app.page().has_unsent_input(), "the composer holds the text");
+
+    app.update(
+        "F5 with the vote composer open",
+        Way::F5,
+        |_| {},
+        |app, what| assert!(app.page().has_unsent_input(), "{what} lost the composer's text"),
+    );
+    let scene = app.harness.state_mut().as_mut().expect("the scene is set up");
+    scene.page.show_tab(Tab::Overview);
+    for _ in 0..4 {
+        app.frame();
+    }
+    assert_eq!(app.page().tab(), Tab::Overview);
+    assert!(app.page().has_unsent_input(), "the Overview tab lost the composer's text");
 }
 
 /// Where the user is in the Files tab.
@@ -401,6 +431,19 @@ impl App {
             page.files.selected_path,
             page.live.describe(),
         )
+    }
+
+    /// Frames until `is_there` holds.
+    fn frame_until(&mut self, what: &str, is_there: impl Fn(&Self) -> bool) {
+        let started = Instant::now();
+        while !is_there(self) {
+            assert!(started.elapsed() < REAL_LIMIT, "{what} did not show");
+            self.frame();
+        }
+    }
+
+    fn shows(&self, label: &str) -> bool {
+        self.harness.query_all_by_label(label).next().is_some()
     }
 
     fn shows_diff(&self) -> bool {

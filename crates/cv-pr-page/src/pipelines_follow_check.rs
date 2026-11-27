@@ -237,9 +237,9 @@ fn bound(interval: Duration) -> f64 {
     interval.as_secs_f64() + f64::from(FRAME) + 1e-6
 }
 
-/// (a), (c): the Overview's card follows the running run every 15 s on its own (the live probe
-/// fails throughout, so nothing of it helps), then the finished run's stages load once more and
-/// nothing is asked after that.
+/// The Overview's card follows the running run every 15 s on its own (the live probe fails
+/// throughout, so nothing of it helps), then the finished run's stages load once more and nothing
+/// is asked after that.
 #[test]
 fn overview_follows_running_stages_and_stops_when_the_run_finished() {
     use RunStatus::*;
@@ -272,8 +272,8 @@ fn overview_follows_running_stages_and_stops_when_the_run_finished() {
     assert_eq!(app.asked(), after_finish, "a finished run is not polled");
 }
 
-/// (b): the checks table follows each job within 15 s, also after several polls whose runs'
-/// answer did not change (no backoff to 30 or 60 s).
+/// The checks table follows each job within 15 s, also after several polls whose runs' answer did
+/// not change (no backoff to 30 or 60 s).
 #[test]
 fn checks_table_follows_jobs_every_interval() {
     let mut app = App::start("ci-live-checks", true);
@@ -295,7 +295,7 @@ fn checks_table_follows_jobs_every_interval() {
     assert!(app.has(&row("release", "Running")), "the next stage's job runs");
 }
 
-/// (b): the run's own page (its stage graph) follows each job within 15 s the same way.
+/// The run's own page (its stage graph) follows each job within 15 s the same way.
 #[test]
 fn run_page_follows_jobs_every_interval() {
     use RunStatus::*;
@@ -320,8 +320,8 @@ fn run_page_follows_jobs_every_interval() {
     assert!(app.has("Stage deploy"), "the graph still shows the run");
 }
 
-/// (d): with the window inactive nothing is asked; focus brings one catch-up refresh at once,
-/// then the normal interval.
+/// With the window inactive nothing is asked; focus brings one catch-up refresh at once, then the
+/// normal interval.
 #[test]
 fn inactive_window_polls_nothing_and_focus_catches_up_once() {
     let mut app = App::start("ci-live-focus", true);
@@ -349,7 +349,7 @@ fn inactive_window_polls_nothing_and_focus_catches_up_once() {
     assert_eq!(app.asked().0, caught_up.0 + 1, "then every interval again");
 }
 
-/// (e): an anonymous connection polls every [`ANONYMOUS_PIPELINE_INTERVAL`], not every 15 s.
+/// An anonymous connection polls every [`ANONYMOUS_PIPELINE_INTERVAL`], not every 15 s.
 #[test]
 fn anonymous_connections_poll_more_slowly() {
     let mut app = App::start("ci-live-anonymous", false);

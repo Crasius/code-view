@@ -9,6 +9,7 @@ use super::checkout::CheckoutButton;
 use super::header;
 use super::header_reveal::{Frame, HeaderReveal};
 use super::merge_button::MergeButton;
+use super::vote_comment::VoteComposer;
 use cv_base::platform::shortcut;
 use cv_pr_files::FilesTab;
 use cv_pr_session::actions::{ActionRunner, Write};
@@ -48,6 +49,7 @@ pub(super) struct Parts<'a> {
     /// The file it shows is offered on the platform by the header's menu.
     pub files: &'a FilesTab,
     pub merge: &'a mut Option<MergeButton>,
+    pub vote: &'a mut VoteComposer,
     pub checkout: &'a mut CheckoutButton,
 }
 
@@ -59,7 +61,7 @@ pub(super) fn show(
     reveal: &mut HeaderReveal,
     tab: &mut Tab,
 ) -> bool {
-    let Parts { session, services, actions, threads, files, merge, checkout } = parts;
+    let Parts { session, services, actions, threads, files, merge, vote, checkout } = parts;
     let frame = Frame {
         tab: *tab,
         mode: header_mode(services.settings.header_modes, *tab),
@@ -68,7 +70,7 @@ pub(super) fn show(
     };
     let file_link = if *tab == Tab::Files { files.shown_link() } else { None };
     reveal.show(ui, &frame, |ui| {
-        let buttons = header::Buttons { merge: merge.as_mut(), checkout };
+        let buttons = header::Buttons { merge: merge.as_mut(), vote, checkout };
         header(ui, session, services, actions, file_link, buttons)
     });
     let is_switched = tab_bar(ui, session, services, tab, threads);

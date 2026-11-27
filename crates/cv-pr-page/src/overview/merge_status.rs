@@ -19,6 +19,8 @@ use cv_widgets::states;
 use cv_widgets::{badges, buttons, glyph, merge_strategy_icon, row, skeleton};
 
 const STATUS_ICON: f32 = 22.0;
+/// The padding around a status line's content.
+const LINE_MARGIN: egui::Margin = egui::Margin::same(style::SPACE_L as i8);
 /// A status line's detail keeps this much room when the headline is long ("1 of 3…").
 const DETAIL_MIN_WIDTH: f32 = 64.0;
 const SOURCE_WIDTH: f32 = 130.0;
@@ -112,51 +114,48 @@ fn status_line<R>(
 ) -> Option<R> {
     let palette = theme::palette(ui.ctx());
     let mut picked = None;
-    egui::Frame::new()
-        .inner_margin(egui::Margin::symmetric(style::SPACE_L as i8, style::SPACE_L as i8))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.set_min_height(style::CONTROL_HEIGHT - style::SPACE_S);
-                ui.spacing_mut().item_spacing.x = style::SPACE_M;
-                let font = theme::fonts::semibold_font(style::BODY_SIZE);
-                // The action first, then the detail in what the headline leaves; when even the
-                // headline does not fit, both are cut (each shows in full on hover).
-                let headline = ui.fonts_mut(|fonts| {
-                    fonts
-                        .layout_no_wrap(text.to_owned(), font.clone(), egui::Color32::PLACEHOLDER)
-                        .size()
-                        .x
-                });
-                row::with_trailing(
-                    ui,
-                    egui::Align::Center,
-                    |ui| {
-                        picked = right(ui);
-                        if let Some(detail) = detail {
-                            let leading =
-                                STATUS_ICON + headline + 2.0 * ui.spacing().item_spacing.x;
-                            ui.scope(|ui| {
-                                ui.set_max_width(
-                                    (ui.available_width() - leading).max(DETAIL_MIN_WIDTH),
-                                );
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(detail)
-                                            .size(style::SMALL_SIZE)
-                                            .color(palette.text_secondary),
-                                    )
-                                    .truncate(),
-                                );
-                            });
-                        }
-                    },
-                    |ui| {
-                        glyph::decorative(ui, badges::icon_text(icon.0, icon.1, STATUS_ICON));
-                        ui.add(egui::Label::new(egui::RichText::new(text).font(font)).truncate());
-                    },
-                );
+    egui::Frame::new().inner_margin(LINE_MARGIN).show(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.set_min_height(style::CONTROL_HEIGHT - style::SPACE_S);
+            ui.spacing_mut().item_spacing.x = style::SPACE_M;
+            let font = theme::fonts::semibold_font(style::BODY_SIZE);
+            // The action first, then the detail in what the headline leaves; when even the
+            // headline does not fit, both are cut (each shows in full on hover).
+            let headline = ui.fonts_mut(|fonts| {
+                fonts
+                    .layout_no_wrap(text.to_owned(), font.clone(), egui::Color32::PLACEHOLDER)
+                    .size()
+                    .x
             });
+            row::with_trailing(
+                ui,
+                egui::Align::Center,
+                |ui| {
+                    picked = right(ui);
+                    if let Some(detail) = detail {
+                        let leading = STATUS_ICON + headline + 2.0 * ui.spacing().item_spacing.x;
+                        ui.scope(|ui| {
+                            ui.set_max_width(
+                                (ui.available_width() - leading).max(DETAIL_MIN_WIDTH),
+                            );
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(detail)
+                                        .size(style::SMALL_SIZE)
+                                        .color(palette.text_secondary),
+                                )
+                                .truncate(),
+                            );
+                        });
+                    }
+                },
+                |ui| {
+                    glyph::decorative(ui, badges::icon_text(icon.0, icon.1, STATUS_ICON));
+                    ui.add(egui::Label::new(egui::RichText::new(text).font(font)).truncate());
+                },
+            );
         });
+    });
     picked
 }
 
@@ -230,19 +229,7 @@ fn pipelines_line(
                     .then_some(MergeStatusAction::ReloadRuns)
             })
         }
-        (None, None) => {
-            egui::Frame::new()
-                .inner_margin(egui::Margin::symmetric(style::SPACE_L as i8, style::SPACE_L as i8))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.set_min_height(style::CONTROL_HEIGHT - style::SPACE_S);
-                        skeleton::circle(ui, STATUS_ICON);
-                        ui.add_space(style::SPACE_M);
-                        skeleton::bar(ui, 220.0, 14.0);
-                    });
-                });
-            None
-        }
+        (None, None) => skeleton_line(ui, 220.0),
     }
 }
 
@@ -269,60 +256,53 @@ fn pipeline_list(
 ) -> Option<MergeStatusAction> {
     let palette = theme::palette(ui.ctx());
     let mut action = None;
-    egui::Frame::new().inner_margin(egui::Margin { left: 16, right: 16, top: 0, bottom: 16 }).show(
-        ui,
-        |ui| {
-            let width = ui.available_width();
-            let footer = style::ROW_COMPACT;
-            let pipelines = checks::latest_pipelines(runs);
-            let height = pipelines.len() as f32 * style::ROW_TWO_LINE + footer;
-            let (frame, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
-            ui.painter().rect_filled(frame, style::RADIUS_CONTROL, palette.ground);
-            for (index, run) in pipelines.into_iter().enumerate() {
-                let rect = Rect::from_min_size(
-                    pos2(frame.left(), frame.top() + index as f32 * style::ROW_TWO_LINE),
-                    vec2(width, style::ROW_TWO_LINE),
-                );
-                if index > 0 {
-                    ui.painter().hline(
-                        rect.x_range(),
-                        rect.top(),
-                        Stroke::new(1.0, palette.border),
-                    );
-                }
-                if pipeline_row(ui, rect, run, session) {
-                    action = Some(MergeStatusAction::OpenRun(run.id.clone()));
-                }
+    egui::Frame::new().inner_margin(egui::Margin { top: 0, ..LINE_MARGIN }).show(ui, |ui| {
+        let width = ui.available_width();
+        let footer = style::ROW_COMPACT;
+        let pipelines = checks::latest_pipelines(runs);
+        let height = pipelines.len() as f32 * style::ROW_TWO_LINE + footer;
+        let (frame, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+        ui.painter().rect_filled(frame, style::RADIUS_CONTROL, palette.ground);
+        for (index, run) in pipelines.into_iter().enumerate() {
+            let rect = Rect::from_min_size(
+                pos2(frame.left(), frame.top() + index as f32 * style::ROW_TWO_LINE),
+                vec2(width, style::ROW_TWO_LINE),
+            );
+            if index > 0 {
+                ui.painter().hline(rect.x_range(), rect.top(), Stroke::new(1.0, palette.border));
             }
-            let footer_rect =
-                Rect::from_min_max(pos2(frame.left(), frame.bottom() - footer), frame.max);
-            ui.painter().hline(
-                footer_rect.x_range(),
-                footer_rect.top(),
-                Stroke::new(1.0, palette.border),
-            );
-            let mut link_ui = ui.new_child(
-                UiBuilder::new()
-                    .max_rect(footer_rect.shrink2(vec2(style::SPACE_ROW_X, 0.0)))
-                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
-            );
-            if buttons::text_link(
-                &mut link_ui,
-                "All checks and jobs in Pipelines",
-                "Open the Pipelines tab",
-            )
-            .clicked()
-            {
-                action = Some(MergeStatusAction::OpenChecks);
+            if pipeline_row(ui, rect, run, session) {
+                action = Some(MergeStatusAction::OpenRun(run.id.clone()));
             }
-            ui.painter().rect_stroke(
-                frame,
-                style::RADIUS_CONTROL,
-                Stroke::new(1.0, palette.border),
-                StrokeKind::Inside,
-            );
-        },
-    );
+        }
+        let footer_rect =
+            Rect::from_min_max(pos2(frame.left(), frame.bottom() - footer), frame.max);
+        ui.painter().hline(
+            footer_rect.x_range(),
+            footer_rect.top(),
+            Stroke::new(1.0, palette.border),
+        );
+        let mut link_ui = ui.new_child(
+            UiBuilder::new()
+                .max_rect(footer_rect.shrink2(vec2(style::SPACE_ROW_X, 0.0)))
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        if buttons::text_link(
+            &mut link_ui,
+            "All checks and jobs in Pipelines",
+            "Open the Pipelines tab",
+        )
+        .clicked()
+        {
+            action = Some(MergeStatusAction::OpenChecks);
+        }
+        ui.painter().rect_stroke(
+            frame,
+            style::RADIUS_CONTROL,
+            Stroke::new(1.0, palette.border),
+            StrokeKind::Inside,
+        );
+    });
     action
 }
 
@@ -449,7 +429,7 @@ fn conflicts_line(
 ) -> Option<MergeStatusAction> {
     let palette = theme::palette(ui.ctx());
     let Some(detail) = session.detail.ready() else {
-        return skeleton_line(ui);
+        return skeleton_line(ui, 180.0);
     };
     let open_label = states::open_on_platform(session.kind);
     let open = |ui: &mut Ui| {
@@ -558,11 +538,8 @@ fn merge_type_chip(ui: &mut Ui, line: &MergeTypeLine) {
             } else {
                 "The platform didn't report this branch's merge types; it can merge with"
             };
-            response.on_hover_text(format!(
-                "Completing runs {name}.
-{note}: {}",
-                allowed.join(", ")
-            ));
+            response
+                .on_hover_text(format!("Completing runs {name}.\n{note}: {}", allowed.join(", ")));
         }
     }
 }
@@ -600,7 +577,7 @@ fn approvals_line(
 ) -> Option<MergeStatusAction> {
     let palette = theme::palette(ui.ctx());
     let Some(detail) = session.detail.ready() else {
-        return skeleton_line(ui);
+        return skeleton_line(ui, 180.0);
     };
     let reviewers = &detail.summary.reviewers;
     let names = |votes: &[ReviewVote]| -> Vec<&str> {
@@ -663,16 +640,14 @@ fn approvals_line(
     }
 }
 
-fn skeleton_line(ui: &mut Ui) -> Option<MergeStatusAction> {
-    egui::Frame::new()
-        .inner_margin(egui::Margin::symmetric(style::SPACE_L as i8, style::SPACE_L as i8))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.set_min_height(style::CONTROL_HEIGHT - style::SPACE_S);
-                skeleton::circle(ui, STATUS_ICON);
-                ui.add_space(style::SPACE_M);
-                skeleton::bar(ui, 180.0, 14.0);
-            });
+fn skeleton_line(ui: &mut Ui, bar_width: f32) -> Option<MergeStatusAction> {
+    egui::Frame::new().inner_margin(LINE_MARGIN).show(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.set_min_height(style::CONTROL_HEIGHT - style::SPACE_S);
+            skeleton::circle(ui, STATUS_ICON);
+            ui.add_space(style::SPACE_M);
+            skeleton::bar(ui, bar_width, 14.0);
         });
+    });
     None
 }
