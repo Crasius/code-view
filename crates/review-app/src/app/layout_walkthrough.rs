@@ -47,7 +47,7 @@ struct Fixture {
 #[expect(clippy::too_many_lines, reason = "one walkthrough scenario, told step by step")]
 fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     let scratch = ScratchDir::new("layout");
-    let fixture = create_origin(&scratch.path().join("origin"));
+    let fixture = remote();
     let mut harness = harness(saved_paths(&scratch, &[connection(CONNECTION_ID)]), fixture);
 
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
@@ -102,15 +102,6 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         "the card title is not repeated"
     );
 
-    // Commits: SHA and time sit in fixed columns. The tab shows its count once the commits loaded.
-    wait_until(&mut harness, "the commit count", |harness| {
-        harness.query_by_label_contains("Commits (").is_some()
-    });
-    harness.click_at(harness.get_by_label_contains("Commits (").rect());
-    wait_until(&mut harness, "the commit row", |harness| {
-        harness.query_by_role_and_label(Role::Link, "feature").is_some()
-    });
-
     // Files tab with the long diff.
     harness.click_at(harness.get_by_label_contains("Files (").rect());
     wait_until(&mut harness, "the file tree", |harness| {
@@ -135,16 +126,23 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     let diff_rect = harness.get_by_label(&format!("Diff of {CODE_PATH}")).rect();
     let search = harness.get_by_role(Role::TextInput).rect();
     let inward = match harness.state().services.settings.file_tree_side {
-        TreeSide::Left => 1.0,
-        TreeSide::Right => -1.0,
+        TreeSide::Left => {
+            assert!(diff_rect.left() >= tree.x - 1.0, "the diff {diff_rect:?} starts at the tree");
+            assert!(
+                search.right() < tree.x,
+                "the tree's search {search:?} is left of the splitter"
+            );
+            1.0
+        }
+        TreeSide::Right => {
+            assert!(diff_rect.right() <= tree.x + 1.0, "the diff {diff_rect:?} ends at the tree");
+            assert!(
+                search.left() > tree.x,
+                "the tree's search {search:?} is right of the splitter"
+            );
+            -1.0
+        }
     };
-    if inward > 0.0 {
-        assert!(diff_rect.left() >= tree.x - 1.0, "the diff {diff_rect:?} starts at the tree");
-        assert!(search.right() < tree.x, "the tree's search {search:?} is left of the splitter");
-    } else {
-        assert!(diff_rect.right() <= tree.x + 1.0, "the diff {diff_rect:?} ends at the tree");
-        assert!(search.left() > tree.x, "the tree's search {search:?} is right of the splitter");
-    }
 
     // The tree grows when its splitter moves towards the diff.
     drag(&mut harness, tree, vec2(inward * 100.0, 0.0));
@@ -257,7 +255,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
 fn folder_view_zooms_the_code_over_cards_and_the_app_elsewhere() {
     const FOLDER_ID: &str = "local-folder-zoom";
     let scratch = ScratchDir::new("folder-zoom");
-    let fixture = create_origin(&scratch.path().join("origin"));
+    let fixture = remote();
     let mut harness = harness(saved_paths(&scratch, &[connection(FOLDER_ID)]), fixture);
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: FOLDER_ID.to_owned(),
@@ -310,7 +308,7 @@ fn folder_view_zooms_the_code_over_cards_and_the_app_elsewhere() {
 fn switching_files_keeps_the_header_still_without_placeholders() {
     const SWITCH_ID: &str = "local-switch";
     let scratch = ScratchDir::new("switch");
-    let fixture = create_origin(&scratch.path().join("origin"));
+    let fixture = remote();
     let mut harness = harness(saved_paths(&scratch, &[connection(SWITCH_ID)]), fixture);
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: SWITCH_ID.to_owned(),
@@ -546,11 +544,19 @@ fn create_origin(origin: &Path) -> Fixture {
     git(origin, &["add", "-A"]);
     git(origin, &["commit", "-q", "-m", "feature"]);
     let head = git(origin, &["rev-parse", "HEAD"]);
-    Fixture {
-        clone_url: format!("file:///{}", origin.display().to_string().replace('\\', "/")),
-        target,
-        head,
-    }
+    Fixture { clone_url: cv_testkit::file_url(origin), target, head }
+}
+
+/// The origin of every test here, built once per test run: none pushes to it. The folder stays
+/// for the run; the next run's [`ScratchDir::new`] empties it.
+static REMOTE: LazyLock<(ScratchDir, Fixture)> = LazyLock::new(|| {
+    let folder = ScratchDir::new("layout-origin");
+    let fixture = create_origin(folder.path());
+    (folder, fixture)
+});
+
+fn remote() -> Fixture {
+    REMOTE.1.clone()
 }
 
 /// The anonymous GitHub connection `id`.

@@ -18,7 +18,7 @@ use review_core::{
 use review_store::AppPaths;
 
 use super::ReviewApp;
-use super::scripted_platforms::{Origin, create_origin};
+use super::scripted_platforms::{Origin, origin};
 use super::walkthrough::{app_with, saved_paths, settle_background, wait_until};
 use cv_base::platform;
 use cv_runtime::route::{PullRequestKey, PullRequestTab, Route};
@@ -38,7 +38,7 @@ Upstream: https://github.com/acme/widgets/pull/61";
 #[test]
 fn navigation_breadcrumbs_back_and_linked_items() {
     let scratch = ScratchDir::new("navigation");
-    let origin = create_origin(&scratch.path().join("origin"));
+    let origin = origin();
     let linked_calls = Arc::new(AtomicUsize::new(0));
     let mut harness = harness(saved_paths(&scratch, &[connection()]), origin, linked_calls.clone());
 

@@ -13,8 +13,8 @@ use review_core::{
     RunningLogs, UserIdentity,
 };
 
-use cv_testkit::git;
 use cv_testkit::provider::{Script, Scripted};
+use cv_testkit::{ScratchDir, git};
 
 /// (id, name, platform, web root, repository, accessible name of its mark).
 pub(super) const HOSTS: [(&str, &str, ProviderKind, &str, &str, &str); 3] = [
@@ -57,9 +57,18 @@ pub(super) struct Origin {
     pub(super) head: String,
 }
 
-/// Creates the [`Origin`] in the folder `origin`.
-pub(super) fn create_origin(origin: &Path) -> Origin {
-    std::fs::create_dir_all(origin).expect("origin folder");
+/// The [`Origin`], built once per test run: no test pushes to it. The folder stays for the run;
+/// the next run's [`ScratchDir::new`] empties it.
+pub(super) fn origin() -> Origin {
+    static REMOTE: LazyLock<(ScratchDir, Origin)> = LazyLock::new(|| {
+        let folder = ScratchDir::new("scripted-origin");
+        let origin = create_origin(folder.path());
+        (folder, origin)
+    });
+    REMOTE.1.clone()
+}
+
+fn create_origin(origin: &Path) -> Origin {
     git(origin, &["init", "-q", "-b", "main"]);
     git(origin, &["config", "uploadpack.allowFilter", "true"]);
     git(origin, &["config", "uploadpack.allowAnySHA1InWant", "true"]);
@@ -72,11 +81,7 @@ pub(super) fn create_origin(origin: &Path) -> Origin {
     git(origin, &["add", "-A"]);
     git(origin, &["commit", "-q", "-m", "Build widgets eagerly"]);
     let head = git(origin, &["rev-parse", "HEAD"]);
-    Origin {
-        clone_url: format!("file:///{}", origin.display().to_string().replace('\\', "/")),
-        target,
-        head,
-    }
+    Origin { clone_url: cv_testkit::file_url(origin), target, head }
 }
 
 /// The provider factory of [`HOSTS`]' connections. GitHub's pull requests are fetched from

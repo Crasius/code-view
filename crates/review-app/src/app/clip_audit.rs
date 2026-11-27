@@ -586,12 +586,7 @@ fn create_origin(origin: &Path) -> Fixture {
         ],
     );
     let head = git(origin, &["rev-parse", "HEAD"]);
-    Fixture {
-        clone_url: format!("file:///{}", origin.display().to_string().replace('\\', "/")),
-        target,
-        first,
-        head,
-    }
+    Fixture { clone_url: cv_testkit::file_url(origin), target, first, head }
 }
 
 fn generated_path(index: usize) -> String {

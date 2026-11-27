@@ -10,7 +10,7 @@ use egui_kittest::kittest::Queryable;
 use review_core::{Connection, ProviderKind};
 
 use super::ReviewApp;
-use super::scripted_platforms::{HOSTS, create_origin, platforms, title};
+use super::scripted_platforms::{HOSTS, origin, platforms, title};
 use super::walkthrough::{app_with, files_tab, has, opened_urls, saved_paths, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::{Clicks, ScratchDir, samples};
@@ -19,7 +19,7 @@ use cv_testkit::{Clicks, ScratchDir, samples};
 fn provider_icons_name_the_platform_everywhere() {
     let scratch = ScratchDir::new("provider-icons");
     // GitHub's pull requests come from a local repository, so its Files tab has a file.
-    let origin = create_origin(&scratch.path().join("origin"));
+    let origin = origin();
     let connections: Vec<Connection> = HOSTS
         .iter()
         .map(|&(id, name, kind, base_url, _, _)| Connection {
