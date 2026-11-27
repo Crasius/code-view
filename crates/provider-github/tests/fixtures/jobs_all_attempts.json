@@ -10,7 +10,7 @@
    "conclusion": "success",
    "started_at": "2026-10-19T00:03:49Z",
    "completed_at": "2026-10-19T00:11:35Z",
-   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117827728682",
+   "html_url": "https://github.com/contoso/editor/actions/runs/39179055298/job/117827728682",
    "steps": [
     {
      "name": "Set up job",
@@ -21,7 +21,7 @@
      "completed_at": "2026-10-19T00:03:51Z"
     },
     {
-     "name": "Checkout microsoft/vscode",
+     "name": "Checkout contoso/editor",
      "status": "completed",
      "conclusion": "success",
      "number": 2,
@@ -47,7 +47,7 @@
    "conclusion": "failure",
    "started_at": "2026-10-19T00:03:45Z",
    "completed_at": "2026-10-19T00:26:44Z",
-   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117827729010",
+   "html_url": "https://github.com/contoso/editor/actions/runs/39179055298/job/117827729010",
    "steps": [
     {
      "name": "Set up job",
@@ -58,7 +58,7 @@
      "completed_at": "2026-10-19T00:03:46Z"
     },
     {
-     "name": "Checkout microsoft/vscode",
+     "name": "Checkout contoso/editor",
      "status": "completed",
      "conclusion": "success",
      "number": 2,
@@ -84,7 +84,7 @@
    "conclusion": "skipped",
    "started_at": "2026-10-19T00:03:50Z",
    "completed_at": "2026-10-19T00:03:49Z",
-   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117827768980",
+   "html_url": "https://github.com/contoso/editor/actions/runs/39179055298/job/117827768980",
    "steps": []
   },
   {
@@ -96,7 +96,7 @@
    "conclusion": "failure",
    "started_at": "2026-10-19T00:26:47Z",
    "completed_at": "2026-10-19T00:26:49Z",
-   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117832925796",
+   "html_url": "https://github.com/contoso/editor/actions/runs/39179055298/job/117832925796",
    "steps": [
     {
      "name": "Set up job",
@@ -133,7 +133,7 @@
    "conclusion": "success",
    "started_at": "2026-10-19T00:37:48Z",
    "completed_at": "2026-10-19T00:45:09Z",
-   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117835404262",
+   "html_url": "https://github.com/contoso/editor/actions/runs/39179055298/job/117835404262",
    "steps": [
     {
      "name": "Set up job",
@@ -144,7 +144,7 @@
      "completed_at": "2026-10-19T00:37:49Z"
     },
     {
-     "name": "Checkout microsoft/vscode",
+     "name": "Checkout contoso/editor",
      "status": "completed",
      "conclusion": "success",
      "number": 2,
@@ -170,7 +170,7 @@
    "conclusion": "success",
    "started_at": "2026-10-19T00:03:49Z",
    "completed_at": "2026-10-19T00:11:35Z",
-   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117835404412",
+   "html_url": "https://github.com/contoso/editor/actions/runs/39179055298/job/117835404412",
    "steps": [
     {
      "name": "Set up job",
@@ -181,7 +181,7 @@
      "completed_at": "2026-10-19T00:03:51Z"
     },
     {
-     "name": "Checkout microsoft/vscode",
+     "name": "Checkout contoso/editor",
      "status": "completed",
      "conclusion": "success",
      "number": 2,
@@ -207,7 +207,7 @@
    "conclusion": "skipped",
    "started_at": "2026-10-19T00:37:41Z",
    "completed_at": "2026-10-19T00:03:49Z",
-   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117835405458",
+   "html_url": "https://github.com/contoso/editor/actions/runs/39179055298/job/117835405458",
    "steps": []
   },
   {
@@ -219,7 +219,7 @@
    "conclusion": "success",
    "started_at": "2026-10-19T00:45:13Z",
    "completed_at": "2026-10-19T00:45:16Z",
-   "html_url": "https://github.com/microsoft/vscode/actions/runs/39179055298/job/117837077454",
+   "html_url": "https://github.com/contoso/editor/actions/runs/39179055298/job/117837077454",
    "steps": [
     {
      "name": "Set up job",

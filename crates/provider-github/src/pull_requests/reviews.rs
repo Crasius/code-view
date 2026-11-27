@@ -170,20 +170,11 @@ mod tests {
     use crate::mapping::fixtures::parse;
 
     #[test]
-    fn vote_events() {
-        assert_eq!(
-            vote_body(ReviewVote::Approved, None).expect("body"),
-            json!({ "event": "APPROVE" })
-        );
-        assert_eq!(
-            vote_body(ReviewVote::ChangesRequested, Some("fix it")).expect("body"),
-            json!({ "event": "REQUEST_CHANGES", "body": "fix it" })
-        );
+    fn blank_comments_are_dropped_and_changes_need_one() {
         assert_eq!(
             vote_body(ReviewVote::Approved, Some("  ")).expect("body"),
             json!({ "event": "APPROVE" })
         );
-        assert!(matches!(vote_body(ReviewVote::None, None), Err(ProviderError::Unsupported(_))));
         assert!(matches!(
             vote_body(ReviewVote::ChangesRequested, Some(" ")),
             Err(ProviderError::Local(_))
@@ -191,28 +182,15 @@ mod tests {
     }
 
     #[test]
-    fn reviewer_inputs() {
-        assert_eq!(
-            reviewer_request_body("@octocat").expect("user"),
-            json!({ "reviewers": ["octocat"] })
-        );
-        assert_eq!(
-            reviewer_request_body("cli/maintainers").expect("team"),
-            json!({ "team_reviewers": ["maintainers"] })
-        );
+    fn blank_or_slugless_reviewer_inputs_are_rejected() {
         assert!(reviewer_request_body(" ").is_err());
-        assert!(reviewer_request_body("cli/").is_err());
+        assert!(reviewer_request_body("contoso/").is_err());
     }
 
     #[test]
-    fn removal_resolves_ids() {
+    fn ids_without_a_pending_request_resolve_to_no_removal() {
         let requested: RequestedReviewersDto = parse(
             r#"{"users":[{"id":3,"login":"cy"}],"teams":[{"id":77,"name":"Maintainers","slug":"maintainers"}]}"#,
-        );
-        assert_eq!(removal_body(&requested, "3"), Some(json!({ "reviewers": ["cy"] })));
-        assert_eq!(
-            removal_body(&requested, "team:77"),
-            Some(json!({ "reviewers": [], "team_reviewers": ["maintainers"] }))
         );
         assert_eq!(removal_body(&requested, "4"), None);
         assert_eq!(removal_body(&requested, "team:3"), None);

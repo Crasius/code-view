@@ -5,11 +5,9 @@ use review_core::{ProviderError, Result, http};
 use serde::Deserialize;
 use urlencoding::encode;
 
-use crate::client::GitHubClient;
+use crate::client::{GitHubClient, PER_PAGE};
 use crate::dto::user::UserDto;
 use crate::sso::{self, Blocked};
-
-const MAX_ORGANIZATIONS: &str = "100";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OwnerKind {
@@ -89,7 +87,8 @@ pub(crate) async fn reach(client: &GitHubClient) -> Result<Reach> {
 async fn look_up_reach(client: &GitHubClient) -> Result<Reach> {
     let user: UserDto = client.get_json("/user").await?;
     client.remember_owner_kind(&user.login, OwnerKind::User);
-    let request = client.rest(Method::GET, "/user/orgs").query(&[("per_page", MAX_ORGANIZATIONS)]);
+    // Only the first page: an account in more than PER_PAGE organizations sees the first ones.
+    let request = client.rest(Method::GET, "/user/orgs").query(&[("per_page", PER_PAGE)]);
     let (organizations, blocked_ids) = match http::send(request).await {
         Ok(response) => {
             let blocked_ids = sso::left_out_organizations(response.headers());
@@ -164,7 +163,7 @@ mod tests {
         assert_eq!(OwnerKind::from_type("organization"), OwnerKind::Organization);
         assert_eq!(OwnerKind::from_type("User"), OwnerKind::User);
         assert_eq!(OwnerKind::from_type("Bot"), OwnerKind::User, "unknown types list as a user");
-        assert_eq!(OwnerKind::Organization.repositories_path("cli"), "/orgs/cli/repos");
+        assert_eq!(OwnerKind::Organization.repositories_path("contoso"), "/orgs/contoso/repos");
         assert_eq!(OwnerKind::User.repositories_path("octo cat"), "/users/octo%20cat/repos");
     }
 }

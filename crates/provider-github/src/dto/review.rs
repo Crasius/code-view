@@ -8,9 +8,7 @@ use super::user::UserDto;
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ReviewDto {
     pub id: u64,
-    #[serde(default)]
     pub user: Option<UserDto>,
-    #[serde(default)]
     pub body: Option<String>,
     pub state: String,
     /// `null` while the review is pending.

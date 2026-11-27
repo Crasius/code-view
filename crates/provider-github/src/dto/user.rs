@@ -5,10 +5,8 @@ use serde::Deserialize;
 pub(crate) struct UserDto {
     pub id: u64,
     pub login: String,
-    #[serde(default)]
     pub avatar_url: Option<String>,
     /// Only present on `/user` and `/users/{login}`.
-    #[serde(default)]
     pub name: Option<String>,
 }
 

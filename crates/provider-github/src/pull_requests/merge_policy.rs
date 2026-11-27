@@ -44,20 +44,13 @@ pub(crate) async fn policy(
         return Ok(MergePolicy::not_reported(&allowed, Unreported::NoPermission)
             .with_settings_url(settings_url));
     }
-    let mut allowed: Vec<MergeStrategy> = flags
+    let enabled: Vec<MergeStrategy> = flags
         .into_iter()
-        .filter(|(_, flag)| *flag == Some(true))
-        .map(|(strategy, _)| strategy)
-        .filter(permitted)
+        .filter_map(|(strategy, flag)| (flag == Some(true)).then_some(strategy))
         .collect();
-    if allowed.is_empty() {
-        // Settings and rules that leave nothing: GitHub refuses every merge and says why.
-        allowed = flags
-            .into_iter()
-            .filter(|(_, flag)| *flag == Some(true))
-            .map(|(strategy, _)| strategy)
-            .collect();
-    }
+    let ruled_in: Vec<MergeStrategy> = enabled.iter().copied().filter(permitted).collect();
+    // Settings and rules that leave nothing: GitHub refuses every merge and says why.
+    let allowed = if ruled_in.is_empty() { enabled } else { ruled_in };
     Ok(MergePolicy::reported(allowed, None).with_settings_url(settings_url))
 }
 

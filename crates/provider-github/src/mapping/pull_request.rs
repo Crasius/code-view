@@ -1,8 +1,8 @@
 //! REST pull request → summary and detail.
 
 use review_core::{
-    AutoComplete, DiffStat, LineCounts, MergeStatus, MergeStrategy, PullRequestDetail,
-    PullRequestState, PullRequestSummary,
+    AutoComplete, DiffStat, LineCounts, MergeStatus, MergeStrategy, ProviderError,
+    PullRequestDetail, PullRequestState, PullRequestSummary, Result,
 };
 
 use crate::dto::pull_request::PullRequestDto;
@@ -98,6 +98,16 @@ pub(crate) fn merge_method_to_github(strategy: MergeStrategy) -> Option<&'static
     }
 }
 
+/// The `merge_method` a merge or an auto-merge sends; a semi-linear merge is refused before any
+/// request.
+pub(crate) fn github_method(strategy: MergeStrategy) -> Result<&'static str> {
+    merge_method_to_github(strategy).ok_or_else(|| {
+        ProviderError::Unsupported(
+            "GitHub has no semi-linear merge; pick a merge commit, squash or rebase.".to_owned(),
+        )
+    })
+}
+
 pub(crate) fn merge_method_from_github(method: &str) -> Option<MergeStrategy> {
     MergeStrategy::ALL.into_iter().find(|strategy| {
         merge_method_to_github(*strategy).is_some_and(|name| name.eq_ignore_ascii_case(method))
@@ -135,9 +145,9 @@ mod tests {
         let reviews: Vec<ReviewDto> = parse(
             r#"[{"id":1,"user":{"id":2,"login":"bob"},"state":"APPROVED","submitted_at":"2024-05-02T08:00:00Z"}]"#,
         );
-        let detail = detail(parse(PULL), &reviews, "cli/cli");
-        assert_eq!(detail.summary.repository_key, "cli/cli");
-        assert_eq!(detail.summary.repository_name, "cli");
+        let detail = detail(parse(PULL), &reviews, "contoso/app");
+        assert_eq!(detail.summary.repository_key, "contoso/app");
+        assert_eq!(detail.summary.repository_name, "app");
         assert_eq!(detail.summary.number, 1234);
         assert_eq!(detail.summary.state, PullRequestState::Open);
         assert!(detail.summary.is_draft);

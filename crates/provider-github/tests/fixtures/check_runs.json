@@ -6,7 +6,7 @@
       "name": "build",
       "status": "completed",
       "conclusion": "success",
-      "html_url": "https://github.com/cli/cli/runs/21",
+      "html_url": "https://github.com/contoso/app/runs/21",
       "started_at": "2024-05-01T10:00:00Z",
       "completed_at": "2024-05-01T10:04:00Z",
       "output": { "title": null },

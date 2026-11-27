@@ -7,9 +7,9 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use reqwest::Method;
 use review_core::{PipelineJob, PipelineRun, ProviderError, RerunAction, RerunKind, Result, http};
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::io::AsyncWrite;
 
-use crate::client::{GitHubClient, PER_PAGE, Paging};
+use crate::client::{GitHubClient, PER_PAGE, Paging, lock};
 use crate::dto::pipeline::{
     CheckRunsPage, CombinedStatusDto, FileContentDto, JobsPage, WorkflowRunDto, WorkflowRunsPage,
 };
@@ -103,9 +103,7 @@ pub(crate) struct WorkflowCache {
 
 impl WorkflowCache {
     fn remember_files(&self, runs: &[WorkflowRunDto]) {
-        let Ok(mut files) = self.files.lock() else {
-            return;
-        };
+        let mut files = lock(&self.files);
         for run in runs {
             if let (Some(path), Some(sha)) = (&run.path, &run.head_sha) {
                 files.insert(run.id, (path.clone(), sha.clone()));
@@ -119,16 +117,14 @@ impl WorkflowCache {
         repo: &RepoKey<'_>,
         run_id: u64,
     ) -> Option<WorkflowGraph> {
-        if let Some(known) = self.graphs.lock().ok().and_then(|graphs| graphs.get(&run_id).cloned())
-        {
+        let known = lock(&self.graphs).get(&run_id).cloned();
+        if let Some(known) = known {
             return known;
         }
-        let file = self.files.lock().ok().and_then(|files| files.get(&run_id).cloned());
+        let file = lock(&self.files).get(&run_id).cloned();
         // The jobs API has no `needs`: without the file the stage graph comes from timing instead.
         let graph = fetch_workflow(client, repo, run_id, file).await.ok()?;
-        if let Ok(mut graphs) = self.graphs.lock() {
-            graphs.insert(run_id, graph.clone());
-        }
+        lock(&self.graphs).insert(run_id, graph.clone());
         graph
     }
 }
@@ -209,10 +205,6 @@ pub(crate) async fn download_log(
         .parse()
         .map_err(|_| ProviderError::Local(format!("'{log_id}' is not a GitHub job id.")))?;
     let path = format!("{}/actions/jobs/{job_id}/logs", repo.api_path());
-    let mut response = http::send(client.rest(Method::GET, &path)).await?;
-    while let Some(chunk) = response.chunk().await? {
-        sink.write_all(&chunk).await?;
-    }
-    sink.flush().await?;
-    Ok(())
+    let response = http::send(client.rest(Method::GET, &path)).await?;
+    http::copy_body(response, sink).await
 }

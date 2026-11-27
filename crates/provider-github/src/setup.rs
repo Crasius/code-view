@@ -37,19 +37,13 @@ pub fn token_guide(base_url: &str, owner: Option<&str>) -> TokenGuide {
     }
 }
 
-/// The classic token page, pre-filled with the recommended scopes.
-pub fn classic_token_url(base_url: &str) -> String {
-    format!(
-        "{}/settings/tokens/new?scopes={CLASSIC_SCOPES}&description={}",
-        base_url.trim_end_matches('/'),
-        urlencoding::encode(TOKEN_NAME)
-    )
-}
-
 fn classic_recipe(base: &str) -> TokenRecipe {
     TokenRecipe {
         title: "Classic personal access token".to_owned(),
-        create_url: classic_token_url(base),
+        create_url: format!(
+            "{base}/settings/tokens/new?scopes={CLASSIC_SCOPES}&description={}",
+            urlencoding::encode(TOKEN_NAME)
+        ),
         is_prefilled: true,
         summary: "One token for every repository and organization you can access. It covers \
                   reviews, comments, labels, merging, Actions logs and checks from other apps."
@@ -128,11 +122,10 @@ pub(crate) async fn inspect(client: &GitHubClient) -> Result<AccessReport> {
     let expires_at = header(&response, "github-authentication-token-expiration")
         .map(|value| value.chars().take(10).collect());
     let user: UserDto = decode(response).await?;
-    let token = client.connection().token().unwrap_or_default();
     let report = if let Some(scopes) = scopes {
         AccessReport {
             user: identity::user(user),
-            token_kind: scoped_token_kind(token).to_owned(),
+            token_kind: scoped_token_kind(client.connection()).to_owned(),
             checks: scoped_checks(&scopes),
             notes: scoped_notes(&scopes),
             scopes,
@@ -153,8 +146,8 @@ pub(crate) async fn inspect(client: &GitHubClient) -> Result<AccessReport> {
     Ok(report)
 }
 
-fn scoped_token_kind(token: &str) -> &'static str {
-    if token.starts_with("gho_") {
+fn scoped_token_kind(connection: &Connection) -> &'static str {
+    if sso::is_oauth_token(connection) {
         "GitHub CLI or OAuth app token"
     } else {
         "Classic personal access token"
@@ -218,9 +211,7 @@ async fn probe(client: &GitHubClient, path: String) -> Result<Probe> {
     match http::send(client.rest(Method::GET, &path).query(&[("per_page", "1")])).await {
         Ok(_) => Ok(Probe::Allowed),
         Err(ProviderError::Status { status: 403, .. }) => Ok(Probe::Denied),
-        Err(ProviderError::Status { status: 401, path, body }) => {
-            Err(ProviderError::Status { status: 401, path, body })
-        }
+        Err(error @ ProviderError::Status { status: 401, .. }) => Err(error),
         Err(ProviderError::Status { .. }) => Ok(Probe::Inconclusive),
         Err(error) => Err(error),
     }
@@ -404,26 +395,20 @@ async fn decode<T: serde::de::DeserializeOwned>(response: Response) -> Result<T>
 
 #[cfg(test)]
 mod tests {
-    use review_core::{Connection, Provider, ProviderKind};
+    use review_core::Provider;
     use serde_json::json;
     use wiremock::matchers::{header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
     use crate::GitHubProvider;
+    use crate::client::test_connection;
 
     const TOKEN: &str = "test-token";
 
     async fn provider() -> (MockServer, GitHubProvider) {
         let server = MockServer::start().await;
-        let connection = Connection {
-            id: "mock".to_owned(),
-            name: "Mock".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: server.uri(),
-            organizations: Vec::new(),
-            token: Some(TOKEN.to_owned()),
-        };
+        let connection = test_connection(&server.uri(), Some(TOKEN));
         (server, GitHubProvider::new(connection, reqwest::Client::new()))
     }
 
@@ -560,7 +545,7 @@ mod tests {
             .and(query_param("per_page", "100"))
             .respond_with(
                 ResponseTemplate::new(200)
-                    .set_body_json(json!([{"login": "github"}, {"login": "cli"}])),
+                    .set_body_json(json!([{"login": "fabrikam"}, {"login": "contoso"}])),
             )
             .mount(&server)
             .await;
@@ -571,8 +556,8 @@ mod tests {
             keys,
             [
                 ("octocat", ScopeKind::Account),
-                ("github", ScopeKind::Organization),
-                ("cli", ScopeKind::Organization)
+                ("fabrikam", ScopeKind::Organization),
+                ("contoso", ScopeKind::Organization)
             ]
         );
     }
@@ -610,14 +595,7 @@ mod tests {
             path: path.to_owned(),
             body: json!({ "message": message }).to_string(),
         };
-        let connection = Connection {
-            id: "gh".to_owned(),
-            name: "GitHub".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: "https://github.com".to_owned(),
-            organizations: Vec::new(),
-            token: Some("ghp_classic".to_owned()),
-        };
+        let connection = test_connection("https://github.com", Some("ghp_classic"));
         let explain = |error: &ProviderError| explain(&connection, error);
         let problem = explain(&denied(
             "/repos/o/r/actions/jobs/1/logs",

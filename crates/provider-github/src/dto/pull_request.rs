@@ -12,12 +12,10 @@ pub(crate) struct PullRequestDto {
     #[serde(default)]
     pub node_id: String,
     pub title: String,
-    #[serde(default)]
     pub body: Option<String>,
     pub state: String,
     #[serde(default)]
     pub draft: bool,
-    #[serde(default)]
     pub user: Option<UserDto>,
     pub html_url: String,
     #[serde(with = "time::serde::rfc3339")]
@@ -36,19 +34,13 @@ pub(crate) struct PullRequestDto {
     pub requested_teams: Vec<TeamDto>,
     pub head: BranchDto,
     pub base: BranchDto,
-    #[serde(default)]
     pub mergeable: Option<bool>,
-    #[serde(default)]
     pub mergeable_state: Option<String>,
     /// Set while auto-merge is enabled.
-    #[serde(default)]
     pub auto_merge: Option<AutoMergeDto>,
     /// Line and file counts: in a single pull request's answer, never in list rows.
-    #[serde(default)]
     pub additions: Option<u64>,
-    #[serde(default)]
     pub deletions: Option<u64>,
-    #[serde(default)]
     pub changed_files: Option<u64>,
 }
 
@@ -56,7 +48,6 @@ pub(crate) struct PullRequestDto {
 #[derive(Debug, Deserialize)]
 pub(crate) struct AutoMergeDto {
     pub merge_method: String,
-    #[serde(default)]
     pub enabled_by: Option<UserDto>,
 }
 
@@ -66,7 +57,6 @@ pub(crate) struct BranchDto {
     pub name: String,
     pub sha: String,
     /// `null` when the fork was deleted.
-    #[serde(default)]
     pub repo: Option<BranchRepositoryDto>,
 }
 

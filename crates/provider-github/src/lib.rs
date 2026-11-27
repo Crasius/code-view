@@ -1,7 +1,7 @@
 //! GitHub and GitHub Enterprise Server provider: REST v3 for most calls, GraphQL where REST
 //! has no equivalent (review threads, resolving, drafts, "mine" searches).
 
-// RS-DONT-03: no FFI here; unsafe belongs in the platform/ modules of review-store and review-app.
+// RS-DONT-03: no FFI in this crate.
 #![forbid(unsafe_code)]
 
 mod client;
@@ -140,11 +140,11 @@ impl Provider for GitHubProvider {
     }
 
     async fn close(&self, repo: &str, number: u64) -> Result<()> {
-        lifecycle::set_state(&self.client, repo, number, "closed").await
+        lifecycle::close(&self.client, repo, number).await
     }
 
     async fn reopen(&self, repo: &str, number: u64) -> Result<()> {
-        lifecycle::set_state(&self.client, repo, number, "open").await
+        lifecycle::reopen(&self.client, repo, number).await
     }
 
     async fn set_draft(&self, repo: &str, number: u64, is_draft: bool) -> Result<()> {
@@ -316,28 +316,20 @@ impl Provider for GitHubProvider {
 #[cfg(test)]
 mod tests {
     use super::GitHubProvider;
-    use review_core::{Connection, Provider, ProviderError, ProviderKind, ReviewVote};
-
-    fn anonymous() -> GitHubProvider {
-        let connection = Connection {
-            id: "gh".to_owned(),
-            name: "GitHub".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: "https://github.com".to_owned(),
-            organizations: Vec::new(),
-            token: None,
-        };
-        GitHubProvider::new(connection, reqwest::Client::new())
-    }
+    use crate::client::test_connection;
+    use review_core::{Provider, ProviderError, ReviewVote};
+    use wiremock::MockServer;
 
     #[tokio::test]
-    async fn writes_without_token_are_unsupported_before_any_request() {
-        let provider = anonymous();
+    async fn calls_that_need_a_token_fail_unsupported_without_sending() {
+        let server = MockServer::start().await;
+        let provider =
+            GitHubProvider::new(test_connection(&server.uri(), None), reqwest::Client::new());
         let results = [
-            provider.close("cli/cli", 1).await,
-            provider.set_labels("cli/cli", 1, &[]).await,
-            provider.set_vote("cli/cli", 1, ReviewVote::Approved, None).await,
-            provider.set_draft("cli/cli", 1, true).await,
+            provider.close("acme/app", 1).await,
+            provider.set_labels("acme/app", 1, &[]).await,
+            provider.set_vote("acme/app", 1, ReviewVote::Approved, None).await,
+            provider.set_draft("acme/app", 1, true).await,
         ];
         for result in results {
             assert!(matches!(result, Err(ProviderError::Unsupported(_))), "{result:?}");
@@ -347,5 +339,7 @@ mod tests {
             provider.list_repositories(None).await,
             Err(ProviderError::Unsupported(_))
         ));
+        let requests = server.received_requests().await.expect("recorded");
+        assert!(requests.is_empty(), "{requests:?}");
     }
 }
