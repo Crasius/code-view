@@ -1,7 +1,8 @@
 //! Headless frame-budget benchmarks: drives a view frame by frame at a 4K physical size and
 //! measures, per frame, the UI build (the view's code, timed inside the frame) and tessellation
 //! (what eframe does with the shapes before handing them to the GPU), plus the vertex count and
-//! the font atlas size the GPU receives.
+//! the font atlas size the GPU receives. A scroll benchmark measures each view with
+//! [`Bench::scroll_patterns`] and ends with [`finish`].
 //!
 //! The benchmarks themselves are `#[ignore]`d tests next to the views they measure. Run them in
 //! release mode, single-threaded so they don't compete for cores, with output shown:
@@ -41,6 +42,7 @@ pub struct Bench<'a, State> {
     pub state: State,
     app: View<'a, State>,
     input: RawInput,
+    pixels_per_point: f32,
     ui_time: Duration,
     time: f64,
 }
@@ -130,8 +132,15 @@ impl<'a, State> Bench<'a, State> {
         if let Some(viewport) = input.viewports.get_mut(&ViewportId::ROOT) {
             viewport.native_pixels_per_point = Some(pixels_per_point);
         }
-        let mut bench =
-            Self { ctx, state, app: Box::new(app), input, ui_time: Duration::ZERO, time: 0.0 };
+        let mut bench = Self {
+            ctx,
+            state,
+            app: Box::new(app),
+            input,
+            pixels_per_point,
+            ui_time: Duration::ZERO,
+            time: 0.0,
+        };
         bench.step(Vec::new());
         bench
     }
@@ -218,6 +227,19 @@ impl<'a, State> Bench<'a, State> {
         runs.swap_remove(0)
     }
 
+    /// [`Self::scroll_best`] once per entry of [`PATTERNS`], named "{view} @{scale}% {pattern}";
+    /// each frame scrolls by `direction * speed` (`vec2(0.0, -1.0)` scrolls down).
+    pub fn scroll_patterns(&mut self, view: &str, pointer: Pos2, direction: Vec2) -> Vec<Report> {
+        let scale = self.pixels_per_point * 100.0;
+        PATTERNS
+            .iter()
+            .map(|(pattern, speed)| {
+                let name = format!("{view} @{scale:.0}% {pattern}");
+                self.scroll_best(&name, pointer, direction * *speed)
+            })
+            .collect()
+    }
+
     /// One frame per entry of `events`, for one-off events; reported, not gated.
     pub fn frames(
         &mut self,
@@ -252,6 +274,16 @@ impl<'a, State> Bench<'a, State> {
             atlas: atlas_size(&self.ctx),
             is_gated: true,
         }
+    }
+}
+
+/// Prints every report, then fails on the first one over budget.
+pub fn finish(reports: &[Report]) {
+    for report in reports {
+        report.print();
+    }
+    for report in reports {
+        report.assert_within_budget();
     }
 }
 
