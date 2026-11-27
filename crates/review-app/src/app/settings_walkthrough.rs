@@ -5,8 +5,6 @@
 //! nothing cut, overlapping or off-window in any section. `cargo test -p review-app
 //! settings_walkthrough`
 
-use std::time::{Duration, Instant};
-
 use egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -17,13 +15,11 @@ use super::ReviewApp;
 use super::github_mock::GitHubHost;
 use super::provider_icons_walkthrough::scripted_provider;
 use super::tree_side_walkthrough as tree_side;
-use super::walkthrough::app;
+use super::walkthrough::{app, wait_until};
 use cv_runtime::route::Route;
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
-
-const TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Each section's title in the sidebar and a text only that section shows.
 const SECTIONS: [(&str, &str); 7] = [
@@ -40,12 +36,12 @@ const SECTIONS: [(&str, &str); 7] = [
 fn settings_walkthrough_sections_search_previews_and_connections() {
     let paths = isolated_paths("walk");
     let mut harness = harness(paths.clone(), 1280.0);
-    wait_for(&mut harness, "the pull request list", |harness| {
+    wait_until(&mut harness, "the pull request list", |harness| {
         harness.state().route == Route::MyPullRequests
     });
 
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
-    wait_for(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
+    wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
     assert_only(&harness, "Connections");
 
     for (title, _) in SECTIONS {
@@ -116,7 +112,7 @@ fn settings_walkthrough_sections_fit_a_narrow_window() {
     let mut harness = harness(paths.clone(), 960.0);
     super::clip_check::install(&harness.ctx);
     harness.state_mut().navigator.go(Route::Settings);
-    wait_for(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
+    wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
     let mut findings = Vec::new();
     for (title, _) in SECTIONS {
         open(&mut harness, title);
@@ -144,7 +140,7 @@ fn settings_walkthrough_sample_lines_fit_their_panes() {
     for (width, name) in [(1280.0, "1280"), (MIN_WIDTH, "min")] {
         let mut harness = harness(paths.clone(), width);
         harness.state_mut().navigator.go(Route::Settings);
-        wait_for(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
+        wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
         open(&mut harness, "Appearance");
         for layout in [DiffLayout::SideBySide, DiffLayout::Inline, DiffLayout::NewOnly] {
             let settings = &mut harness.state_mut().services.settings;
@@ -169,7 +165,7 @@ fn settings_walkthrough_file_tree_side_moves_the_tree() {
     let host = GitHubHost::with_pull_request_files(scratch.path(), &[tree_side::long_file()]);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
-    wait_for(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
+    wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
 
     for word in ["tree", "sidebar", "left", "right"] {
         harness.key_press_modifiers(Modifiers::COMMAND, Key::F);
@@ -189,7 +185,7 @@ fn settings_walkthrough_file_tree_side_moves_the_tree() {
     assert_eq!(tree_side::saved(&scratch).file_tree_side, TreeSide::Right, "Right is saved");
 
     harness.key_press_modifiers(Modifiers::ALT, Key::ArrowLeft);
-    wait_for(&mut harness, "the pull request list", |harness| {
+    wait_until(&mut harness, "the pull request list", |harness| {
         harness.state().route == Route::MyPullRequests
     });
     tree_side::open_long_file(&mut harness);
@@ -209,7 +205,7 @@ fn settings_walkthrough_checkboxes_center_on_their_rows() {
     let paths = isolated_paths("switches");
     let mut harness = harness(paths.clone(), 1280.0);
     harness.state_mut().navigator.go(Route::Settings);
-    wait_for(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
+    wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
     for (section, name, description) in SWITCHES {
         open(&mut harness, section);
         harness.get_by_role_and_label(Role::CheckBox, name).scroll_to_me();
@@ -279,23 +275,6 @@ fn isolated_paths(name: &str) -> AppPaths {
     let root = std::env::temp_dir().join(format!("review-settings-{name}-{}", std::process::id()));
     cv_testkit::remove_dir(&root);
     AppPaths::new(root.join("config"), root.join("cache"))
-}
-
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    let started = Instant::now();
-    loop {
-        harness.step();
-        if is_done(harness) {
-            settle(harness);
-            return;
-        }
-        assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        cv_testkit::let_threads_run(Duration::from_millis(10));
-    }
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

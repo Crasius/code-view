@@ -5,7 +5,6 @@
 //! run, or inside one. Needs `git` on PATH, no network.
 
 use std::fmt::Write as _;
-use std::time::{Duration, Instant};
 
 use egui::{Rect, Role};
 use egui_kittest::Harness;
@@ -13,11 +12,10 @@ use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
 use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread, open_pull_request};
-use super::walkthrough::{app, shows_file_view, wait_until};
+use super::walkthrough::{app, settle_background, shows_file_view, wait_until};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
-const TIMEOUT: Duration = Duration::from_secs(30);
 const CODE: &str = "src/long.rs";
 const INTRO: &str = "docs/intro.md";
 const SOURCES: &str = "docs/build-sources.md";
@@ -136,25 +134,14 @@ fn row<'h>(harness: &'h Harness<'_, ReviewApp>, text: &str) -> Option<egui_kitte
 /// Steps until the card of the thread reading `text` shows in the diff, left of the threads
 /// panel and inside the window; returns its place.
 fn wait_for_card(harness: &mut Harness<'_, ReviewApp>, text: &str) -> Rect {
-    let started = Instant::now();
-    loop {
-        harness.step();
-        if card(harness, text).is_some() {
-            // The view settles before the place is read.
-            for _ in 0..10 {
-                harness.step();
-            }
-            let card = card_rect(harness, text).expect("the card stays in view");
-            let window = harness.ctx.content_rect();
-            assert!(window.contains_rect(card), "the card {card:?} inside the window {window:?}");
-            return card;
-        }
-        assert!(
-            started.elapsed() < TIMEOUT,
-            "the card of {text:?} never came into view; the diff stayed where it was"
-        );
-        cv_testkit::let_threads_run(Duration::from_millis(20));
-    }
+    wait_until(harness, &format!("the card of {text:?} in view"), |harness| {
+        card(harness, text).is_some()
+    });
+    settle_background(harness);
+    let card = card_rect(harness, text).expect("the card stays in view");
+    let window = harness.ctx.content_rect();
+    assert!(window.contains_rect(card), "the card {card:?} inside the window {window:?}");
+    card
 }
 
 /// The card's place while it shows in the diff (not the panel's row of it) inside the window.

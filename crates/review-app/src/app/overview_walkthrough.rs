@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
+use super::walkthrough::wait_until_unsettled;
 use cv_lists::pull_request_list::{GROUP_BY_REPOSITORY, LIST_INTERVAL, SEARCH_TOOLTIP};
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
@@ -29,7 +30,7 @@ const LISTING: &str = "/api/v4/groups/team/merge_requests";
 fn overview_revisit_shows_known_rows_at_once_then_updates() {
     let host = MockHost::start(1);
     let mut harness = host.harness("revisit-list");
-    wait_until(&mut harness, "the first rows", |harness| has(harness, "Change 1"));
+    wait_until_unsettled(&mut harness, "the first rows", |harness| has(harness, "Change 1"));
     assert_eq!(host.count(LISTING), 1, "one listing on the first visit");
     assert!(
         has(&harness, "All") && has(&harness, "Created by me") && has(&harness, "Assigned to me")
@@ -56,7 +57,7 @@ fn overview_revisit_shows_known_rows_at_once_then_updates() {
     assert!(!has(&harness, "Change 2"));
     assert!(has(&harness, "Updating…"), "the background refresh says so");
 
-    wait_until(&mut harness, "the refreshed rows", |harness| has(harness, "Change 2"));
+    wait_until_unsettled(&mut harness, "the refreshed rows", |harness| has(harness, "Change 2"));
     assert!(has(&harness, "Change 1"));
     pump(&mut harness, 1.0);
     assert!(!has(&harness, "Updating…"), "the note leaves with the new answer");
@@ -68,10 +69,10 @@ fn overview_revisit_shows_known_rows_at_once_then_updates() {
     pump(&mut harness, idle - 5.0);
     assert_eq!(host.count(LISTING), 2, "an idle list sends nothing within its interval");
     pump(&mut harness, 10.0);
-    wait_until(&mut harness, "the list's own refresh", |_| host.count(LISTING) >= 3);
+    wait_until_unsettled(&mut harness, "the list's own refresh", |_| host.count(LISTING) >= 3);
     harness.click_at(harness.get_by_label("Refresh (F5)").rect());
     // The request leaves on a background thread; under a loaded test run it can trail the frames.
-    wait_until(&mut harness, "the refresh request", |_| host.count(LISTING) >= 4);
+    wait_until_unsettled(&mut harness, "the refresh request", |_| host.count(LISTING) >= 4);
     pump(&mut harness, 2.0);
     assert_eq!(host.count(LISTING), 4);
 }
@@ -80,9 +81,9 @@ fn overview_revisit_shows_known_rows_at_once_then_updates() {
 fn overview_pull_request_revisit_paints_the_known_detail_even_after_it_was_dropped() {
     let host = MockHost::start(5);
     let mut harness = host.harness("revisit-detail");
-    wait_until(&mut harness, "the rows", |harness| has(harness, "Change 5"));
+    wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 5"));
     open(&mut harness, 1);
-    wait_until(&mut harness, "the detail", |harness| {
+    wait_until_unsettled(&mut harness, "the detail", |harness| {
         has(harness, "Change 1") && has(harness, "Discussion")
     });
     // The live-update baseline probe follows each load and reads the merge request once more.
@@ -93,7 +94,7 @@ fn overview_pull_request_revisit_paints_the_known_detail_even_after_it_was_dropp
     // Three other pull requests push the first one out of the open pages.
     for number in 2..=4 {
         open(&mut harness, number);
-        wait_until(&mut harness, "another detail", |harness| {
+        wait_until_unsettled(&mut harness, "another detail", |harness| {
             has(harness, &format!("Change {number}"))
         });
     }
@@ -104,7 +105,9 @@ fn overview_pull_request_revisit_paints_the_known_detail_even_after_it_was_dropp
     harness.step();
     assert!(has(&harness, "Change 1"), "the dropped page starts from the page cache: no skeleton");
     assert!(has(&harness, "Updating…"));
-    wait_until(&mut harness, "the refreshed detail", |harness| has(harness, "Change 1 (edited)"));
+    wait_until_unsettled(&mut harness, "the refreshed detail", |harness| {
+        has(harness, "Change 1 (edited)")
+    });
     pump(&mut harness, 2.0);
     assert_eq!(
         host.count(&detail),
@@ -120,7 +123,7 @@ fn overview_collapsed_group_is_remembered_and_loads_nothing_until_expanded() {
     let mut store = ConnectionStore::open(&paths).expect("empty store");
     store.upsert(host.connection("collapse", "Mock GitLab")).expect("store the connection");
     let mut harness = start_app(&paths);
-    wait_until(&mut harness, "the rows", |harness| has(harness, "Change 2"));
+    wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 2"));
 
     harness.click_at(harness.get_by_label("Mock GitLab, 2 pull requests, expanded").rect());
     pump(&mut harness, 1.0);
@@ -149,8 +152,10 @@ fn overview_collapsed_group_is_remembered_and_loads_nothing_until_expanded() {
     // Enter on the focused header expands it, which loads it.
     harness.get_by_label("Mock GitLab, 2 pull requests, collapsed").focus();
     harness.key_press(egui::Key::Enter);
-    wait_until(&mut harness, "the rows after expanding", |harness| has(harness, "Change 2"));
-    wait_until(&mut harness, "the refresh after expanding", |_| {
+    wait_until_unsettled(&mut harness, "the rows after expanding", |harness| {
+        has(harness, "Change 2")
+    });
+    wait_until_unsettled(&mut harness, "the refresh after expanding", |_| {
         host.count(LISTING) == listings + 1
     });
     assert!(
@@ -170,7 +175,7 @@ fn overview_groups_rows_by_repository_and_saves_the_choices() {
     let mut store = ConnectionStore::open(&paths).expect("empty store");
     store.upsert(host.connection("sections", "Mock GitLab")).expect("store the connection");
     let mut harness = start_app(&paths);
-    wait_until(&mut harness, "the rows", |harness| has(harness, "Change 2"));
+    wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 2"));
     let section = |state: &str| format!("{PROJECT}, 2 pull requests, {state}");
     let saved = || AppSettings::load(&paths.settings_file()).expect("saved settings");
 
@@ -241,7 +246,7 @@ fn overview_label_editing_cancels_by_button_and_esc() {
 
     // Cancel button: an added label goes away again, nothing is sent.
     press(&mut harness, "Edit labels");
-    wait_until(&mut harness, "the label catalog", |harness| has(harness, "skip-deploy"));
+    wait_until_unsettled(&mut harness, "the label catalog", |harness| has(harness, "skip-deploy"));
     press(&mut harness, "skip-deploy");
     assert!(
         has(&harness, "Apply") && has(&harness, "Cancel (Esc)"),
@@ -269,14 +274,14 @@ fn overview_label_editing_cancels_by_button_and_esc() {
     press(&mut harness, "Edit labels");
     press(&mut harness, "needs-docs");
     press(&mut harness, "Apply");
-    wait_until(&mut harness, "the label update", |_| host.count(&detail) > before);
+    wait_until_unsettled(&mut harness, "the label update", |_| host.count(&detail) > before);
 }
 
 #[test]
 fn overview_files_button_opens_the_files_tab_and_not_the_row() {
     let host = MockHost::start(3);
     let mut harness = host.harness("files-button");
-    wait_until(&mut harness, "the rows", |harness| has(harness, "Change 3"));
+    wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 3"));
     let connection_id = harness.state().services.connections.all()[0].id.clone();
     let key = |number: u64| PullRequestKey {
         connection_id: connection_id.clone(),
@@ -294,7 +299,7 @@ fn overview_files_button_opens_the_files_tab_and_not_the_row() {
         [&Route::MyPullRequests],
         "exactly one navigation"
     );
-    wait_until(&mut harness, "the pull request", |harness| {
+    wait_until_unsettled(&mut harness, "the pull request", |harness| {
         harness.query_by_role_and_label(Role::Tab, "Overview").is_some()
     });
     assert_eq!(selected_tab(&harness), "Files");
@@ -304,7 +309,7 @@ fn overview_files_button_opens_the_files_tab_and_not_the_row() {
     pump(&mut harness, 0.5);
     assert_eq!(harness.state().route, Route::MyPullRequests);
     harness.click_at(harness.get_by_role_and_label(Role::Link, "2 Change 2").rect());
-    wait_until(&mut harness, "the second pull request", |harness| {
+    wait_until_unsettled(&mut harness, "the second pull request", |harness| {
         harness.query_by_role_and_label(Role::Tab, "Overview").is_some()
     });
     assert_eq!(harness.state().route, Route::PullRequest(key(2)));
@@ -323,7 +328,7 @@ fn overview_files_button_opens_the_files_tab_and_not_the_row() {
     harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::Enter);
     harness.step();
     assert_eq!(harness.state().route, Route::PullRequest(key(3)));
-    wait_until(&mut harness, "the third pull request", |harness| {
+    wait_until_unsettled(&mut harness, "the third pull request", |harness| {
         harness.query_by_role_and_label(Role::Tab, "Overview").is_some()
     });
     assert_eq!(selected_tab(&harness), "Files");
@@ -385,7 +390,7 @@ fn overview_header_is_one_row_at_wide_and_narrow_widths() {
     let mut harness = start_app(&paths);
     // Whether the row fits at 960 is the fonts' width; the bundled ones are the same everywhere.
     cv_testkit::use_bundled_fonts(&harness.ctx);
-    wait_until(&mut harness, "the rows", |harness| has(harness, "Change 4"));
+    wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 4"));
     let filter_field =
         harness.query_by(|node| node.placeholder().is_some_and(|hint| hint.contains("Filter by")));
     assert!(filter_field.is_none(), "the list has no text filter of its own");
@@ -432,7 +437,7 @@ fn overview_header_is_one_row_at_wide_and_narrow_widths() {
         before,
         "the list does not move while updating"
     );
-    wait_until(&mut harness, "the refresh to end", |harness| !has(harness, "Updating…"));
+    wait_until_unsettled(&mut harness, "the refresh to end", |harness| !has(harness, "Updating…"));
 
     // A repository filter that hides every row offers the way back, not a dead end.
     harness.state_mut().services.settings.list_filters.repository =
@@ -440,7 +445,7 @@ fn overview_header_is_one_row_at_wide_and_narrow_widths() {
     pump(&mut harness, 0.5);
     assert!(has(&harness, "No pull requests in the chosen repository."));
     press(&mut harness, "Clear filters");
-    wait_until(&mut harness, "the rows to come back", |harness| has(harness, "Change 4"));
+    wait_until_unsettled(&mut harness, "the rows to come back", |harness| has(harness, "Change 4"));
     assert_eq!(harness.state().services.settings.list_filters.repository, None);
 }
 
@@ -450,7 +455,7 @@ fn overview_header_is_one_row_at_wide_and_narrow_widths() {
 fn overview_search_finds_pull_requests_by_label_and_author() {
     let host = MockHost::start(4);
     let mut harness = host.harness("search-label");
-    wait_until(&mut harness, "the rows", |harness| has(harness, "Change 4"));
+    wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 4"));
 
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::K);
     harness.event(egui::Event::Text("backend".to_owned()));
@@ -466,7 +471,7 @@ fn overview_search_finds_pull_requests_by_label_and_author() {
     let found = |harness: &Harness<'_, ReviewApp>| {
         (1..=4).all(|number| has(harness, &format!("!{number} Change {number}")))
     };
-    wait_until(&mut harness, "the author's pull requests", found);
+    wait_until_unsettled(&mut harness, "the author's pull requests", found);
     harness.key_press(egui::Key::Enter);
     pump(&mut harness, 0.5);
     assert!(
@@ -488,14 +493,14 @@ fn overview_search_finds_pull_requests_by_label_and_author() {
 }
 
 fn open_side_column(harness: &mut Harness<'_, ReviewApp>, connection_id: &str) {
-    wait_until(harness, "the rows", |harness| has(harness, "Change 4"));
+    wait_until_unsettled(harness, "the rows", |harness| has(harness, "Change 4"));
     let key = PullRequestKey {
         connection_id: connection_id.to_owned(),
         repository_key: PROJECT.to_owned(),
         number: 4,
     };
     go(harness, Route::PullRequest(key));
-    wait_until(harness, "the side column", |harness| {
+    wait_until_unsettled(harness, "the side column", |harness| {
         has(harness, "backend") && has(harness, "Barbara Liskov")
     });
     pump(harness, 1.0);
@@ -706,14 +711,6 @@ fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
         harness.step();
         cv_testkit::let_threads_run(Duration::from_millis(2));
     }
-}
-
-fn wait_until(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
 }
 
 /// The key of pull request `number` of the mock project.

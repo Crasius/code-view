@@ -2,7 +2,6 @@
 //! no network, no real tokens, no command-line tools. Runs with `cargo test`.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use egui::Role;
@@ -19,57 +18,59 @@ use review_store::{AppPaths, ConnectionStore, LINUX_HELP_URL, TokenVault, VaultP
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::walkthrough::wait_until;
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
 
 /// Scripted tokens; they only ever reach the fake provider below.
 const LIMITED_TOKEN: &str = "glpat-walkthrough-fine-grained";
 const COMPLETE_TOKEN: &str = "glpat-walkthrough-complete";
-const TIMEOUT: Duration = Duration::from_secs(20);
 
 #[test]
 fn setup_wizard_first_run_to_saved_connection() {
     let paths = isolated_paths("first-run");
     let mut harness = harness(paths.clone());
 
-    wait_for(&mut harness, "the welcome screen", |harness| {
+    wait_until(&mut harness, "the welcome screen", |harness| {
         harness.query_by_label_contains("GitLab.com or self-managed").is_some()
     });
     harness.click_at(harness.get_by_label_contains("GitLab.com or self-managed").rect());
-    wait_for(&mut harness, "the host step", |harness| harness.query_by_label("Continue").is_some());
+    wait_until(&mut harness, "the host step", |harness| {
+        harness.query_by_label("Continue").is_some()
+    });
     harness.click_at(harness.get_by_label("Continue").rect());
 
-    wait_for(&mut harness, "the token step", |harness| {
+    wait_until(&mut harness, "the token step", |harness| {
         harness.query_by_role(Role::PasswordInput).is_some()
     });
     type_token(&mut harness, LIMITED_TOKEN);
-    wait_for(&mut harness, "the access report", |harness| {
+    wait_until(&mut harness, "the access report", |harness| {
         harness.query_by_label_contains("Some features won't work").is_some()
     });
     assert!(harness.query_by_label_contains("Needs Merge Request: Read.").is_some());
 
     harness.click_at(harness.get_by_label("Paste a new token").rect());
-    wait_for(&mut harness, "the token step again", |harness| {
+    wait_until(&mut harness, "the token step again", |harness| {
         harness.query_by_role(Role::PasswordInput).is_some()
     });
     type_token(&mut harness, COMPLETE_TOKEN);
-    wait_for(&mut harness, "a complete report", |harness| {
+    wait_until(&mut harness, "a complete report", |harness| {
         harness.query_by_label_contains("Everything works with this token").is_some()
     });
 
     harness.click_at(harness.get_by_label("Continue").rect());
-    wait_for(&mut harness, "the groups step", |harness| {
+    wait_until(&mut harness, "the groups step", |harness| {
         harness.query_by_label_contains("Only selected groups").is_some()
     });
     harness.click_at(harness.get_by_label_contains("Only selected groups").rect());
-    wait_for(&mut harness, "discovered groups", |harness| {
+    wait_until(&mut harness, "discovered groups", |harness| {
         harness.query_by_label("TTRPG").is_some()
     });
     harness.click_at(harness.get_by_label("TTRPG").rect());
     settle(&mut harness);
 
     harness.click_at(harness.get_by_label("Save connection").rect());
-    wait_for(&mut harness, "the saved confirmation", |harness| {
+    wait_until(&mut harness, "the saved confirmation", |harness| {
         harness.query_by_label_contains("is connected").is_some()
     });
 
@@ -88,21 +89,23 @@ fn setup_wizard_first_run_to_saved_connection() {
 fn setup_save_failure_stays_on_the_step_with_its_cause() {
     let paths = isolated_paths("save-failure");
     let mut harness = harness(paths.clone());
-    wait_for(&mut harness, "the welcome screen", |harness| {
+    wait_until(&mut harness, "the welcome screen", |harness| {
         harness.query_by_label_contains("GitLab.com or self-managed").is_some()
     });
     harness.click_at(harness.get_by_label_contains("GitLab.com or self-managed").rect());
-    wait_for(&mut harness, "the host step", |harness| harness.query_by_label("Continue").is_some());
+    wait_until(&mut harness, "the host step", |harness| {
+        harness.query_by_label("Continue").is_some()
+    });
     harness.click_at(harness.get_by_label("Continue").rect());
-    wait_for(&mut harness, "the token step", |harness| {
+    wait_until(&mut harness, "the token step", |harness| {
         harness.query_by_role(Role::PasswordInput).is_some()
     });
     type_token(&mut harness, COMPLETE_TOKEN);
-    wait_for(&mut harness, "a complete report", |harness| {
+    wait_until(&mut harness, "a complete report", |harness| {
         harness.query_by_label_contains("Everything works with this token").is_some()
     });
     harness.click_at(harness.get_by_label("Continue").rect());
-    wait_for(&mut harness, "the groups step", |harness| {
+    wait_until(&mut harness, "the groups step", |harness| {
         harness.query_by_label("Save connection").is_some()
     });
 
@@ -111,7 +114,7 @@ fn setup_save_failure_stays_on_the_step_with_its_cause() {
         .expect("the temp root");
     std::fs::write(paths.config_dir(), b"not a folder").expect("block the config folder");
     harness.click_at(harness.get_by_label("Save connection").rect());
-    wait_for(&mut harness, "the save error", |harness| {
+    wait_until(&mut harness, "the save error", |harness| {
         harness.query_by_label_contains("The connection could not be saved").is_some()
     });
     assert!(
@@ -122,7 +125,7 @@ fn setup_save_failure_stays_on_the_step_with_its_cause() {
 
     std::fs::remove_file(paths.config_dir()).expect("unblock the config folder");
     press(&mut harness, "Try again");
-    wait_for(&mut harness, "the saved confirmation", |harness| {
+    wait_until(&mut harness, "the saved confirmation", |harness| {
         harness.query_by_label_contains("is connected").is_some()
     });
     let store = ConnectionStore::open(&paths).expect("saved store");
@@ -142,13 +145,15 @@ fn setup_missing_keyring_offers_a_tokenless_save() {
     }));
     let paths = isolated_paths("missing-keyring").with_token_vault(TokenVault::Refusing(problem));
     let mut harness = harness(paths.clone());
-    wait_for(&mut harness, "the welcome screen", |harness| {
+    wait_until(&mut harness, "the welcome screen", |harness| {
         harness.query_by_label_contains("GitLab.com or self-managed").is_some()
     });
     harness.click_at(harness.get_by_label_contains("GitLab.com or self-managed").rect());
-    wait_for(&mut harness, "the host step", |harness| harness.query_by_label("Continue").is_some());
+    wait_until(&mut harness, "the host step", |harness| {
+        harness.query_by_label("Continue").is_some()
+    });
     harness.click_at(harness.get_by_label("Continue").rect());
-    wait_for(&mut harness, "the keyring message", |harness| {
+    wait_until(&mut harness, "the keyring message", |harness| {
         harness.query_by_label_contains(&problem.title).is_some()
     });
     assert!(harness.query_by_label("Copy commands").is_some());
@@ -158,11 +163,11 @@ fn setup_missing_keyring_offers_a_tokenless_save() {
     );
 
     type_token(&mut harness, COMPLETE_TOKEN);
-    wait_for(&mut harness, "a complete report", |harness| {
+    wait_until(&mut harness, "a complete report", |harness| {
         harness.query_by_label_contains("Everything works with this token").is_some()
     });
     harness.click_at(harness.get_by_label("Continue").rect());
-    wait_for(&mut harness, "the groups step", |harness| {
+    wait_until(&mut harness, "the groups step", |harness| {
         harness.query_by_label("Save connection").is_some()
     });
     assert!(
@@ -182,7 +187,7 @@ fn setup_missing_keyring_offers_a_tokenless_save() {
     );
 
     press(&mut harness, "Save without the token");
-    wait_for(&mut harness, "the saved confirmation", |harness| {
+    wait_until(&mut harness, "the saved confirmation", |harness| {
         harness.query_by_label_contains("is connected").is_some()
     });
     let store = ConnectionStore::open(&paths).expect("saved store");
@@ -194,25 +199,27 @@ fn setup_missing_keyring_offers_a_tokenless_save() {
 fn setup_token_pages_offer_cli_and_checklists() {
     let mut harness = harness(isolated_paths("token-pages"));
 
-    wait_for(&mut harness, "the welcome screen", |harness| {
+    wait_until(&mut harness, "the welcome screen", |harness| {
         harness.query_by_label_contains("GitHub.com or GitHub").is_some()
     });
     harness.click_at(harness.get_by_label_contains("GitHub.com or GitHub").rect());
-    wait_for(&mut harness, "the host step", |harness| harness.query_by_label("Continue").is_some());
+    wait_until(&mut harness, "the host step", |harness| {
+        harness.query_by_label("Continue").is_some()
+    });
     harness.click_at(harness.get_by_label("Continue").rect());
-    wait_for(&mut harness, "the GitHub CLI option", |harness| {
+    wait_until(&mut harness, "the GitHub CLI option", |harness| {
         harness.query_by_label("Use GitHub CLI sign-in").is_some()
     });
     assert!(harness.query_by_label_contains("Create token on github.com").is_some());
 
     press(&mut harness, &back());
-    wait_for(&mut harness, "the host step", |harness| harness.query_by_label(&back()).is_some());
+    wait_until(&mut harness, "the host step", |harness| harness.query_by_label(&back()).is_some());
     press(&mut harness, &back());
-    wait_for(&mut harness, "the platforms", |harness| {
+    wait_until(&mut harness, "the platforms", |harness| {
         harness.query_by_label_contains("Azure DevOps Services or").is_some()
     });
     harness.click_at(harness.get_by_label_contains("Azure DevOps Services or").rect());
-    wait_for(&mut harness, "the organization field", |harness| {
+    wait_until(&mut harness, "the organization field", |harness| {
         harness.query_by_role(Role::TextInput).is_some()
     });
     harness.get_by_role(Role::TextInput).focus();
@@ -220,7 +227,7 @@ fn setup_token_pages_offer_cli_and_checklists() {
     settle(&mut harness);
     assert!(harness.query_by_label_contains("Connects to dev.azure.com/contoso").is_some());
     harness.click_at(harness.get_by_label("Continue").rect());
-    wait_for(&mut harness, "the Azure checklist", |harness| {
+    wait_until(&mut harness, "the Azure checklist", |harness| {
         harness.query_by_label("Code: Read & write").is_some()
     });
     assert!(harness.query_by_label("Use Azure CLI sign-in").is_some());
@@ -242,11 +249,11 @@ fn setup_fix_token_from_a_denied_request() {
         .expect("store the connection");
     let mut harness = harness(paths);
 
-    wait_for(&mut harness, "the access banner", |harness| {
+    wait_until(&mut harness, "the access banner", |harness| {
         harness.query_by_label_contains("Tabletop: The fine-grained token").is_some()
     });
     harness.click_at(harness.get_by_label_contains("Fix token").rect());
-    wait_for(&mut harness, "the fix screen", |harness| {
+    wait_until(&mut harness, "the fix screen", |harness| {
         harness.query_by_role(Role::PasswordInput).is_some()
     });
     assert!(
@@ -290,23 +297,6 @@ fn type_token(harness: &mut Harness<'_, ReviewApp>, token: &str) {
     harness.step();
     harness.get_by_role(Role::PasswordInput).type_text(token);
     harness.step();
-}
-
-pub(super) fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    let started = Instant::now();
-    loop {
-        harness.step();
-        if is_done(harness) {
-            settle(harness);
-            return;
-        }
-        assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        cv_testkit::let_threads_run(Duration::from_millis(20));
-    }
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

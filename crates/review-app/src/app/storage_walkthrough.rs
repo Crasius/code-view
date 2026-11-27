@@ -6,7 +6,8 @@ use egui_kittest::kittest::Queryable;
 use review_core::{Connection, ProviderKind};
 use review_store::{ConnectionStore, stable_hash};
 
-use super::setup_walkthrough::{harness, isolated_paths, press, wait_for};
+use super::setup_walkthrough::{harness, isolated_paths, press};
+use super::walkthrough::wait_until;
 use cv_runtime::route::Route;
 use cv_testkit::Clicks;
 
@@ -35,19 +36,19 @@ fn storage_measures_clears_after_asking_and_forgets_removed_connections() {
     harness.state_mut().navigator.go(Route::Settings);
     harness.step();
     harness.click_at(harness.get_by_role_and_label(Role::Tab, "Storage").rect());
-    wait_for(&mut harness, "the measured log size", |harness| {
+    wait_until(&mut harness, "the measured log size", |harness| {
         harness.query_by_label("64 B of 1 GB").is_some()
     });
     harness.get_by_label("64 B of 1 GB").scroll_to_me();
     harness.step();
 
     press(&mut harness, "Clear cache");
-    wait_for(&mut harness, "the confirmation", |harness| {
+    wait_until(&mut harness, "the confirmation", |harness| {
         harness.query_by_label_contains("Delete all mirrors, logs and saved pages?").is_some()
     });
     assert!(log.exists(), "nothing is deleted before the confirmation");
     press(&mut harness, "Clear cache");
-    wait_for(&mut harness, "the cleared summary", |harness| {
+    wait_until(&mut harness, "the cleared summary", |harness| {
         harness.query_by_label_contains("Freed 64 B").is_some()
     });
     assert!(!log.exists());
@@ -55,17 +56,17 @@ fn storage_measures_clears_after_asking_and_forgets_removed_connections() {
 
     harness.click_at(harness.get_by_role_and_label(Role::Tab, "Connections").rect());
     harness.step();
-    wait_for(&mut harness, "the connection's row", |harness| {
+    wait_until(&mut harness, "the connection's row", |harness| {
         harness.query_by_role_and_label(Role::Button, "Tabletop").is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Tabletop").rect());
-    wait_for(&mut harness, "the connection's facts", |harness| {
+    wait_until(&mut harness, "the connection's facts", |harness| {
         harness.query_by_label("Remove…").is_some()
     });
     press(&mut harness, "Remove…");
-    wait_for(&mut harness, "the removal question", |harness| {
+    wait_until(&mut harness, "the removal question", |harness| {
         harness.query_by_label("Remove connection").is_some()
     });
     press(&mut harness, "Remove connection");
-    wait_for(&mut harness, "the removed connection's marks to go", |_| !viewed.exists());
+    wait_until(&mut harness, "the removed connection's marks to go", |_| !viewed.exists());
 }

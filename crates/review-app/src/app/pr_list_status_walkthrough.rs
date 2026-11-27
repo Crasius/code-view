@@ -13,7 +13,6 @@
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{Duration, Instant};
 
 use egui::accesskit::Role;
 use egui_kittest::Harness;
@@ -24,12 +23,12 @@ use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
+use super::walkthrough::{wait_idle, wait_until_unsettled};
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
 use cv_widgets::numbers::number_prefix;
 
 const ROWS: u64 = 50;
-const TIMEOUT: Duration = Duration::from_secs(120);
 const STEP_SECONDS: f32 = 0.25;
 
 #[test]
@@ -38,7 +37,7 @@ fn pr_list_status_github_search_rows_bring_their_checks_and_votes() {
     host.enter("listed");
     let mut harness = host.harness(1440.0);
     let row = |number: u64| Row::new(ProviderKind::GitHub, number);
-    wait_until(&mut harness, "the checks of the newest rows", |harness| {
+    wait_until_unsettled(&mut harness, "the checks of the newest rows", |harness| {
         row(1).checks(harness).is_some_and(|text| text.contains("passed, 2 of 2"))
     });
     wait_idle(&mut harness);
@@ -101,7 +100,7 @@ fn pr_list_status_github_search_rows_bring_their_checks_and_votes() {
     host.finish_running_checks();
     host.enter("refresh");
     refresh(&mut harness);
-    wait_until(&mut harness, "the finished check", |harness| {
+    wait_until_unsettled(&mut harness, "the finished check", |harness| {
         row(3).checks(harness).is_some_and(|text| text.starts_with("Checks of #3: passed"))
     });
     wait_idle(&mut harness);
@@ -120,7 +119,7 @@ fn pr_list_status_gitlab_asks_the_rows_on_screen_in_one_request() {
     host.enter("listed");
     let mut harness = host.harness(1440.0);
     let row = |number: u64| Row::new(ProviderKind::GitLab, number);
-    wait_until(&mut harness, "the checks of the newest rows", |harness| {
+    wait_until_unsettled(&mut harness, "the checks of the newest rows", |harness| {
         row(1).checks(harness).is_some_and(|text| text.contains("passed, 2 of 2"))
     });
     wait_idle(&mut harness);
@@ -167,7 +166,7 @@ fn pr_list_status_gitlab_asks_the_rows_on_screen_in_one_request() {
     host.finish_running_checks();
     host.enter("refresh");
     refresh(&mut harness);
-    wait_until(&mut harness, "the finished pipeline", |harness| {
+    wait_until_unsettled(&mut harness, "the finished pipeline", |harness| {
         row(3).checks(harness).is_some_and(|text| text.starts_with("Checks of !3: passed"))
     });
     wait_idle(&mut harness);
@@ -186,7 +185,7 @@ fn pr_list_status_azure_devops_policies_votes_and_a_denied_policy() {
     host.enter("listed");
     let mut harness = host.harness(1440.0);
     let row = |number: u64| Row::new(ProviderKind::AzureDevOps, number);
-    wait_until(&mut harness, "the checks of the newest rows", |harness| {
+    wait_until_unsettled(&mut harness, "the checks of the newest rows", |harness| {
         row(1).checks(harness).is_some_and(|text| text.contains("passed, 1 of 1"))
             && row(4).checks(harness).is_some_and(|text| text.contains("unknown"))
     });
@@ -227,7 +226,7 @@ fn pr_list_status_azure_devops_policies_votes_and_a_denied_policy() {
     host.finish_running_checks();
     host.enter("refresh");
     refresh(&mut harness);
-    wait_until(&mut harness, "the finished build", |harness| {
+    wait_until_unsettled(&mut harness, "the finished build", |harness| {
         row(3).checks(harness).is_some_and(|text| text.starts_with("Checks of !3: passed"))
     });
     wait_idle(&mut harness);
@@ -303,7 +302,7 @@ fn pr_list_status_indicators_fit_a_narrow_window() {
     let mut harness = host.harness(1440.0);
     super::clip_check::install(&harness.ctx);
     let row = Row::new(ProviderKind::GitHub, 5);
-    wait_until(&mut harness, "the rows", |harness| row.checks(harness).is_some());
+    wait_until_unsettled(&mut harness, "the rows", |harness| row.checks(harness).is_some());
     wait_idle(&mut harness);
     let wide = row.checks_width(&harness);
     harness.set_size(egui::vec2(720.0, 900.0));
@@ -817,39 +816,4 @@ fn opened_urls(harness: &Harness<'_, ReviewApp>) -> Vec<String> {
             _ => None,
         })
         .collect()
-}
-
-/// Steps until no background work runs for a while.
-fn wait_idle(harness: &mut Harness<'_, ReviewApp>) {
-    let started = Instant::now();
-    let mut idle_frames = 0;
-    while idle_frames < 20 {
-        harness.step();
-        cv_testkit::let_threads_run(Duration::from_millis(5));
-        idle_frames =
-            if harness.state().services.background.running() == 0 { idle_frames + 1 } else { 0 };
-        assert!(started.elapsed() < TIMEOUT, "background work did not finish");
-    }
-}
-
-fn wait_until(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    let started = Instant::now();
-    loop {
-        harness.step();
-        if is_done(harness) {
-            return;
-        }
-        if started.elapsed() > TIMEOUT {
-            let labels: Vec<String> = harness
-                .query_all_by(|node| node.label().is_some())
-                .filter_map(|node| node.accesskit_node().label())
-                .collect();
-            panic!("timed out waiting for {what}; labels on screen:\n{}", labels.join("\n"));
-        }
-        cv_testkit::let_threads_run(Duration::from_millis(10));
-    }
 }

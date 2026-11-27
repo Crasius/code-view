@@ -40,13 +40,11 @@ use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 use super::ReviewApp;
 #[cfg(feature = "measurements")]
 use super::request_budget::scroll_list;
-use super::request_budget::{
-    Text, diff_stats_summaries, harness_builder, user, wait_until, with_cli_tools,
-};
+use super::request_budget::{Text, diff_stats_summaries, harness_builder, user, with_cli_tools};
 use super::startup;
 #[cfg(feature = "measurements")]
 use super::walkthrough::click_first;
-use super::walkthrough::{self, has, pump, wait_idle};
+use super::walkthrough::{self, has, pump, wait_idle, wait_until_unsettled};
 use cv_base::platform::heap::live_bytes;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::agents::FakeCli;
@@ -93,7 +91,9 @@ fn memory_returns_after_the_merge_requests_are_left() {
     let textures = GpuTextures::default();
     let mut harness = fixture.harness(&textures);
     let mut curve = Curve { textures, points: Vec::new() };
-    wait_until(&mut harness, "the merge request list", |harness| has(harness, "Change 30"));
+    wait_until_unsettled(&mut harness, "the merge request list", |harness| {
+        has(harness, "Change 30")
+    });
     curve.measure(&mut harness, "start: the list");
     for iid in 1..=MERGE_REQUESTS {
         review(&mut harness, &fixture, iid, &mut curve);
@@ -125,7 +125,7 @@ fn memory_returns_after_the_merge_requests_are_left() {
     assert!(curve.peak_textures() <= 16 * MB, "the textures stay small: {curve}");
     // The last merge request shows again where it was left, its open file's diff loaded anew.
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(MERGE_REQUESTS)));
-    wait_until(&mut harness, "the open file's diff", |_| {
+    wait_until_unsettled(&mut harness, "the open file's diff", |_| {
         cv_runtime::cache::memory::holders()
             .iter()
             .any(|(name, bytes)| *name == "diffs" && *bytes > 0)
@@ -164,10 +164,14 @@ fn memory_stays_flat_while_the_overview_idles() {
     // The card lists the pipelines with their stage bars, so the stages poll too.
     harness.state_mut().services.settings.pipelines.is_overview_expanded = true;
     let mut curve = Curve { textures, points: Vec::new() };
-    wait_until(&mut harness, "the merge request list", |harness| has(harness, "Change 30"));
+    wait_until_unsettled(&mut harness, "the merge request list", |harness| {
+        has(harness, "Change 30")
+    });
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(IDLE_MERGE_REQUEST)));
-    wait_until(&mut harness, "the overview", |harness| has(harness, &title(IDLE_MERGE_REQUEST)));
-    wait_until(&mut harness, "the picture", |harness| has(harness, "The upload"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| {
+        has(harness, &title(IDLE_MERGE_REQUEST))
+    });
+    wait_until_unsettled(&mut harness, "the picture", |harness| has(harness, "The upload"));
     fixture.forget_requests();
     curve.measure(&mut harness, "overview loaded");
     let mut causes = std::collections::BTreeSet::new();
@@ -219,9 +223,11 @@ fn a_closed_app_frees_its_context() {
     }
     let fixture = Fixture::new("closed");
     let mut harness = fixture.harness(&GpuTextures::default());
-    wait_until(&mut harness, "the merge request list", |harness| has(harness, "Change 30"));
+    wait_until_unsettled(&mut harness, "the merge request list", |harness| {
+        has(harness, "Change 30")
+    });
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(IDLE_MERGE_REQUEST)));
-    wait_until(&mut harness, "the picture", |harness| has(harness, "The upload"));
+    wait_until_unsettled(&mut harness, "the picture", |harness| has(harness, "The upload"));
     wait_idle(&mut harness);
     let is_dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
     // The context owns its repaint callback: the marker goes when the context goes.
@@ -325,19 +331,23 @@ fn owner_overview(
     let builder = harness_builder().with_size([1499.0, 1413.0]).renderer(textures.clone());
     let mut harness = fixture.harness_from(builder);
     let mut curve = Curve { textures, points: Vec::new() };
-    wait_until(&mut harness, "the merge request list", |harness| has(harness, "Change 30"));
+    wait_until_unsettled(&mut harness, "the merge request list", |harness| {
+        has(harness, "Change 30")
+    });
     let key = fixture.key(OWNER_MERGE_REQUEST);
     harness.state_mut().navigator.go(Route::PullRequest(key.clone()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, &title(OWNER_MERGE_REQUEST)));
+    wait_until_unsettled(&mut harness, "the overview", |harness| {
+        has(harness, &title(OWNER_MERGE_REQUEST))
+    });
     if is_on("record") {
-        wait_until(&mut harness, "the blocked update", |harness| {
+        wait_until_unsettled(&mut harness, "the blocked update", |harness| {
             let checkouts = &harness.state().services.checkouts;
             checkouts.status(&key).is_some_and(|status| status.blocked.is_some())
         });
     }
     if is_on("menu") {
         let label = if is_on("record") { "Checkout options" } else { "Check out" };
-        wait_until(&mut harness, "the checkout button", |harness| has(harness, label));
+        wait_until_unsettled(&mut harness, "the checkout button", |harness| has(harness, label));
         harness.click_at(harness.get_by_label(label).rect());
         pump(&mut harness, 2.0);
         if is_on("record") && has(&harness, "Show log") {
@@ -450,9 +460,11 @@ fn saved_pages_show_at_once_after_a_restart() {
     let fixture = Fixture::new("restart");
     {
         let mut harness = fixture.harness(&GpuTextures::default());
-        wait_until(&mut harness, "the merge request list", |harness| has(harness, "Change 30"));
+        wait_until_unsettled(&mut harness, "the merge request list", |harness| {
+            has(harness, "Change 30")
+        });
         harness.state_mut().navigator.go(Route::PullRequest(fixture.key(1)));
-        wait_until(&mut harness, "the overview", |harness| has(harness, &title(1)));
+        wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, &title(1)));
         wait_idle(&mut harness);
         let saved = fixture.paths.cold_cache_dir().join("page");
         let started = Instant::now();
@@ -483,7 +495,7 @@ fn saved_pages_show_at_once_after_a_restart() {
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(1)));
     shows(&mut harness, &|harness| has(harness, &title(1)) && has(harness, "Updating…"));
     harness.state_mut().navigator.go(Route::MyPullRequests);
-    wait_until(&mut harness, "the list's answer", |harness| {
+    wait_until_unsettled(&mut harness, "the list's answer", |harness| {
         has(harness, "Change 30") && !has(harness, "Updating…")
     });
 }
@@ -493,16 +505,18 @@ fn saved_pages_show_at_once_after_a_restart() {
 #[cfg(feature = "measurements")]
 fn review(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture, iid: u64, curve: &mut Curve) {
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(iid)));
-    wait_until(harness, "the overview", |harness| has(harness, &title(iid)));
+    wait_until_unsettled(harness, "the overview", |harness| has(harness, &title(iid)));
     wait_idle(harness);
     curve.measure(harness, &format!("MR {iid}: overview"));
     let files_label = format!("Files ({})", RUST_FILES + 3);
-    wait_until(harness, "the file list", |harness| harness.query_by_label(&files_label).is_some());
+    wait_until_unsettled(harness, "the file list", |harness| {
+        harness.query_by_label(&files_label).is_some()
+    });
     harness.click_at(harness.get_by_label(&files_label).rect());
-    wait_until(harness, "the first file", |harness| {
+    wait_until_unsettled(harness, "the first file", |harness| {
         current_file(harness).as_deref() == Some("docs/README.md")
     });
-    wait_until(harness, "the README's image", |harness| has(harness, "The screen"));
+    wait_until_unsettled(harness, "the README's image", |harness| has(harness, "The screen"));
     for _ in 0..RUST_FILES + 3 {
         harness.key_press(egui::Key::J);
         pump(harness, 0.5);
@@ -518,21 +532,21 @@ fn review(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture, iid: u64, cur
 #[cfg(feature = "measurements")]
 fn pipelines_and_log(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(harness, "the jobs", |harness| has(harness, "test-3-1"));
+    wait_until_unsettled(harness, "the jobs", |harness| has(harness, "test-3-1"));
     harness.get_by_label("Filter checks").focus();
     harness.step();
     harness.get_by_label("Filter checks").type_text("test-3-2");
     harness.step();
     click_first(harness, "test-3-2 in");
     let lines = format!("{} lines", cv_widgets::numbers::group_digits(LOG_LINES));
-    wait_until(harness, "the job log", |harness| has(harness, &lines));
+    wait_until_unsettled(harness, "the job log", |harness| has(harness, &lines));
     curve.measure(harness, "MR 1: pipelines and a long log");
 }
 
 #[cfg(feature = "measurements")]
 fn assistant(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
     harness.click_at(harness.get_by_label("Overview").rect());
-    wait_until(harness, "the assistant's card", |harness| {
+    wait_until_unsettled(harness, "the assistant's card", |harness| {
         harness.query_by_label("Ask about this PR").is_some()
     });
     super::walkthrough::type_into(harness, "Ask anything about this pull request", "Explain it.");
@@ -556,7 +570,9 @@ fn assistant(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
     agent.emit(AgentEvent::Text(answer));
     let usage = Usage { input: 1_200, output: 340, cache_read: 12_000, cache_write: 0 };
     agent.emit(AgentEvent::TurnDone(usage));
-    wait_until(harness, "the answer", |harness| has(harness, "Line 399 of a long answer"));
+    wait_until_unsettled(harness, "the answer", |harness| {
+        has(harness, "Line 399 of a long answer")
+    });
     curve.measure(harness, "MR 1: assistant answered");
 }
 
@@ -1409,12 +1425,16 @@ const UNFOCUSED_FRAMES: usize = 60;
 fn an_unfocused_overview_holds_its_skeletons_still() {
     let fixture = Fixture::new("unfocused");
     let mut harness = fixture.harness(&GpuTextures::default());
-    wait_until(&mut harness, "the merge request list", |harness| has(harness, "Change 30"));
+    wait_until_unsettled(&mut harness, "the merge request list", |harness| {
+        has(harness, "Change 30")
+    });
     if let Some(viewport) = harness.input_mut().viewports.get_mut(&egui::ViewportId::ROOT) {
         viewport.focused = Some(false);
     }
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(IDLE_MERGE_REQUEST)));
-    wait_until(&mut harness, "the overview", |harness| has(harness, &title(IDLE_MERGE_REQUEST)));
+    wait_until_unsettled(&mut harness, "the overview", |harness| {
+        has(harness, &title(IDLE_MERGE_REQUEST))
+    });
     let mut causes = std::collections::BTreeSet::new();
     let mut time = harness.ctx.input(|input| input.time);
     for _ in 0..UNFOCUSED_FRAMES {

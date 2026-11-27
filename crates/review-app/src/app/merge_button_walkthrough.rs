@@ -29,6 +29,7 @@ use review_store::{AppPaths, AppSettings, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::walkthrough::wait_until;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
@@ -58,7 +59,7 @@ static CALLS: LazyLock<Mutex<HashMap<String, Arc<Calls>>>> =
 fn merge_button_confirms_in_place_and_remembers_the_choice() {
     let (mut harness, paths, calls) = start("confirm");
     open(&mut harness, "confirm", 1);
-    wait_for(&mut harness, "the preselected default", |harness| button(harness, "Squash merge"));
+    wait_until(&mut harness, "the preselected default", |harness| button(harness, "Squash merge"));
     assert!(
         has(&harness, "Merge type: Squash merge"),
         "the overview card names what the button runs"
@@ -117,7 +118,7 @@ fn merge_button_confirms_in_place_and_remembers_the_choice() {
     harness.run_steps(3);
     assert!(button(&harness, "Click again to merge"), "Ctrl+Enter arms the button");
     harness.key_press(egui::Key::Enter);
-    wait_for(&mut harness, "the merge", |_| !calls.merges.lock().unwrap().is_empty());
+    wait_until(&mut harness, "the merge", |_| !calls.merges.lock().unwrap().is_empty());
     let merged = calls.merges.lock().unwrap()[0].clone();
     assert_eq!(merged.strategy, MergeStrategy::Merge);
     assert_eq!(merged.commit_message.as_deref(), Some("Merged PR 1: Speed up login"));
@@ -132,7 +133,7 @@ fn merge_button_confirms_in_place_and_remembers_the_choice() {
     // A second click within the window completes; the branch choice is remembered per repository.
     // The mock still answers open; a reload by hand takes its word over the merge on the page.
     harness.key_press(egui::Key::F5);
-    wait_for(&mut harness, "the button after the merge", |harness| button(harness, "Merge commit"));
+    wait_until(&mut harness, "the reloaded button", |harness| button(harness, "Merge commit"));
     press(&mut harness, OPTIONS);
     harness.click_at(harness.get_by_label("Delete feature/login after merging").rect());
     harness.run_steps(3);
@@ -142,7 +143,7 @@ fn merge_button_confirms_in_place_and_remembers_the_choice() {
     harness.run_steps(3);
     press(&mut harness, "Merge commit");
     press(&mut harness, "Click again to merge");
-    wait_for(&mut harness, "the second merge", |_| calls.merges.lock().unwrap().len() == 2);
+    wait_until(&mut harness, "the second merge", |_| calls.merges.lock().unwrap().len() == 2);
     assert!(!calls.merges.lock().unwrap()[1].delete_source_branch, "the unticked box is sent");
     let saved = AppSettings::load(&paths.settings_file()).expect("saved settings");
     assert_eq!(saved.merge.delete_source_branch("confirm", REPOSITORY), Some(false));
@@ -152,7 +153,7 @@ fn merge_button_confirms_in_place_and_remembers_the_choice() {
 fn merge_button_is_disabled_with_conflicts_and_warns_when_forced_past_policies() {
     let (mut harness, _, calls) = start("states");
     open(&mut harness, "states", 2);
-    wait_for(&mut harness, "the conflicted pull request", |harness| {
+    wait_until(&mut harness, "the conflicted pull request", |harness| {
         harness.query_by_role_and_label(Role::Button, "Squash merge").is_some()
     });
     let main = harness.get_by_role_and_label(Role::Button, "Squash merge");
@@ -174,7 +175,7 @@ fn merge_button_is_disabled_with_conflicts_and_warns_when_forced_past_policies()
 
     // Blocked, the button sets auto-complete; unticked in the dropdown, it completes at once.
     open(&mut harness, "states", 3);
-    wait_for(&mut harness, "the blocked pull request", |harness| {
+    wait_until(&mut harness, "the blocked pull request", |harness| {
         button(harness, "Set auto-complete") && has(harness, "Blocked change")
     });
     press(&mut harness, OPTIONS);
@@ -199,17 +200,17 @@ fn merge_button_is_disabled_with_conflicts_and_warns_when_forced_past_policies()
 #[test]
 fn merge_button_loads_no_policy_while_the_window_is_inactive() {
     let (mut harness, _, calls) = start("inactive");
-    wait_for(&mut harness, "the list", |harness| has(harness, "Speed up login"));
+    wait_until(&mut harness, "the list", |harness| has(harness, "Speed up login"));
     set_focus(&mut harness, false);
     open(&mut harness, "inactive", 1);
-    wait_for(&mut harness, "the header", |harness| {
+    wait_until(&mut harness, "the header", |harness| {
         has(harness, "Speed up login") && harness.query_all_by_role(Role::Tab).next().is_some()
     });
     pump(&mut harness, 3.0);
     assert_eq!(calls.policies.load(Ordering::SeqCst), 0, "no policy request while inactive");
     assert!(button(&harness, "Complete"), "the button waits with its neutral label");
     set_focus(&mut harness, true);
-    wait_for(&mut harness, "the policy once active", |harness| button(harness, "Squash merge"));
+    wait_until(&mut harness, "the policy once active", |harness| button(harness, "Squash merge"));
     assert_eq!(calls.policies.load(Ordering::SeqCst), 1, "one request once active");
 }
 
@@ -312,15 +313,6 @@ fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
         harness.step();
         cv_testkit::let_threads_run(Duration::from_millis(2));
     }
-}
-
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
-    harness.run_steps(3);
 }
 
 fn web_url(number: u64) -> String {

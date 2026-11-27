@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use eframe::App as _;
@@ -24,7 +24,7 @@ use review_store::{AppPaths, AppSettings, ConnectionStore, DiffLayout, PaneSizes
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::walkthrough::{shows_file_view, shows_folder_view};
+use super::walkthrough::{settle_background, shows_file_view, shows_folder_view, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::Clicks;
 use cv_testkit::{ScratchDir, git};
@@ -66,12 +66,13 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         repository_key: REPOSITORY.to_owned(),
         number: NUMBER,
     }));
-    wait_for(&mut harness, "the overview", |harness| {
+    wait_until(&mut harness, "the overview", |harness| {
         harness.query_by_label("Resize side column").is_some()
     });
-    wait_for(&mut harness, "the file count", |harness| {
+    wait_until(&mut harness, "the file count", |harness| {
         harness.query_by_label_contains("Files (").is_some()
     });
+    settle_background(&mut harness);
 
     // Overview: the side column grows when its boundary moves left, and the width is saved.
     let handle = center(&harness, "Resize side column");
@@ -113,30 +114,31 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     );
 
     // Commits: SHA and time sit in fixed columns. The tab shows its count once the commits loaded.
-    wait_for(&mut harness, "the commit count", |harness| {
+    wait_until(&mut harness, "the commit count", |harness| {
         harness.query_by_label_contains("Commits (").is_some()
     });
     harness.click_at(harness.get_by_label_contains("Commits (").rect());
-    wait_for(&mut harness, "the commit row", |harness| {
+    wait_until(&mut harness, "the commit row", |harness| {
         harness.query_by_role_and_label(Role::Link, "feature").is_some()
     });
 
     // Files tab with the long diff.
     harness.click_at(harness.get_by_label_contains("Files (").rect());
-    wait_for(&mut harness, "the file tree", |harness| {
+    wait_until(&mut harness, "the file tree", |harness| {
         harness.query_by_label("Resize file tree").is_some()
     });
     let filter =
         harness.get_by(|node| node.placeholder().is_some_and(|text| text.contains("Filter files")));
     harness.click_at(filter.rect());
     filter.type_text("widgets.rs");
-    wait_for(&mut harness, "the filtered file", |harness| {
+    wait_until(&mut harness, "the filtered file", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, CODE_PATH).is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, CODE_PATH).rect());
-    wait_for(&mut harness, "the diff", |harness| {
+    wait_until(&mut harness, "the diff", |harness| {
         shows_file_view(harness, CODE_PATH) && harness.query_by_label("Resize diff sides").is_some()
     });
+    settle_background(&mut harness);
 
     // The tree sits at its side of the diff, its splitter on its inner edge; `inward` points from
     // the tree towards the diff.
@@ -228,11 +230,11 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::A);
     harness.step();
     harness.get_by_role(Role::TextInput).type_text("README");
-    wait_for(&mut harness, "the README", |harness| {
+    wait_until(&mut harness, "the README", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, "README.md").is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, "README.md").rect());
-    wait_for(&mut harness, "the preview", |harness| {
+    wait_until(&mut harness, "the preview", |harness| {
         harness.query_by_label("Resize Before and After").is_some()
     });
     settle(&mut harness);
@@ -276,15 +278,16 @@ fn folder_view_zooms_the_code_over_cards_and_the_app_elsewhere() {
         repository_key: REPOSITORY.to_owned(),
         number: NUMBER,
     }));
-    wait_for(&mut harness, "the file count", |harness| {
+    wait_until(&mut harness, "the file count", |harness| {
         harness.query_by_label_contains("Files (").is_some()
     });
     harness.click_at(harness.get_by_label_contains("Files (").rect());
     // A card draws its code with the file view's diff view, under the same label.
     let card = format!("Diff of {GADGETS_PATH}");
-    wait_for(&mut harness, "the folder view's cards", |harness| {
+    wait_until(&mut harness, "the folder view's cards", |harness| {
         shows_folder_view(harness) && harness.query_by_label(&card).is_some()
     });
+    settle_background(&mut harness);
     let scale = harness.ctx.pixels_per_point();
 
     let code = harness.get_by_label(&card).rect().center();
@@ -331,19 +334,17 @@ fn switching_files_keeps_the_header_still_without_placeholders() {
         repository_key: REPOSITORY.to_owned(),
         number: NUMBER,
     }));
-    wait_for(&mut harness, "the file count", |harness| {
+    wait_until(&mut harness, "the file count", |harness| {
         harness.query_by_label_contains("Files (").is_some()
     });
     harness.click_at(harness.get_by_label_contains("Files (").rect());
-    wait_for(&mut harness, "the tree", |harness| {
+    wait_until(&mut harness, "the tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, CODE_PATH).is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, CODE_PATH).rect());
-    wait_for(&mut harness, "the diff", |harness| shows_file_view(harness, CODE_PATH));
+    wait_until(&mut harness, "the diff", |harness| shows_file_view(harness, CODE_PATH));
     // Line counts, colors and the diffs of the neighbouring files.
-    wait_for(&mut harness, "the work ahead", |harness| {
-        harness.state().services.background.running() == 0
-    });
+    settle_background(&mut harness);
     let reference = header_controls(&harness);
     assert!(reference.len() >= 8, "the header shows its controls: {reference:#?}");
 
@@ -352,9 +353,8 @@ fn switching_files_keeps_the_header_still_without_placeholders() {
         // even in another folder, where the open file's neighbours do not reach.
         harness.get_by_role_and_label(Role::TreeItem, path).hover();
         harness.run_steps(12); // 200 ms at 60 frames per second: past the 150 ms dwell.
-        wait_for(&mut harness, "the hovered file's diff", |harness| {
-            harness.state().services.background.running() == 0
-        });
+        // The hovered file's diff.
+        settle_background(&mut harness);
         harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
         let clicked = harness.ctx.input(|input| input.time);
         for step in 0..40 {
@@ -395,9 +395,7 @@ fn switching_files_keeps_the_header_still_without_placeholders() {
         }
         // Moving on releases what the last file's plan loaded ahead, so the next file is ready
         // ahead only once this file's plan has finished (slow under a loaded test run).
-        wait_for(&mut harness, "the work ahead", |harness| {
-            harness.state().services.background.running() == 0
-        });
+        settle_background(&mut harness);
     }
 }
 
@@ -514,17 +512,6 @@ fn hooked_frame(harness: &mut Harness<'_, ReviewApp>, events: Vec<Event>) {
     harness.state_mut().raw_input_hook(&ctx, &mut input);
     *harness.input_mut() = input;
     harness.step();
-}
-
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    let started = Instant::now();
-    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
-    println!("{what} after {:.1} s", started.elapsed().as_secs_f32());
-    settle(harness);
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

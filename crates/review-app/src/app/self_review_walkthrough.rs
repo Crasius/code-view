@@ -29,6 +29,7 @@ use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::walkthrough::wait_until;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::self_review;
 use cv_settings::onboarding::CliTools;
@@ -58,7 +59,7 @@ fn self_review_adds_me_from_the_reviewers_card_once() {
     // same everywhere.
     cv_testkit::use_bundled_fonts(&harness.ctx);
     open(&mut harness, "card", 1);
-    wait_for(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
+    wait_until(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
     assert!(has(&harness, "Reviewers") && !has(&harness, "Grace Hopper"), "not listed yet");
     assert!(
         harness.query_all_by_role_and_label(Role::Button, self_review::LABEL).count() == 1,
@@ -67,7 +68,7 @@ fn self_review_adds_me_from_the_reviewers_card_once() {
     assert_beside_the_add_field(&harness);
 
     press(&mut harness, self_review::LABEL);
-    wait_for(&mut harness, "Grace in the reviewer card", |harness| {
+    wait_until(&mut harness, "Grace in the reviewer card", |harness| {
         has(harness, "Grace Hopper") && has(harness, "No vote")
     });
     assert!(
@@ -79,18 +80,18 @@ fn self_review_adds_me_from_the_reviewers_card_once() {
 
     // Alt+R does the same on another pull request.
     open(&mut harness, "card", 2);
-    wait_for(&mut harness, "the second button", |harness| {
+    wait_until(&mut harness, "the second button", |harness| {
         has(harness, "Second change") && button(harness, self_review::LABEL)
     });
     harness.key_press_modifiers(egui::Modifiers::ALT, egui::Key::R);
-    wait_for(&mut harness, "Grace on the second pull request", |harness| {
+    wait_until(&mut harness, "Grace on the second pull request", |harness| {
         has(harness, "Grace Hopper") && !button(harness, self_review::LABEL)
     });
     assert_eq!(calls.adds.lock().unwrap().len(), 2, "Alt+R sent one request");
 
     // The author is not offered a review of their own pull request.
     open(&mut harness, "card", 3);
-    wait_for(&mut harness, "Grace's own pull request", |harness| has(harness, "Grace's change"));
+    wait_until(&mut harness, "Grace's own pull request", |harness| has(harness, "Grace's change"));
     harness.run_steps(10);
     assert!(!button(&harness, self_review::LABEL));
     assert_eq!(calls.adds.lock().unwrap().len(), 2, "nothing asked for the author");
@@ -99,21 +100,21 @@ fn self_review_adds_me_from_the_reviewers_card_once() {
 #[test]
 fn self_review_from_a_list_row_marks_the_row_without_opening_it() {
     let (mut harness, calls) = start("list", true);
-    wait_for(&mut harness, "the list", |harness| has(harness, "Fourth change"));
+    wait_until(&mut harness, "the list", |harness| has(harness, "Fourth change"));
     secondary_click(&mut harness, "4 Fourth change");
-    wait_for(&mut harness, "the menu entry", |harness| {
+    wait_until(&mut harness, "the menu entry", |harness| {
         harness
             .query_by_role_and_label(Role::MenuItem, self_review::LABEL)
             .is_some_and(|node| !node.accesskit_node().is_disabled())
     });
     harness.click_at(harness.get_by_role_and_label(Role::MenuItem, self_review::LABEL).rect());
-    wait_for(&mut harness, "the request", |_| !calls.adds.lock().unwrap().is_empty());
+    wait_until(&mut harness, "the request", |_| !calls.adds.lock().unwrap().is_empty());
     assert_eq!(*calls.adds.lock().unwrap(), [(4, GRACE.to_owned())]);
-    wait_for(&mut harness, "the toast", |harness| has(harness, self_review::DONE));
+    wait_until(&mut harness, "the toast", |harness| has(harness, self_review::DONE));
     assert_eq!(harness.state().route, Route::MyPullRequests, "the list stays");
 
     secondary_click(&mut harness, "4 Fourth change");
-    wait_for(&mut harness, "the pending entry", |harness| {
+    wait_until(&mut harness, "the pending entry", |harness| {
         harness
             .query_by_role_and_label(Role::MenuItem, self_review::PENDING_LABEL)
             .is_some_and(|node| node.accesskit_node().is_disabled())
@@ -125,7 +126,7 @@ fn self_review_from_a_list_row_marks_the_row_without_opening_it() {
 fn self_review_is_off_with_its_reason_without_a_token() {
     let (mut harness, calls) = start("read-only", false);
     open(&mut harness, "read-only", 1);
-    wait_for(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
+    wait_until(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
     let node = harness.get_by_role_and_label(Role::Button, self_review::LABEL);
     assert!(node.accesskit_node().is_disabled(), "no token, no request");
     harness.get_by_role_and_label(Role::Button, self_review::LABEL).hover();
@@ -139,21 +140,21 @@ fn self_review_is_off_with_its_reason_without_a_token() {
     harness.run_steps(5);
     assert!(calls.adds.lock().unwrap().is_empty(), "Alt+R asks nothing either");
     press(&mut harness, "Add a token");
-    wait_for(&mut harness, "the connection's setup", |harness| {
+    wait_until(&mut harness, "the connection's setup", |harness| {
         harness.state().route == Route::Settings
     });
 
     // A row's menu says the same and leads to the token.
     harness.state_mut().navigator.go(Route::MyPullRequests);
-    wait_for(&mut harness, "the list", |harness| has(harness, "Fourth change"));
+    wait_until(&mut harness, "the list", |harness| has(harness, "Fourth change"));
     secondary_click(&mut harness, "4 Fourth change");
-    wait_for(&mut harness, "the menu", |harness| {
+    wait_until(&mut harness, "the menu", |harness| {
         harness
             .query_by_role_and_label(Role::MenuItem, self_review::LABEL)
             .is_some_and(|node| node.accesskit_node().is_disabled())
     });
     harness.click_at(harness.get_by_role_and_label(Role::MenuItem, "Add a token to review").rect());
-    wait_for(&mut harness, "the connection's setup", |harness| {
+    wait_until(&mut harness, "the connection's setup", |harness| {
         harness.state().route == Route::Settings
     });
     assert!(calls.adds.lock().unwrap().is_empty());
@@ -164,9 +165,9 @@ fn self_review_keeps_a_refused_request_retryable_with_its_reason() {
     let (mut harness, calls) = start("refused", true);
     calls.refuses_next.store(true, Ordering::SeqCst);
     open(&mut harness, "refused", 1);
-    wait_for(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
+    wait_until(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
     press(&mut harness, self_review::LABEL);
-    wait_for(&mut harness, "the error toast", |harness| has(harness, "must be collaborators"));
+    wait_until(&mut harness, "the error toast", |harness| has(harness, "must be collaborators"));
     assert!(skeleton_row(&harness).is_none(), "the refused add leaves no skeleton row");
     assert!(button(&harness, self_review::LABEL), "the button stays to try again");
     let inline = "Could not add you as a reviewer: GitHub did not";
@@ -176,7 +177,7 @@ fn self_review_keeps_a_refused_request_retryable_with_its_reason() {
     assert!(has(&harness, "Click to try again"), "its tooltip offers the retry");
 
     press(&mut harness, self_review::LABEL);
-    wait_for(&mut harness, "Grace in the reviewer card", |harness| {
+    wait_until(&mut harness, "Grace in the reviewer card", |harness| {
         has(harness, "Grace Hopper") && !button(harness, self_review::LABEL)
     });
     assert_eq!(calls.adds.lock().unwrap().len(), 2, "refused once, then added");
@@ -189,18 +190,18 @@ fn self_review_keeps_a_refused_request_retryable_with_its_reason() {
 fn self_review_refused_row_request_retries_from_its_toast() {
     let (mut harness, calls) = start("row-refused", true);
     calls.refuses_next.store(true, Ordering::SeqCst);
-    wait_for(&mut harness, "the list", |harness| has(harness, "Fourth change"));
+    wait_until(&mut harness, "the list", |harness| has(harness, "Fourth change"));
     secondary_click(&mut harness, "4 Fourth change");
-    wait_for(&mut harness, "the menu entry", |harness| {
+    wait_until(&mut harness, "the menu entry", |harness| {
         harness.query_by_role_and_label(Role::MenuItem, self_review::LABEL).is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::MenuItem, self_review::LABEL).rect());
-    wait_for(&mut harness, "the failure toast", |harness| button(harness, "Retry"));
+    wait_until(&mut harness, "the failure toast", |harness| button(harness, "Retry"));
     assert!(button(&harness, "Open on GitHub"), "the toast leads to the pull request on GitHub");
     assert_eq!(calls.adds.lock().unwrap().len(), 1);
 
     press(&mut harness, "Retry");
-    wait_for(&mut harness, "the retried add", |harness| has(harness, self_review::DONE));
+    wait_until(&mut harness, "the retried add", |harness| has(harness, self_review::DONE));
     harness.run_steps(10);
     assert_eq!(
         *calls.adds.lock().unwrap(),
@@ -218,15 +219,15 @@ fn self_review_holds_the_new_row_with_a_skeleton_of_its_size() {
     let (mut harness, calls) = start("skeleton", true);
     calls.holds_adds.store(true, Ordering::SeqCst);
     open(&mut harness, "skeleton", 1);
-    wait_for(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
+    wait_until(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
     press(&mut harness, self_review::LABEL);
-    wait_for(&mut harness, "the skeleton row", |harness| skeleton_row(harness).is_some());
+    wait_until(&mut harness, "the skeleton row", |harness| skeleton_row(harness).is_some());
     let placeholder = skeleton_row(&harness).expect("the skeleton row");
     let field = add_field(&harness, placeholder.bottom());
 
     calls.holds_adds.store(false, Ordering::SeqCst);
     let grace = "Reviewer Grace Hopper";
-    wait_for(&mut harness, "Grace's row", |harness| harness.query_by_label(grace).is_some());
+    wait_until(&mut harness, "Grace's row", |harness| harness.query_by_label(grace).is_some());
     assert!(skeleton_row(&harness).is_none(), "Grace's row replaced the skeleton");
     let row = harness.get_by_label(grace).rect();
     let gaps = [row.min - placeholder.min, row.max - placeholder.max];
@@ -333,15 +334,6 @@ fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
         harness.step();
         cv_testkit::let_threads_run(Duration::from_millis(2));
     }
-}
-
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
-    harness.run_steps(3);
 }
 
 #[expect(

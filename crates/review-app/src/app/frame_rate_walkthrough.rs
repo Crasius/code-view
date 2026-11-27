@@ -11,6 +11,7 @@ use review_store::{AppPaths, AppSettings, ConnectionStore, FrameRateLimit};
 
 use super::ReviewApp;
 use super::provider_icons_walkthrough::scripted_provider;
+use super::walkthrough::wait_until;
 use cv_runtime::route::Route;
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
@@ -42,7 +43,7 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
     harness.state_mut().navigator.go(Route::Settings);
     settle(&mut harness);
     harness.click_at(harness.get_by_role_and_label(Role::Tab, "Appearance").rect());
-    wait_for(&mut harness, "the frame rate row", |harness| harness.query_by_label(ROW).is_some());
+    wait_until(&mut harness, "the frame rate row", |harness| harness.query_by_label(ROW).is_some());
     // The row sits below the fold of Appearance.
     harness.get_by_label(NEXT_ROW).scroll_to_me();
     settle(&mut harness);
@@ -115,15 +116,6 @@ fn isolated_paths() -> AppPaths {
     let root = std::env::temp_dir().join(format!("review-frame-rate-{}", std::process::id()));
     cv_testkit::remove_dir(&root);
     AppPaths::new(root.join("config"), root.join("cache"))
-}
-
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
-    settle(harness);
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

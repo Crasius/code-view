@@ -20,6 +20,7 @@ use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::ReviewApp;
+use super::walkthrough::wait_until;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
@@ -59,7 +60,7 @@ fn log_reuse_finished_logs_open_from_disk_and_a_cut_download_is_fetched_again() 
     harness.key_press(egui::Key::J);
     wait_for_log(&mut harness, "lint");
     harness.key_press(egui::Key::J);
-    wait_for(&mut harness, "the cut-off download", |harness| {
+    wait_until(&mut harness, "the cut-off download", |harness| {
         has(harness, "flaky (current page)") && has(harness, "The log of flaky did not download")
     });
     assert_eq!(downloads(CUT_OFF), 1);
@@ -126,18 +127,20 @@ fn open(paths: &AppPaths) -> Harness<'static, ReviewApp> {
 }
 
 fn open_run(harness: &mut Harness<'_, ReviewApp>) {
-    wait_for(harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
+    wait_until(harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_for(harness, "the checks table", |harness| {
+    wait_until(harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     harness.click_at(harness.get_by_label(&format!("{RUN}, Succeeded")).rect());
-    wait_for(harness, "the stage graph", |harness| harness.query_by_label("Stage test").is_some());
+    wait_until(harness, "the stage graph", |harness| {
+        harness.query_by_label("Stage test").is_some()
+    });
 }
 
 /// Waits until `job`'s log is shown and nothing loads any more.
 fn wait_for_log(harness: &mut Harness<'_, ReviewApp>, job: &str) {
-    wait_for(harness, &format!("the log of {job}"), |harness| {
+    wait_until(harness, &format!("the log of {job}"), |harness| {
         has(harness, &format!("{job} (current page)"))
             && harness.query_by_label("Copy log").is_some()
             && harness.state().services.background.running() == 0
@@ -169,17 +172,6 @@ fn count_whole(dir: &Path) -> usize {
 
 fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
     harness.query_by_label_contains(text).is_some()
-}
-
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
-    for _ in 0..10 {
-        harness.step();
-    }
 }
 
 fn person(id: &str, name: &str, login: &str) -> UserIdentity {

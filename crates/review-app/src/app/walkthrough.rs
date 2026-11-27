@@ -15,6 +15,7 @@
 //! events like a user: [`app`] on the real providers against mock hosts ([`super::github_mock`]),
 //! [`app_with`] on providers of the test's own.
 
+use std::cell::Cell;
 use std::time::{Duration, Instant};
 
 use egui::{CursorIcon, PointerButton, Pos2, Role};
@@ -141,9 +142,7 @@ pub(super) fn wait_until_found<T>(
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..4 {
-        harness.step();
-    }
+    harness.run_steps(4);
 }
 
 /// Steps until no background work (git, the provider) is left for a few frames: what was on its
@@ -184,22 +183,23 @@ pub(super) fn wait_idle(harness: &mut Harness<'_, ReviewApp>) {
 /// the background checked them against the checkout, and their icons then move the text; a click
 /// before that lands on plain text. Returns the point to click.
 pub(super) fn wait_for_link(harness: &mut Harness<'_, ReviewApp>, label: &str) -> Pos2 {
-    let _step = cv_testkit::step(format!("waiting for {label} to become a link"));
-    let started = Instant::now();
-    loop {
-        let center = harness.query_by_label(label).map(|node| node.rect().center());
-        if let Some(center) = center {
-            harness.hover_at(center);
-        }
-        harness.step();
-        let is_link = harness.output().platform_output.cursor_icon == CursorIcon::PointingHand;
-        let now = harness.query_by_label(label).map(|node| node.rect().center());
-        if let Some(center) = center.filter(|center| is_link && now == Some(*center)) {
-            return center;
-        }
-        assert!(started.elapsed() < IDLE_LIMIT, "{label} did not become a link");
-        cv_testkit::let_threads_run(Duration::from_millis(20));
-    }
+    let hovered = Cell::new(None);
+    wait_for(
+        harness,
+        &format!("{label} to become a link"),
+        |harness| {
+            let is_link = harness.output().platform_output.cursor_icon == CursorIcon::PointingHand;
+            let now = harness.query_by_label(label).map(|node| node.rect().center());
+            hovered.get().filter(|center| is_link && now == Some(*center))
+        },
+        |harness| {
+            let center = harness.query_by_label(label).map(|node| node.rect().center());
+            if let Some(center) = center {
+                harness.hover_at(center);
+            }
+            hovered.set(center);
+        },
+    )
 }
 
 /// Scrolls the labelled widget into view, then clicks it like a pointer would (see
@@ -344,6 +344,20 @@ pub(super) fn set_focus(harness: &mut Harness<'_, ReviewApp>, is_focused: bool) 
     viewport.focused = Some(is_focused);
     harness.input_mut().focused = is_focused;
     harness.step();
+}
+
+/// The URLs the last frame asked the platform to open.
+pub(super) fn opened_urls(harness: &Harness<'_, ReviewApp>) -> Vec<String> {
+    harness
+        .output()
+        .platform_output
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            egui::OutputCommand::OpenUrl(open) => Some(open.url.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Whether an open pull request holds `path`'s diff in its cache.

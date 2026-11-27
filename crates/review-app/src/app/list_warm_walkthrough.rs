@@ -3,7 +3,7 @@
 //! resting on a row reads the pages around it ahead, so the click then fetches no commits again
 //! and joins a detail request still on its way.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use egui::{Key, Modifiers, Pos2, Rect, Role, vec2};
 use egui_kittest::Harness;
@@ -22,8 +22,6 @@ use cv_testkit::ScratchDir;
 
 /// Longer than any test runs: the detail never arrives while the header is checked.
 const DETAIL_DELAY: Duration = Duration::from_secs(120);
-/// How long the request for the detail may take to reach the mock in real time.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// A GitHub Enterprise stand-in whose "mine" search lists pull request [`NUMBER`], and whose detail
 /// answers only after [`DETAIL_DELAY`]. Everything else is a quick 404.
@@ -79,16 +77,6 @@ impl SlowDetail {
         }
     }
 
-    /// Waits in real time, without a frame, until the detail was asked for: the request leaves on
-    /// the app's background runtime, which may not have sent it yet when the page painted.
-    fn wait_for_detail_request(&self) {
-        let started = Instant::now();
-        while !self.was_detail_asked() {
-            assert!(started.elapsed() < REQUEST_TIMEOUT, "the detail was never asked for");
-            cv_testkit::let_threads_run(Duration::from_millis(10));
-        }
-    }
-
     /// The detail was asked for (and is held back).
     fn was_detail_asked(&self) -> bool {
         self.detail_requests() > 0
@@ -124,8 +112,9 @@ fn the_header_paints_the_clicked_row_while_the_detail_loads() {
         harness.query_by_label("Copy link to #7").is_some(),
         "and its number, which copies the row's link"
     );
-    // While the detail is on its way.
-    host.wait_for_detail_request();
+    // While the detail is on its way: the request leaves on the app's background runtime, which
+    // may not have sent it yet when the page painted.
+    wait_until(&mut harness, "the detail request", |_| host.was_detail_asked());
     assert!(harness.query_by_label("Updating…").is_some(), "the row is not shown as final");
     assert!(
         harness.query_by_label("More actions").is_none(),
@@ -161,7 +150,7 @@ fn the_header_paints_the_row_the_title_bar_search_opened() {
     );
     assert!(harness.query_by_label(TITLE).is_some(), "the header shows the row's title at once");
     // While the detail is on its way.
-    host.wait_for_detail_request();
+    wait_until(&mut harness, "the detail request", |_| host.was_detail_asked());
     assert!(harness.query_by_label("Updating…").is_some(), "the row is not shown as final");
 }
 

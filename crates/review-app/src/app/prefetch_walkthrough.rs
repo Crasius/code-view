@@ -12,7 +12,7 @@ use review_store::FilesStart;
 
 use super::ReviewApp;
 use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
-use super::walkthrough::{app, has_cached_diff, settle_background, wait_until};
+use super::walkthrough::{app, has_cached_diff, settle_background, wait_for, wait_until};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -88,15 +88,16 @@ fn switch_to(harness: &mut Harness<'_, ReviewApp>, path: &str) -> (Duration, usi
     let started = Instant::now();
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
     let mut frames = 0;
-    loop {
-        harness.step();
-        frames += 1;
-        if shows_diff(harness, path) {
-            return (started.elapsed(), frames);
-        }
-        assert!(started.elapsed() < Duration::from_secs(60), "{path} never showed");
-        cv_testkit::let_threads_run(Duration::from_millis(1));
-    }
+    wait_for(
+        harness,
+        &format!("{path}'s diff"),
+        |harness| {
+            frames += 1;
+            shows_diff(harness, path).then_some(())
+        },
+        |_| {},
+    );
+    (started.elapsed(), frames)
 }
 
 /// The frame of the click lays the tree out after the diff and hands the pick on, so the first

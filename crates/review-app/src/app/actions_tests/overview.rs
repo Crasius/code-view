@@ -3,15 +3,13 @@
 //! write's page is never polled here, as when the user left it for the overview: the list alone
 //! records the outcome.
 
-use std::time::Instant;
-
 use egui::accesskit::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{ProviderError, PullRequestState, Result};
 use tokio::sync::oneshot;
 
-use super::{ActionRunner, Refresh, TIMEOUT, key, scripted_services};
+use super::{ActionRunner, Refresh, key, scripted_services};
 use cv_base::theme;
 use cv_lists::pull_request_list::{ListSource, PullRequestListPage};
 use cv_runtime::route::Navigator;
@@ -70,20 +68,16 @@ fn hold_a_merge(harness: &mut Harness<'_, Overview>) -> oneshot::Sender<Result<(
     release
 }
 
+/// Steps the overview until `is_done` holds, on the frame it held.
 fn pump_until(
     harness: &mut Harness<'_, Overview>,
     what: &str,
     mut is_done: impl FnMut(&Harness<'_, Overview>) -> bool,
 ) {
-    let started = Instant::now();
-    loop {
+    cv_testkit::poll_until(what, || {
         harness.step();
-        if is_done(harness) {
-            return;
-        }
-        assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        cv_testkit::let_threads_run(std::time::Duration::from_millis(5));
-    }
+        is_done(harness)
+    });
 }
 
 /// The row is listed and takes clicks.

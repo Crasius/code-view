@@ -5,7 +5,6 @@
 //! `cargo test -p review-app provider_icons`
 
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use egui::Role;
@@ -22,12 +21,11 @@ use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
 use super::navigation_walkthrough::{Fixture, create_origin};
+use super::walkthrough::wait_until;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
-
-const TIMEOUT: Duration = Duration::from_secs(60);
 
 /// A local repository GitHub's pull requests are fetched from, so its Files tab has a file.
 static ORIGIN: Mutex<Option<Fixture>> = Mutex::new(None);
@@ -88,7 +86,7 @@ fn provider_icons_name_the_platform_everywhere() {
     });
     harness.state_mut().settings.cli_tools = Some(CliTools::default());
 
-    wait_for(&mut harness, "every card", |harness| {
+    wait_until(&mut harness, "every card", |harness| {
         HOSTS.iter().all(|(_, _, kind, ..)| has(harness, &title(*kind, 1)))
     });
     for (_, _, _, _, _, mark) in HOSTS {
@@ -106,7 +104,7 @@ fn provider_icons_name_the_platform_everywhere() {
             connection_id: id.to_owned(),
             repository_key: repository.to_owned(),
         });
-        wait_for(&mut harness, "the repository's rows", |harness| has(harness, &title(kind, 1)));
+        wait_until(&mut harness, "the repository's rows", |harness| has(harness, &title(kind, 1)));
         assert!(
             harness.query_by_role_and_label(Role::Link, connection_name).is_some(),
             "{connection_name} crumb"
@@ -124,7 +122,7 @@ fn provider_icons_name_the_platform_everywhere() {
         harness.state_mut().navigator.go(Route::PullRequest(key));
         // The page keeps the tab it showed last; its header names it on every tab.
         let shown = title(kind, 1);
-        wait_for(&mut harness, "the pull request header", |harness| {
+        wait_until(&mut harness, "the pull request header", |harness| {
             harness.query_by_role_and_label(Role::Tab, "Overview").is_some() && has(harness, &shown)
         });
     }
@@ -156,7 +154,7 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
         number: 1,
     };
     harness.state_mut().navigator.go(Route::PullRequest(key));
-    wait_for(harness, "the GitHub pull request", |harness| {
+    wait_until(harness, "the GitHub pull request", |harness| {
         harness.query_by_role_and_label(Role::Link, LINK).is_some()
     });
     harness.get_by_role_and_label(Role::Link, LINK).focus();
@@ -205,7 +203,7 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
     );
     // The tab opens on the summary of the changed files;
     // the card's View opens the file.
-    wait_for(harness, "the changed files", |harness| has(harness, "README.md"));
+    wait_until(harness, "the changed files", |harness| has(harness, "README.md"));
     if let Some(view) = harness.query_by_label("View README.md") {
         harness.click_at(view.rect());
         settle(harness);
@@ -259,26 +257,6 @@ fn isolated_paths() -> AppPaths {
 
 fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
     harness.query_all_by_label_contains(text).next().is_some()
-}
-
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    let started = Instant::now();
-    loop {
-        harness.step();
-        if is_done(harness) {
-            settle(harness);
-            return;
-        }
-        if started.elapsed() > TIMEOUT {
-            let tree: String = format!("{:?}", harness.root()).chars().take(6000).collect();
-            panic!("timed out waiting for {what}; screen:\n{tree}");
-        }
-        cv_testkit::let_threads_run(Duration::from_millis(10));
-    }
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

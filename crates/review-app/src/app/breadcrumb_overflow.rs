@@ -76,9 +76,7 @@ fn harness(paths: AppPaths, width: f32) -> Harness<'static, ReviewApp> {
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..20 {
-        harness.step();
-    }
+    harness.run_steps(20);
 }
 
 /// The crumbs shown in the title bar, left to right: name and rect.

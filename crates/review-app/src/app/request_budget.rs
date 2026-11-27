@@ -21,7 +21,9 @@ use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
 use super::startup;
-use super::walkthrough::{self, LIMIT, click_first, has, pump, set_focus, wait_idle};
+use super::walkthrough::{
+    self, LIMIT, click_first, has, pump, set_focus, wait_idle, wait_until_unsettled,
+};
 use cv_lists::pull_request_list::LIST_INTERVAL;
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
@@ -57,10 +59,10 @@ fn request_budget_files_tab_opening_on_the_first_file() {
     let mut harness = fixture.harness();
     harness.state_mut().services.settings.files_start = review_store::FilesStart::FirstFile;
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     wait_idle(&mut harness);
     let files_label = format!("Files ({})", cv_widgets::numbers::group_digits(300));
-    wait_until(&mut harness, "the file list", |harness| {
+    wait_until_unsettled(&mut harness, "the file list", |harness| {
         harness.query_by_label(&files_label).is_some()
     });
     wait_idle(&mut harness);
@@ -68,7 +70,7 @@ fn request_budget_files_tab_opening_on_the_first_file() {
     // The probe goes out 30 s after the last one, so a window that opens right after a probe holds
     // exactly the next one, wherever the page load left the schedule.
     fixture.recorder.enter("Until a probe");
-    wait_until(&mut harness, "a live-update probe", |_| {
+    wait_until_unsettled(&mut harness, "a live-update probe", |_| {
         fixture.recorder.endpoints("Until a probe").contains_key(PROBE_APPROVALS)
     });
     settle(&harness);
@@ -159,9 +161,11 @@ fn request_budget_a_return_after_a_pause_refreshes_ahead() {
     let fixture = Fixture::new("return", 30);
     let mut harness = fixture.harness();
     harness.state_mut().attention = Attention::default();
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     wait_idle(&mut harness);
     // No input for longer than a pause; the probe goes on meanwhile, the list asks nothing.
     pump(&mut harness, PAUSE.as_secs_f64() + 5.0);
@@ -190,14 +194,16 @@ fn request_budget_rate_limit_banner_retries_now() {
     fixture.limit_once("/api/v4/groups/group/merge_requests", 120);
     fixture.recorder.enter("limited");
     let mut harness = fixture.harness();
-    wait_until(&mut harness, "the rate-limit banner", |harness| {
+    wait_until_unsettled(&mut harness, "the rate-limit banner", |harness| {
         has(harness, "GitLab is rate-limiting this connection — retrying in")
     });
     assert!(has(&harness, "Open GitLab rate limit docs"));
     assert!(!has(&harness, "Change 27"), "the list waits for the host");
 
     harness.click_at(harness.get_by_label("Retry now").rect());
-    wait_until(&mut harness, "the list after Retry now", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the list after Retry now", |harness| {
+        has(harness, "Change 27")
+    });
     pump(&mut harness, 1.0);
     assert!(!has(&harness, "is rate-limiting"), "the banner is gone once the host answers");
     let limited = fixture.recorder.endpoints("limited");
@@ -234,12 +240,12 @@ fn request_budget_graphql_limit_does_not_hold_back_the_pipelines() {
     fixture.limit_once("/api/graphql", 2391);
     let mut harness = fixture.harness();
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the jobs despite the GraphQL limit", |harness| {
+    wait_until_unsettled(&mut harness, "the jobs despite the GraphQL limit", |harness| {
         has(harness, "test-3-1")
     });
-    wait_until(&mut harness, "the GraphQL rate-limit banner", |harness| {
+    wait_until_unsettled(&mut harness, "the GraphQL rate-limit banner", |harness| {
         has(
             harness,
             "GitLab is rate-limiting this connection's GraphQL requests — retrying in 40 min",
@@ -248,7 +254,7 @@ fn request_budget_graphql_limit_does_not_hold_back_the_pipelines() {
     assert!(has(&harness, "everything else loads as usual"));
     assert!(has(&harness, "Add a token"), "an anonymous connection is offered a token");
     harness.click_at(harness.get_by_label("Retry now").rect());
-    wait_until(&mut harness, "the banner gone after Retry now", |harness| {
+    wait_until_unsettled(&mut harness, "the banner gone after Retry now", |harness| {
         !has(harness, "is rate-limiting")
     });
     assert!(has(&harness, "test-3-1"), "the jobs stay on screen");
@@ -264,10 +270,12 @@ fn request_budget_rows_held_by_a_rate_limit_let_the_app_rest() {
     let fixture = Fixture::new("held-rows", 30);
     fixture.limit_row_statuses_once(2391);
     let mut harness = fixture.loading_harness();
-    wait_until(&mut harness, "the GraphQL rate-limit banner", |harness| {
+    wait_until_unsettled(&mut harness, "the GraphQL rate-limit banner", |harness| {
         has(harness, "rate-limiting this connection's GraphQL requests — retrying in 40 min")
     });
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     // The banner and the rows fade in; then nothing changes until the countdown's next minute.
     pump(&mut harness, 5.0);
     let mut soon = Vec::new();
@@ -290,7 +298,7 @@ fn request_budget_rows_held_by_a_rate_limit_let_the_app_rest() {
     assert!(!has(&harness, "Updating the checks and approvals"), "nothing is under way");
 
     harness.click_at(harness.get_by_label("Retry now").rect());
-    wait_until(&mut harness, "the banner gone and the rows' checks in", |harness| {
+    wait_until_unsettled(&mut harness, "the banner gone and the rows' checks in", |harness| {
         !has(harness, "is rate-limiting")
             && !has(harness, held)
             && !has(harness, "Updating the checks and approvals")
@@ -316,7 +324,7 @@ fn request_budget_a_click_held_while_the_banner_opens_still_counts() {
     fixture.limit_once_after("/api/graphql", 2391, Duration::from_secs(2));
     let mut harness = fixture.harness();
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     assert!(!has(&harness, "is rate-limiting"), "the limit is still on its way");
     // egui's clock stands still while the button is down, so the press stays a click.
     let time = harness_time(&harness);
@@ -339,7 +347,7 @@ fn request_budget_a_click_held_while_the_banner_opens_still_counts() {
     harness.input_mut().time = Some(time);
     harness.step();
     harness.input_mut().time = None;
-    wait_until(&mut harness, "the Pipelines tab opened by the click", |harness| {
+    wait_until_unsettled(&mut harness, "the Pipelines tab opened by the click", |harness| {
         let pipelines = harness.get_by_role_and_label(egui::Role::Tab, "Pipelines");
         pipelines.accesskit_node().toggled() == Some(egui::accesskit::Toggled::True)
     });
@@ -355,15 +363,19 @@ fn request_budget_rate_limited_jobs_show_a_waiting_state_with_ways_out() {
         .limit_once(&format!("/api/v4/projects/{PROJECT_ID}/pipelines/{PIPELINE_ID}/jobs"), 2391);
     let mut harness = fixture.harness();
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the waiting state", |harness| has(harness, "Waiting for GitLab"));
+    wait_until_unsettled(&mut harness, "the waiting state", |harness| {
+        has(harness, "Waiting for GitLab")
+    });
     assert!(has(&harness, "The pipelines load on their own in 40 min; a token raises the limit."));
     assert!(has(&harness, "Add a token") && has(&harness, "Open on GitLab"), "the ways forward");
     assert!(!has(&harness, "test-3-1"));
     // The banner above offers Retry now as well; either ends the pause.
     harness.click_at(harness.query_all_by_label("Retry now").next().expect("Retry now").rect());
-    wait_until(&mut harness, "the jobs after Retry now", |harness| has(harness, "test-3-1"));
+    wait_until_unsettled(&mut harness, "the jobs after Retry now", |harness| {
+        has(harness, "test-3-1")
+    });
     assert!(!has(&harness, "Waiting for GitLab"));
 }
 
@@ -378,9 +390,9 @@ fn request_budget_pipelines_tab_loads_jobs_of_the_head_run_only() {
     let mut harness = fixture.harness();
     fixture.recorder.enter("open the tab");
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the head run's jobs", |harness| has(harness, "test-3-1"));
+    wait_until_unsettled(&mut harness, "the head run's jobs", |harness| has(harness, "test-3-1"));
     // Less than the live refresh's first 15 s, so the running head run is asked for once.
     pump(&mut harness, 2.0);
     // The pipelines whose jobs were asked for, and how many GraphQL requests (the jobs' needs) went out.
@@ -422,7 +434,7 @@ fn request_budget_pipelines_tab_loads_jobs_of_the_head_run_only() {
 
     fixture.recorder.enter("open an older run");
     harness.click_at(harness.get_by_label(older).rect());
-    wait_until(&mut harness, "the older run's stages", |harness| {
+    wait_until_unsettled(&mut harness, "the older run's stages", |harness| {
         harness.query_by_label("Stage check").is_some()
     });
     let (pipelines, needs) = job_requests("open an older run");
@@ -436,18 +448,18 @@ fn request_budget_pipelines_tab_loads_jobs_of_the_head_run_only() {
 
     fixture.recorder.enter("back and again");
     harness.click_at(harness.get_by_role_and_label(egui::Role::Link, "Pipelines").rect());
-    wait_until(&mut harness, "the checks table", |harness| {
+    wait_until_unsettled(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     filter_checks(&mut harness, "old-check");
     assert!(has(&harness, "old-check-1 in Merge request pipeline"), "its jobs are rows now");
     filter_checks(&mut harness, &format!("#{OLDER_PIPELINE_ID} ·"));
     harness.click_at(harness.get_by_label(older).rect());
-    wait_until(&mut harness, "the older run again", |harness| {
+    wait_until_unsettled(&mut harness, "the older run again", |harness| {
         harness.query_by_label("Stage check").is_some()
     });
     harness.click_at(harness.get_by_role_and_label(egui::Role::Link, "Pipelines").rect());
-    wait_until(&mut harness, "the checks table again", |harness| {
+    wait_until_unsettled(&mut harness, "the checks table again", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     let (pipelines, _) = job_requests("back and again");
@@ -472,14 +484,16 @@ fn request_budget_favorites_load_only_while_open_and_focused() {
 
     fixture.recorder.enter("collapsed");
     let mut harness = fixture.harness();
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     pump(&mut harness, 30.0);
     assert!(has(&harness, "Favorites (1 repository), collapsed"));
     assert_eq!(hits("collapsed"), 0, "a collapsed card asks nothing");
 
     fixture.recorder.enter("expanded");
     harness.click_at(harness.get_by_label("Favorites (1 repository), collapsed").rect());
-    wait_until(&mut harness, "the favorite's rows", |harness| {
+    wait_until_unsettled(&mut harness, "the favorite's rows", |harness| {
         has(harness, "Favorites (1 repository), 30 pull requests, expanded")
     });
     pump(&mut harness, 60.0);
@@ -536,7 +550,7 @@ fn request_budget_the_overview_asks_only_for_cards_on_screen() {
 
     fixture.recorder.enter("opened");
     let mut harness = fixture.harness();
-    wait_until(&mut harness, "the Favorites card", |harness| {
+    wait_until_unsettled(&mut harness, "the Favorites card", |harness| {
         has(harness, "Favorites (1 repository), 30 pull requests, expanded")
     });
     wait_idle(&mut harness);
@@ -560,7 +574,9 @@ fn request_budget_the_overview_asks_only_for_cards_on_screen() {
 
     // A return on a merge request page warms the overview ahead.
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the merge request", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the merge request", |harness| {
+        has(harness, "Budget scenario")
+    });
     harness.state_mut().attention = Attention::default();
     pump(&mut harness, PAUSE.as_secs_f64() + 5.0);
     settle(&harness);
@@ -613,7 +629,9 @@ fn request_budget_the_overview_asks_only_for_cards_on_screen() {
 fn request_budget_an_answer_that_lands_on_another_page_ages_from_its_arrival() {
     let fixture = Fixture::new("hidden-answer", 30);
     let mut harness = fixture.harness();
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     wait_idle(&mut harness);
     settle(&harness);
 
@@ -647,7 +665,9 @@ fn request_budget_an_answer_that_lands_on_another_page_ages_from_its_arrival() {
 fn request_budget_a_return_to_the_window_refreshes_the_overview() {
     let fixture = Fixture::new("overview-return", 30);
     let mut harness = fixture.harness();
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     wait_idle(&mut harness);
     settle(&harness);
     harness.state_mut().attention = Attention::default();
@@ -684,7 +704,9 @@ fn request_budget_line_counts_are_one_graphql_request_per_project() {
     fixture.recorder.enter("unfocused");
     let mut harness = fixture.harness();
     set_focus(&mut harness, false);
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     fixture.delay_listing(Duration::ZERO);
     pump(&mut harness, 60.0);
     assert_eq!(graphql("unfocused"), 0, "an inactive window counts nothing");
@@ -693,7 +715,7 @@ fn request_budget_line_counts_are_one_graphql_request_per_project() {
     fixture.recorder.enter("refocused");
     set_focus(&mut harness, true);
     // !27: 270 added, 27 deleted (see `diff_stats_summaries`).
-    wait_until(&mut harness, "the counted lines", |harness| {
+    wait_until_unsettled(&mut harness, "the counted lines", |harness| {
         has(harness, "297 lines changed in 2 files: 270 added, 27 deleted")
     });
     pump(&mut harness, 30.0);
@@ -743,7 +765,9 @@ fn request_budget_azure_devops_sizes_are_asked_for_the_rows_on_screen() {
     let fixture = AzureFixture::new("azure-sizes");
     fixture.recorder.enter("listed");
     let mut harness = harness_for(fixture.paths.clone());
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 40"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 40")
+    });
     pump(&mut harness, 30.0);
     settle(&harness);
     let listed = asked_pull_requests(&fixture.recorder, "listed");
@@ -829,14 +853,14 @@ fn request_budget_favorites_always_count_their_lines() {
     fixture.star_the_repository();
     fixture.recorder.enter("listed");
     let mut harness = harness_for(fixture.paths.clone());
-    wait_until(&mut harness, "the Favorites card", |harness| {
+    wait_until_unsettled(&mut harness, "the Favorites card", |harness| {
         has(harness, "Favorites (1 repository), 40 pull requests, expanded")
     });
     // Each file of the fixture's head changes three lines and adds one.
-    wait_until(&mut harness, "the counted lines of a large favorite", |harness| {
+    wait_until_unsettled(&mut harness, "the counted lines of a large favorite", |harness| {
         has(harness, "175 lines changed in 25 files: 100 added, 75 deleted")
     });
-    wait_until(&mut harness, "every favorite on screen counted", |harness| {
+    wait_until_unsettled(&mut harness, "every favorite on screen counted", |harness| {
         !has(harness, "Counting the lines of !")
     });
     settle(&harness);
@@ -921,20 +945,22 @@ fn run_scenario(file_count: usize) {
 
     fixture.recorder.enter("My pull requests (60 s)");
     let mut harness = fixture.harness();
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     pump(&mut harness, 60.0);
     phases.push(("My pull requests (60 s)", 60.0));
 
     enter_phase(&fixture.recorder, &harness, "Open MR + Overview (20 s)");
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     pump(&mut harness, 20.0);
     // Simulated seconds pass faster than git works; a person reading the overview gives the
     // chunked download of the changed blobs (line counts) this time.
     wait_idle(&mut harness);
     // The changed files' grammar compiles while the overview shows, from the mirror's file list:
     // the phase's request counts below hold with it.
-    wait_until(&mut harness, "the files' grammar warmed on the overview", |harness| {
+    wait_until_unsettled(&mut harness, "the files' grammar warmed on the overview", |harness| {
         held_languages(harness, &fixture).iter().any(|language| language == "Rust")
     });
     phases.push(("Open MR + Overview (20 s)", 20.0));
@@ -942,14 +968,14 @@ fn run_scenario(file_count: usize) {
     let fetches_before_files = fetched_before_files.len();
 
     let files_label = format!("Files ({})", cv_widgets::numbers::group_digits(file_count));
-    wait_until(&mut harness, "the file list", |harness| {
+    wait_until_unsettled(&mut harness, "the file list", |harness| {
         harness.query_by_label(&files_label).is_some()
     });
     // The phase starts once the Files tab shows: a probe while the Overview still shows refreshes
     // its running checks too (the click lands over a few frames), and belongs to the Overview,
     // also when its requests are still on the way.
     harness.click_at(harness.get_by_label(&files_label).rect());
-    wait_until(&mut harness, "the Files tab", |harness| {
+    wait_until_unsettled(&mut harness, "the Files tab", |harness| {
         harness.query_by_label(&files_label).is_some_and(|tab| {
             tab.accesskit_node().toggled() == Some(egui::accesskit::Toggled::True)
         })
@@ -969,7 +995,7 @@ fn run_scenario(file_count: usize) {
     enter_phase(&fixture.recorder, &harness, "Pipelines, running (3 min)");
     let started = harness_time(&harness);
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the jobs", |harness| has(harness, "test-3-1"));
+    wait_until_unsettled(&mut harness, "the jobs", |harness| has(harness, "test-3-1"));
     // A loaded machine stretches the wait over simulated seconds; the phase stays 3 min.
     let waited = harness_time(&harness) - started;
     pump_live(&mut harness, (180.0 - waited).max(0.0));
@@ -1062,11 +1088,11 @@ fn run_scenario(file_count: usize) {
 }
 
 fn open_pipelines(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture) {
-    wait_until(harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(harness, "the pull request list", |harness| has(harness, "Change 27"));
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(harness, "the overview", |harness| has(harness, "Budget scenario"));
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(harness, "the jobs", |harness| has(harness, "test-3-1"));
+    wait_until_unsettled(harness, "the jobs", |harness| has(harness, "test-3-1"));
     pump(harness, 20.0);
 }
 
@@ -1119,7 +1145,7 @@ fn pump_live(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
     }
 }
 
-/// [`wait_until`] for work that takes real time, such as git reading a diff: egui's time follows
+/// [`wait_until_unsettled`] for work that takes real time, such as git reading a diff: egui's time follows
 /// the wall clock meanwhile instead of going on by [`STEP_SECONDS`] a frame, so a loaded machine
 /// does not stretch the work over simulated minutes. Afterwards it goes on by the step again.
 fn wait_in_real_time(
@@ -1139,14 +1165,6 @@ fn wait_in_real_time(
         cv_testkit::let_threads_run(Duration::from_millis(10));
     }
     harness.input_mut().time = None;
-}
-
-pub(super) fn wait_until(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
 }
 
 /// Requests by phase, method and path template.

@@ -12,9 +12,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_core::{MergeStrategy, ProviderKind};
 
-use super::{
-    Calls, POLICIES, ReviewApp, button, has, open, opened_urls, press, start_on, wait_for,
-};
+use super::super::walkthrough::wait_until;
+use super::{Calls, POLICIES, ReviewApp, button, has, open, opened_urls, press, start_on};
 use cv_testkit::Clicks;
 
 /// (set, armed set, state line, cancel, armed cancel) as the platform words them.
@@ -77,10 +76,10 @@ fn a_refused_auto_merge_offers_the_merge_settings() {
     let refusing = Calls { refuses_auto_complete: true, ..Calls::default() };
     let (mut harness, _, calls) = start_on("auto-refused", ProviderKind::GitHub, refusing);
     open(&mut harness, "auto-refused", 3);
-    wait_for(&mut harness, "auto-merge offered", |harness| button(harness, GITHUB.set));
+    wait_until(&mut harness, "auto-merge offered", |harness| button(harness, GITHUB.set));
     press(&mut harness, GITHUB.set);
     press(&mut harness, GITHUB.confirm_set);
-    wait_for(&mut harness, "the refusal", |harness| {
+    wait_until(&mut harness, "the refusal", |harness| {
         has(harness, "Enable auto-merge failed: Auto-merge is turned off for contoso/site.")
     });
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Repository settings").rect());
@@ -98,20 +97,20 @@ fn round_trip(
 ) -> (Harness<'static, ReviewApp>, Arc<Calls>) {
     let (mut harness, _, calls) = start_on(name, kind, Calls::default());
     open(&mut harness, name, 1);
-    wait_for(&mut harness, "the mergeable pull request", |harness| {
+    wait_until(&mut harness, "the mergeable pull request", |harness| {
         button(harness, squash_label(kind)) && has(harness, "Speed up login")
     });
     assert!(!button(&harness, words.set), "a completable pull request merges now");
 
     open(&mut harness, name, 3);
-    wait_for(&mut harness, "auto-complete offered", |harness| {
+    wait_until(&mut harness, "auto-complete offered", |harness| {
         button(harness, words.set) && has(harness, "Blocked change")
     });
     press(&mut harness, words.set);
     assert!(button(&harness, words.confirm_set), "armed in place");
     assert!(calls.auto_completes.lock().unwrap().is_empty(), "one click sets nothing");
     press(&mut harness, words.confirm_set);
-    wait_for(&mut harness, "auto-complete set", |_| {
+    wait_until(&mut harness, "auto-complete set", |_| {
         !calls.auto_completes.lock().unwrap().is_empty()
     });
     let set = calls.auto_completes.lock().unwrap()[0].clone().expect("a set, not a cancel");
@@ -119,12 +118,12 @@ fn round_trip(
     assert_eq!(set.head_sha, "a".repeat(40), "guarded by the reviewed head");
     assert!(calls.merges.lock().unwrap().is_empty(), "nothing merged now");
 
-    wait_for(&mut harness, "the state and the cancel", |harness| {
+    wait_until(&mut harness, "the state and the cancel", |harness| {
         button(harness, words.cancel) && has(harness, words.state)
     });
     press(&mut harness, words.cancel);
     press(&mut harness, words.confirm_cancel);
-    wait_for(&mut harness, "auto-complete cancelled", |harness| {
+    wait_until(&mut harness, "auto-complete cancelled", |harness| {
         calls.auto_completes.lock().unwrap().len() == 2 && button(harness, words.set)
     });
     assert_eq!(calls.auto_completes.lock().unwrap()[1], None, "the second call cancels");

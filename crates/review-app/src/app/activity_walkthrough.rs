@@ -5,8 +5,6 @@
 //! before steps had kinds, durations and outcomes still shows its summary. Needs `git` on PATH,
 //! no network, no real CLI.
 
-use std::time::{Duration, Instant};
-
 use egui::{Key, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{AccessKitNode, NodeT, Queryable};
@@ -18,13 +16,12 @@ use serde_json::Value;
 
 use super::ReviewApp;
 use super::github_mock::{FILE, GitHubHost, open_pull_request};
-use super::walkthrough::{app, type_into, wait_until};
+use super::walkthrough::{app, type_into, wait_for, wait_until};
 use cv_services::agents::FakeCli;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 use cv_widgets::buttons;
 
-const TIMEOUT: Duration = Duration::from_secs(60);
 const PLACEHOLDER: &str = "Ask anything about this pull request";
 const QUESTION: &str = "Would a hunk without the marker still parse?";
 const COMMAND: &str = "cargo test -p review-diff hunk";
@@ -208,22 +205,19 @@ fn ask(harness: &mut Harness<'_, ReviewApp>) {
 
 /// The started session's agent, once the question reached it.
 fn wait_for_agent(harness: &mut Harness<'_, ReviewApp>) -> FakeAgent {
-    let started = Instant::now();
     let mut agent: Option<FakeAgent> = None;
-    loop {
-        harness.step();
-        if agent.is_none() {
-            agent = harness.state().services.agents.fake.take_session().map(|(_, agent)| agent);
-        }
-        if let Some(found) = &mut agent
-            && !found.take_prompts().is_empty()
-        {
-            return agent.expect("the agent was found");
-        }
-        assert!(
-            started.elapsed() < TIMEOUT,
-            "timed out waiting for the question to reach the agent"
-        );
-        cv_testkit::let_threads_run(Duration::from_millis(20));
-    }
+    wait_for(
+        harness,
+        "the question to reach the agent",
+        |harness| {
+            if agent.is_none() {
+                agent = harness.state().services.agents.fake.take_session().map(|(_, agent)| agent);
+            }
+            if agent.as_mut()?.take_prompts().is_empty() {
+                return None;
+            }
+            agent.take()
+        },
+        |_| {},
+    )
 }
