@@ -60,9 +60,9 @@ use crate::removal_popover::RemovalPopover;
 use crate::selection::{DiffSelection, Selection};
 use cv_base::platform::shortcut;
 use cv_base::theme;
-#[cfg(any(test, feature = "test-support"))]
-use cv_code::diff_rows::RangeRows;
 use cv_code::diff_rows::{self, Layout, Row, RowKind};
+#[cfg(any(test, feature = "test-support"))]
+use cv_code::diff_rows::{RangeOwner, RangeRows};
 use cv_code::gaps::Expand;
 use cv_code::line_source::{self, Pane};
 use cv_pr_threads::{ThreadEvent, ThreadsUi};
@@ -980,7 +980,8 @@ impl DiffView {
     #[cfg(any(test, feature = "test-support"))]
     /// Some lines show as picked: selected, or marked as the lines of the new comment.
     pub fn marks_lines(&self) -> bool {
-        self.selecting.is_active() || self.built.ranges.iter().any(|range| range.is_draft)
+        self.selecting.is_active()
+            || self.built.ranges.iter().any(|range| range.owner == RangeOwner::Draft)
     }
 
     #[cfg(any(test, feature = "test-support"))]

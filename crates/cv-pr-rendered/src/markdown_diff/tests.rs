@@ -642,7 +642,7 @@ fn a_removal_wedge_opens_side_by_side() {
 /// comment opens on them, also when they sit in collapsed unchanged lines (shown first).
 #[test]
 fn a_blocks_lines_open_a_comment_in_the_text_diff() {
-    use cv_code::diff_rows::Layout;
+    use cv_code::diff_rows::{Layout, RangeOwner};
     use cv_pr_diff::diff_view::LineRequest;
     use cv_pr_diff::testing::{Fixture, NEW, fixture, line_of, show_diff};
     for (what, needle) in [
@@ -671,7 +671,7 @@ fn a_blocks_lines_open_a_comment_in_the_text_diff() {
         let draft = view
             .range_rows()
             .iter()
-            .find(|range| range.is_draft)
+            .find(|range| range.owner == RangeOwner::Draft)
             .unwrap_or_else(|| panic!("{what}: the draft marks its lines"));
         assert_eq!(draft.side, DiffSide::New, "{what}");
         assert!(draft.end > draft.start, "{what}: several lines, {draft:?}");

@@ -17,7 +17,9 @@ use crate::word_highlights::WordHighlights;
 use cv_code::code_job;
 use cv_code::contents::SideContents;
 use cv_code::diff_paint::{Invisibles, LineStyle, Metrics, RangeMark};
-use cv_code::diff_rows::{self, ComposerAnchor, Layout, RangeRows, Row, RowInputs, RowKind};
+use cv_code::diff_rows::{
+    self, ComposerAnchor, Layout, RangeOwner, RangeRows, Row, RowInputs, RowKind,
+};
 use cv_code::gaps::{self, Expand, Gap, Reveal};
 use cv_code::line_source::{self, Pane};
 
@@ -125,9 +127,8 @@ pub(super) struct DiffRows {
     /// Changed words of the deleted ↔ added line pairs.
     word_highlights: WordHighlights,
     pub overview: Overview,
-    /// Lines of the multi-line threads and of a multi-line draft, and the thread of each.
+    /// Lines of the multi-line threads and of a multi-line draft.
     pub ranges: Vec<RangeRows>,
-    range_threads: Vec<Option<u32>>,
     /// Counts row rebuilds, so the comment target is only worked out again when rows or selection change.
     pub generation: u64,
     /// The row of the new comment's card, if the rows hold one.
@@ -197,7 +198,6 @@ impl DiffRows {
         self.detached = built.detached_threads;
         self.changes = built.changes;
         self.ranges = built.ranges;
-        self.range_threads = built.range_threads;
         self.overview = diff_overview::build(diff, &self.rows, inputs.layout);
         self.composer_row = self.rows.iter().position(|row| row.kind == RowKind::Composer);
         self.has_code = self.rows.iter().any(|row| {
@@ -311,13 +311,15 @@ impl DiffRows {
     ) -> Option<RangeMark> {
         self.ranges
             .iter()
-            .zip(&self.range_threads)
-            .find(|(range, thread)| {
+            .find(|range| {
                 range.contains(row_index)
                     && range_in_pane(range.side, pane)
-                    && !thread.is_some_and(&is_hidden)
+                    && !matches!(range.owner, RangeOwner::Thread(thread) if is_hidden(thread))
             })
-            .map(|(range, _)| if range.is_draft { RangeMark::Draft } else { RangeMark::Thread })
+            .map(|range| match range.owner {
+                RangeOwner::Draft => RangeMark::Draft,
+                RangeOwner::Thread(_) => RangeMark::Thread,
+            })
     }
 
     /// The invisible characters a line shows: on a changed line paired with the line it replaced,
