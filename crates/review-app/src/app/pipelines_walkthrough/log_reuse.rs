@@ -11,18 +11,17 @@ use egui_kittest::kittest::Queryable;
 use review_store::AppPaths;
 
 use super::super::walkthrough::{has, wait_until};
-use super::{App, CUT_OFF, Calls, ReviewApp, Scenario};
-use cv_testkit::Clicks;
+use super::{App, CUT_OFF, Calls, ReviewApp, Scenario, open_run};
 
 const ID: &str = "log-reuse";
-const RUN: &str = "Pipeline #50";
+const RUN: &str = "Pipeline #50, Succeeded";
 const SIZE: [f32; 2] = [1500.0, 900.0];
 
 #[test]
 fn log_reuse_finished_logs_open_from_disk_and_a_cut_download_is_fetched_again() {
     let App { mut harness, calls, scratch } = App::start(ID, Scenario::LogReuse, SIZE);
     let paths = scratch.app_paths();
-    open_run(&mut harness);
+    open_run(&mut harness, RUN, |harness| harness.query_by_label("Stage test").is_some());
 
     // J opens the run's first job; its log is downloaded once.
     harness.key_press(egui::Key::J);
@@ -58,7 +57,7 @@ fn log_reuse_finished_logs_open_from_disk_and_a_cut_download_is_fetched_again() 
     // After a restart on the same data folder, every finished job's log opens from disk.
     let before = calls.lock().unwrap_or_else(PoisonError::into_inner).logs.len();
     let mut harness = App::reopen(ID, Scenario::LogReuse, &calls, &scratch, SIZE);
-    open_run(&mut harness);
+    open_run(&mut harness, RUN, |harness| harness.query_by_label("Stage test").is_some());
     harness.key_press(egui::Key::J);
     wait_for_log(&mut harness, "build");
     harness.key_press(egui::Key::J);
@@ -70,18 +69,6 @@ fn log_reuse_finished_logs_open_from_disk_and_a_cut_download_is_fetched_again() 
         before,
         "no request after the restart"
     );
-}
-
-fn open_run(harness: &mut Harness<'_, ReviewApp>) {
-    wait_until(harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
-    harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(harness, "the checks table", |harness| {
-        harness.query_by_label("Filter checks").is_some()
-    });
-    harness.click_at(harness.get_by_label(&format!("{RUN}, Succeeded")).rect());
-    wait_until(harness, "the stage graph", |harness| {
-        harness.query_by_label("Stage test").is_some()
-    });
 }
 
 /// Waits until `job`'s log is shown and nothing loads any more.

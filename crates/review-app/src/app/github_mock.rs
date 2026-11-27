@@ -17,13 +17,14 @@ use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_core::{Connection, ProviderKind};
+use review_store::TreeSide;
 use serde_json::{Value, json};
 use tokio::runtime::Runtime;
 use wiremock::matchers::{body_string_contains, header, method, path, path_regex};
 use wiremock::{Mock, MockBuilder, MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
-use super::walkthrough::{files_tab, open_in_tree, shows_file_view, wait_until};
+use super::walkthrough::{files_tab, open_in_tree, shows_file_view, wait_for_diff, wait_until};
 
 pub const TOKEN: &str = "test-token";
 /// `Basic base64("x-access-token:test-token")`, how the provider hands the token to git.
@@ -64,6 +65,42 @@ pub fn open_diff(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
         shows_file_view(harness, FILE) && harness.query_by_label(THREAD_TEXT).is_some()
     });
     harness.get_by_label(&format!("Diff of {FILE}")).rect()
+}
+
+/// The path of [`long_file`].
+pub(super) const LONG_FILE: &str = "src/long.rs";
+
+/// 600 lines, every eighth one changed: 75 changes to step through.
+pub(super) fn long_file() -> ExtraFile {
+    let line = |index: usize, changed: bool| {
+        if changed {
+            format!("    let value_{index} = compute({index}) + 1; // changed\n")
+        } else {
+            format!("    let value_{index} = compute({index});\n")
+        }
+    };
+    let base: String = (0..600).map(|index| line(index, false)).collect();
+    let head: String = (0..600).map(|index| line(index, index % 8 == 4)).collect();
+    ExtraFile { path: LONG_FILE, base: base.into_bytes(), head: head.into_bytes() }
+}
+
+/// Opens the pull request from the list and [`LONG_FILE`] in its Files tab.
+pub(super) fn open_long_file(harness: &mut Harness<'_, ReviewApp>) {
+    open_pull_request(harness);
+    files_tab(harness);
+    open_in_tree(harness, LONG_FILE);
+    wait_for_diff(harness, LONG_FILE);
+}
+
+/// The file tree on `expected`'s side of [`LONG_FILE`]'s diff, the diff still showing.
+pub(super) fn assert_tree_at(harness: &Harness<'_, ReviewApp>, expected: TreeSide) {
+    assert_eq!(harness.state().services.settings.file_tree_side, expected);
+    let row = harness.get_by_role_and_label(Role::TreeItem, LONG_FILE).rect();
+    let diff = harness.get_by_label(&format!("Diff of {LONG_FILE}")).rect();
+    match expected {
+        TreeSide::Left => assert!(row.right() <= diff.left() + 1.0, "{row:?} left of {diff:?}"),
+        TreeSide::Right => assert!(row.left() >= diff.right() - 1.0, "{row:?} right of {diff:?}"),
+    }
 }
 
 const TIMESTAMP: &str = "2026-10-01T10:00:00Z";

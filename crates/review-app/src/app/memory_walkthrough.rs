@@ -51,7 +51,7 @@ use super::walkthrough::{
     self, has, long_session_builder, saved_paths, wait_idle, wait_until_unsettled,
 };
 #[cfg(feature = "measurements")]
-use super::walkthrough::{click_first, pump, scroll_list};
+use super::walkthrough::{click_first, filter_checks, pump, scroll_list};
 #[cfg(any(windows, feature = "measurements"))]
 use cv_base::platform::heap::live_bytes;
 use cv_runtime::route::{PullRequestKey, Route};
@@ -284,10 +284,7 @@ fn review(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture, iid: u64, cur
 fn pipelines_and_log(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
     harness.click_at(harness.get_by_label("Pipelines").rect());
     wait_until_unsettled(harness, "the jobs", |harness| has(harness, "test-3-1"));
-    harness.get_by_label("Filter checks").focus();
-    harness.step();
-    harness.get_by_label("Filter checks").type_text("test-3-2");
-    harness.step();
+    filter_checks(harness, "test-3-2");
     click_first(harness, "test-3-2 in");
     let lines = format!("{} lines", cv_widgets::numbers::group_digits(LOG_LINES));
     wait_until_unsettled(harness, "the job log", |harness| has(harness, &lines));

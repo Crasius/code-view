@@ -3,7 +3,7 @@
 //! Drives the real app through its accessibility tree like a user and prints load times, memory
 //! and requests. Needs network access, so it is ignored by default:
 //!
-//! `cargo test -p review-app live -- --ignored --nocapture`
+//! `cargo test -p review-app --bin CodeView app::live_check -- --ignored --nocapture`
 //!
 //! `REVIEW_LIVE_KIND` picks the platform (`github` default, `gitlab`, `azure`), `REVIEW_LIVE_REPO`
 //! the repository (defaults below), `REVIEW_LIVE_PR` a pull request number (default: the newest

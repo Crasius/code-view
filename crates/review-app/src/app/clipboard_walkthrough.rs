@@ -45,7 +45,7 @@ impl ClipboardSource for FakeClipboard {
 }
 
 #[test]
-fn clipboard_link_opens_once_with_back_and_not_again_after_a_restart() {
+fn link_opens_once_with_back_and_not_again_after_a_restart() {
     let scratch = ScratchDir::new("clipboard-open");
     let host = GitHubHost::with_pull_request(scratch.path());
     host.add_linked_pull_requests(Duration::ZERO);
@@ -135,7 +135,7 @@ fn clipboard_link_opens_once_with_back_and_not_again_after_a_restart() {
 }
 
 #[test]
-fn clipboard_link_the_token_cannot_read_stays_closed_with_ways_out() {
+fn link_the_token_cannot_read_stays_closed_with_ways_out() {
     let scratch = ScratchDir::new("clipboard-no-access");
     let host = GitHubHost::with_pull_request(scratch.path());
     host.add_linked_pull_requests(Duration::ZERO);
@@ -189,7 +189,7 @@ fn clipboard_link_the_token_cannot_read_stays_closed_with_ways_out() {
 /// A 5xx or no answer within the check's budget says nothing about access: the page opens as it
 /// did before the check, and reports the failure itself with its Retry.
 #[test]
-fn clipboard_link_opens_when_the_host_gives_no_clear_answer() {
+fn link_opens_when_the_host_gives_no_clear_answer() {
     let scratch = ScratchDir::new("clipboard-unclear");
     let host = GitHubHost::with_pull_request(scratch.path());
     host.add_linked_pull_requests(BUDGET * 2);
@@ -218,7 +218,7 @@ fn clipboard_link_opens_when_the_host_gives_no_clear_answer() {
 }
 
 #[test]
-fn clipboard_link_waits_while_a_reply_is_written() {
+fn link_waits_while_a_reply_is_written() {
     let scratch = ScratchDir::new("clipboard-writing");
     let host = GitHubHost::with_pull_request(scratch.path());
     host.add_linked_pull_requests(Duration::ZERO);
@@ -254,7 +254,7 @@ fn clipboard_link_waits_while_a_reply_is_written() {
 }
 
 #[test]
-fn clipboard_links_respect_the_setting_and_unknown_hosts() {
+fn links_respect_the_setting_and_unknown_hosts() {
     let scratch = ScratchDir::new("clipboard-setting");
     let host = GitHubHost::with_pull_request(scratch.path());
     let connection = host.connection(CONNECTION_ID, "Acme");

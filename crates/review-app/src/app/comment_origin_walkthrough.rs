@@ -46,7 +46,7 @@ fn rewritten_file() -> String {
 }
 
 #[test]
-fn comment_origin_shows_the_version_an_outdated_thread_was_written_on() {
+fn shows_the_version_an_outdated_thread_was_written_on() {
     let scratch = ScratchDir::new("comment-origin");
     let mut host = GitHubHost::with_pull_request(scratch.path());
     let replaced = host.force_push_outdating_the_thread(&rewritten_file(), ReplacedHead::Kept);
@@ -134,7 +134,7 @@ fn comment_origin_shows_the_version_an_outdated_thread_was_written_on() {
 }
 
 #[test]
-fn comment_origin_falls_back_to_the_comments_lines_when_the_commit_is_gone() {
+fn falls_back_to_the_comments_lines_when_the_commit_is_gone() {
     let scratch = ScratchDir::new("comment-origin-gone");
     let mut host = GitHubHost::with_pull_request(scratch.path());
     let replaced = host.force_push_outdating_the_thread(&rewritten_file(), ReplacedHead::Collected);

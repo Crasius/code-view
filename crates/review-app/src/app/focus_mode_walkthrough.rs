@@ -14,7 +14,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
-use super::github_mock::{ExtraFile, FILE, GitHubHost, ReplacedHead, open_pull_request};
+use super::github_mock::{FILE, GitHubHost, LONG_FILE, ReplacedHead, long_file, open_pull_request};
 use super::walkthrough::{self, wait_until};
 use cv_base::platform::{self, hit_test, shortcut};
 use cv_pr_rendered::file_header::NEXT_CHANGE_HINT;
@@ -22,7 +22,6 @@ use cv_shell::focus_mode::{self, ENTER_HINT, EXIT_HINT, Surface, strip};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
-const LONG_FILE: &str = "src/long.rs";
 const JOB: &str = "Build and test";
 const LOG_LINES: usize = 3000;
 /// The refused rerun's message, in the run header's place and in focus mode under the strip.
@@ -34,20 +33,6 @@ const MARK_VIEWED: &str = concat!("Mark as viewed (", shortcut!(alt "V"), ")");
 const UNMARK_VIEWED: &str = concat!("Viewed: click or ", shortcut!(alt "V"), " to unmark");
 const NEXT_MATCH: &str = concat!("Next match (", shortcut!(Enter), ")");
 const COPY_LOG: &str = concat!("Copy log (", shortcut!(command shift "C"), ")");
-
-/// 600 lines, every eighth one changed: 75 changes to step through.
-fn long_file() -> ExtraFile {
-    let line = |index: usize, changed: bool| {
-        if changed {
-            format!("    let value_{index} = compute({index}) + 1; // changed\n")
-        } else {
-            format!("    let value_{index} = compute({index});\n")
-        }
-    };
-    let base: String = (0..600).map(|index| line(index, false)).collect();
-    let head: String = (0..600).map(|index| line(index, index % 8 == 4)).collect();
-    ExtraFile { path: LONG_FILE, base: base.into_bytes(), head: head.into_bytes() }
-}
 
 fn long_log() -> String {
     (0..LOG_LINES).fold(String::new(), |mut text, index| {
@@ -163,7 +148,7 @@ fn assert_stable(harness: &mut Harness<'_, ReviewApp>, labels: &[&str]) {
 }
 
 #[test]
-fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
+fn gives_the_diff_the_window_and_keeps_its_place() {
     let (_scratch, _host, mut harness) = app("focus-files");
     walkthrough::files_tab(&mut harness);
     walkthrough::open_in_tree(&mut harness, LONG_FILE);
@@ -261,7 +246,7 @@ fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
 
 #[test]
 #[expect(clippy::too_many_lines, reason = "one walkthrough scenario, told step by step")]
-fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
+fn gives_a_log_the_window_and_keeps_its_place() {
     let (_scratch, _host, mut harness) = app("focus-log");
     harness.click_at(harness.get_by_role_and_label(Role::Tab, "Pipelines").rect());
     wait_until(&mut harness, "the job's row", |harness| {
@@ -373,7 +358,7 @@ fn focus_mode_gives_a_log_the_window_and_keeps_its_place() {
 }
 
 #[test]
-fn focus_mode_folds_the_original_versions_banner_into_its_strip() {
+fn folds_the_original_versions_banner_into_its_strip() {
     let scratch = ScratchDir::new("focus-origin");
     let mut host = GitHubHost::with_pull_request(scratch.path());
     let documented = (1..=60).fold(String::new(), |mut text, line| {

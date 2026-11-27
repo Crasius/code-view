@@ -10,37 +10,18 @@ use egui_kittest::kittest::Queryable;
 use review_store::TreeSide;
 
 use super::ReviewApp;
-use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
-use super::walkthrough::{app, files_tab, open_in_tree, saved_settings, wait_for_diff};
+use super::github_mock::{GitHubHost, LONG_FILE, assert_tree_at, long_file, open_long_file};
+use super::walkthrough::{app, saved_settings};
 use cv_base::platform::FOCUS_MODE_KEY;
 use cv_shell::focus_mode::{self, Surface};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
-const LONG_FILE: &str = "src/long.rs";
 const TO_RIGHT: &str = "Move the file tree to the right";
 const TO_LEFT: &str = "Move the file tree to the left";
 
-/// 600 lines, every eighth one changed.
-pub(super) fn long_file() -> ExtraFile {
-    let line = |index: usize, changed: bool| {
-        if changed {
-            format!("    let value_{index} = compute({index}) + 1; // changed\n")
-        } else {
-            format!("    let value_{index} = compute({index});\n")
-        }
-    };
-    let base: String = (0..600).map(|index| line(index, false)).collect();
-    let head: String = (0..600).map(|index| line(index, index % 8 == 4)).collect();
-    ExtraFile { path: LONG_FILE, base: base.into_bytes(), head: head.into_bytes() }
-}
-
 fn side(harness: &Harness<'_, ReviewApp>) -> TreeSide {
     harness.state().services.settings.file_tree_side
-}
-
-fn tree_row(harness: &Harness<'_, ReviewApp>) -> Rect {
-    harness.get_by_role_and_label(Role::TreeItem, LONG_FILE).rect()
 }
 
 fn diff_rect(harness: &Harness<'_, ReviewApp>) -> Rect {
@@ -50,16 +31,6 @@ fn diff_rect(harness: &Harness<'_, ReviewApp>) -> Rect {
 /// The tree's width on screen, as its full-width search field takes it.
 fn tree_width_on_screen(harness: &Harness<'_, ReviewApp>) -> f32 {
     harness.get_by_role(Role::TextInput).rect().width()
-}
-
-/// The tree on `expected`'s side of the diff, the diff still showing.
-pub(super) fn assert_tree_at(harness: &Harness<'_, ReviewApp>, expected: TreeSide) {
-    assert_eq!(side(harness), expected);
-    let (row, diff) = (tree_row(harness), diff_rect(harness));
-    match expected {
-        TreeSide::Left => assert!(row.right() <= diff.left() + 1.0, "{row:?} left of {diff:?}"),
-        TreeSide::Right => assert!(row.left() >= diff.right() - 1.0, "{row:?} right of {diff:?}"),
-    }
 }
 
 /// The folder's viewed mark sits in the viewed column, left of its glyph: one indent left of its
@@ -74,14 +45,6 @@ fn assert_marks_line_up(harness: &Harness<'_, ReviewApp>) {
     assert!(folder.right() < row.left() + 48.0, "left of the folder glyph: {folder:?} {row:?}");
 }
 
-/// Opens the pull request from the list and [`LONG_FILE`] in its Files tab.
-pub(super) fn open_long_file(harness: &mut Harness<'_, ReviewApp>) {
-    open_pull_request(harness);
-    files_tab(harness);
-    open_in_tree(harness, LONG_FILE);
-    wait_for_diff(harness, LONG_FILE);
-}
-
 #[test]
 fn the_file_tree_moves_sides_and_keeps_the_open_file() {
     let scratch = ScratchDir::new("tree-side");
@@ -94,7 +57,7 @@ fn the_file_tree_moves_sides_and_keeps_the_open_file() {
     }
     harness.run_steps(10);
 
-    // The tree starts on the left, as before the setting existed.
+    // The tree starts on the left by default.
     assert_tree_at(&harness, TreeSide::Left);
     assert_marks_line_up(&harness);
     let top = focus_mode::top_line(&harness.ctx, Surface::Files).expect("the diff's top line");

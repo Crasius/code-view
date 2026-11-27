@@ -12,8 +12,8 @@ use egui_kittest::kittest::Queryable;
 use review_store::checkouts::WhenFinished;
 
 use super::ReviewApp;
-use super::checkout_walkthrough::{Setup, click_last, open_form, start, wait_ready, worktree_of};
-use super::walkthrough::{app, has, press, saved_settings, wait_until};
+use super::checkout_scenario::{Setup, click_last, open_form, start, wait_ready, worktree_of};
+use super::walkthrough::{app, has, press, saved_settings, settle_background, wait_until};
 use cv_runtime::route::Route;
 use cv_testkit::Clicks;
 
@@ -67,7 +67,7 @@ fn offers_the_removal_in_ask_mode_and_does_nothing_in_keep_mode() {
 
     let mut keep = checked_out("finish-keep", WhenFinished::Keep);
     merged_elsewhere(&mut keep);
-    keep.harness.run_steps(20);
+    settle_background(&mut keep.harness);
     assert!(!has(&keep.harness, REMOVE_LINK), "keep mode offers nothing");
     assert!(worktree_of(&keep.clone).exists() && has_record(&keep.harness), "nothing removed");
 }

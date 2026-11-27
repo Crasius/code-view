@@ -462,8 +462,8 @@ fn list_header_is_one_row_at_wide_and_narrow_widths() {
     assert_eq!(harness.state().services.settings.list_filters.repository, None);
 }
 
-/// Ctrl+K finds loaded pull requests by label and by author (what the list's own filter did), and
-/// the header's search button opens the same search.
+/// Ctrl+K finds loaded pull requests by label and by author, and the header's search button opens
+/// the same search.
 #[test]
 fn list_search_finds_pull_requests_by_label_and_author() {
     let host = GitLabGroup::start(4);

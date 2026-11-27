@@ -9,7 +9,7 @@ use egui_kittest::Harness;
 use super::walkthrough::app_with;
 use cv_testkit::ScratchDir;
 
-/// Whether the app built with `preset` (or nothing) set before it exists animates.
+/// Whether the app built with `preset` (or nothing) set before it exists runs with reduced motion.
 fn is_reduced_in_app(name: &str, preset: Option<bool>) -> bool {
     let scratch = ScratchDir::new(name);
     let mut builder = Harness::builder().with_size([960.0, 600.0]);

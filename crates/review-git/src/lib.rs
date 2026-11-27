@@ -21,7 +21,9 @@ mod whitespace;
 pub use changed_files::{ChangeKind, ChangedFile};
 pub use commits::CommitInfo;
 pub use file_diff::{DiffLine, FileDiff, LineKind};
-pub use line_counts::{COUNT_WAIT, WantedBy, download_chunk_sizes};
+#[cfg(any(test, feature = "test-support"))]
+pub use line_counts::download_chunk_sizes;
+pub use line_counts::{COUNT_WAIT, WantedBy};
 pub use mirror::{DiffOptions, FULL_FILE_CONTEXT, GitMirror, local_ref_name};
 pub use progress::{GitEvent, GitProgress};
 pub use whitespace::{EdgeChange, WhitespaceSummary};

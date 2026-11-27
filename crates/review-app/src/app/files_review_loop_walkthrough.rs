@@ -37,7 +37,7 @@ fn file(path: &'static str, value: u32) -> ExtraFile {
 
 #[test]
 fn steps_through_the_review_to_the_vote() {
-    let scratch = ScratchDir::new("ux-files-nav");
+    let scratch = ScratchDir::new("files-review-loop");
     let host =
         GitHubHost::with_pull_request_files(scratch.path(), &[file(A, 1), file(B, 2), file(C, 3)]);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);

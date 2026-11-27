@@ -235,10 +235,7 @@ fn pipelines_checks_table_sorts_filters_steps_and_reruns_failed() {
     let app = App::start("pipelines-mixed", Scenario::Mixed, [1500.0, 900.0]);
     let mut harness = app.harness;
     wait_until(&mut harness, "the merge status", |harness| has(harness, "1 pipeline failed"));
-    harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the checks table", |harness| {
-        harness.query_by_label("Filter checks").is_some()
-    });
+    open_checks_table(&mut harness);
 
     // 6 runs and the 14 jobs of the three pipelines; the rows below the fold are not drawn.
     let rows = row_labels(&harness);
@@ -338,10 +335,7 @@ fn pipelines_older_runs_stay_listed_but_never_fail_the_summary() {
         "the overview shows the latest run only"
     );
 
-    harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the checks table", |harness| {
-        harness.query_by_label("Filter checks").is_some()
-    });
+    open_checks_table(&mut harness);
     assert!(
         harness.query_by_label("Failed, 0 checks").is_some(),
         "the older failure is not counted"
@@ -368,13 +362,7 @@ fn pipelines_job_clicks_stay_in_the_app() {
     let app = App::start("pipelines-azure", Scenario::Azure, [1500.0, 900.0]);
     let mut harness = app.harness;
     let mut opened = Vec::new();
-    wait_until(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
-    harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the checks table", |harness| {
-        harness.query_by_label("Filter checks").is_some()
-    });
-    harness.click_at(harness.get_by_label(&format!("{ADO_RUN}, Running")).rect());
-    wait_until(&mut harness, "the stage graph", |harness| {
+    open_run(&mut harness, &format!("{ADO_RUN}, Running"), |harness| {
         harness.query_by_role_and_label(Role::Link, ADO_RUNNING_JOB).is_some()
     });
 
@@ -435,13 +423,7 @@ fn pipelines_github_running_job_waits_for_its_log_and_loads_it_when_done() {
     let mut opened = Vec::new();
     let calls = app.calls.clone();
     let logs = || calls.lock().unwrap_or_else(PoisonError::into_inner).logs.clone();
-    wait_until(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
-    harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the checks table", |harness| {
-        harness.query_by_label("Filter checks").is_some()
-    });
-    harness.click_at(harness.get_by_label(&format!("{GH_RUN}, Running")).rect());
-    wait_until(&mut harness, "the stage graph", |harness| {
+    open_run(&mut harness, &format!("{GH_RUN}, Running"), |harness| {
         harness.query_by_role_and_label(Role::Link, GH_JOB).is_some()
     });
 
@@ -496,13 +478,7 @@ fn pipelines_gitlab_running_job_log_follows_the_job() {
     let top_line = |harness: &Harness<'_, ReviewApp>| {
         cv_shell::focus_mode::top_line(&harness.ctx, cv_shell::focus_mode::Surface::Log)
     };
-    wait_until(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
-    harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the checks table", |harness| {
-        harness.query_by_label("Filter checks").is_some()
-    });
-    harness.click_at(harness.get_by_label(&format!("{GL_RUN}, Running")).rect());
-    wait_until(&mut harness, "the stage graph", |harness| {
+    open_run(&mut harness, &format!("{GL_RUN}, Running"), |harness| {
         harness.query_by_role_and_label(Role::Link, GL_JOB).is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::Link, GL_JOB).rect());
@@ -562,11 +538,7 @@ fn pipelines_attempts_open_earlier_attempts_in_the_app() {
     let mut opened = Vec::new();
     let calls = app.calls.clone();
     let attempts_loaded = || calls.lock().unwrap_or_else(PoisonError::into_inner).attempts.clone();
-    wait_until(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
-    harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the checks table", |harness| {
-        harness.query_by_label("Filter checks").is_some()
-    });
+    open_checks_table(&mut harness);
     let rows = row_labels(&harness);
     assert!(
         rows.contains(&format!("{RETRIED_JOB} in {RETRIED_RUN}, Failed, failed after 2 attempts")),
@@ -659,6 +631,26 @@ fn pipelines_attempts_open_earlier_attempts_in_the_app() {
     assert!(harness.query_by_label_contains("Attempt 2 of 2. Switch attempt").is_some());
     assert_eq!(attempts_loaded(), [JOB_ATTEMPT], "a loaded attempt is not loaded again");
     assert!(opened.is_empty(), "attempts open in the app, never the browser: {opened:?}");
+}
+
+/// Opens the Pipelines tab once the tabs show and waits for its checks table.
+fn open_checks_table(harness: &mut Harness<'_, ReviewApp>) {
+    wait_until(harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
+    harness.click_at(harness.get_by_label("Pipelines").rect());
+    wait_until(harness, "the checks table", |harness| {
+        harness.query_by_label("Filter checks").is_some()
+    });
+}
+
+/// Opens the checks table, then the run labelled `run`, and waits until `stage_shows` holds.
+fn open_run(
+    harness: &mut Harness<'_, ReviewApp>,
+    run: &str,
+    stage_shows: impl Fn(&Harness<'_, ReviewApp>) -> bool,
+) {
+    open_checks_table(harness);
+    harness.click_at(harness.get_by_label(run).rect());
+    wait_until(harness, "the stage graph", stage_shows);
 }
 
 /// [`wait_until`], keeping every URL the app asked the platform to open, in the frames after the
