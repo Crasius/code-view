@@ -341,7 +341,7 @@ impl PullRequestListPage {
             // A hidden lane keeps no rows: they would still turn up in the search and the pickers.
             self.favorites = FavoriteQueries::default();
         }
-        self.poll_requests(ui.ctx(), services);
+        self.poll_requests(services);
         let pauses = Pauses::of(services);
         let asks = self.header(ui, &mut services.settings, &pauses);
         if asks.wants_refresh {
@@ -527,7 +527,7 @@ impl PullRequestListPage {
             requests: &self.requests,
             statuses: &self.statuses,
             flights: &services.writes.flights,
-            identities: &Identities::of(ui.ctx()),
+            identities: &services.identities,
         };
         let lane = (is_overview && services.settings.favorites.is_lane_shown).then(|| {
             let (listed, hidden) = favorites::split(services, scope);
@@ -625,8 +625,8 @@ impl PullRequestListPage {
 
     /// Loads who the user is where a row's menu asked, and logs every "Add me as reviewer" that
     /// worked as a write of the user's, which every card that lists the pull request shows at once.
-    fn poll_requests(&mut self, ctx: &egui::Context, services: &mut Services) {
-        Identities::of(ctx).start_asked(services);
+    fn poll_requests(&mut self, services: &mut Services) {
+        Identities::start_asked(services);
         let added = self.requests.poll(services);
         if added.is_empty() {
             return;

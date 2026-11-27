@@ -87,7 +87,7 @@ fn button(ui: &mut Ui, kind: ProviderKind, strategy: MergeStrategy) {
         is_busy: false,
         is_open: true,
     };
-    paint::paint(ui, &main, &chevron, rect, &look);
+    paint::paint_in(ui, &main, &chevron, rect, &look, paint::Tone::Normal);
 }
 
 /// The dropdown's types with the merge button's own rows, the preselected one selected.

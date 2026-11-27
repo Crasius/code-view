@@ -44,11 +44,7 @@ pub enum Tone {
     Auto,
 }
 
-pub fn paint(ui: &Ui, main: &Response, chevron: &Response, rect: Rect, look: &Look<'_>) {
-    paint_in(ui, main, chevron, rect, look, Tone::Normal);
-}
-
-/// [`paint`] in `tone`.
+/// The split button in `tone`: both parts' fills, the label, the caret and the drain bar.
 pub fn paint_in(
     ui: &Ui,
     main: &Response,

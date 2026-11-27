@@ -21,7 +21,6 @@ use cv_pr_session::session::PullRequestSession;
 use cv_runtime::cache::page_cache::pull_request_part;
 use cv_runtime::route::PullRequestKey;
 use cv_services::Services;
-use cv_services::self_review::Identities;
 use cv_services::writes::Effect;
 use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{ScratchDir, poll_until};
@@ -119,7 +118,7 @@ fn scripted_services(dir: &ScratchDir, ctx: egui::Context) -> Services {
         })
         .expect("store the connection");
     let services = Services::new(ctx, paths, |_, _| Arc::new(Scripted(LaggingHost)));
-    Identities::of(&services.background.ctx()).learned(CONNECTION, me());
+    services.identities.learned(CONNECTION, me());
     services
 }
 

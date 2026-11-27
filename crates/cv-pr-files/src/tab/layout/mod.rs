@@ -132,7 +132,7 @@ fn show_tree(
 ) -> Option<TreeEvent> {
     let selected_folder =
         (selected.is_none() && !tab.summary.folder().is_empty()).then_some(tab.summary.folder());
-    let vote = stepping::vote_offer(ui.ctx(), env);
+    let vote = stepping::vote_offer(env);
     let viewed = &tab.viewed;
     let is_viewed = |file: &ChangedFile| viewed.is_viewed(file);
     let inputs =

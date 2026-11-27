@@ -32,7 +32,6 @@ use cv_runtime::load::Load;
 use cv_runtime::route::PullRequestKey;
 use cv_services::Services;
 use cv_services::diff_stats::{self, StatRow};
-use cv_services::self_review::Identities;
 use cv_services::writes::Answer;
 use review_core::{PullRequestDetail, PullRequestState};
 use review_git::ChangedFile;
@@ -84,7 +83,7 @@ impl Warming {
         // Who the user is decides how likely they open a row: known from the next rest on. Not
         // asked before a rest, so a list alone costs no request for it.
         if let Some(ahead) = rows.get(rested) {
-            Identities::of(&services.background.ctx()).ask(&ahead.row.connection_id);
+            services.identities.ask(&ahead.row.connection_id);
         }
         let around = [Some(rested), rested.checked_sub(1), rested.checked_add(1)];
         let planned: Vec<(StatRow, Depth)> = around
