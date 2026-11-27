@@ -4,8 +4,9 @@
 # passes, the dependency bans and sources), then its CI-only step shear (unused dependencies). The
 # job installs cargo-deny and cargo-shear first; LINT_BASE names repo-lint's base
 # (ci/repo-lint-base.sh).
-# Uploading the job's cache took about 35 s [observed 2026-11-26, pipelines 4901 to 4906]; a
-# shorter clippy run keeps the cache as it is (ci/target-stamp.sh).
+# On GitLab, uploading the job's cache took about 35 s [observed 2026-11-26, pipelines 4901 to
+# 4906]; a shorter clippy run leaves GitLab's cache as it is (drop-if-cheap in ci/checks.yml's
+# after_script, ci/target-stamp.sh). GitHub's manual run saves the cache every time.
 set -eu
 seconds="$(mktemp)"
 failed=0
