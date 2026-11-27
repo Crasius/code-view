@@ -427,7 +427,7 @@ impl Assistant {
             merge_base: session.mirror.ready().map(|mirror| mirror.merge_base.as_str()),
             files: session.files().map_or(&[], |files| files.as_slice()),
             threads: session.threads.ready().map_or(&[], Vec::as_slice),
-            runs: session.runs.ready().map_or(&[], Vec::as_slice),
+            runs: session.runs.ready().map_or(&[], |runs| &runs[..]),
         };
         let config = SessionConfig {
             cli,

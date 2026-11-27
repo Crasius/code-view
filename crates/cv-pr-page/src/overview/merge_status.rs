@@ -360,7 +360,7 @@ fn pipeline_row(ui: &mut Ui, rect: Rect, run: &PipelineRun, session: &PullReques
         FontId::proportional(16.0),
         color,
     );
-    let known = session.stages(&run.id).and_then(|load| load.ready()).map(Vec::as_slice);
+    let known = session.stages(&run.id).and_then(|load| load.ready()).map(|stages| &stages[..]);
     let small = FontId::proportional(style::SMALL_SIZE);
     let name_width = name_rect.width().max(0.0);
     let body = FontId::proportional(style::BODY_SIZE);
