@@ -1090,9 +1090,9 @@ fn open_pipelines(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture) {
     pump(harness, 20.0);
 }
 
-/// Starts `phase` once the background work in flight has finished ([`wait_background_idle_without_frames`]): what the last
-/// phase started (a job log's download, a probe) reaches the host in that phase, however long a
-/// loaded machine takes to send it.
+/// Starts `phase` once the background work in flight has finished
+/// ([`wait_background_idle_without_frames`]): what the last phase started (a job log's download, a
+/// probe) reaches the host in that phase, however long a loaded machine takes to send it.
 fn enter_phase(recorder: &Recorder, harness: &Harness<'_, ReviewApp>, phase: &str) {
     wait_background_idle_without_frames(harness);
     recorder.enter(phase);
@@ -1139,9 +1139,10 @@ fn pump_live(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
     }
 }
 
-/// [`wait_until_unsettled`] for work that takes real time, such as git reading a diff: egui's time follows
-/// the wall clock meanwhile instead of going on by [`STEP_SECONDS`] a frame, so a loaded machine
-/// does not stretch the work over simulated minutes. Afterwards it goes on by the step again.
+/// [`wait_until_unsettled`] for work that takes real time, such as git reading a diff: egui's time
+/// follows the wall clock meanwhile instead of going on by [`STEP_SECONDS`] a frame, so a loaded
+/// machine does not stretch the work over simulated minutes. Afterwards it goes on by the step
+/// again.
 fn wait_in_real_time(
     harness: &mut Harness<'_, ReviewApp>,
     what: &str,

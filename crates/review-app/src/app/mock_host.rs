@@ -13,7 +13,7 @@ use wiremock::{Mock, MockServer, Request, Respond};
 /// [`MockHost::start`] built, unless a mock [`MockHost::mount`]ed later matches; its origin starts
 /// without an earlier test's rate-limit pause.
 pub(super) struct MockHost {
-    pub(super) server: MockServer,
+    server: MockServer,
     /// Runs the server; declared last so it drops after the server.
     runtime: tokio::runtime::Runtime,
 }

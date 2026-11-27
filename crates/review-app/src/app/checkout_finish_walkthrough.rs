@@ -9,12 +9,11 @@
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_store::AppSettings;
 use review_store::checkouts::WhenFinished;
 
 use super::ReviewApp;
 use super::checkout_walkthrough::{Setup, click_last, open_form, start, wait_ready, worktree_of};
-use super::walkthrough::{app, has, press, wait_until};
+use super::walkthrough::{app, has, press, saved_settings, wait_until};
 use cv_runtime::route::Route;
 use cv_testkit::Clicks;
 
@@ -144,7 +143,5 @@ fn checkout_finish_setting_is_a_select_with_its_help_and_saves() {
     click_last(&mut harness, "Keep worktree");
     harness.run_steps(3);
     assert_eq!(harness.state().services.settings.checkouts.when_finished, WhenFinished::Keep);
-    let saved =
-        AppSettings::load(&harness.state().services.paths.settings_file()).expect("saved settings");
-    assert_eq!(saved.checkouts.when_finished, WhenFinished::Keep);
+    assert_eq!(saved_settings(&harness).checkouts.when_finished, WhenFinished::Keep);
 }

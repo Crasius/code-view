@@ -18,12 +18,11 @@ use review_agent::{
     AgentEvent, AgentKind, FakeAgent, ModelChoice, ModelInfo, SessionConfig, StepKind, ToolStep,
     Usage,
 };
-use review_store::AppSettings;
 
 use super::ReviewApp;
 use super::github_mock::{FILE, GitHubHost, TITLE, open_diff, open_pull_request};
 use super::walkthrough::{
-    app, click_now, press, shows_file_view, type_into, wait_for, wait_until, wheel,
+    app, click_now, press, saved_settings, shows_file_view, type_into, wait_for, wait_until, wheel,
 };
 use cv_pr_assistant::CARD_LABEL;
 use cv_pr_assistant::mini::{self, ANSWERING, FOLLOW_UP};
@@ -228,9 +227,7 @@ fn assistant_default_model_from_settings_starts_the_next_conversation() {
     press(&mut harness, "Sonnet");
     let expected = ModelChoice::Named("claude-sonnet".to_owned());
     assert_eq!(harness.state().services.settings.assistant.claude_model, expected);
-    let paths = scratch.app_paths();
-    let saved = AppSettings::load(&paths.settings_file()).expect("settings file");
-    assert_eq!(saved.assistant.claude_model, expected, "saved");
+    assert_eq!(saved_settings(&harness).assistant.claude_model, expected, "saved");
 
     harness.state_mut().navigator.go(Route::MyPullRequests);
     open_pull_request(&mut harness);
@@ -374,10 +371,7 @@ fn assistant_panel_keeps_the_side_column_and_the_composer_at_the_bottom() {
         let wider = panel(&harness).width();
         assert!((wider - before - 100.0).abs() < 1.0, "{before} became {wider}");
         assert_same_gap(&harness, gap, "after widening");
-        let saved = AppSettings::load(&harness.state().services.paths.settings_file())
-            .expect("settings")
-            .panes
-            .overview_side;
+        let saved = saved_settings(&harness).panes.overview_side;
         assert!((saved - wider).abs() < 1.0, "saved {saved}");
 
         press(&mut harness, "Collapse (Esc)");
@@ -445,8 +439,7 @@ fn assistant_card_fills_the_side_column_until_dragged() {
         let taller = stored_height(&harness).expect("a drag keeps the height");
         assert!((taller - (fill + 200.0)).abs() < 1.0, "{taller}, not 200 above the start {fill}");
         assert_eq!(shown_height(&harness), taller, "the card shows the height it was dragged to");
-        let settings = AppSettings::load(&harness.state().services.paths.settings_file());
-        assert_eq!(settings.expect("settings").assistant.card_height, Some(taller), "saved");
+        assert_eq!(saved_settings(&harness).assistant.card_height, Some(taller), "saved");
         // The bar is below the window now, out of the pointer's reach; the keys take it on.
         harness.get_by_label(CARD_SPLITTER).focus();
         harness.step();
@@ -460,8 +453,7 @@ fn assistant_card_fills_the_side_column_until_dragged() {
         harness.key_press(Key::ArrowDown);
         harness.step();
         assert_eq!(stored_height(&harness), Some(268.0), "↓ steps by 8 points");
-        let settings = AppSettings::load(&harness.state().services.paths.settings_file());
-        assert_eq!(settings.expect("settings").assistant.card_height, Some(268.0), "saved");
+        assert_eq!(saved_settings(&harness).assistant.card_height, Some(268.0), "saved");
     }
 
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -477,8 +469,7 @@ fn assistant_card_fills_the_side_column_until_dragged() {
     harness.run_steps(4);
     assert_eq!(stored_height(&harness), None, "the reset forgets the height");
     assert_card_fills(&harness, 1_200.0);
-    let settings = AppSettings::load(&harness.state().services.paths.settings_file());
-    assert_eq!(settings.expect("settings").assistant.card_height, None, "saved");
+    assert_eq!(saved_settings(&harness).assistant.card_height, None, "saved");
 }
 
 const CARD_SPLITTER: &str = "Resize assistant conversation";
@@ -651,8 +642,7 @@ fn assistant_turned_off_in_settings_leaves_the_page_and_starts_nothing() {
     press(&mut harness, "Assistant");
     switch_assistant(&mut harness);
     assert!(!harness.state().services.settings.assistant.enabled);
-    let saved = AppSettings::load(&harness.state().services.paths.settings_file());
-    assert!(!saved.expect("settings").assistant.enabled, "saved");
+    assert!(!saved_settings(&harness).assistant.enabled, "saved");
     let model = harness.query_all_by_role(Role::ComboBox).next().expect("the Claude Code model");
     assert!(model.accesskit_node().is_disabled(), "the model rows read as inactive");
     // Settings looked for the CLIs while the assistant was on; from here on nothing may.

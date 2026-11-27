@@ -11,12 +11,12 @@ use egui::Role;
 use egui::accesskit::Toggled;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use review_store::{AppSettings, CommentEditor};
+use review_store::CommentEditor;
 use serde_json::{Value, json};
 
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, OwnComment, REPOSITORY, THREAD_TEXT, open_pull_request};
-use super::walkthrough::{app, press_button, settle_background, wait_until, wheel};
+use super::walkthrough::{app, press_button, saved_settings, settle_background, wait_until, wheel};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -124,8 +124,11 @@ fn editor_modes(harness: &mut Harness<'_, ReviewApp>) {
         mode_tab(harness, "Markdown").accesskit_node().toggled() == Some(Toggled::True)
             && has_editor(harness, KEPT)
     });
-    let saved = AppSettings::load(&harness.state().services.paths.settings_file()).expect("saved");
-    assert_eq!(saved.comment_editors.github, CommentEditor::Markdown, "the switch is saved");
+    assert_eq!(
+        saved_settings(harness).comment_editors.github,
+        CommentEditor::Markdown,
+        "the switch is saved"
+    );
     harness.click_at(mode_tab(harness, "Rich text").rect());
     wait_until(harness, "rich text again", |harness| {
         mode_tab(harness, "Rich text").accesskit_node().toggled() == Some(Toggled::True)

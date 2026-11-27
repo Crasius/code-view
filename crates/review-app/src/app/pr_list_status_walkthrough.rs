@@ -427,7 +427,7 @@ impl Respond for Responder {
 }
 
 struct Host {
-    _server: MockHost,
+    _mock: MockHost,
     scene: Arc<Scene>,
     paths: AppPaths,
     _scratch: ScratchDir,
@@ -436,11 +436,13 @@ struct Host {
 impl Host {
     fn start(name: &str, kind: ProviderKind, script: Script) -> Self {
         let scratch = ScratchDir::new(&format!("pr-list-status-{name}"));
-        let mut scene = Arc::default();
+        let mut built = None;
         let host = MockHost::start(|base_url| {
-            scene = Arc::new(Scene { base_url: base_url.to_owned(), ..Scene::default() });
-            Responder { scene: Arc::clone(&scene), script }
+            let scene = Arc::new(Scene { base_url: base_url.to_owned(), ..Scene::default() });
+            built = Some(Arc::clone(&scene));
+            Responder { scene, script }
         });
+        let scene = built.expect("the start built the responder");
         let organization = match kind {
             ProviderKind::GitHub => "acme",
             ProviderKind::GitLab => "group",
@@ -453,7 +455,7 @@ impl Host {
             ..samples::connection(&format!("status-{name}"), kind, &host.uri())
         };
         let paths = saved_paths(&scratch, &[connection]);
-        Self { _server: host, scene, paths, _scratch: scratch }
+        Self { _mock: host, scene, paths, _scratch: scratch }
     }
 
     fn harness(&self, width: f32) -> Harness<'static, ReviewApp> {

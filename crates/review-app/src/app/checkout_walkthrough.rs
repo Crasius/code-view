@@ -13,11 +13,10 @@ use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::AgentKind;
-use review_store::AppSettings;
 
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, open_pull_request};
-use super::walkthrough::{app, has, press, wait_until};
+use super::walkthrough::{app, has, press, saved_settings, wait_until};
 use cv_runtime::route::Route;
 use cv_services::agents::FakeCli;
 use cv_testkit::Clicks;
@@ -147,8 +146,7 @@ fn checkout_walkthrough_offers_runs_and_opens_claude_in_a_new_worktree() {
         harness.query_by_label("Open Claude Code").is_some(),
         "the split button opens it again"
     );
-    let settings =
-        AppSettings::load(&harness.state().services.paths.settings_file()).expect("saved settings");
+    let settings = saved_settings(&harness);
     assert_eq!(settings.checkouts.remembered.len(), 1, "the choice is remembered");
 
     // The menu: where it is, the tools, the folder and the path, removal, the log.
@@ -350,8 +348,7 @@ fn checkout_walkthrough_settings_section_lists_clones_folders_and_the_pattern() 
     wait_until(&mut harness, "the added folder", |harness| {
         has(harness, &added.display().to_string())
     });
-    let saved =
-        AppSettings::load(&harness.state().services.paths.settings_file()).expect("saved settings");
+    let saved = saved_settings(&harness);
     assert_eq!(saved.checkouts.search_folders, Some(vec![dev, added]));
 
     press(&mut harness, "Set up in Settings › Assistant");

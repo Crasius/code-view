@@ -11,7 +11,7 @@ use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::github_mock::{ExtraFile, GitHubHost, NUMBER, TITLE};
-use super::walkthrough::{app, wait_until, wait_until_unsettled};
+use super::walkthrough::{LIMIT, app, wait_until};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -86,13 +86,18 @@ fn open_path_latency() {
 fn time_to_files(harness: &mut Harness<'_, ReviewApp>) -> Duration {
     click_row(harness);
     let started = Instant::now();
-    wait_until_unsettled(harness, "the Files tab's count", |harness| {
-        harness
+    loop {
+        harness.step();
+        let is_listed = harness
             .query_by(|node| {
                 node.role() == Role::Tab
                     && node.label().is_some_and(|label| label.starts_with("Files ("))
             })
-            .is_some()
-    });
-    started.elapsed()
+            .is_some();
+        if is_listed {
+            return started.elapsed();
+        }
+        assert!(started.elapsed() < LIMIT, "the files never listed");
+        cv_testkit::let_threads_run(Duration::from_millis(1));
+    }
 }

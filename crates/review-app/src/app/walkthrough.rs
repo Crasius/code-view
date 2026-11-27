@@ -247,12 +247,14 @@ fn labelled<'h>(
 /// it as a mouse's does; returns its place in that frame, for the click. A fixed number of frames
 /// after the scroll proves none of that: the click would land on a disabled button, or past the
 /// window's edge where nothing takes it, and the test would wait for a request that never comes.
-/// The pointer moves before each frame, so the place is read from the frame the hover was in.
+/// The pointer moves before each frame, and a place counts only where it rested in that frame: a
+/// frame that scrolled hovered nothing, so the click never lands without a hover before it.
 fn when_ready(harness: &mut Harness<'_, ReviewApp>, label: &str, role: Option<Role>) -> Rect {
     wait_until(harness, label, |harness| labelled(harness, label, role).is_some());
     labelled(harness, label, role).expect("just found").scroll_to_me();
     settle(harness);
     let window = harness.ctx.content_rect();
+    let hovered = Cell::new(None);
     wait_for(
         harness,
         &format!("{label} to take a click"),
@@ -260,18 +262,21 @@ fn when_ready(harness: &mut Harness<'_, ReviewApp>, label: &str, role: Option<Ro
             let node = labelled(harness, label, role)?;
             let rect = node.rect();
             let is_enabled = !node.accesskit_node().is_disabled();
-            (is_enabled && window.contains(rect.center())).then_some(rect)
+            (is_enabled && hovered.get() == Some(rect.center())).then_some(rect)
         },
         |harness| {
-            let Some(node) = labelled(harness, label, role) else {
-                return;
-            };
-            let center = node.rect().center();
-            if window.contains(center) {
-                harness.hover_at(center);
-            } else {
+            let center = labelled(harness, label, role).and_then(|node| {
+                let center = node.rect().center();
+                if window.contains(center) {
+                    return Some(center);
+                }
                 node.scroll_to_me();
+                None
+            });
+            if let Some(center) = center {
+                harness.hover_at(center);
             }
+            hovered.set(center);
         },
     )
 }
