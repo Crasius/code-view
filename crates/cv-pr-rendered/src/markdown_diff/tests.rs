@@ -647,46 +647,6 @@ fn a_removal_wedge_opens_side_by_side() {
     assert_eq!(tops(&harness, REMOVED).len(), 1, "the removed block shows where the wedge was");
 }
 
-/// A block's comment button hands its source lines to the text diff: they are selected and a new
-/// comment opens on them, also when they sit in collapsed unchanged lines (shown first).
-#[test]
-fn a_blocks_lines_open_a_comment_in_the_text_diff() {
-    use cv_code::diff_rows::{Layout, RangeOwner};
-    use cv_pr_diff::diff_view::LineRequest;
-    use cv_pr_diff::testing::{Fixture, NEW, fixture, line_of, show_diff};
-    for (what, needle) in [
-        ("changed lines", "pub fn is_empty(&self) -> bool {"),
-        ("collapsed lines", "pub struct Item {"),
-    ] {
-        let first = line_of(NEW, needle);
-        let mut harness = Harness::builder()
-            .with_size([1180.0, 760.0])
-            .with_context_setup(theme::fonts::install)
-            .build_ui_state(
-                |ui, state: &mut Fixture| {
-                    theme::activate(ui.ctx(), state.theme);
-                    show_diff(ui, state);
-                },
-                fixture(Layout::SideBySide),
-            );
-        harness.run();
-        harness
-            .state_mut()
-            .view
-            .request_lines(LineRequest::Comment { side: DiffSide::New, lines: first..first + 3 });
-        harness.run();
-        let view = &harness.state().view;
-        assert!(view.composer().is_some(), "{what}: a new comment opened");
-        let draft = view
-            .range_rows()
-            .iter()
-            .find(|range| range.owner == RangeOwner::Draft)
-            .unwrap_or_else(|| panic!("{what}: the draft marks its lines"));
-        assert_eq!(draft.side, DiffSide::New, "{what}");
-        assert!(draft.end > draft.start, "{what}: several lines, {draft:?}");
-    }
-}
-
 /// The paragraph reading `text` sits at the same height on both sides.
 fn assert_lined_up(harness: &Harness<'_, Scene>, text: &str, what: &str) {
     let found = tops(harness, text);

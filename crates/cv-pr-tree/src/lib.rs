@@ -15,6 +15,8 @@
 
 mod category_filter;
 mod file_icon;
+#[cfg(test)]
+mod frame_budget;
 pub mod goto;
 mod model;
 mod progress;

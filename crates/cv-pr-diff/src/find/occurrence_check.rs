@@ -187,7 +187,7 @@ fn a_dragged_identifier_marks_its_occurrences_beside_the_find_hits() {
 
         drag(&mut harness, from, to);
         wait_for_occurrences(&mut harness);
-        harness.run_steps(2);
+        harness.run();
         let palette = theme::palette(&harness.ctx);
         let marks = last_marks(&harness.ctx);
         let occurrences: Vec<_> =

@@ -1,8 +1,7 @@
-//! The Files tab while a pull request's changes are prepared, with its live log: the tree
-//! skeleton beside the header, the step segments and the log, mid-fetch and after a failure.
-//! Checks that nothing moves while lines arrive, that git's progress overwrites its line, that
-//! no credential reaches the screen, and that the failure keeps its way out. No network, no
-//! tokens.
+//! The loading log while a pull request's changes are prepared: the header, the step segments
+//! and the log, mid-fetch and after a failure. Checks that nothing moves while lines arrive, that
+//! git's progress overwrites its line, that no credential reaches the screen, and that the
+//! failure keeps its way out. No network, no tokens.
 
 use cv_testkit::Clicks;
 use egui::{Rect, Role};
@@ -12,11 +11,9 @@ use review_core::ProviderKind;
 use review_git::{GitEvent, GitProgress};
 use review_store::ThemePreference;
 
+use crate::prepare_progress::{self, FailureAction, SharedProgress, Step};
 use cv_base::theme;
-use cv_pr_session::prepare_progress::{self, FailureAction, SharedProgress, Step};
-use cv_pr_tree::side_panel;
 
-const TREE_WIDTH: f32 = 300.0;
 const FAILURE: &str = "git failed: fatal: unable to access 'https://x-access-token:ghs_leaked0123456789@github.com/acme/shop.git/': The requested URL returned error: 403";
 
 struct Scene {
@@ -36,7 +33,6 @@ fn harness(theme: ThemePreference) -> Harness<'static, Scene> {
         |ui, scene: &mut Scene| {
             let palette = theme::activate(ui.ctx(), scene.theme);
             ui.painter().rect_filled(ui.max_rect(), 0, palette.ground);
-            side_panel::show_skeleton(ui, TREE_WIDTH, scene.failure.is_some());
             let open = (
                 cv_widgets::provider_icon::glyph(ProviderKind::GitHub),
                 "Open pull request on GitHub",
@@ -97,7 +93,7 @@ fn up_to_fetch(progress: &SharedProgress) {
     }));
 }
 
-/// The log's header ("Fetching commits and trees, step 4 of 6 · 1.2 s"), not the tree skeleton.
+/// The log's header ("Fetching commits and trees, step 4 of 6 · 1.2 s").
 fn header<'h>(harness: &'h Harness<'_, Scene>) -> egui_kittest::Node<'h> {
     harness
         .query_all_by_role(Role::ProgressIndicator)

@@ -21,6 +21,11 @@ use crate::testing::{
 /// A spot in the code area away from every wedge and popover.
 const AWAY: egui::Pos2 = egui::pos2(1000.0, 740.0);
 
+/// Steps of kittest's default 0.25 s that outlast the flash of a line jumped to
+/// (`flash::DURATION`); the flash repaints every frame, so [`settle`] alone would exceed its
+/// step limit.
+const FLASH_STEPS: usize = 12;
+
 fn wedge_labels(harness: &Harness<'_, Fixture>) -> Vec<String> {
     harness
         .query_all_by_role(Role::Button)
@@ -235,7 +240,7 @@ fn a_new_code_size_keeps_the_line_under_the_pointer() {
     assert!(under > 60, "the view scrolled down first: line {under} in the middle");
     let pointer = text_rect(harness.state(), under).center();
     harness.hover_at(pointer);
-    harness.run_steps(2);
+    harness.run();
 
     for size in [18.0, 13.0] {
         harness.state_mut().font_size = size;
@@ -276,7 +281,7 @@ fn wheel_down(harness: &mut Harness<'_, Fixture>, notches: usize) {
         });
         harness.step();
     }
-    harness.run_steps(30);
+    harness.run();
 }
 
 /// Where the text of `new_line` shows in the one pane.
@@ -376,6 +381,7 @@ fn jumping_to_a_hidden_comment_shows_it() {
     let mut harness = harness(fixture);
     settle(&mut harness);
     harness.state_mut().view.reveal_thread("new-line-thread");
+    harness.run_steps(FLASH_STEPS);
     settle(&mut harness);
     assert!(shows(&harness, NEW_LINE_BODY), "the thread jumped to shows");
     assert!(!shows(&harness, OLD_LINE_BODY), "the others stay hidden");
@@ -407,5 +413,47 @@ fn switching_comments_keeps_the_view_in_place() {
             "comments {}: line {watched} moved from {before:?} to {after:?}",
             if show { "shown" } else { "hidden" }
         );
+    }
+}
+
+/// A comment request for a range of head lines (what a rendered block's comment button sends)
+/// selects them and opens a new comment on them, also when they sit in collapsed unchanged lines
+/// (shown first).
+#[test]
+fn a_comment_request_selects_its_lines_and_opens_the_composer_also_in_collapsed_lines() {
+    use crate::diff_view::LineRequest;
+    use crate::testing::show_diff;
+    use cv_base::theme;
+    use cv_code::diff_rows::RangeOwner;
+    for (what, needle) in [
+        ("changed lines", "pub fn is_empty(&self) -> bool {"),
+        ("collapsed lines", "pub struct Item {"),
+    ] {
+        let first = line_of(NEW, needle);
+        let mut harness = Harness::builder()
+            .with_size([1180.0, 760.0])
+            .with_context_setup(theme::fonts::install)
+            .build_ui_state(
+                |ui, state: &mut Fixture| {
+                    theme::activate(ui.ctx(), state.theme);
+                    show_diff(ui, state);
+                },
+                fixture(Layout::SideBySide),
+            );
+        harness.run();
+        harness
+            .state_mut()
+            .view
+            .request_lines(LineRequest::Comment { side: DiffSide::New, lines: first..first + 3 });
+        harness.run();
+        let view = &harness.state().view;
+        assert!(view.composer().is_some(), "{what}: a new comment opened");
+        let draft = view
+            .range_rows()
+            .iter()
+            .find(|range| range.owner == RangeOwner::Draft)
+            .unwrap_or_else(|| panic!("{what}: the draft marks its lines"));
+        assert_eq!(draft.side, DiffSide::New, "{what}");
+        assert!(draft.end > draft.start, "{what}: several lines, {draft:?}");
     }
 }
