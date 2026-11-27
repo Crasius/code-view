@@ -21,6 +21,10 @@ use crate::testing::{
 /// A spot in the code area away from every wedge and popover.
 const AWAY: egui::Pos2 = egui::pos2(1000.0, 740.0);
 
+/// Frames of kittest's default 0.25 s through which lines jumped to flash: the flash runs 2.8 s
+/// (`flash::DURATION`), longer than [`settle`] steps.
+const FLASH_STEPS: usize = 12;
+
 fn wedge_labels(harness: &Harness<'_, Fixture>) -> Vec<String> {
     harness
         .query_all_by_role(Role::Button)
@@ -235,7 +239,7 @@ fn a_new_code_size_keeps_the_line_under_the_pointer() {
     assert!(under > 60, "the view scrolled down first: line {under} in the middle");
     let pointer = text_rect(harness.state(), under).center();
     harness.hover_at(pointer);
-    harness.run_steps(2);
+    harness.run();
 
     for size in [18.0, 13.0] {
         harness.state_mut().font_size = size;
@@ -276,7 +280,7 @@ fn wheel_down(harness: &mut Harness<'_, Fixture>, notches: usize) {
         });
         harness.step();
     }
-    harness.run_steps(30);
+    harness.run();
 }
 
 /// Where the text of `new_line` shows in the one pane.
@@ -376,6 +380,7 @@ fn jumping_to_a_hidden_comment_shows_it() {
     let mut harness = harness(fixture);
     settle(&mut harness);
     harness.state_mut().view.reveal_thread("new-line-thread");
+    harness.run_steps(FLASH_STEPS);
     settle(&mut harness);
     assert!(shows(&harness, NEW_LINE_BODY), "the thread jumped to shows");
     assert!(!shows(&harness, OLD_LINE_BODY), "the others stay hidden");

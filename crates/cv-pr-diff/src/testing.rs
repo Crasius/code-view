@@ -270,10 +270,12 @@ pub fn harness(fixture: Fixture) -> Harness<'static, Fixture> {
     harness_sized(fixture, [1180.0, 760.0])
 }
 
-/// [`harness`] with a window of another `size`.
+/// [`harness`] with a window of another `size`. Eight steps, 2 s simulated, cover the hover delay
+/// and the eased transitions; [`settle`] fails past them.
 pub fn harness_sized(fixture: Fixture, size: [f32; 2]) -> Harness<'static, Fixture> {
     Harness::builder()
         .with_size(size)
+        .with_max_steps(8)
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
             theme::motion::set_reduced(ctx, false);
@@ -298,9 +300,10 @@ pub fn show_diff(ui: &mut egui::Ui, state: &mut Fixture) {
     }
 }
 
-/// Steps long enough for hover delays and eased transitions to finish.
+/// Steps until no repaint is asked for; panics with the repaint causes when the view keeps asking
+/// past the harness's `max_steps`.
 pub fn settle<State>(harness: &mut Harness<'_, State>) {
-    harness.run_steps(6);
+    harness.run();
 }
 
 /// A click at `pos` with `modifiers` held (shift-click, ctrl-click).
