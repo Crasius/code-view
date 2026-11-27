@@ -25,18 +25,19 @@ use review_core::{
     Result, ReviewThread, ReviewVote, Reviewer, RunStatus, ThreadAnchor, ThreadComment,
     ThreadOrigin, ThreadStatus, Timestamp, UserIdentity,
 };
-use review_store::AppPaths;
+use review_store::{AppPaths, DiffLayout};
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::walkthrough::{
-    app_with, files_tab, has, press_role, pump, saved_paths, settle_background, shows_file_view,
-    tab_rect, wait_until, wait_until_still, wheel,
+    app_with, files_tab, has, press_role, pump, saved_paths, settle_background, shows,
+    shows_file_view, tab_rect, wait_until, wait_until_still, wheel,
 };
 use super::{ReviewApp, clip_check};
 use cv_base::platform::FOCUS_MODE_KEY;
 use cv_pr_diff::find::bar::last_bar as last_find_bar;
 use cv_runtime::route::{PullRequestKey, Route};
+use cv_shell::focus_mode::EXIT_HINT;
 use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{Clicks, ScratchDir, git, samples};
 
@@ -246,11 +247,17 @@ impl Audit {
         self.find_in_diff();
         let harness = &mut self.harness;
         harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "Inline").rect());
+        wait_until(harness, "the inline diff", |harness| {
+            harness.state().services.settings.diff_layout == DiffLayout::Inline
+        });
         wait_for_rest(harness);
         self.check("10-diff-inline");
         // The same diff with the file tree at the right edge.
         let harness = &mut self.harness;
         harness.click_at(harness.get_by_label("Move the file tree to the right").rect());
+        wait_until(harness, "the file tree at the right", |harness| {
+            shows(harness, "Move the file tree to the left")
+        });
         wait_for_rest(harness);
         self.check("10b-diff-inline-tree-right");
         let harness = &mut self.harness;
@@ -263,7 +270,7 @@ impl Audit {
         harness.key_press(egui::Key::Escape);
         wait_for_rest(harness);
         harness.key_press_modifiers(FOCUS_MODE_KEY.modifiers, FOCUS_MODE_KEY.logical_key);
-        wait_for_rest(harness);
+        wait_for_focus_mode(harness);
         self.check("12-focus-files");
         let harness = &mut self.harness;
         harness.key_press(egui::Key::Escape);
@@ -358,7 +365,7 @@ impl Audit {
         self.check("22-log");
         let harness = &mut self.harness;
         harness.key_press_modifiers(FOCUS_MODE_KEY.modifiers, FOCUS_MODE_KEY.logical_key);
-        wait_for_rest(harness);
+        wait_for_focus_mode(harness);
         self.check("23-focus-log");
         let harness = &mut self.harness;
         harness.key_press(egui::Key::Escape);
@@ -396,6 +403,9 @@ impl Audit {
         let harness = &mut self.harness;
         harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::K);
         harness.event(egui::Event::Text("fabrikam logistics".to_owned()));
+        wait_until(harness, "the search's results", |harness| {
+            shows(harness, &format!("!{NUMBER} {TITLE}"))
+        });
         wait_for_rest(harness);
         self.check("27-search");
         let harness = &mut self.harness;
@@ -404,7 +414,9 @@ impl Audit {
         let services = &mut harness.state_mut().services;
         let retry = cv_runtime::toasts::ToastAction::retry(egui::Id::unique("layout_audit.retry"));
         services.toasts.error(format!("Could not reach {REPOSITORY}: the connection to dev.azure.com was reset while the request was in flight."), retry);
-        services.toasts.success(format!("Rerun of {RETRIED_JOB} started."));
+        let rerun = format!("Rerun of {RETRIED_JOB} started.");
+        services.toasts.success(rerun.clone());
+        wait_until(harness, "the toasts", |harness| shows(harness, &rerun));
         wait_for_rest(harness);
         self.check("28-toasts");
         let harness = &mut self.harness;
@@ -501,6 +513,12 @@ fn harness(paths: AppPaths, fixture: Fixture) -> Harness<'static, ReviewApp> {
     clip_check::install(&harness.ctx);
     harness.state_mut().title_bar.integrate_for_test();
     harness
+}
+
+/// Waits until focus mode is on (its strip offers the way out) and the screen is at rest.
+fn wait_for_focus_mode(harness: &mut Harness<'_, ReviewApp>) {
+    wait_until(harness, "focus mode", |harness| shows(harness, EXIT_HINT));
+    wait_for_rest(harness);
 }
 
 /// Waits until no node on screen moved from one frame to the next: the state an audit inspects.

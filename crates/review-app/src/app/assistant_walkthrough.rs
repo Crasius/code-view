@@ -15,8 +15,8 @@ use super::assistant_script::{
 };
 use super::github_mock::{FILE, GitHubHost, TITLE, open_diff, open_pull_request};
 use super::walkthrough::{
-    app, click_now, hover_until, press, saved_settings, shows_file_view, type_into, wait_for,
-    wait_until, wheel,
+    app, click_now, hover_until, press, saved_settings, settle_background, shows_file_view,
+    type_into, wait_for, wait_until, wheel,
 };
 use cv_pr_assistant::CARD_LABEL;
 use cv_pr_assistant::mini::{self, ANSWERING, FOLLOW_UP};
@@ -891,10 +891,11 @@ fn draft_survives_switching_over_kept_conversations() {
     assert_eq!(composer_text(&harness), "And now?", "back to the running question");
     // Switching away ended the Codex CLI, and the kept conversation shows its question as stopped
     // (`cv_pr_assistant`, `show_conversation`); a failure the ended session still sends stays out.
-    codex.emit(AgentEvent::Failed(AgentError::Turn("Again denied.".into())));
     wait_until(&mut harness, "the question the switch stopped", |harness| {
         harness.query_by_label_contains("Stopped.").is_some()
     });
+    codex.emit(AgentEvent::Failed(AgentError::Turn("Again denied.".into())));
+    settle_background(&mut harness);
     assert!(
         harness.query_by_label_contains("Again denied.").is_none(),
         "the ended session's failure"

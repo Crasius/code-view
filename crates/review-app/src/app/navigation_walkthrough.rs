@@ -159,6 +159,7 @@ fn back_and_forward_through_tabs(harness: &mut Harness<'_, ReviewApp>) {
     // A new step clears forward: Alt+Right goes nowhere, the arrow rests disabled.
     click_tab(harness, "Commits", &on_tab(PullRequestTab::Commits));
     harness.key_press_modifiers(Modifiers::ALT, egui::Key::ArrowRight);
+    // The place shown already: the wait is the kit's settle on a place that must not change.
     wait_for_place(harness, &on_tab(PullRequestTab::Commits));
     let forward = harness.get_by_label_contains("Forward (");
     assert!(forward.accesskit_node().is_disabled(), "forward was cleared");
@@ -196,6 +197,7 @@ fn command_arrows_on_macos(harness: &mut Harness<'_, ReviewApp>, pull_request: &
     for modifiers in [command, Modifiers::ALT] {
         for arrow in [Key::ArrowLeft, Key::ArrowRight] {
             harness.key_press_modifiers(modifiers, arrow);
+            // The place shown already: the kit's settle on a place that must not change.
             wait_for_place(harness, &on_tab(PullRequestTab::Files));
         }
     }

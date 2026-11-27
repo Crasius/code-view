@@ -542,15 +542,19 @@ pub fn untold_elisions(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
 
 /// Whether the tooltip `tip` holds `text` in full. A tooltip is also the accessible description,
 /// so it tells an icon of `text` in words ([`super::a11y_check`]): "feature → main" reads
-/// "feature into main". The runs of `text` between its icons are looked for in `tip`, in order.
+/// "feature into main". The runs of `text` between its icons are looked for in `tip`, in order; a
+/// text of icons and blanks only has no words a tooltip could tell.
 fn tells(tip: &str, text: &str) -> bool {
     let mut rest = tip;
-    text.split(is_icon_glyph).map(str::trim).filter(|run| !run.is_empty()).all(|run| {
-        rest.find(run).is_some_and(|at| {
-            rest = &rest[at + run.len()..];
-            true
+    let mut runs =
+        text.split(is_icon_glyph).map(str::trim).filter(|run| !run.is_empty()).peekable();
+    runs.peek().is_some()
+        && runs.all(|run| {
+            rest.find(run).is_some_and(|at| {
+                rest = &rest[at + run.len()..];
+                true
+            })
         })
-    })
 }
 
 fn short(text: &str) -> String {
@@ -582,6 +586,8 @@ mod tests {
             ("!4  ·  feature into main", branches.as_str(), true),
             ("!4  ·  main into feature", branches.as_str(), false),
             ("!4  ·  feature", branches.as_str(), false),
+            ("Show this commit's changes", ARROW_RIGHT, false),
+            ("Show this commit's changes", " ", false),
         ];
         for (tip, text, is_told) in cases {
             assert_eq!(tells(tip, text), is_told, "{tip:?} tells {text:?}");

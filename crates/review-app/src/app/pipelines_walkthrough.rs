@@ -495,7 +495,6 @@ fn pipelines_gitlab_running_job_log_follows_the_job() {
     };
     let top_line = |harness: &Harness<'_, ReviewApp>| {
         cv_shell::focus_mode::top_line(&harness.ctx, cv_shell::focus_mode::Surface::Log)
-            .map_or(0, |(line, _)| line)
     };
     wait_until(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
     harness.click_at(harness.get_by_label("Pipelines").rect());
@@ -509,10 +508,10 @@ fn pipelines_gitlab_running_job_log_follows_the_job() {
     harness.click_at(harness.get_by_role_and_label(Role::Link, GL_JOB).rect());
 
     wait_until(&mut harness, "the live log", |harness| has(harness, "200 lines · live"));
-    let at_open = top_line(&harness);
+    let at_open = top_line(&harness).map_or(0, |(line, _)| line);
     assert!(at_open > 150, "a live log opens at its end, top line {at_open}");
     wait_until(&mut harness, "what the job added", |harness| has(harness, "250 lines · live"));
-    let followed = top_line(&harness);
+    let followed = top_line(&harness).map_or(0, |(line, _)| line);
     assert!(followed >= at_open + 50, "the view follows the end: {at_open} -> {followed}");
 
     // Scrolled up, the log keeps its place while it grows.
@@ -520,15 +519,10 @@ fn pipelines_gitlab_running_job_log_follows_the_job() {
     harness.event(wheel(2000.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
     // The wheel scrolls smoothly; once it settled the view stays where it went.
     let scrolled = wait_until_still(&mut harness, "the log scrolled up", |harness| {
-        cv_shell::focus_mode::top_line(&harness.ctx, cv_shell::focus_mode::Surface::Log)
-            .filter(|(line, _)| *line < followed)
+        top_line(harness).filter(|(line, _)| *line < followed)
     });
     wait_until(&mut harness, "more of the job", |harness| has(harness, "300 lines · live"));
-    assert_eq!(
-        cv_shell::focus_mode::top_line(&harness.ctx, cv_shell::focus_mode::Surface::Log),
-        Some(scrolled),
-        "no jump while scrolled up"
-    );
+    assert_eq!(top_line(&harness), Some(scrolled), "no jump while scrolled up");
 
     // The job finishes: its end comes once, then nothing more is fetched. A fetch while the log
     // was still live may already bring the end; the fetch for the end starts the frame the job
