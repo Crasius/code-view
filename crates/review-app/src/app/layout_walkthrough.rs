@@ -20,6 +20,7 @@ use review_core::{
 use review_store::{AppPaths, AppSettings, DiffLayout, PaneSizes, TreeSide};
 
 use super::ReviewApp;
+use super::github_mock::FolderBytes;
 use super::walkthrough::{
     app_with, saved_paths, saved_settings, settle_background, shows_file_view, shows_folder_view,
     wait_until,
@@ -47,7 +48,7 @@ struct Fixture {
 #[expect(clippy::too_many_lines, reason = "one walkthrough scenario, told step by step")]
 fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     let scratch = ScratchDir::new("layout");
-    let fixture = remote();
+    let fixture = remote(&scratch);
     let mut harness = harness(saved_paths(&scratch, &[connection(CONNECTION_ID)]), fixture);
 
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
@@ -255,7 +256,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
 fn folder_view_zooms_the_code_over_cards_and_the_app_elsewhere() {
     const FOLDER_ID: &str = "local-folder-zoom";
     let scratch = ScratchDir::new("folder-zoom");
-    let fixture = remote();
+    let fixture = remote(&scratch);
     let mut harness = harness(saved_paths(&scratch, &[connection(FOLDER_ID)]), fixture);
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: FOLDER_ID.to_owned(),
@@ -308,7 +309,7 @@ fn folder_view_zooms_the_code_over_cards_and_the_app_elsewhere() {
 fn switching_files_keeps_the_header_still_without_placeholders() {
     const SWITCH_ID: &str = "local-switch";
     let scratch = ScratchDir::new("switch");
-    let fixture = remote();
+    let fixture = remote(&scratch);
     let mut harness = harness(saved_paths(&scratch, &[connection(SWITCH_ID)]), fixture);
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: SWITCH_ID.to_owned(),
@@ -547,16 +548,17 @@ fn create_origin(origin: &Path) -> Fixture {
     Fixture { clone_url: cv_testkit::file_url(origin), target, head }
 }
 
-/// The origin of every test here, built once per test run: none pushes to it. The folder stays
-/// for the run; the next run's [`ScratchDir::new`] empties it.
-static REMOTE: LazyLock<(ScratchDir, Fixture)> = LazyLock::new(|| {
-    let folder = ScratchDir::new("layout-origin");
-    let fixture = create_origin(folder.path());
-    (folder, fixture)
-});
-
-fn remote() -> Fixture {
-    REMOTE.1.clone()
+/// The origin of a test in `scratch/origin`, which goes with `scratch`. Its repository is built
+/// once per test run and copied in as bytes: no test pushes to it.
+fn remote(scratch: &ScratchDir) -> Fixture {
+    static BUILT: LazyLock<(FolderBytes, Fixture)> = LazyLock::new(|| {
+        let folder = ScratchDir::new("layout-origin");
+        let fixture = create_origin(folder.path());
+        (FolderBytes::read(folder.path()), fixture)
+    });
+    let root = scratch.path().join("origin");
+    BUILT.0.write(&root);
+    Fixture { clone_url: cv_testkit::file_url(&root), ..BUILT.1.clone() }
 }
 
 /// The anonymous GitHub connection `id`.

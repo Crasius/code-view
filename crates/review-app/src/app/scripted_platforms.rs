@@ -13,6 +13,7 @@ use review_core::{
     RunningLogs, UserIdentity,
 };
 
+use super::github_mock::FolderBytes;
 use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{ScratchDir, git};
 
@@ -57,15 +58,17 @@ pub(super) struct Origin {
     pub(super) head: String,
 }
 
-/// The [`Origin`], built once per test run: no test pushes to it. The folder stays for the run;
-/// the next run's [`ScratchDir::new`] empties it.
-pub(super) fn origin() -> Origin {
-    static REMOTE: LazyLock<(ScratchDir, Origin)> = LazyLock::new(|| {
+/// The [`Origin`] in `scratch/origin`, which goes with `scratch`. Its repository is built once per
+/// test run and copied in as bytes: no test pushes to it.
+pub(super) fn origin(scratch: &ScratchDir) -> Origin {
+    static BUILT: LazyLock<(FolderBytes, Origin)> = LazyLock::new(|| {
         let folder = ScratchDir::new("scripted-origin");
         let origin = create_origin(folder.path());
-        (folder, origin)
+        (FolderBytes::read(folder.path()), origin)
     });
-    REMOTE.1.clone()
+    let root = scratch.path().join("origin");
+    BUILT.0.write(&root);
+    Origin { clone_url: cv_testkit::file_url(&root), ..BUILT.1.clone() }
 }
 
 fn create_origin(origin: &Path) -> Origin {

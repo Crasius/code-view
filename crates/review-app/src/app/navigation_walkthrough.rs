@@ -38,7 +38,7 @@ Upstream: https://github.com/acme/widgets/pull/61";
 #[test]
 fn navigation_breadcrumbs_back_and_linked_items() {
     let scratch = ScratchDir::new("navigation");
-    let origin = origin();
+    let origin = origin(&scratch);
     let linked_calls = Arc::new(AtomicUsize::new(0));
     let mut harness = harness(saved_paths(&scratch, &[connection()]), origin, linked_calls.clone());
 

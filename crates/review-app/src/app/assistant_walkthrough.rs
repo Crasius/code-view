@@ -222,7 +222,6 @@ fn assistant_terminal_button_opens_the_cli_in_the_checkout() {
         harness.query_by_label(TERMINAL).is_some()
             && harness.query_by_label_contains("haiku").is_some()
     });
-    harness.run_steps(10);
     let button = harness.get_by_label(TERMINAL);
     assert!(button.accesskit_node().is_disabled(), "no checkout yet");
     button.hover();

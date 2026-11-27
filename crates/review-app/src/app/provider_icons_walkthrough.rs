@@ -19,7 +19,7 @@ use cv_testkit::{Clicks, ScratchDir, samples};
 fn provider_icons_name_the_platform_everywhere() {
     let scratch = ScratchDir::new("provider-icons");
     // GitHub's pull requests come from a local repository, so its Files tab has a file.
-    let origin = origin();
+    let origin = origin(&scratch);
     let connections: Vec<Connection> = HOSTS
         .iter()
         .map(|&(id, name, kind, base_url, _, _)| Connection {

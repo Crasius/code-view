@@ -1070,7 +1070,7 @@ impl Origin {
     /// files earlier in this test run.
     fn create(scratch: &Path, files: &[ExtraFile]) -> Self {
         let template = Template::of(files);
-        template.write(scratch);
+        template.folder.write(scratch);
         Self {
             project_root: scratch.join("hosted"),
             work: scratch.join("work"),
@@ -1126,10 +1126,8 @@ impl Origin {
 struct Template {
     /// The extra files it was built with.
     files: Vec<ExtraFile>,
-    /// The folders, parents first, relative to the scratch folder.
-    folders: Vec<PathBuf>,
-    /// The files with their bytes, relative to the scratch folder.
-    contents: Vec<(PathBuf, Vec<u8>)>,
+    /// The scratch folder it was built in.
+    folder: FolderBytes,
     base: String,
     head: String,
 }
@@ -1145,25 +1143,41 @@ impl Template {
         }
         let scratch = ScratchDir::new("origin-template");
         let origin = Origin::build(scratch.path(), files);
-        let (mut folders, mut contents) = (Vec::new(), Vec::new());
-        read_tree(scratch.path(), Path::new(""), &mut folders, &mut contents);
         let template = Arc::new(Self {
             files: files.to_vec(),
-            folders,
-            contents,
+            folder: FolderBytes::read(scratch.path()),
             base: origin.base,
             head: origin.head,
         });
         templates.push(template.clone());
         template
     }
+}
 
-    fn write(&self, scratch: &Path) {
+/// A folder's subfolders and files as bytes. A repository built once per test run is kept this
+/// way and written into each test's own [`ScratchDir`], which removes it when the test ends.
+pub(super) struct FolderBytes {
+    /// The folders, parents first, relative to the root.
+    folders: Vec<PathBuf>,
+    /// The files with their bytes, relative to the root.
+    contents: Vec<(PathBuf, Vec<u8>)>,
+}
+
+impl FolderBytes {
+    pub(super) fn read(root: &Path) -> Self {
+        let (mut folders, mut contents) = (Vec::new(), Vec::new());
+        read_tree(root, Path::new(""), &mut folders, &mut contents);
+        Self { folders, contents }
+    }
+
+    /// Writes the folders and files below `root`, creating it when it is not there.
+    pub(super) fn write(&self, root: &Path) {
+        std::fs::create_dir_all(root).expect("a copy's root");
         for folder in &self.folders {
-            std::fs::create_dir_all(scratch.join(folder)).expect("a template folder");
+            std::fs::create_dir_all(root.join(folder)).expect("a copied folder");
         }
         for (file, bytes) in &self.contents {
-            std::fs::write(scratch.join(file), bytes).expect("a template file");
+            std::fs::write(root.join(file), bytes).expect("a copied file");
         }
     }
 }
