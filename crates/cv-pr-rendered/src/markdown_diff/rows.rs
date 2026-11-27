@@ -11,7 +11,7 @@ use review_core::{DiffSide, ReviewThread};
 use review_git::FULL_FILE_CONTEXT;
 
 use super::align::{Change, Pair};
-use super::model::{Cell, Look, Mode, Model, Row, slot};
+use super::model::{Cell, Look, MarkdownModel, Mode, Row, RowsKey, slot};
 use super::threads::{self, Placement, ThreadRow};
 use super::{MarkdownDiff, ROW_PAD, RenderedInputs};
 use cv_base::theme::style;
@@ -40,24 +40,31 @@ pub(super) enum Segment {
     Folded(Range<usize>),
 }
 
-/// The start of every frame of `diff`, in the file view and embedded: the model, its mode, the
-/// rows for it, and whether the banner over a diff without visible changes shows.
+/// The start of every frame of `diff`, in the file view and embedded: the loaded model, its mode,
+/// the rows for it, and whether the banner over a diff without visible changes shows.
 pub(super) fn begin_frame(
     diff: &mut MarkdownDiff,
     ctx: &egui::Context,
     inputs: &RenderedInputs<'_>,
-) -> (Arc<Model>, Mode, bool) {
-    let model = diff.ensure_model(inputs);
+) -> (Arc<MarkdownModel>, Mode, bool) {
+    let model = Arc::clone(inputs.model);
+    diff.ensure_model(&model);
     let mode = Mode::of(model.has_old, model.has_new, inputs.layout);
     diff.follow_thread_visibility(inputs.show_threads);
-    diff.ensure_rows(&model, mode, inputs.context, inputs.threads);
+    let key = RowsKey {
+        mode,
+        context: inputs.context,
+        expanded: diff.expanded_version,
+        threads: threads::threads_key(inputs.threads),
+    };
+    diff.ensure_rows(&model, key, inputs.threads);
     diff.cards.begin(ctx);
     let has_banner = model.has_old && model.has_new && diff.hunks.is_empty();
     (model, mode, has_banner)
 }
 
 pub(super) fn build(
-    model: &Model,
+    model: &MarkdownModel,
     mode: Mode,
     context: u32,
     expanded: &HashSet<usize>,
@@ -83,7 +90,10 @@ pub(super) fn build(
 }
 
 /// The row showing each unit of the old and of the new text.
-pub(super) fn unit_rows(rows: &[Row], model: &Model) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
+pub(super) fn unit_rows(
+    rows: &[Row],
+    model: &MarkdownModel,
+) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
     let (mut old_rows, mut new_rows) = (vec![None; model.old.len()], vec![None; model.new.len()]);
     for (index, row) in rows.iter().enumerate() {
         for cell in row.cells().into_iter().flatten() {
@@ -100,7 +110,7 @@ pub(super) fn unit_rows(rows: &[Row], model: &Model) -> (Vec<Option<usize>>, Vec
 /// line) and returns the threads in folds: (the fold's first pair, the thread's index).
 pub(super) fn place_threads(
     rows: &mut Vec<Row>,
-    model: &Model,
+    model: &MarkdownModel,
     threads: &[&ReviewThread],
 ) -> Vec<(usize, usize)> {
     if threads.is_empty() {
@@ -237,7 +247,7 @@ pub(super) fn push_pair(rows: &mut Vec<Row>, index: usize, pair: &Pair, mode: Mo
 
 /// The space above each row at zoom 1: the document's own spacing between two blocks (measured
 /// between the blocks of the same side, side by side), less the room inside the tints.
-pub(super) fn spaces(rows: &[Row], model: &Model, columns: bool) -> Vec<f32> {
+pub(super) fn spaces(rows: &[Row], model: &MarkdownModel, columns: bool) -> Vec<f32> {
     let mut spaces = Vec::with_capacity(rows.len());
     // The last block of each side, and the last block of any side (one column).
     let mut last: [Option<usize>; 2] = [None, None];

@@ -63,7 +63,8 @@ use self::find::{BarFrame, BlockFind, FindRows, panes};
 use self::heights::{RowHeights, outward};
 pub use self::inputs::{RenderedEvent, RenderedImages, RenderedInputs};
 use self::lanes::{Areas, Lanes, reading_column, reading_room};
-use self::model::{Cell, Mode, Model, Row};
+pub use self::model::MarkdownModel;
+use self::model::{Cell, Mode, Row, RowsKey};
 use self::rows::{begin_frame, build};
 use self::threads::{CardAction, ThreadRow, is_hidden};
 
@@ -120,7 +121,7 @@ struct Frame<'a> {
     id: Id,
     can_comment: bool,
     mode: Mode,
-    model: &'a Model,
+    model: &'a MarkdownModel,
     is_resizing: bool,
     /// The threads the rows were built for.
     threads: &'a [&'a ReviewThread],
@@ -130,10 +131,9 @@ struct Frame<'a> {
 
 #[derive(Default)]
 pub struct MarkdownDiff {
-    model: Option<Arc<Model>>,
+    model: Option<Arc<MarkdownModel>>,
     mode: Mode,
-    /// What `rows` were built from: the mode, the context, the folds opened and the threads.
-    rows_key: Option<(Mode, u32, u64, u64)>,
+    rows_key: Option<RowsKey>,
     rows: Vec<Row>,
     /// The ids of the threads the rows were built for, by the index thread rows hold.
     thread_ids: Vec<String>,
@@ -279,7 +279,7 @@ impl MarkdownDiff {
     }
 
     /// Places the find bar's hits among the rows and goes to the one it stepped to.
-    fn go_to_find(&mut self, ui: &Ui, bar: &BarFrame, model: &Model) {
+    fn go_to_find(&mut self, ui: &Ui, bar: &BarFrame, model: &MarkdownModel) {
         let rows = FindRows {
             key: self.rows_key,
             rows: &self.rows,
@@ -421,29 +421,25 @@ impl MarkdownDiff {
         }
     }
 
-    /// The texts parsed and lined up, once per pair of versions. New texts start at the top (or
+    /// The loaded `model` taken in, once per pair of versions. New texts start at the top (or
     /// where [`Self::reveal_line`] asked for).
-    fn ensure_model(&mut self, inputs: &RenderedInputs<'_>) -> Arc<Model> {
-        if let Some(model) = self.model.as_ref().filter(|model| model.key == inputs.key) {
-            return model.clone();
+    fn ensure_model(&mut self, model: &Arc<MarkdownModel>) {
+        if self.model.as_ref().is_some_and(|shown| shown.key == model.key) {
+            return;
         }
-        let model = Arc::new(Model::new(inputs));
         let pending = self.pending.take().unwrap_or(Place::Top);
         let viewport = self.viewport;
         *self = Self {
-            model: Some(model.clone()),
+            model: Some(Arc::clone(model)),
             pending: Some(pending),
             viewport,
             find: std::mem::take(&mut self.find),
             ..Self::default()
         };
-        model
     }
 
-    /// The rows for `mode`, `context`, the folds opened and `threads`; the block at the top of the
-    /// view stays there.
-    fn ensure_rows(&mut self, model: &Model, mode: Mode, context: u32, threads: &[&ReviewThread]) {
-        let key = (mode, context, self.expanded_version, threads::threads_key(threads));
+    /// The rows for `key`, built with `threads`; the block at the top of the view stays there.
+    fn ensure_rows(&mut self, model: &MarkdownModel, key: RowsKey, threads: &[&ReviewThread]) {
         if self.rows_key == Some(key) {
             return;
         }
@@ -451,7 +447,7 @@ impl MarkdownDiff {
             .rows_key
             .and_then(|_| self.top_unit())
             .map(|(_, side, unit, below_top)| Place::Unit { side, unit, below_top });
-        let built = build(model, mode, context, &self.expanded, threads);
+        let built = build(model, key.mode, key.context, &self.expanded, threads);
         self.heights.reset(built.rows.len());
         self.rows = built.rows;
         self.folded_threads = built.folded_threads;
@@ -465,7 +461,7 @@ impl MarkdownDiff {
         if self.pending.is_none() {
             self.pending = keep;
         }
-        self.mode = mode;
+        self.mode = key.mode;
         self.rows_key = Some(key);
     }
 
@@ -474,7 +470,7 @@ impl MarkdownDiff {
     fn layout(
         &mut self,
         ui: &mut Ui,
-        model: &Model,
+        model: &MarkdownModel,
         lanes: &Lanes,
         options: RenderOptions,
         view_height: f32,
@@ -514,7 +510,7 @@ impl MarkdownDiff {
     fn measure_near_view(
         &mut self,
         ui: &mut Ui,
-        model: &Model,
+        model: &MarkdownModel,
         lanes: &Lanes,
         options: RenderOptions,
         view_height: f32,
@@ -542,7 +538,7 @@ impl MarkdownDiff {
     fn measure_in_spare_time(
         &mut self,
         ui: &mut Ui,
-        model: &Model,
+        model: &MarkdownModel,
         lanes: &Lanes,
         options: RenderOptions,
         view_height: f32,
@@ -573,7 +569,7 @@ impl MarkdownDiff {
     }
 
     /// Row tops from the heights known; the row at the top of the view keeps its place on screen.
-    fn recompute_offsets(&mut self, model: &Model, lanes: &Lanes, scale: f32) {
+    fn recompute_offsets(&mut self, model: &MarkdownModel, lanes: &Lanes, scale: f32) {
         let anchor = self.heights.is_placed().then(|| self.anchor()).flatten();
         let (cards, ids, revealed) = (&self.cards, &self.thread_ids, &self.revealed);
         let show_threads = self.show_threads;
@@ -705,7 +701,7 @@ impl MarkdownDiff {
 
     /// Scrolls where [`Self::pending`] asks once the rows are placed. A line in a folded run opens
     /// the fold first and is placed in the next frame.
-    fn apply_pending(&mut self, model: &Model, view_height: f32) {
+    fn apply_pending(&mut self, model: &MarkdownModel, view_height: f32) {
         let Some(place) = self.pending.take() else {
             return;
         };
@@ -764,7 +760,7 @@ impl MarkdownDiff {
     /// with `open_fold`, then `None` until the rows are rebuilt), or New only's next row.
     fn row_of_unit(
         &mut self,
-        model: &Model,
+        model: &MarkdownModel,
         side: DiffSide,
         unit: usize,
         open_fold: bool,

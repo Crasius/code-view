@@ -4,7 +4,7 @@
 //! summary's own scroll area moving it.
 //!
 //! The two versions load from the mirror for the cards that want them, a few at a time, as the
-//! diffs do. A bounded least-recently-shown cache keeps the loaded cards; one dropped keeps its
+//! diffs do; the load also parses and lines them up, and a card shows its placeholder until then. A bounded least-recently-shown cache keeps the loaded cards; one dropped keeps its
 //! measured height in the summary, so the cards do not move when it loads again.
 
 use std::collections::HashMap;
@@ -20,7 +20,7 @@ use super::layout::{self, Geometry};
 use super::{FolderSummary, SummaryInputs};
 use cv_code::compaction::SUMMARY_CONTEXT;
 use cv_pr_rendered::markdown_diff::embedded::{self, Embedding};
-use cv_pr_rendered::markdown_diff::{MarkdownDiff, RenderedInputs};
+use cv_pr_rendered::markdown_diff::{MarkdownDiff, MarkdownModel, RenderedInputs};
 use cv_pr_rendered::preview;
 use cv_pr_rendered::preview::Loaded;
 use cv_pr_threads::ThreadsUi;
@@ -124,9 +124,9 @@ impl RenderedCards {
         }
     }
 
-    /// `path`'s card once its versions are there, marked as shown in `frame`.
+    /// `path`'s card once its versions are there, lined up, marked as shown in `frame`.
     pub fn show(&mut self, path: &str, frame: u64) -> Option<&mut RenderedCard> {
-        let card = self.cards.get_mut(path).filter(|card| card.content.ready().is_some())?;
+        let card = self.cards.get_mut(path).filter(|card| card.model().is_some())?;
         card.last_shown = frame;
         Some(card)
     }
@@ -147,6 +147,11 @@ impl RenderedCards {
 }
 
 impl RenderedCard {
+    /// The versions parsed and lined up, once their load built them.
+    fn model(&self) -> Option<Arc<MarkdownModel>> {
+        self.content.ready().and_then(|loaded| loaded.model.clone())
+    }
+
     /// Lays the card's blocks near the view out without painting them (see
     /// [`embedded::prepare`]); returns their height and where they want the view.
     pub fn prepare(
@@ -157,11 +162,11 @@ impl RenderedCard {
         width: f32,
         view: Rect,
     ) -> (f32, Option<f32>) {
-        let Some(loaded) = self.content.ready().cloned() else {
+        let Some(model) = self.model() else {
             return (embedded::height(&self.view), None);
         };
         let embedding = embedding(frame, origin, width, view);
-        embedded::prepare(&mut self.view, ui, &inputs(&loaded, frame), &embedding);
+        embedded::prepare(&mut self.view, ui, &inputs(&model, frame), &embedding);
         (embedded::height(&self.view), embedded::take_scroll_request(&mut self.view))
     }
 
@@ -175,10 +180,10 @@ impl RenderedCard {
         threads_ui: &mut ThreadsUi,
     ) -> CodeOutput {
         let mut event = None;
-        if let Some(loaded) = self.content.ready().cloned() {
+        if let Some(model) = self.model() {
             // The whole visible part of the summary: where the view's top is matters, not the card's.
             let embedding = embedding(frame, body.min, body.width(), ui.clip_rect());
-            let inputs = inputs(&loaded, frame);
+            let inputs = inputs(&model, frame);
             event = ui
                 .scope_builder(UiBuilder::new().max_rect(body), |ui| {
                     ui.set_clip_rect(clip);
@@ -213,13 +218,10 @@ fn embedding(frame: &RenderedFrame<'_>, origin: egui::Pos2, width: f32, view: Re
 
 /// The card's rendered diff as the file view would show it, in the summary's layout (New only
 /// shows inline here, as the cards' code does).
-fn inputs<'a>(loaded: &'a Loaded, frame: &RenderedFrame<'a>) -> RenderedInputs<'a> {
-    let (key, old, new, images) = loaded.rendered(frame.file);
+fn inputs<'a>(model: &'a Arc<MarkdownModel>, frame: &RenderedFrame<'a>) -> RenderedInputs<'a> {
     let inputs = frame.inputs;
     RenderedInputs {
-        key,
-        old,
-        new,
+        model,
         platform: inputs.platform,
         layout: if frame.is_split { DiffLayout::SideBySide } else { DiffLayout::Inline },
         // The folder's compact context, as its line cards keep, whatever the file view keeps.
@@ -227,7 +229,6 @@ fn inputs<'a>(loaded: &'a Loaded, frame: &RenderedFrame<'a>) -> RenderedInputs<'
         // The rendered file follows the code zoom, like the cards' code.
         scale: inputs.font_size / AppSettings::DEFAULT_CODE_FONT_SIZE,
         can_comment: inputs.can_comment,
-        images,
         threads: frame.threads,
         show_threads: inputs.show_threads,
     }

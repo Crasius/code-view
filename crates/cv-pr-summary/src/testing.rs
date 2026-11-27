@@ -137,6 +137,8 @@ pub(super) struct FakeSource {
     pub rendered: Vec<String>,
     /// The Markdown versions a rendered card loads, forty sections every third edited unless set.
     pub versions: Option<(String, String)>,
+    /// Set: a rendered card's versions arrive without their model.
+    pub without_model: bool,
     /// Set: every diff load starts on this runtime and never finishes.
     pub hangs_on: Option<Background>,
     cache: HashMap<String, Arc<FileDiff>>,
@@ -167,7 +169,11 @@ impl DiffSource for FakeSource {
     fn start_rendered(&mut self, file: &ChangedFile) -> Option<Load<Arc<Loaded>>> {
         self.rendered.push(file.path.clone());
         let (old, new) = self.versions.clone().unwrap_or_else(|| markdown_versions(40));
-        Some(Load::Ready(Arc::new(Loaded::markdown(Some(&old), Some(&new)))))
+        let mut loaded = Loaded::markdown(file, Some(&old), Some(&new), ProviderKind::GitHub);
+        if self.without_model {
+            loaded.model = None;
+        }
+        Some(Load::Ready(Arc::new(loaded)))
     }
 
     fn spans(&mut self, _: &ChangedFile) -> Option<Arc<LineSpans>> {

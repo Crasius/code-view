@@ -11,7 +11,7 @@ use review_core::DiffSide;
 
 use super::ROW_PAD;
 use super::lanes::Lanes;
-use super::model::{Cell, Model, Row};
+use super::model::{Cell, MarkdownModel, Row};
 use super::threads::ThreadRow;
 use cv_markdown::RenderOptions;
 
@@ -119,7 +119,7 @@ impl RowHeights {
     pub fn measure(
         &mut self,
         ui: &mut Ui,
-        model: &Model,
+        model: &MarkdownModel,
         lanes: &Lanes,
         options: RenderOptions,
         cells: [Option<Cell>; 2],
@@ -160,7 +160,7 @@ impl RowHeights {
         &mut self,
         rows: &[Row],
         spaces: &[f32],
-        model: &Model,
+        model: &MarkdownModel,
         lanes: &Lanes,
         scale: f32,
         card: impl Fn(&ThreadRow) -> f32,
@@ -188,7 +188,13 @@ impl RowHeights {
 
     /// A block row's height: its taller block's, measured or estimated (then not fresh), with the
     /// room inside its tint.
-    fn blocks_height(&self, row: &Row, model: &Model, lanes: &Lanes, scale: f32) -> (f32, bool) {
+    fn blocks_height(
+        &self,
+        row: &Row,
+        model: &MarkdownModel,
+        lanes: &Lanes,
+        scale: f32,
+    ) -> (f32, bool) {
         let mut fresh = true;
         let mut text = 0.0_f32;
         for cell in row.cells().into_iter().flatten() {
