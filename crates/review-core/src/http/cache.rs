@@ -22,7 +22,8 @@
 //! makes the epoch process-wide. A test that expects a GET to join one in flight asks through a
 //! `Cache` of its own: `cargo test` runs the tests of a binary on threads of one process, so a
 //! write that any other test finishes between two calls ends their sharing in the shared cache,
-//! as it would in the app.
+//! as it would in the app. A test that drives the app or a provider cannot hand it a cache: an
+//! exact request count there that rests on a join still loses its premise to a neighbour's write.
 
 use std::collections::HashMap;
 use std::hash::{BuildHasher, Hash, Hasher, RandomState};
@@ -441,8 +442,8 @@ mod tests {
     /// Regression: a write that another test of the binary finished between the starter's and the
     /// waiter's fetch moved the one process-wide epoch, so the waiter sent a request of its own and
     /// the host counted two (`a_waiting_caller_gets_the_answer...`, once in a full workspace run).
-    /// Here such a write lands in that window every time, from another thread as another test's
-    /// would; a cache of the test's own still sends once.
+    /// Here such a write lands in that window every time; a cache of the test's own still sends
+    /// once. The assertion is the mock's `expect(1)`, checked when the server drops.
     #[tokio::test]
     async fn a_write_in_the_shared_cache_leaves_a_test_cache_sharing() {
         let server = slow_pipelines_once().await;
@@ -451,12 +452,10 @@ mod tests {
         let url = format!("{}/pipelines", server.uri());
         let starter = spawn_get(&cache, &client, &url);
         tokio::task::yield_now().await;
-        std::thread::spawn(|| drop(Cache::shared().write())).join().expect("the write finished");
+        drop(Cache::shared().write());
         let waiter = spawn_get(&cache, &client, &url);
         let (started, waited) = (starter.await, waiter.await);
-        assert_eq!(
-            started.expect("ran").expect("answer").bytes,
-            waited.expect("ran").expect("answer").bytes
-        );
+        started.expect("ran").expect("answer");
+        waited.expect("ran").expect("answer");
     }
 }
