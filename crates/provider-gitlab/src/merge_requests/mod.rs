@@ -175,16 +175,21 @@ pub(crate) fn repository_key(merge_request: &MergeRequestDto, web_root: &str) ->
     from_url.unwrap_or_else(|| merge_request.project_id.to_string())
 }
 
+/// A merge request's `state` (`opened`, `closed`, `locked`, `merged`); `locked` is still open.
+pub(crate) fn pull_request_state(state: &str) -> PullRequestState {
+    match state {
+        "merged" => PullRequestState::Merged,
+        "closed" => PullRequestState::Closed,
+        _ => PullRequestState::Open,
+    }
+}
+
 pub(crate) fn to_summary(
     merge_request: MergeRequestDto,
     repository_key: String,
 ) -> PullRequestSummary {
     let repository_name = repository_key.rsplit('/').next().unwrap_or(&repository_key).to_owned();
-    let state = match merge_request.state.as_str() {
-        "merged" => PullRequestState::Merged,
-        "closed" => PullRequestState::Closed,
-        _ => PullRequestState::Open,
-    };
+    let state = pull_request_state(&merge_request.state);
     PullRequestSummary {
         repository_key,
         repository_name,

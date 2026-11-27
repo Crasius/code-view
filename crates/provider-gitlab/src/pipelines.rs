@@ -10,7 +10,7 @@ use reqwest::Method;
 use review_core::{PipelineJob, PipelineRun, ProviderError, RerunAction, RerunKind, Result, http};
 use serde::Deserialize;
 use serde_json::json;
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::io::AsyncWrite;
 
 use crate::client::{ApiClient, merge_request_path};
 use crate::dto::{CommitStatusDto, JobDto, PipelineDto};
@@ -238,12 +238,7 @@ pub(crate) async fn download_log(
     let (project_id, job_id) = parse_log_id(log_id)?;
     let request =
         client.request(Method::GET, &format!("/projects/{project_id}/jobs/{job_id}/trace"));
-    let mut response = client.send(request).await?;
-    while let Some(chunk) = response.chunk().await? {
-        sink.write_all(&chunk).await?;
-    }
-    sink.flush().await?;
-    Ok(())
+    http::copy_body(client.send(request).await?, sink).await
 }
 
 /// `Some((project, pipeline))` for pipeline runs, `None` for external statuses (no jobs).
