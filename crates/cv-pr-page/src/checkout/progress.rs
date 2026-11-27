@@ -17,7 +17,7 @@ const SEGMENT_GAP: f32 = 4.0;
 const STEP_HEIGHT: f32 = 24.0;
 const LOG_HEIGHT: f32 = 180.0;
 
-pub(super) fn running(ui: &mut Ui, job: &Job) -> Option<Act> {
+pub(super) fn running(ui: &mut Ui, job: &Job, is_log_open: &mut bool) -> Option<Act> {
     let progress = job.progress();
     let now = Instant::now();
     let palette = theme::palette(ui.ctx());
@@ -31,18 +31,16 @@ pub(super) fn running(ui: &mut Ui, job: &Job) -> Option<Act> {
     segments(ui, &progress);
     steps(ui, &progress, now);
     let mut act = None;
-    let open_id = ui.scope_id().with("checkout_log_open");
-    let is_open = ui.data(|data| data.get_temp::<bool>(open_id)).unwrap_or(false);
     ui.horizontal(|ui| {
-        let caret = if is_open { icons::CARET_DOWN } else { icons::CARET_RIGHT };
+        let caret = if *is_log_open { icons::CARET_DOWN } else { icons::CARET_RIGHT };
         if buttons::subtle(ui, caret, "Log").clicked() {
-            ui.data_mut(|data| data.insert_temp(open_id, !is_open));
+            *is_log_open = !*is_log_open;
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             progress_log::copy_button(ui, &progress.log);
         });
     });
-    if is_open {
+    if *is_log_open {
         let panel = progress_log::Panel {
             id_salt: "checkout_log",
             name: "Checkout log",

@@ -10,8 +10,9 @@ use review_git::checkout::{Blocked, Survey};
 use review_store::checkouts::{CheckoutRecord, OpenWith};
 
 use super::choose::folder_name;
-use super::{Act, Section, View, progress, settings_link};
+use super::{Act, View, progress, settings_link};
 use cv_base::theme::{self, icons, style};
+use cv_runtime::intents::SettingsSection;
 use cv_services::checkouts::{Failure, FolderPurpose, Job, RemovalState, Status, plural, reason};
 use cv_widgets::buttons;
 use cv_widgets::progress_log::{self, redact};
@@ -100,7 +101,7 @@ pub(super) fn no_clone(
     has_mirror: bool,
 ) -> Option<Act> {
     let palette = theme::palette(ui.ctx());
-    let title = format!("Code View knows no clone of {}", view.repository);
+    let title = format!("Code View knows no clone of {}", view.key.repository_key);
     head(ui, "NO LOCAL CLONE FOUND", &title, palette.text_secondary);
     body(
         ui,
@@ -111,7 +112,7 @@ pub(super) fn no_clone(
             RichText::new(format!(
                 "{} is not a clone of {}. Pick the folder that holds its .git folder.",
                 picked.display(),
-                view.repository
+                view.key.repository_key
             ))
             .color(palette.error),
         );
@@ -141,7 +142,11 @@ pub(super) fn no_clone(
         });
     });
     act.or_else(|| {
-        settings_link(ui, "Search folders in Settings › Local checkouts", Section::LocalCheckouts)
+        settings_link(
+            ui,
+            "Search folders in Settings › Local checkouts",
+            SettingsSection::LocalCheckouts,
+        )
     })
 }
 
@@ -180,19 +185,20 @@ pub(super) fn fork(ui: &mut Ui, view: &View<'_>, survey: &Survey) -> Option<Act>
 /// A checkout that stopped: the card of its reason, or git's failure with the steps and the log.
 pub(super) fn failed(ui: &mut Ui, view: &View<'_>, job: &Job, failure: &Failure) -> Option<Act> {
     match failure {
-        Failure::Dirty(files) => return dirty(ui, &job.plan.clone, files),
-        Failure::CheckedOut(path) => return checked_out(ui, path),
+        Failure::Dirty(files) => dirty(ui, &job.plan.clone, files),
+        Failure::CheckedOut(path) => checked_out(ui, path),
         Failure::Cancelled => {
             let palette = theme::palette(ui.ctx());
             head(ui, "CANCELLED", "The checkout was cancelled", palette.text_secondary);
             body(ui, "What it had made is removed again.");
-            return two_buttons(ui, ("Check out again", Act::Dismiss), ("Close", Act::Close));
+            two_buttons(ui, ("Check out again", Act::Dismiss), ("Close", Act::Close))
         }
-        Failure::Git { .. } => {}
+        Failure::Git { title, message } => git_failed(ui, view, job, title, message),
     }
-    let Failure::Git { title, message } = failure else {
-        return None;
-    };
+}
+
+/// git failed: its title and message, the steps and the log, with Retry.
+fn git_failed(ui: &mut Ui, view: &View<'_>, job: &Job, title: &str, message: &str) -> Option<Act> {
     let palette = theme::palette(ui.ctx());
     head(ui, "FAILED", title, palette.error);
     let progress = job.progress();

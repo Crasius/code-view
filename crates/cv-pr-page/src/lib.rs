@@ -96,8 +96,7 @@ impl PullRequestPage {
             .map_or(review_core::ProviderKind::GitHub, |connection| connection.kind);
         let threads = ThreadsUi::new(&key, kind, services);
         let assistant = Assistant::new(&key, services);
-        let session =
-            PullRequestSession::open(key.clone(), services).map_err(|error| error.to_string());
+        let session = open_session(&key, services);
         let tab = files.last_tab().map_or_else(|| start_tab(services), tab_of);
         Self {
             key,
@@ -198,12 +197,14 @@ impl PullRequestPage {
             has_vote_text,
             checkout,
         } = self;
-        if session.is_err() {
-            failed_page(ui, services, key, session);
-            return;
-        }
-        let Ok(session) = session else {
-            return;
+        let session = match session {
+            Ok(session) => session,
+            Err(message) => {
+                if failed_page(ui, services, key, message) {
+                    *session = open_session(key, services);
+                }
+                return;
+            }
         };
         let ctx = ui.ctx().clone();
         let now = ui.input(|input| input.time);
@@ -454,17 +455,22 @@ impl TabParts<'_> {
     }
 }
 
-/// The page when the pull request could not be opened: the reason, Retry (opens it again), the
-/// connection check and the pull request on its platform.
+/// The session of the pull request, or why it could not be opened.
+fn open_session(
+    key: &PullRequestKey,
+    services: &mut Services,
+) -> Result<PullRequestSession, String> {
+    PullRequestSession::open(key.clone(), services).map_err(|error| error.to_string())
+}
+
+/// The page when the pull request could not be opened: the reason, Retry, the connection check
+/// and the pull request on its platform; true when Retry was picked, to open it again.
 fn failed_page(
     ui: &mut egui::Ui,
-    services: &mut Services,
+    services: &Services,
     key: &PullRequestKey,
-    session: &mut Result<PullRequestSession, String>,
-) {
-    let Err(message) = session else {
-        return;
-    };
+    message: &str,
+) -> bool {
     let web_url = services.connection(&key.connection_id).map(|connection| {
         (connection.kind, pull_request_link::web_url(connection, &key.repository_key, key.number))
     });
@@ -482,10 +488,7 @@ fn failed_page(
         .show(ui, |ui| states::error_with_actions(ui, message, &actions))
         .inner;
     match picked {
-        Some(0) => {
-            *session =
-                PullRequestSession::open(key.clone(), services).map_err(|error| error.to_string());
-        }
+        Some(0) => return true,
         Some(1) => intents::request_fix(ui.ctx(), &key.connection_id),
         Some(_) => {
             if let Some((_, url)) = &web_url {
@@ -494,6 +497,7 @@ fn failed_page(
         }
         None => {}
     }
+    false
 }
 
 /// A finished write reloads what it changed.

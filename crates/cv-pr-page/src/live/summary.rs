@@ -27,8 +27,8 @@ pub struct ChangeSummary {
     pub new_commits: usize,
     /// Who wrote those commits, each once, newest first.
     pub commit_authors: Vec<String>,
-    /// (comment id, author) of comments that were not there before, oldest first.
-    pub new_comments: Vec<(String, String)>,
+    /// The author of each comment that was not there before, oldest first.
+    pub new_comment_authors: Vec<String>,
     pub reviews_changed: bool,
     pub threads_resolved: bool,
     /// Title, description or labels.
@@ -59,13 +59,13 @@ pub fn describe(
         .flat_map(|thread| &thread.comments)
         .map(|comment| comment.id.as_str())
         .collect();
-    let new_comments = newer
+    let new_comment_authors = newer
         .threads
         .iter()
         .filter(|thread| !thread.is_system)
         .flat_map(|thread| &thread.comments)
         .filter(|comment| !known_comments.contains(comment.id.as_str()))
-        .map(|comment| (comment.id.clone(), comment.author.display_name.clone()))
+        .map(|comment| comment.author.display_name.clone())
         .collect();
     let mut commit_authors: Vec<String> = Vec::new();
     for commit in commits {
@@ -110,7 +110,7 @@ pub fn describe(
         force_pushed: force_pushed && old.head_sha != new.head_sha,
         new_commits: commits.len(),
         commit_authors,
-        new_comments,
+        new_comment_authors,
         reviews_changed: votes(old) != votes(new),
         threads_resolved,
         details_changed,
@@ -141,11 +141,11 @@ impl ChangeSummary {
             let force = if self.force_pushed { " (force-pushed)" } else { "" };
             parts.push(format!("{commits}{}{force}", by(&self.commit_authors)));
         }
-        if !self.new_comments.is_empty() {
-            let count = self.new_comments.len();
+        if !self.new_comment_authors.is_empty() {
+            let count = self.new_comment_authors.len();
             let noun = if count == 1 { "comment" } else { "comments" };
             let mut authors: Vec<String> = Vec::new();
-            for (_, author) in &self.new_comments {
+            for author in &self.new_comment_authors {
                 if !authors.contains(author) {
                     authors.push(author.clone());
                 }
@@ -189,9 +189,9 @@ fn by(names: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use cv_pr_threads::samples;
     use review_core::{
-        DiffStat, MergeStatus, PullRequestSummary, ReviewVote, Reviewer, ThreadComment,
-        ThreadStatus, UserIdentity,
+        DiffStat, MergeStatus, PullRequestSummary, ReviewVote, Reviewer, ThreadStatus, UserIdentity,
     };
     use time::OffsetDateTime;
 
@@ -230,29 +230,11 @@ mod tests {
     }
 
     fn thread(id: &str, comments: &[(&str, &str)]) -> ReviewThread {
-        ReviewThread {
-            id: id.into(),
-            status: ThreadStatus::Active,
-            anchor: None,
-            is_outdated: false,
-            origin: None,
-            is_system: false,
-            can_reply: true,
-            can_resolve: true,
-            comments: comments
-                .iter()
-                .map(|(id, author)| ThreadComment {
-                    id: (*id).into(),
-                    author: UserIdentity {
-                        display_name: (*author).into(),
-                        ..UserIdentity::default()
-                    },
-                    body: "Text".into(),
-                    created_at: OffsetDateTime::UNIX_EPOCH,
-                    updated_at: None,
-                })
-                .collect(),
-        }
+        let comments = comments
+            .iter()
+            .map(|(id, author)| samples::comment(id, &samples::person(author, author), 0, "Text"))
+            .collect();
+        samples::thread(id, ThreadStatus::Active, None, comments)
     }
 
     fn commit(author: &str) -> CommitInfo {
@@ -296,10 +278,6 @@ mod tests {
             &PageData { detail: &detail, threads: &newer },
             &[],
             false,
-        );
-        assert_eq!(
-            summary.new_comments.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
-            ["c2", "c3"]
         );
         assert_eq!(summary.parts(), ["2 new comments by Ben"]);
         assert_eq!(summary.title(), "New activity on this pull request");

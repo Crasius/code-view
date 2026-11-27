@@ -26,9 +26,9 @@ use review_store::checkouts::{
     CheckoutKind, CheckoutPlace, CheckoutRecord, CheckoutSettings, OpenWith, RememberedCheckout,
 };
 
-use self::face::face;
+use self::face::{Face, face};
 pub use self::face::{chip, chip_width};
-use cv_base::theme::{icons, style};
+use cv_base::theme::style;
 use cv_pr_session::session::PullRequestSession;
 use cv_runtime::intents::{self, SettingsSection};
 use cv_runtime::route::PullRequestKey;
@@ -81,6 +81,8 @@ pub struct CheckoutButton {
     opens: bool,
     /// An update by hand runs; when it changes nothing, the popover says why.
     awaits_update: bool,
+    /// The running checkout's "Log" fold is open.
+    is_log_open: bool,
 }
 
 /// What a click in the button, its popover or its menu asks for.
@@ -103,21 +105,13 @@ enum Act {
     ShowLog,
     AskRemove,
     CopyPath(PathBuf),
-    Settings(Section),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Section {
-    Assistant,
-    LocalCheckouts,
+    Settings(SettingsSection),
 }
 
 /// What the page knows that the button needs.
 struct View<'a> {
     key: &'a PullRequestKey,
     detail: &'a PullRequestDetail,
-    /// The repository's name ("acme/login-app").
-    repository: &'a str,
     /// Agents whose CLI is installed.
     agents: [(AgentKind, bool); 2],
     settings: &'a CheckoutSettings,
@@ -130,13 +124,7 @@ impl<'a> View<'a> {
         agents: [(AgentKind, bool); 2],
         services: &'a Services,
     ) -> Self {
-        Self {
-            key,
-            detail,
-            repository: &key.repository_key,
-            agents,
-            settings: &services.settings.checkouts,
-        }
+        Self { key, detail, agents, settings: &services.settings.checkouts }
     }
 }
 
@@ -157,10 +145,9 @@ impl CheckoutButton {
         let key = &session.key;
         let agents = agents(ui.ctx(), services);
         let compact = ui.available_width() < COMPACT_BELOW;
-        let record = services.checkouts.record(key).cloned();
         let popover = popover_id(key);
         let was_open = egui::Popup::is_id_open(ui.ctx(), popover);
-        let (anchor, mut act, toggled) = match &record {
+        let (anchor, mut act, toggled) = match services.checkouts.record(key) {
             Some(record) if services.checkouts.job(key).is_none() => {
                 let status = services.checkouts.status(key);
                 let view = View::new(key, detail, agents, services);
@@ -185,7 +172,8 @@ impl CheckoutButton {
             None
         };
         if command.is_some() && !was_open {
-            self.opening(key, detail, record.as_ref(), session, services);
+            let has_record = services.checkouts.record(key).is_some();
+            self.opening(key, detail, has_record, session, services);
         }
         let has_mirror = session.mirror.ready().is_some();
         let shown = egui::Popup::new(popover, ui.ctx().clone(), anchor, ui.layer_id())
@@ -202,7 +190,8 @@ impl CheckoutButton {
                     is_asking_folder: services.checkouts.is_asking_folder(),
                     has_mirror,
                 };
-                self.popover(ui, &View::new(key, detail, agents, services), record.as_ref(), &reads)
+                let record = services.checkouts.record(key);
+                self.popover(ui, &View::new(key, detail, agents, services), record, &reads)
             });
         match shown {
             Some(inner) => act = act.or(inner.inner),
@@ -226,11 +215,11 @@ impl CheckoutButton {
         &mut self,
         key: &PullRequestKey,
         detail: &PullRequestDetail,
-        record: Option<&CheckoutRecord>,
+        has_record: bool,
         session: &PullRequestSession,
         services: &mut Services,
     ) {
-        if record.is_some() || services.checkouts.job(key).is_some() {
+        if has_record || services.checkouts.job(key).is_some() {
             return;
         }
         let settings_key = checkouts::settings_key(key);
@@ -252,7 +241,7 @@ impl CheckoutButton {
         ui.spacing_mut().item_spacing.y = style::SPACE_S;
         if let Some(job) = services.checkouts.job(view.key) {
             return match job.phase() {
-                JobPhase::Running => progress::running(ui, job),
+                JobPhase::Running => progress::running(ui, job, &mut self.is_log_open),
                 JobPhase::Failed(failure) => cards::failed(ui, view, job, failure),
             };
         }
@@ -357,12 +346,7 @@ impl CheckoutButton {
             Act::ShowLog => self.reopen_with(Panel::Log),
             Act::AskRemove => self.reopen_with(Panel::Remove),
             Act::CopyPath(path) => ctx.copy_text(path.display().to_string()),
-            Act::Settings(Section::Assistant) => {
-                intents::request_settings_section(ctx, SettingsSection::Assistant);
-            }
-            Act::Settings(Section::LocalCheckouts) => {
-                intents::request_settings_section(ctx, SettingsSection::LocalCheckouts);
-            }
+            Act::Settings(section) => intents::request_settings_section(ctx, section),
         }
     }
 
@@ -433,7 +417,7 @@ impl CheckoutButton {
         session: &PullRequestSession,
         services: &mut Services,
     ) {
-        let key = session.key.clone();
+        let key = &session.key;
         if let Some(folder) =
             services.checkouts.take_picked(&FolderPurpose::WorktreeFolder(key.clone()))
         {
@@ -445,11 +429,11 @@ impl CheckoutButton {
                 .settings
                 .checkouts
                 .pinned_clones
-                .insert(checkouts::settings_key(&key), folder.clone());
+                .insert(checkouts::settings_key(key), folder.clone());
             services.save_settings();
             self.picked_clone = Some(folder);
             if let Some(detail) = session.detail.ready() {
-                look_up(&key, detail, session, services);
+                look_up(key, detail, session, services);
             }
         }
         if let Some(folder) = services.checkouts.take_picked(&FolderPurpose::CloneInto(key.clone()))
@@ -557,13 +541,11 @@ fn face_of(ui: &mut Ui, key: &PullRequestKey, services: &Services, compact: bool
     match services.checkouts.job(key) {
         Some(job) if job.is_running() => {
             let progress = job.progress();
-            let (done, total) = (progress.done_count(), progress.steps.len());
-            let label = format!("Checking out… {done}/{total}");
-            let share = if total == 0 { 0.0 } else { done as f32 / total as f32 };
-            face(ui, None, &label, Some(share), is_open, compact)
+            let state = Face::Running { done: progress.done_count(), total: progress.steps.len() };
+            face(ui, state, is_open, compact)
         }
-        Some(_) => face(ui, Some(icons::WARNING), "Checkout failed", None, is_open, compact),
-        None => face(ui, Some(icons::GIT_BRANCH), "Check out", None, is_open, compact),
+        Some(_) => face(ui, Face::Failed, is_open, compact),
+        None => face(ui, Face::Idle, is_open, compact),
     }
 }
 
@@ -665,6 +647,6 @@ fn is_removable(record: &CheckoutRecord) -> bool {
 }
 
 /// A settings link with the section as its name.
-fn settings_link(ui: &mut Ui, text: &str, section: Section) -> Option<Act> {
+fn settings_link(ui: &mut Ui, text: &str, section: SettingsSection) -> Option<Act> {
     buttons::text_link(ui, text, "Open Settings").clicked().then_some(Act::Settings(section))
 }

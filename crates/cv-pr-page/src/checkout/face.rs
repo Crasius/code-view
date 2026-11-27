@@ -14,18 +14,28 @@ use cv_widgets::{buttons, focus, row};
 const BAR_HEIGHT: f32 = 2.0;
 const REMOVE_LINK: &str = "Remove worktree…";
 
-/// The header button: a secondary button with an optional icon, its label, a caret, and a thin
-/// progress bar along its bottom while a checkout runs. A `compact` button with an icon shows the
-/// label only as its tooltip, so a narrow header keeps room for the title.
-pub(super) fn face(
-    ui: &mut Ui,
-    icon: Option<&str>,
-    label: &str,
-    share: Option<f32>,
-    is_open: bool,
-    compact: bool,
-) -> Response {
+/// Where the checkout stands before it is done.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Face {
+    Idle,
+    Running { done: usize, total: usize },
+    Failed,
+}
+
+/// The header button: a secondary button with an icon (none while running), its label, a caret,
+/// and a thin progress bar along its bottom while a checkout runs. A `compact` button with an icon
+/// shows the label only as its tooltip, so a narrow header keeps room for the title.
+pub(super) fn face(ui: &mut Ui, state: Face, is_open: bool, compact: bool) -> Response {
     let palette = theme::palette(ui.ctx());
+    let (icon, label, icon_color, share) = match state {
+        Face::Idle => (Some(icons::GIT_BRANCH), "Check out".to_owned(), palette.text, None),
+        Face::Running { done, total } => {
+            let share = if total == 0 { 0.0 } else { done as f32 / total as f32 };
+            (None, format!("Checking out… {done}/{total}"), palette.text, Some(share))
+        }
+        Face::Failed => (Some(icons::WARNING), "Checkout failed".to_owned(), palette.error, None),
+    };
+    let label = label.as_str();
     let is_icon_only = compact && icon.is_some();
     let galley = ui.painter().layout_no_wrap(
         if is_icon_only { String::new() } else { label.to_owned() },
@@ -60,13 +70,12 @@ pub(super) fn face(
     );
     let mut x = rect.left() + style::SPACE_M;
     if let Some(icon) = icon {
-        let color = if icon == icons::WARNING { palette.error } else { palette.text };
         ui.painter().text(
             pos2(x + icons::SIZE / 2.0, rect.center().y),
             egui::Align2::CENTER_CENTER,
             icon,
             icons::rest_font(&palette, icons::SIZE),
-            color,
+            icon_color,
         );
         x += icon_width;
     }

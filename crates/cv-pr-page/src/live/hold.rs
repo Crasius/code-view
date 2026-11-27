@@ -67,38 +67,19 @@ impl Reach {
 
 #[cfg(test)]
 mod tests {
-    use review_core::{ThreadAnchor, ThreadComment, ThreadStatus, UserIdentity};
-    use time::OffsetDateTime;
+    use cv_pr_threads::samples;
+    use review_core::{ThreadStatus, UserIdentity};
 
     use super::*;
 
+    /// The comments are written at a fixed time: `Reach::new` compares whole threads, so a thread
+    /// built twice has to come out equal.
     fn thread(id: &str, path: Option<&str>, comments: &[&str]) -> ReviewThread {
-        ReviewThread {
-            id: id.into(),
-            status: ThreadStatus::Active,
-            anchor: path.map(|path| ThreadAnchor {
-                path: path.into(),
-                old_path: None,
-                old_line: None,
-                new_line: Some(3),
-                range: None,
-            }),
-            is_outdated: false,
-            origin: None,
-            is_system: false,
-            can_reply: true,
-            can_resolve: true,
-            comments: comments
-                .iter()
-                .map(|id| ThreadComment {
-                    id: (*id).into(),
-                    author: UserIdentity::default(),
-                    body: "Text".into(),
-                    created_at: OffsetDateTime::UNIX_EPOCH,
-                    updated_at: None,
-                })
-                .collect(),
-        }
+        let author = UserIdentity::default();
+        let comments =
+            comments.iter().map(|id| samples::comment_at(id, &author, 0, "Text")).collect();
+        let anchor = path.map(|path| samples::lines(path, 3, 3));
+        samples::thread(id, ThreadStatus::Active, anchor, comments)
     }
 
     fn files(paths: &[&str]) -> HashSet<String> {
