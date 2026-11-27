@@ -10,6 +10,7 @@
 use egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
+use review_store::PullRequestTab;
 use serde_json::json;
 
 use super::ReviewApp;
@@ -17,7 +18,6 @@ use super::github_mock::{ExtraFile, FILE, GitHubHost, NUMBER, REPOSITORY, open_p
 use super::walkthrough::{
     app, files_tab, open_in_tree, shows_file_view, wait_for_diff, wait_until,
 };
-use cv_runtime::route::PullRequestTab;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 

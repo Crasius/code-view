@@ -61,26 +61,6 @@ pub enum Section {
     Settings,
 }
 
-/// The tabs of a pull request page; the history keeps the one shown with each visit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PullRequestTab {
-    Overview,
-    Files,
-    Commits,
-    Pipelines,
-}
-
-impl PullRequestTab {
-    pub fn name(self) -> &'static str {
-        match self {
-            PullRequestTab::Overview => "Overview",
-            PullRequestTab::Files => "Files",
-            PullRequestTab::Commits => "Commits",
-            PullRequestTab::Pipelines => "Pipelines",
-        }
-    }
-}
-
 /// Where a pull request opens: on the tab it showed last (Overview the first time), or on Files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Landing {

@@ -41,7 +41,7 @@ pub use settings::{
 pub use settings::{HeaderMode, HeaderModes};
 pub use threads::{Draft, DraftAnchor, DraftRange, ThreadStore};
 pub use token_vault::{LINUX_HELP_URL, TokenVault, VaultProblem};
-pub use viewed::{LastPlace, LastTab, ViewedFiles};
+pub use viewed::{LastPlace, PullRequestTab, ViewedFiles};
 
 /// Short, stable, filesystem-safe hash for cache file names (FNV-1a 64).
 pub fn stable_hash(value: &str) -> String {

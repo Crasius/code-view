@@ -3,7 +3,7 @@
 //! on macOS) select the tabs from any focus ([`tab_key`]); no text field takes Ctrl with a digit.
 
 use egui::{Key, Modifiers};
-use review_store::{HeaderMode, HeaderModes};
+use review_store::{HeaderMode, HeaderModes, PullRequestTab as Tab};
 
 use super::checkout::CheckoutButton;
 use super::header;
@@ -17,7 +17,6 @@ use cv_pr_session::session::PullRequestSession;
 use cv_pr_session::web_link::WebLink;
 use cv_pr_threads::ThreadsUi;
 use cv_runtime::intents;
-use cv_runtime::route::PullRequestTab as Tab;
 use cv_services::Services;
 use cv_shell::focus_mode;
 use cv_widgets::tabs;

@@ -34,18 +34,30 @@ struct StoredViewed {
 /// Where the user left a pull request: the tab shown and the file open in its Files tab.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LastPlace {
-    pub tab: LastTab,
+    pub tab: PullRequestTab,
     /// `None` while the Files tab showed the folder view, or before it opened a file.
     pub file: Option<String>,
 }
 
-/// A pull request page's tab, as [`LastPlace`] stores it.
+/// The tabs of a pull request page. [`LastPlace`] stores the one left on, and the history keeps
+/// the one shown with each visit. The variant names are the stored format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LastTab {
+pub enum PullRequestTab {
     Overview,
     Files,
     Commits,
     Pipelines,
+}
+
+impl PullRequestTab {
+    pub fn name(self) -> &'static str {
+        match self {
+            PullRequestTab::Overview => "Overview",
+            PullRequestTab::Files => "Files",
+            PullRequestTab::Commits => "Commits",
+            PullRequestTab::Pipelines => "Pipelines",
+        }
+    }
 }
 
 impl ViewedFiles {
@@ -104,7 +116,7 @@ impl ViewedFiles {
 
 #[cfg(test)]
 mod tests {
-    use super::{LastPlace, LastTab, ViewedFiles};
+    use super::{LastPlace, PullRequestTab, ViewedFiles};
     use crate::stable_hash;
     use crate::test_support::{TestDir, write_connections, write_file};
 
@@ -154,7 +166,7 @@ mod tests {
         let mut viewed = ViewedFiles::load(&paths, "gh-1", "gh-1|cli/cli|5").unwrap();
         assert_eq!(viewed.last_place(), None, "never left anywhere");
         viewed.set_viewed("src/a.rs", "blob1", true).unwrap();
-        let place = LastPlace { tab: LastTab::Files, file: Some("src/b.rs".into()) };
+        let place = LastPlace { tab: PullRequestTab::Files, file: Some("src/b.rs".into()) };
         viewed.set_last_place(place.clone()).unwrap();
         let reloaded = ViewedFiles::load(&paths, "gh-1", "gh-1|cli/cli|5").unwrap();
         assert_eq!(reloaded.last_place(), Some(&place));
