@@ -305,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unreadable_recovery_file_no_longer_aborts_the_start() {
+    fn an_unreadable_recovery_file_still_starts() {
         let dir = ScratchDir::new("services-unreadable-recovery");
         let paths = dir.app_paths();
         std::fs::create_dir_all(paths.config_dir()).unwrap();
