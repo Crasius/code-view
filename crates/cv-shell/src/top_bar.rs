@@ -6,8 +6,8 @@ use egui::{
 };
 use review_core::ProviderKind;
 
-use cv_base::platform;
 use cv_base::theme::{self, icons, motion, style};
+use cv_base::{mailbox, platform};
 use cv_runtime::route::{Navigator, Route};
 use cv_runtime::trail::Trail;
 use cv_services::Services;
@@ -16,7 +16,7 @@ use cv_widgets::crumb_fit::{self, CrumbWidth, Spacing};
 use cv_widgets::numbers::number_prefix;
 use cv_widgets::{focus, provider_icon, row};
 
-pub const CRUMB_PADDING: egui::Vec2 = egui::vec2(6.0, 4.0);
+const CRUMB_PADDING: egui::Vec2 = egui::vec2(6.0, 4.0);
 /// Longer names (Azure DevOps `org/project/repo`) end in an ellipsis; the tooltip has them whole.
 const CRUMB_MAX_WIDTH: f32 = 280.0;
 /// Where the trail runs short of room, middle crumbs are cut to this before any folds into "…".
@@ -106,7 +106,7 @@ pub fn publish_trail(
 /// The page level clicked in the breadcrumb this frame: 0 for the route's own crumb, then the
 /// published levels from 1.
 pub fn take_trail_click(ctx: &Context) -> Option<usize> {
-    ctx.data_mut(|data| data.remove_temp::<usize>(click_id()))
+    mailbox::take::<usize>(ctx, click_id())
 }
 
 /// Breadcrumb trail: where you are and the way you came ([`Trail`]), every level above it one
@@ -202,12 +202,8 @@ impl Breadcrumbs {
             return Rect::NOTHING;
         };
         let budget = area.width().max(0.0);
-        if self.placement.as_ref().is_none_or(|placement| placement.budget != budget) {
-            self.placement = Some(place(&ctx, model, budget));
-        }
-        let Some(placement) = &self.placement else {
-            return Rect::NOTHING;
-        };
+        let kept = self.placement.take().filter(|placement| placement.budget == budget);
+        let placement = &*self.placement.insert(kept.unwrap_or_else(|| place(&ctx, model, budget)));
 
         let palette = theme::palette(&ctx);
         let top = area.center().y - model.height / 2.0;
@@ -446,9 +442,7 @@ fn overflow_id() -> Id {
 /// Goes where a crumb leads: its route, or a level of the page (reported by [`take_trail_click`]).
 fn activate(ctx: &Context, level: &Level, navigator: &mut Navigator) {
     match level.from_page {
-        Some((page_level, _)) => {
-            ctx.data_mut(|data| data.insert_temp(click_id(), page_level));
-        }
+        Some((page_level, _)) => mailbox::post(ctx, click_id(), page_level),
         None => navigator.go(level.route.clone()),
     }
 }

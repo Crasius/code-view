@@ -55,10 +55,10 @@ pub fn locate(url: &str, connections: &[Connection]) -> Target {
                 Target::NotConnected(AddRequest { kind, organization })
             });
     };
-    let Some(connection) = connections.iter().find(|connection| connection.id == key.connection_id)
-    else {
-        return Target::NotAPullRequest;
-    };
+    let connection = connections
+        .iter()
+        .find(|connection| connection.id == key.connection_id)
+        .expect("resolve keys a pull request to one of `connections`");
     let web_url = pull_request_link::web_url(connection, &key.repository_key, key.number);
     Target::PullRequest { key, web_url }
 }

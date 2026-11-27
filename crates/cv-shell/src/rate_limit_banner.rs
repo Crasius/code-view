@@ -5,12 +5,13 @@
 use std::time::Duration;
 
 use egui::{Align, Frame, Layout, Margin, RichText, Stroke, Ui};
-use review_core::http::Api;
+use review_core::http::{self, Api};
 
 use cv_base::theme::{self, Palette, icons, style};
 use cv_runtime::intents;
 use cv_services::Services;
-use cv_services::connection::traffic::{RateLimited, rate_limit_docs, retry_now};
+use cv_services::connection::traffic::{RateLimited, rate_limit_docs};
+use cv_widgets::time_text;
 use cv_widgets::{buttons, glyph, provider_icon};
 
 /// Most notices shown at once; the soonest resumes come first.
@@ -81,7 +82,7 @@ fn texts(notice: &RateLimited, platform: &str) -> (String, String) {
         Api::Rest => (
             format!(
                 "{platform} is rate-limiting this connection — retrying in {}",
-                countdown(notice.resumes_in)
+                time_text::countdown(notice.resumes_in)
             ),
             format!(
                 "{}: requests wait and go out on their own when {platform} accepts them again.",
@@ -93,7 +94,7 @@ fn texts(notice: &RateLimited, platform: &str) -> (String, String) {
         Api::GraphQl => (
             format!(
                 "{platform} is rate-limiting this connection's GraphQL requests — retrying in {}",
-                countdown(notice.resumes_in)
+                time_text::countdown(notice.resumes_in)
             ),
             format!(
                 "{}: everything else loads as usual; details read through GraphQL wait or are left out until then.",
@@ -114,7 +115,7 @@ fn actions(ui: &mut Ui, notice: &RateLimited, platform: &str) {
         ui.ctx().open_url(egui::OpenUrl::new_tab(docs));
     }
     if buttons::secondary_icon(ui, icons::ARROW_CLOCKWISE, "Retry now").clicked() {
-        retry_now(&notice.origin);
+        http::resume(&notice.origin);
     }
     // Anonymous limits are the tightest; a token is the lasting way out.
     if notice.connection.token().is_none()
@@ -138,9 +139,9 @@ pub fn countdown(remaining: Duration) -> String {
     }
 }
 
-/// How long [`countdown`] of `remaining` keeps its text: the time to wake the page that shows it.
-/// A pause lasts up to an hour and mostly counts in minutes, so a tick every second would draw
-/// sixty frames for each change.
+/// How long [`time_text::countdown`] of `remaining` keeps its text: the time to wake the page that
+/// shows it. A pause lasts up to an hour and mostly counts in minutes, so a tick every second would
+/// draw sixty frames for each change.
 pub fn until_next_tick(remaining: Duration) -> Duration {
     let seconds = remaining.as_secs() + u64::from(remaining.subsec_nanos() > 0);
     // The whole seconds left once the text changes: one less below ten minutes, where it shows
@@ -155,6 +156,7 @@ pub fn until_next_tick(remaining: Duration) -> Duration {
 #[cfg(test)]
 mod tests {
     use super::{countdown, until_next_tick};
+    use cv_widgets::time_text;
     use std::time::Duration;
 
     #[test]
@@ -179,12 +181,16 @@ mod tests {
             (Duration::from_millis(400), Duration::from_millis(400)),
         ] {
             assert_eq!(until_next_tick(remaining), wake, "{remaining:?}");
-            let text = countdown(remaining);
+            let text = time_text::countdown(remaining);
             let at_wake = remaining.saturating_sub(wake);
             let before = at_wake + Duration::from_millis(1);
-            assert_eq!(countdown(before), text, "{remaining:?}: unchanged until the wake");
+            assert_eq!(
+                time_text::countdown(before),
+                text,
+                "{remaining:?}: unchanged until the wake"
+            );
             if !at_wake.is_zero() {
-                assert_ne!(countdown(at_wake), text, "{remaining:?}: changed at it");
+                assert_ne!(time_text::countdown(at_wake), text, "{remaining:?}: changed at it");
             }
         }
     }

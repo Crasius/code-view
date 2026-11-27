@@ -4,17 +4,17 @@
 //!
 //! The app records every URL a frame opens that [`link_access::locate`] resolves to a pull request
 //! ([`Recorder`]), keyed by the pull request rather than the URL, so `/files`, a fragment and the
-//! `visualstudio.com` host all match. The host's `check` asks [`contains`] before anything else
-//! and answers `pass` within [`TTL`], without a read. No URL is changed: a marker in the query or
-//! fragment would show up in the browser and in links the user copies from there.
+//! `visualstudio.com` host all match. The host's `check` asks [`contains`] right after
+//! [`link_access::locate`] and answers `pass` within [`TTL`], without a read. No URL is changed:
+//! a marker in the query or fragment would show up in the browser and in links the user copies
+//! from there.
 //!
 //! The file is `passes.json` in the browser folder, shared by two processes: the app writes it,
 //! the host only reads it. Every write goes through a temp file and a rename, so the host never
 //! reads half a list, and drops the entries past [`TTL`], so the file stays a handful of lines.
 //! Writes of the app run one at a time on the background runtime (never disk on the UI thread),
 //! each reading the file it replaces, so a later write never loses an earlier pass. A file that
-//! is missing or unreadable is an empty list: the worst case is the old behaviour, the extension
-//! hands the page back to Code View.
+//! is missing or unreadable is an empty list: the extension hands the page back to Code View.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -23,7 +23,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use review_core::Connection;
 use review_store::AppPaths;
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use cv_runtime::background::Spawner;
 use cv_runtime::route::PullRequestKey;
@@ -41,7 +42,7 @@ pub fn file(paths: &AppPaths) -> PathBuf {
 }
 
 /// One pull request the app opened, and when, in milliseconds since the Unix epoch.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Pass {
     connection: String,
     repository: String,
@@ -54,27 +55,6 @@ impl Pass {
         self.number == key.number
             && self.connection == key.connection_id
             && self.repository == key.repository_key
-    }
-
-    /// One entry of the file; `None` for one that lacks a field.
-    fn from_json(entry: &Value) -> Option<Self> {
-        let text = |field: &str| entry.get(field).and_then(Value::as_str).map(str::to_owned);
-        let number = |field: &str| entry.get(field).and_then(Value::as_u64);
-        Some(Self {
-            connection: text("connection")?,
-            repository: text("repository")?,
-            number: number("number")?,
-            at_ms: number("at_ms")?,
-        })
-    }
-
-    fn to_json(&self) -> Value {
-        json!({
-            "connection": self.connection,
-            "repository": self.repository,
-            "number": self.number,
-            "at_ms": self.at_ms,
-        })
     }
 
     /// Recorded within [`TTL`] before `now`; one stamped after `now` (the clock went back) is not.
@@ -92,12 +72,14 @@ fn millis_of(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
-/// The list in `path`; empty when it is missing or unreadable.
+/// The list in `path`; empty when it is missing or unreadable. An entry that lacks a field is
+/// skipped, not the whole list.
 fn load(path: &Path) -> Vec<Pass> {
-    let list =
-        std::fs::read(path).ok().and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
-    let entries = list.as_ref().and_then(Value::as_array).map_or(&[][..], Vec::as_slice);
-    entries.iter().filter_map(Pass::from_json).collect()
+    let entries = std::fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Vec<Value>>(&bytes).ok())
+        .unwrap_or_default();
+    entries.into_iter().filter_map(|entry| serde_json::from_value::<Pass>(entry).ok()).collect()
 }
 
 /// Adds `key` at `now` to the list in `path`, dropping the entries past [`TTL`] and an older pass
@@ -113,10 +95,7 @@ pub fn record(path: &Path, key: &PullRequestKey, now: SystemTime) -> io::Result<
     });
     let folder = path.parent().ok_or_else(|| io::Error::other("the pass list has no folder"))?;
     std::fs::create_dir_all(folder)?;
-    let temp = path.with_extension("json.tmp");
-    let list = Value::Array(passes.iter().map(Pass::to_json).collect());
-    std::fs::write(&temp, list.to_string())?;
-    std::fs::rename(&temp, path)
+    review_store::write_bytes(path, &serde_json::to_vec(&passes)?)
 }
 
 /// The app opened `key` in the browser within [`TTL`] before `now`.
@@ -160,7 +139,7 @@ impl Recorder {
     fn record(&self, key: PullRequestKey) {
         let (path, writing) = (self.path.clone(), self.writing.clone());
         // Kept: a click on "Open on GitHub" right before quitting still lands. A failed write
-        // has nobody to tell; the extension then hands the page back, as before the list.
+        // has nobody to tell; the extension then hands the page back.
         self.spawner.spawn_kept(async move {
             let _unreported = tokio::task::spawn_blocking(move || {
                 let _one_at_a_time = writing.lock().unwrap_or_else(PoisonError::into_inner);
@@ -176,22 +155,17 @@ mod tests {
     use std::time::{Duration, SystemTime};
 
     use review_core::{Connection, ProviderKind};
-    use review_store::AppPaths;
 
     use super::{TTL, contains, file, record};
     use cv_runtime::route::PullRequestKey;
-    use cv_testkit::ScratchDir;
+    use cv_testkit::{ScratchDir, samples};
 
     use crate::links::link_access::{self, Target};
 
     fn connections() -> [Connection; 2] {
         let connection = |id: &str, kind, base_url: &str| Connection {
-            id: id.to_owned(),
-            name: id.to_owned(),
-            kind,
-            base_url: base_url.to_owned(),
             organizations: vec!["acme".to_owned()],
-            token: None,
+            ..samples::connection(id, kind, base_url)
         };
         [
             connection("gh", ProviderKind::GitHub, "https://github.com"),
@@ -207,7 +181,7 @@ mod tests {
     }
 
     fn list(scratch: &ScratchDir) -> std::path::PathBuf {
-        file(&AppPaths::new(scratch.path().join("config"), scratch.path().join("cache")))
+        file(&scratch.app_paths())
     }
 
     #[test]
@@ -248,7 +222,9 @@ mod tests {
         record(&path, &key_of("https://github.com/acme/widgets/pull/2"), later).expect("recorded");
         let text = std::fs::read_to_string(&path).expect("the list");
         assert_eq!(text.matches("\"number\"").count(), 1, "only the fresh pass is left: {text}");
-        assert!(!path.with_extension("json.tmp").exists(), "the temp file was renamed");
+        let folder = path.parent().expect("folder");
+        let files = std::fs::read_dir(folder).expect("the folder").count();
+        assert_eq!(files, 1, "only passes.json is left, no temp file");
     }
 
     #[test]

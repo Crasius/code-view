@@ -22,6 +22,7 @@ use review_store::AppPaths;
 pub const HOST_NAME: &str = "de.crasius.codeview";
 /// The extension's id, fixed by the public key in `browser-extension/manifest.json`.
 pub const EXTENSION_ID: &str = "bjnmgiogdmaelabjgocfnplmmlbpfpog";
+const _: () = assert!(EXTENSION_ID.len() == 32);
 
 /// The origin the browser passes the host, the one `allowed_origins` lets in.
 pub fn extension_origin() -> String {
@@ -31,6 +32,11 @@ pub fn extension_origin() -> String {
 /// The unpacked extension, for "Load unpacked".
 pub fn extension_dir(paths: &AppPaths) -> PathBuf {
     paths.browser_dir().join("extension")
+}
+
+/// The host manifest Windows registers for both browsers.
+pub fn host_manifest(paths: &AppPaths) -> PathBuf {
+    paths.browser_dir().join(format!("{HOST_NAME}.json"))
 }
 
 /// Serves the browser when it started this process as the native host; true when it did, and

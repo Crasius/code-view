@@ -76,8 +76,8 @@ fn store(ctx: &Context, state: State) {
     ctx.data_mut(|data| data.insert_temp(state_id(), state));
 }
 
-/// Call first in the frame, before any chrome: takes F11 (macOS: ⌃⌘F) and Ctrl+K and decides the frame's
-/// layout. Returns true when the chrome stays hidden this frame.
+/// Call first in the frame, before any chrome: takes F11 (macOS: ⌃⌘F) and Ctrl+K and decides the
+/// frame's layout. Returns true when the chrome stays hidden this frame.
 pub fn begin_frame(ctx: &Context, is_integrated: bool) -> bool {
     let mut state = load(ctx);
     state.offered_last = state.offered.take();
@@ -221,7 +221,7 @@ mod tests {
     ) -> (bool, usize) {
         let mut passes = 0;
         let mut shown = false;
-        let mut output = ctx.run_ui(RawInput { events, ..RawInput::default() }, |ui| {
+        let output = ctx.run_ui(RawInput { events, ..RawInput::default() }, |ui| {
             passes += 1;
             shown = begin_frame(ui.ctx(), false);
             if shows_view {
@@ -233,7 +233,7 @@ mod tests {
             end_frame(ui.ctx());
         });
         // The fonts' first upload; no renderer takes it here.
-        output.textures_delta.clear();
+        output.drop_without_applying_deltas();
         (shown, passes)
     }
 

@@ -258,7 +258,7 @@ fn step(settings: &mut AppSettings, target: Target, steps: i32) -> bool {
 }
 
 /// The browser step `steps` away from `scale` (a scale between steps snaps to its neighbor).
-pub fn next_scale(scale: f32, steps: i32) -> f32 {
+fn next_scale(scale: f32, steps: i32) -> f32 {
     let mut scale = scale.clamp(*UI_SCALE_RANGE.start(), *UI_SCALE_RANGE.end());
     for _ in 0..steps.unsigned_abs() {
         scale = if steps > 0 {
@@ -317,7 +317,8 @@ mod tests {
 
     #[test]
     fn code_zoom_moves_in_whole_pixels_within_range() {
-        let mut settings = AppSettings::default();
+        let mut settings =
+            AppSettings { code_font_size: 13.0, ui_scale: 1.0, ..AppSettings::default() };
         assert!(step(&mut settings, Target::Code, 2));
         assert_eq!(settings.code_font_size, 15.0);
         assert_eq!(label(Target::Code, &settings), "Code 15 px");
