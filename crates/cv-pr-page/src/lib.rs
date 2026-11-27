@@ -19,7 +19,7 @@ mod live;
 mod merge_button;
 mod overview;
 #[cfg(test)]
-mod pipelines_live_check;
+mod pipelines_follow_check;
 #[cfg(test)]
 mod update_place_walkthrough;
 mod vote_comment;
