@@ -27,8 +27,10 @@ use cv_base::platform::shortcut;
 use cv_base::theme::{self, icons, style};
 use cv_pr_diff::diff_view::Direction;
 use cv_services::Services;
+use cv_widgets::elide::text_width;
 use cv_widgets::numbers::group_digits;
-use cv_widgets::{buttons, glyph, tabs};
+use cv_widgets::tabs::{self, Segment};
+use cv_widgets::{buttons, glyph};
 
 /// The viewed toggle's hints, in this bar and in focus mode's strip.
 pub const MARK_VIEWED_HINT: &str = concat!("Mark as viewed (", shortcut!(alt "V"), ")");
@@ -88,21 +90,44 @@ const CONTEXT_CHOICES: [(u32, &str); 4] =
 /// The same choices for a rendered Markdown diff, which keeps whole blocks around each change.
 const RENDERED_CONTEXT_CHOICES: [(u32, &str); 4] =
     [(3, "3 blocks"), (10, "10 blocks"), (50, "50 blocks"), (FULL_FILE_CONTEXT, "Full file")];
-/// Listed right to left, as the bar lays out its controls: (layout, icon, label, tooltip).
-pub const LAYOUTS: [(DiffLayout, &str, &str, &str); 3] = [
-    (
-        DiffLayout::NewOnly,
-        icons::FILE_TEXT,
-        "New only",
-        concat!(
+/// The layout choice, listed right to left as the bar lays out its controls.
+pub const LAYOUT_SEGMENTS: [Segment<'static, DiffLayout>; 3] = [
+    Segment::new(DiffLayout::NewOnly, "New only")
+        .with_hint(concat!(
             "Only the new version: changed lines marked, removed lines behind the red markers (",
             shortcut!(alt "N"),
             ")"
-        ),
-    ),
-    (DiffLayout::Inline, icons::ROWS, "Inline", "Old and new lines in one column"),
-    (DiffLayout::SideBySide, icons::COLUMNS, "Side by side", "Old version left, new version right"),
+        ))
+        .with_icon(icons::FILE_TEXT),
+    Segment::new(DiffLayout::Inline, "Inline")
+        .with_hint("Old and new lines in one column")
+        .with_icon(icons::ROWS),
+    Segment::new(DiffLayout::SideBySide, "Side by side")
+        .with_hint("Old version left, new version right")
+        .with_icon(icons::COLUMNS),
 ];
+/// [`LAYOUT_SEGMENTS`] with their labels, for where the bar has room for them.
+const LABELLED_LAYOUTS: [Segment<'static, DiffLayout>; 3] = {
+    let [new_only, inline, side_by_side] = LAYOUT_SEGMENTS;
+    [
+        Segment { icon: None, ..new_only },
+        Segment { icon: None, ..inline },
+        Segment { icon: None, ..side_by_side },
+    ]
+};
+/// [`LAYOUT_SEGMENTS`] as (layout, icon, label, tooltip) tuples, for cv-pr-summary's header and
+/// cv-pr-files' focus strip.
+pub const LAYOUTS: [(DiffLayout, &str, &str, &str); 3] = {
+    let [new_only, inline, side_by_side] = LAYOUT_SEGMENTS;
+    [layout_tuple(new_only), layout_tuple(inline), layout_tuple(side_by_side)]
+};
+
+const fn layout_tuple(
+    segment: Segment<'static, DiffLayout>,
+) -> (DiffLayout, &'static str, &'static str, &'static str) {
+    let icon = segment.icon.expect("every layout has an icon");
+    (segment.value, icon, segment.label, segment.hint)
+}
 
 pub fn show(
     ui: &mut Ui,
@@ -191,8 +216,8 @@ impl Widths {
             comments: icon_toggle,
             context: context_width(ui, settings),
             layouts: Sizes {
-                full: tabs::segmented_width(ui, &LAYOUTS.map(|(_, _, label, _)| label)),
-                compact: tabs::segmented_icons_width(ui, &LAYOUTS.map(|(_, icon, _, _)| icon)),
+                full: tabs::segments_width(ui, &LABELLED_LAYOUTS),
+                compact: tabs::segments_width(ui, &LAYOUT_SEGMENTS),
             },
             arrow: buttons::icon_width(),
             counter: WIDEST_COUNTERS
@@ -544,10 +569,6 @@ fn within(ui: &mut Ui, width: f32, add: impl FnOnce(&mut Ui) -> Response) -> Res
         add(ui)
     })
     .inner
-}
-
-fn text_width(ui: &Ui, text: &str, font: &FontId) -> f32 {
-    ui.painter().layout_no_wrap(text.to_owned(), font.clone(), Color32::PLACEHOLDER).size().x
 }
 
 /// The width of `text` with every digit as wide as the widest one, as [`paint_tabular`] draws it.

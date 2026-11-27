@@ -3,9 +3,10 @@
 //! text runs in each ([`Lanes`]), and the reading column's edges the user drags to resize it.
 
 use egui::{CursorIcon, Id, Rangef, Rect, Sense, Stroke, Ui, pos2, vec2};
+use review_core::DiffSide;
 use review_store::RenderedWidth;
 
-use super::model::{Mode, Side};
+use super::model::{Mode, slot};
 use super::{GUTTER, RIGHT_PADDING};
 use cv_base::theme;
 use cv_markdown::RenderOptions;
@@ -110,37 +111,30 @@ impl Lanes {
         }
     }
 
-    pub fn lane(&self, side: Side) -> Rangef {
+    pub fn lane(&self, side: DiffSide) -> Rangef {
         match (side, self.second) {
-            (Side::New, Some(second)) => second,
+            (DiffSide::New, Some(second)) => second,
             _ => self.first,
         }
     }
 
-    pub fn slot(side: Side) -> usize {
-        match side {
-            Side::Old => 0,
-            Side::New => 1,
-        }
+    pub fn text(&self, side: DiffSide) -> Rangef {
+        self.texts[slot(side)]
     }
 
-    pub fn text(&self, side: Side) -> Rangef {
-        self.texts[Self::slot(side)]
-    }
-
-    pub fn text_width(&self, side: Side) -> f32 {
+    pub fn text_width(&self, side: DiffSide) -> f32 {
         self.text(side).span()
     }
 
     /// The text with its gutter and right padding: where a block's marker and its cards go.
-    pub fn column(&self, side: Side) -> Rangef {
+    pub fn column(&self, side: DiffSide) -> Rangef {
         let text = self.text(side);
         Rangef::new(text.min - GUTTER, text.max + RIGHT_PADDING)
     }
 
     /// `options` for the blocks of `side`: how far its tables may grow.
-    pub fn options(&self, options: RenderOptions, side: Side) -> RenderOptions {
-        RenderOptions { breakout: self.wides[Self::slot(side)], ..options }
+    pub fn options(&self, options: RenderOptions, side: DiffSide) -> RenderOptions {
+        RenderOptions { breakout: self.wides[slot(side)], ..options }
     }
 
     /// Every lane fills its width: the toggle shows "Full width".
@@ -155,6 +149,12 @@ pub(super) struct Edge {
     pub dragged: bool,
     /// A drag ended or a double-click reset the width: save it.
     pub committed: bool,
+}
+
+/// The reading column's width at `scale` for [`Lanes::new`]: side by side each half fills its
+/// width, and one column is a reading column unless `width` is Full width.
+pub(super) fn reading_column(width: RenderedWidth, mode: Mode, scale: f32) -> Option<f32> {
+    (!width.full && mode != Mode::Columns).then(|| (width.reading * scale).round())
 }
 
 /// The widest reading column `lane` holds: its width less a gutter on each side.
@@ -181,10 +181,10 @@ pub(super) fn show_edges(
     if mode == Mode::Columns {
         return edge;
     }
-    let side = Side::New;
+    let side = DiffSide::New;
     let lane = lanes.lane(side);
     let text = lanes.text(side);
-    let xs: Vec<f32> = if lanes.reading[Lanes::slot(side)] {
+    let xs: Vec<f32> = if lanes.reading[slot(side)] {
         vec![text.min - GUTTER, text.max + GUTTER]
     } else {
         vec![lane.max - RIGHT_PADDING / 2.0 - EDGE_HIT / 2.0]
