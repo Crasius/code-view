@@ -28,7 +28,9 @@ pub use self::naming::{fork_branch, slug, worktree_path};
 pub use self::remotes::{
     FoundClone, find_clones, matching_remote, repository_id, same_repository, without_credentials,
 };
-pub use self::remove::{Finished, FinishedTree, Keep, Removal, remove_finished, remove_worktree};
+pub use self::remove::{
+    Changes, Finished, FinishedTree, Keep, OwnBranch, Removal, remove_finished, remove_worktree,
+};
 pub use self::repo::{LocalRepo, TreeState, Worktree, same_folder};
 pub use self::run::{
     Done, Made, MadeBranch, MadeWorktree, Request, Target, Upstream, check_out, undo,

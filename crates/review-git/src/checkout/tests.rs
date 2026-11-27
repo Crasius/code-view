@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use super::{
-    Blocked, CheckoutError, Event, Finished, FinishedTree, FoundClone, Keep, Made, Removal,
-    Request, Step, Target, UpdateOutcome, UpdateRequest, Updated, Upstream, check_out,
-    remove_finished, remove_worktree, survey, undo, update,
+    Blocked, Changes, CheckoutError, Event, Finished, FinishedTree, FoundClone, Keep, Made,
+    OwnBranch, Removal, Request, Step, Target, UpdateOutcome, UpdateRequest, Updated, Upstream,
+    check_out, remove_finished, remove_worktree, survey, undo, update,
 };
 use crate::mirror::GitMirror;
 use crate::test_repo::{Scratch, file_remote, git, write};
@@ -321,13 +321,14 @@ async fn removing_a_worktree_asks_twice_when_it_has_changes() {
     let request = fixture.request(Target::Worktree { path: path.clone() }, "feature");
     check_out(&fixture.mirror, &request, &ignore, &Mutex::default()).await.expect("checked out");
     write(&path, "scratch.txt", "notes\n");
-    let own = Some(("feature", fixture.head.as_str()));
+    let own = Some(OwnBranch { name: "feature", tip: fixture.head.as_str() });
 
-    let first = remove_worktree(&fixture.clone, &path, false, own).await.expect("asked");
+    let first = remove_worktree(&fixture.clone, &path, Changes::Keep, own).await.expect("asked");
     assert_eq!(first, Removal::Changed(vec!["?? scratch.txt".into()]));
     assert!(path.exists(), "nothing removed without the second yes");
 
-    let second = remove_worktree(&fixture.clone, &path, true, own).await.expect("removed");
+    let second =
+        remove_worktree(&fixture.clone, &path, Changes::Discard, own).await.expect("removed");
     assert_eq!(second, Removal::Removed);
     assert!(!path.exists());
     assert_eq!(git(&fixture.clone, &["branch", "--list", "feature"]), "", "its own branch went");

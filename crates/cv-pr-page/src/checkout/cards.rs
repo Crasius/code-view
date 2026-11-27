@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use egui::{Color32, RichText, Ui};
-use review_git::checkout::{Blocked, Survey};
+use review_git::checkout::{Blocked, Changes, Survey};
 use review_store::checkouts::{CheckoutRecord, OpenWith};
 
 use super::choose::folder_name;
@@ -252,7 +252,7 @@ pub(super) fn remove(
                 ),
             );
             listing(ui, &[record.path.display().to_string()]);
-            danger_or_keep(ui, "Remove worktree", Act::Remove { force: false })
+            danger_or_keep(ui, "Remove worktree", Act::Remove(Changes::Keep))
         }
         Some(RemovalState::Removing) => {
             ui.horizontal(|ui| {
@@ -270,12 +270,12 @@ pub(super) fn remove(
             head(ui, "WORKTREE HAS CHANGES", &title, palette.error);
             body(ui, "The worktree has files that are not committed. Removing it deletes them.");
             listing(ui, files);
-            danger_or_keep(ui, "Remove anyway", Act::Remove { force: true })
+            danger_or_keep(ui, "Remove anyway", Act::Remove(Changes::Discard))
         }
         Some(RemovalState::Failed(message)) => {
             head(ui, "NOT REMOVED", "The worktree could not be removed", palette.error);
             listing(ui, &message.lines().map(str::to_owned).collect::<Vec<_>>());
-            danger_or_keep(ui, "Try again", Act::Remove { force: false })
+            danger_or_keep(ui, "Try again", Act::Remove(Changes::Keep))
         }
     }
 }

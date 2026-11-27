@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 
 use egui::{PopupCloseBehavior, Response, Ui};
 use review_core::{AgentKind, PullRequestDetail, PullRequestState};
-use review_git::checkout::{fork_branch, source_name, worktree_path};
+use review_git::checkout::{Changes, fork_branch, source_name, worktree_path};
 use review_store::checkouts::{
     CheckoutKind, CheckoutPlace, CheckoutRecord, CheckoutSettings, OpenWith, RememberedCheckout,
 };
@@ -100,7 +100,7 @@ enum Act {
     Adopt { path: PathBuf, then_update: bool },
     Open(OpenWith),
     UpdateNow,
-    Remove { force: bool },
+    Remove(Changes),
     Keep,
     ShowLog,
     AskRemove,
@@ -337,7 +337,9 @@ impl CheckoutButton {
                     self.awaits_update = true;
                 }
             }
-            Act::Remove { force } => services.checkouts.remove(key, force, &services.background),
+            Act::Remove(changes) => {
+                services.checkouts.remove(key, changes, &services.background);
+            }
             Act::Keep => {
                 services.checkouts.keep(key);
                 self.panel = Panel::Usual;

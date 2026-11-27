@@ -12,7 +12,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use review_core::short_sha;
 use review_git::GitMirror;
 use review_git::checkout::{
-    self, Blocked, CheckoutError, Event, LocalRepo, Removal, UpdateOutcome, UpdateRequest, Updated,
+    self, Blocked, Changes, CheckoutError, Event, LocalRepo, OwnBranch, Removal, UpdateOutcome,
+    UpdateRequest, Updated,
 };
 use review_store::checkouts::CheckoutRecord;
 
@@ -133,20 +134,22 @@ impl Upkeep {
         self.updates.insert(key.clone(), task);
     }
 
-    /// Removes the checkout's worktree; `force` is the second yes for one with changes.
+    /// Removes the checkout's worktree; `changes` is [`Changes::Discard`] after the second yes for
+    /// one with changes.
     pub(super) fn remove(
         &mut self,
         record: &CheckoutRecord,
         key: &PullRequestKey,
-        force: bool,
+        changes: Changes,
         background: &Background,
     ) {
         let (clone, path) = (record.clone.clone(), record.path.clone());
         let own = record.is_own_branch.then(|| (record.branch.clone(), record.head.clone()));
         self.removal_states.insert(key.clone(), RemovalState::Removing);
         let task = background.spawn(async move {
-            let own_branch = own.as_ref().map(|(branch, tip)| (branch.as_str(), tip.as_str()));
-            checkout::remove_worktree(&clone, &path, force, own_branch).await
+            let own_branch =
+                own.as_ref().map(|(name, tip)| OwnBranch { name: name.as_str(), tip: tip.as_str() });
+            checkout::remove_worktree(&clone, &path, changes, own_branch).await
         });
         self.removals.insert(key.clone(), task);
     }

@@ -18,6 +18,7 @@ use std::sync::Arc;
 
 use review_core::AgentKind;
 use review_git::GitMirror;
+use review_git::checkout::Changes;
 use review_store::AppPaths;
 use review_store::checkouts::{
     CheckoutKind, CheckoutRecord, CheckoutRecords, CheckoutSettings, OpenWith,
@@ -147,16 +148,16 @@ impl Checkouts {
         self.upkeep.update(&record, key, mirror.clone(), head, background);
     }
 
-    /// Removes the checkout's worktree (worktrees the app made only); `force` is the second yes
-    /// for a worktree with changes.
-    pub fn remove(&mut self, key: &PullRequestKey, force: bool, background: &Background) {
+    /// Removes the checkout's worktree (worktrees the app made only); `changes` is
+    /// [`Changes::Discard`] after the second yes for a worktree with changes.
+    pub fn remove(&mut self, key: &PullRequestKey, changes: Changes, background: &Background) {
         let Some(record) = self.record(key).cloned() else {
             return;
         };
         if record.kind != CheckoutKind::Worktree || self.is_busy(key) {
             return;
         }
-        self.upkeep.remove(&record, key, force, background);
+        self.upkeep.remove(&record, key, changes, background);
     }
 
     /// An update or a removal runs for the checkout.
