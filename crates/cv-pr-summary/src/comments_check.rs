@@ -3,25 +3,23 @@
 //! and takes a reply and a resolve, and a draft survives its card scrolling out of view and back.
 
 use cv_testkit::Clicks;
-use egui::{Event, Modifiers, PointerButton, Pos2, Rect, Role};
+use egui::{Event, Pos2, Rect, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_core::ThreadAnchor;
 use review_git::{ChangeKind, ChangedFile};
 use review_store::ThemePreference;
 
 use super::bodies::{CardBody, MAX_BODIES};
-use super::shots::{Scene, card_of, file, harness, settle};
+use super::testing::{
+    SIZE, Scene, card_of, file, harness, press, row_of, scroll_to_card, settle, thread_at, view_of,
+};
 use super::{MARGIN, SummaryEvent};
 use cv_code::line_source::Pane;
-use cv_pr_diff::diff_view::DiffView;
-use cv_pr_diff::testing::thread_on_old_line;
 use cv_pr_threads::ThreadEvent;
 
 /// The card commented on, between others so the view can scroll both ways around it. Its first
 /// hunk shows head lines 1–3 unchanged, 4–8 added and 9–11 unchanged.
 const PATH: &str = "src/app/cart.rs";
-const SIZE: [f32; 2] = [1180.0, 860.0];
 
 fn files(others: usize) -> Vec<ChangedFile> {
     let other = |index: usize| {
@@ -33,27 +31,13 @@ fn files(others: usize) -> Vec<ChangedFile> {
     files
 }
 
-fn press(pos: Pos2, pressed: bool) -> Event {
-    Event::PointerButton {
-        pos,
-        button: PointerButton::Primary,
-        pressed,
-        modifiers: Modifiers::NONE,
-    }
-}
-
-fn card_view(scene: &Scene) -> &DiffView {
-    &scene.summary.bodies.get(PATH).expect("the card's diff is loaded").view
-}
-
 /// The card's row showing head line `new_line`.
-fn row_of(scene: &Scene, new_line: u32) -> usize {
-    let body = scene.summary.bodies.get(PATH).expect("the card's diff is loaded");
-    body.view.row_of(&body.diff, None, Some(new_line))
+fn head_row(scene: &Scene, new_line: u32) -> usize {
+    row_of(scene, PATH, None, Some(new_line))
 }
 
 fn line_rect(scene: &Scene, new_line: u32) -> Rect {
-    card_view(scene).text_area(Pane::Inline, row_of(scene, new_line)).rect
+    view_of(scene, PATH).text_area(Pane::Inline, head_row(scene, new_line)).rect
 }
 
 /// Scrolls the summary by `delta` points and lets it settle.
@@ -68,10 +52,7 @@ fn scroll_by(harness: &mut Harness<'_, Scene>, delta: f32) {
 fn summary_at(new_line: u32, place: Place) -> Harness<'static, Scene> {
     let mut harness = harness(Scene::new(files(8), ThemePreference::Light), SIZE);
     settle(&mut harness);
-    let card = card_of(harness.state(), PATH);
-    let top = harness.state().summary.index.top(card);
-    harness.state_mut().summary.scroll_to = Some(top + MARGIN);
-    settle(&mut harness);
+    scroll_to_card(&mut harness, PATH, 0.0);
     let (line, view) = (line_rect(harness.state(), new_line), harness.state().summary.screen);
     let delta = match place {
         Place::Top => line.top() - view.top() - 4.0,
@@ -121,7 +102,7 @@ fn a_comment_from_a_card_opens_in_place_in_both_directions() {
 /// letting go on and returns where it let go.
 fn drag_plus_over_lines_4_to_6(harness: &mut Harness<'_, Scene>, is_up: bool) -> Pos2 {
     let marker = |harness: &Harness<'_, Scene>, line: u32| {
-        card_view(harness.state()).marker_point(Pane::Inline, row_of(harness.state(), line))
+        view_of(harness.state(), PATH).marker_point(Pane::Inline, head_row(harness.state(), line))
     };
     let (from, to) = if is_up {
         (marker(harness, 6), marker(harness, 4))
@@ -243,22 +224,13 @@ fn assert_posting_gives_a_new_thread(harness: &mut Harness<'_, Scene>, case: &st
 #[test]
 fn a_thread_shows_at_its_line_in_its_card() {
     let mut scene = Scene::new(files(8), ThemePreference::Light);
-    let mut thread = thread_on_old_line(0, "Please keep the old rounding here.");
-    thread.id = "card-thread".into();
-    thread.anchor = Some(ThreadAnchor {
-        path: PATH.into(),
-        old_path: None,
-        old_line: None,
-        new_line: Some(6),
-        range: None,
-    });
+    let thread =
+        thread_at("card-thread", "Please keep the old rounding here.", PATH, None, Some(6));
     scene.threads.push(thread);
     let mut harness = harness(scene, SIZE);
     settle(&mut harness);
+    scroll_to_card(&mut harness, PATH, 0.0);
     let card = card_of(harness.state(), PATH);
-    let top = harness.state().summary.index.top(card);
-    harness.state_mut().summary.scroll_to = Some(top + MARGIN);
-    settle(&mut harness);
 
     assert!(
         harness.query_by_label_contains("Please keep the old rounding here.").is_some(),
@@ -299,18 +271,17 @@ fn a_thread_shows_at_its_line_in_its_card() {
 fn a_draft_survives_scrolling_its_card_out_of_view_and_back() {
     let mut harness = harness(Scene::new(files(300), ThemePreference::Light), SIZE);
     settle(&mut harness);
+    scroll_to_card(&mut harness, PATH, 0.0);
     let card = card_of(harness.state(), PATH);
-    let top = harness.state().summary.index.top(card);
-    harness.state_mut().summary.scroll_to = Some(top + MARGIN);
-    settle(&mut harness);
-    let plus = card_view(harness.state()).marker_point(Pane::Inline, row_of(harness.state(), 5));
+    let plus =
+        view_of(harness.state(), PATH).marker_point(Pane::Inline, head_row(harness.state(), 5));
     harness.hover_at(plus);
     harness.step();
     harness.event(press(plus, true));
     harness.step();
     harness.event(press(plus, false));
     settle(&mut harness);
-    assert!(card_view(harness.state()).composer().is_some(), "the + opens a comment on line 5");
+    assert!(view_of(harness.state(), PATH).composer().is_some(), "the + opens a comment on line 5");
     harness.event(Event::Text("Keep this draft".to_owned()));
     settle(&mut harness);
 
@@ -335,8 +306,7 @@ fn a_draft_survives_scrolling_its_card_out_of_view_and_back() {
     assert!(!summary.bodies.contains(&earlier), "older bodies were dropped");
     assert!(summary.bodies.contains(PATH), "the body with the comment being written stays");
 
-    harness.state_mut().summary.scroll_to = Some(top + MARGIN);
-    settle(&mut harness);
-    assert!(card_view(harness.state()).composer().is_some(), "the comment is still open");
+    scroll_to_card(&mut harness, PATH, 0.0);
+    assert!(view_of(harness.state(), PATH).composer().is_some(), "the comment is still open");
     assert!(harness.query_all_by_value("Keep this draft").next().is_some(), "with its text");
 }

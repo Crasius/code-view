@@ -7,7 +7,7 @@ use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use cv_testkit::frame_bench::{Bench, PATTERNS, Report, SCALES};
+use cv_testkit::frame_bench::{self, Bench, Report, SCALES};
 use cv_widgets::text_selection::{Caret, Selection};
 use egui::{Event, pos2, vec2};
 use review_core::{PipelineJob, ProviderKind, RunStatus};
@@ -110,10 +110,11 @@ fn bench_log(
     let pointer = pos2(rect.center().x, rect.center().y);
     bench.warm_up(pointer);
     let selected = if selection.is_some() { ", 100k selected" } else { "" };
-    for (pattern, speed) in PATTERNS {
-        let name = format!("log 150k lines{selected} @{:.0}% {pattern}", pixels_per_point * 100.0);
-        reports.push(bench.scroll_best(&name, pointer, vec2(0.0, -speed)));
-    }
+    reports.extend(bench.scroll_patterns(
+        &format!("log 150k lines{selected}"),
+        pointer,
+        vec2(0.0, -1.0),
+    ));
 }
 
 #[test]
@@ -139,9 +140,6 @@ fn frame_budget_log() {
     drop(log);
     // Best effort: a leftover file in the temp folder harms nothing.
     let _cleanup = std::fs::remove_file(&path);
-    for report in &reports {
-        report.print();
-    }
     println!(
         "copy log: {LOG_LINES} lines, {:.1} MB of plain text in {copy_ms:.0} ms (background thread)",
         copied.len() as f32 / 1e6
@@ -150,9 +148,7 @@ fn frame_budget_log() {
         "copy selection: 100k lines, {:.1} MB in {selected_ms:.0} ms (background thread)",
         selected.len() as f32 / 1e6
     );
-    for report in &reports {
-        report.assert_within_budget();
-    }
+    frame_bench::finish(&reports);
 }
 
 const STAGES: usize = 60;
@@ -236,11 +232,9 @@ fn bench_stage_graph(pixels_per_point: f32, reports: &mut Vec<Report>) {
     let pointer = bench.ctx.content_rect().center();
     bench.warm_up(pointer);
     let scale = pixels_per_point * 100.0;
-    for (pattern, speed) in PATTERNS {
-        let name = format!("stage graph 60x10 @{scale:.0}% pan {pattern}");
-        // Diagonal: across the dependency columns and down the stacked cards.
-        reports.push(bench.scroll_best(&name, pointer, vec2(-speed, -speed * 0.25)));
-    }
+    // Diagonal: across the dependency columns and down the stacked cards.
+    let diagonal = vec2(-1.0, -0.25);
+    reports.extend(bench.scroll_patterns("stage graph 60x10 pan", pointer, diagonal));
     // A pinch in and out between 50 % and 100 %: new text sizes while moving, exact ones at rest.
     let pinch: Vec<Vec<Event>> = (0..ZOOM_FRAMES)
         .map(|frame| vec![Event::Zoom(if (frame / 60) % 2 == 0 { 0.99 } else { 1.0 / 0.99 })])
@@ -253,10 +247,7 @@ fn bench_stage_graph(pixels_per_point: f32, reports: &mut Vec<Report>) {
     // Zoomed out to 50 %, four times as many cards are on screen, their text laid out for it.
     bench.frames("zoom to 50 %", vec![vec![Event::Zoom(0.5)]], |_, _| {});
     bench.warm_up(pointer);
-    for (pattern, speed) in PATTERNS {
-        let name = format!("stage graph 60x10 @{scale:.0}% zoomed 50% pan {pattern}");
-        reports.push(bench.scroll_best(&name, pointer, vec2(-speed, -speed * 0.25)));
-    }
+    reports.extend(bench.scroll_patterns("stage graph 60x10 zoomed 50% pan", pointer, diagonal));
 }
 
 /// Frames of the pinch-zoom run: four sweeps of a quarter second at 240 Hz.
@@ -269,10 +260,5 @@ fn frame_budget_stage_graph() {
     for pixels_per_point in SCALES {
         bench_stage_graph(pixels_per_point, &mut reports);
     }
-    for report in &reports {
-        report.print();
-    }
-    for report in &reports {
-        report.assert_within_budget();
-    }
+    frame_bench::finish(&reports);
 }

@@ -124,11 +124,11 @@ impl RerunRequests {
     /// A finished rerun request: confirm it and reload so the new attempt shows up, or keep the
     /// failure on screen with its ways out.
     pub fn poll(&mut self, session: &mut PullRequestSession, services: &mut Services) {
-        if !self.running.poll() {
+        let Some(result) = self.running.take_finished() else {
             return;
-        }
-        match std::mem::take(&mut self.running) {
-            Load::Ready(RerunOutcome { started, failure }) => {
+        };
+        match result {
+            Ok(RerunOutcome { started, failure }) => {
                 if !started.is_empty() {
                     services.toasts.success(if started.len() == 1 {
                         "Rerun started".to_owned()
@@ -144,7 +144,7 @@ impl RerunRequests {
             }
             // The task stopped without an answer: some reruns may have started, so no Retry; the
             // platform shows which did.
-            Load::Failed(message) => {
+            Err(message) => {
                 let known_url =
                     session.detail.ready().map(|detail| detail.summary.web_url.as_str());
                 let connection = services.connection(&session.key.connection_id);
@@ -154,7 +154,6 @@ impl RerunRequests {
                 services.toasts.error(format!("Reruns may not have started: {message}"), ways_out);
                 session.reload_runs(services);
             }
-            Load::Idle | Load::Loading(_) => {}
         }
     }
 

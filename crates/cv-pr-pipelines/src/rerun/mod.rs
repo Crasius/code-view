@@ -5,7 +5,7 @@
 pub mod requests;
 
 use cv_base::theme::{self, icons, motion, style};
-use cv_widgets::{buttons, row};
+use cv_widgets::{buttons, elide, row, states};
 use egui::{Color32, Id, Rect, Response, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use review_core::{ProviderKind, RerunAction, RerunKind};
 
@@ -54,15 +54,8 @@ impl RerunButton<'_> {
         let mut picked = None;
         let is_enabled = self.has_token && !self.is_busy;
         let primary_label = label(first.kind, self.platform);
-        let text_width = ui
-            .painter()
-            .layout_no_wrap(
-                primary_label.to_owned(),
-                egui::FontId::proportional(style::BODY_SIZE),
-                egui::Color32::WHITE,
-            )
-            .size()
-            .x;
+        let text_width =
+            elide::text_width(ui, primary_label, &egui::FontId::proportional(style::BODY_SIZE));
         let caret = if rest.is_empty() { 0.0 } else { CARET_WIDTH };
         let content_width = icons::SIZE + ICON_GAP + text_width;
         let width = if self.is_full_width {
@@ -112,7 +105,7 @@ impl RerunButton<'_> {
             pos2(rect.center().x - content_width / 2.0 + icons::SIZE / 2.0, rect.center().y);
         let icon_slot = Rect::from_center_size(icon_center, vec2(icons::SIZE, icons::SIZE));
         if self.is_busy {
-            egui::Spinner::new().size(icons::SIZE - 2.0).color(color).paint_at(ui, icon_slot);
+            states::spinner(ui, icon_slot, color);
         } else {
             let font = icons::rest_font(&palette, icons::SIZE);
             ui.painter().text(

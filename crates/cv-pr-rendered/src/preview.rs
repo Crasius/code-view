@@ -14,18 +14,19 @@ use review_git::ChangedFile;
 use review_store::{AppSettings, ImageCompare, PaneSizes, RenderedWidth};
 
 use crate::markdown_diff::{MarkdownDiff, RenderedEvent, RenderedImages, RenderedInputs};
-use cv_base::theme::{self, icons};
+use cv_base::theme::{self, icons, style};
 use cv_media::images::{self as image_store, Decoded};
 use cv_media::picture::Picture;
 use cv_pr_diff::diff_view::Direction;
-use cv_pr_diff::notice::{self, Action};
 use cv_pr_session::session::PullRequestSession;
 use cv_pr_session::web_link;
 use cv_pr_threads::ThreadsUi;
 use cv_runtime::load::Load;
 use cv_services::Services;
 use cv_widgets::splitter::Splitter;
-use cv_widgets::{skeleton, surfaces, tabs};
+use cv_widgets::states::{self, Action};
+use cv_widgets::tabs::{self, Segment};
+use cv_widgets::{skeleton, surfaces};
 
 mod canvas;
 mod load;
@@ -34,7 +35,13 @@ use canvas::{Textures, image_column, paint_overlay};
 use load::LoadJob;
 pub use load::load_markdown;
 
-const COLUMN_GAP: f32 = 16.0;
+const COLUMN_GAP: f32 = style::SPACE_L;
+/// How a changed image compares its two versions.
+const COMPARE_MODES: [Segment<'static, ImageCompare>; 3] = [
+    Segment::new(ImageCompare::SideBySide, "2-up"),
+    Segment::new(ImageCompare::Swipe, "Swipe"),
+    Segment::new(ImageCompare::OnionSkin, "Onion skin"),
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PreviewKind {
@@ -210,8 +217,7 @@ impl Preview {
     /// The rendered Markdown diff's (1-based change in focus or 0, number of changes) while it
     /// shows `file`; `None` for other previews and until it is laid out.
     pub fn change_position(&self, file: &ChangedFile) -> Option<(usize, usize)> {
-        let is_markdown = PreviewKind::of(&file.path) == Some(PreviewKind::Markdown);
-        if !is_markdown || !self.is_active(file) {
+        if !is_markdown(&file.path) || !self.is_active(file) {
             return None;
         }
         let Load::Ready(loaded) = &self.content else {
@@ -252,9 +258,7 @@ impl Preview {
 
     /// Whether the file at `path` shows as a rendered Markdown diff, where its comments show too.
     pub fn shows_rendered(&self, path: &str) -> bool {
-        PreviewKind::of(path) == Some(PreviewKind::Markdown)
-            && self.is_enabled
-            && self.source_for.as_deref() != Some(path)
+        is_markdown(path) && self.previews(path)
     }
 
     /// Returns what the user asked of the rendered Markdown diff that the tab carries out:
@@ -329,9 +333,12 @@ impl Preview {
         let mut is_resized = false;
         let output =
             egui::ScrollArea::both().id_salt("preview").auto_shrink(false).show(ui, |ui| {
-                egui::Frame::new().inner_margin(egui::Margin::same(16)).show(ui, |ui| {
-                    is_resized = self.show_images(ui, &mut settings.panes.preview_split);
-                });
+                egui::Frame::new().inner_margin(egui::Margin::same(style::SPACE_L as i8)).show(
+                    ui,
+                    |ui| {
+                        is_resized = self.show_images(ui, &mut settings.panes.preview_split);
+                    },
+                );
             });
         surfaces::mark_horizontal_scroll(ui, output.inner_rect);
         if is_resized {
@@ -351,20 +358,15 @@ impl Preview {
     ) {
         let palette = theme::palette(ui.ctx());
         let link = web_link::for_file(session, file);
-        let mut actions =
-            vec![Action { icon: icons::ARROW_CLOCKWISE, label: "Retry", is_primary: true }];
+        let mut actions = vec![Action::primary(icons::ARROW_CLOCKWISE, "Retry")];
         let can_show_diff = kind != PreviewKind::Raster;
         if can_show_diff {
-            actions.push(Action {
-                icon: icons::FILE_TEXT,
-                label: "Show text diff",
-                is_primary: false,
-            });
+            actions.push(Action::secondary(icons::FILE_TEXT, "Show text diff"));
         }
         if let Some(link) = &link {
-            actions.push(Action { icon: link.icon, label: &link.label, is_primary: false });
+            actions.push(Action::secondary(link.icon, &link.label));
         }
-        match notice::show(
+        match states::notice(
             ui,
             icons::WARNING,
             palette.error,
@@ -428,16 +430,8 @@ impl Preview {
                 return false;
             }
         };
-        tabs::segmented(
-            ui,
-            &mut self.compare,
-            &[
-                (ImageCompare::SideBySide, "2-up"),
-                (ImageCompare::Swipe, "Swipe"),
-                (ImageCompare::OnionSkin, "Onion skin"),
-            ],
-        );
-        ui.add_space(8.0);
+        tabs::segments(ui, &mut self.compare, &COMPARE_MODES);
+        ui.add_space(style::SPACE_S);
         match self.compare {
             ImageCompare::SideBySide => {
                 columns_splitter("preview_images_splitter")
@@ -456,7 +450,7 @@ impl Preview {
                         .show_value(false)
                         .text("Before ↔ After"),
                 );
-                ui.add_space(8.0);
+                ui.add_space(style::SPACE_S);
                 let is_swipe = self.compare == ImageCompare::Swipe;
                 paint_overlay(ui, [old, new], textures.since, self.mix, is_swipe);
                 false
@@ -499,12 +493,10 @@ fn upload(ctx: &egui::Context, loaded: &mut Loaded, file: &ChangedFile, since: f
 }
 
 fn upload_side(ctx: &egui::Context, side: &mut Option<Side>, name: &str) -> Option<Picture> {
-    if !matches!(side, Some(Side::Image(_))) {
-        return None;
-    }
-    let Some(Side::Image(decoded)) = side.replace(Side::Uploaded) else {
+    let Some(Side::Image(decoded)) = side.take_if(|side| matches!(side, Side::Image(_))) else {
         return None;
     };
+    *side = Some(Side::Uploaded);
     Some(image_store::upload(ctx, name, decoded).0)
 }
 
@@ -519,21 +511,22 @@ fn show_skeleton(ui: &mut Ui, kind: PreviewKind, shown: f32) {
         return;
     }
     ui.multiply_opacity(shown);
-    let response = egui::Frame::new().inner_margin(egui::Margin::same(16)).show(ui, |ui| {
-        ui.columns(2, |columns| {
-            for column in columns.iter_mut() {
-                skeleton::bar(column, 80.0, 14.0);
-                column.add_space(8.0);
-                match kind {
-                    PreviewKind::Markdown => skeleton::code_lines(column, 16, 20.0, false),
-                    PreviewKind::Raster | PreviewKind::Svg => {
-                        let width = column.available_width();
-                        skeleton::bar(column, width, width * 0.6);
+    let response =
+        egui::Frame::new().inner_margin(egui::Margin::same(style::SPACE_L as i8)).show(ui, |ui| {
+            ui.columns(2, |columns| {
+                for column in columns.iter_mut() {
+                    skeleton::bar(column, 80.0, 14.0);
+                    column.add_space(style::SPACE_S);
+                    match kind {
+                        PreviewKind::Markdown => skeleton::code_lines(column, 16, 20.0, false),
+                        PreviewKind::Raster | PreviewKind::Svg => {
+                            let width = column.available_width();
+                            skeleton::bar(column, width, width * 0.6);
+                        }
                     }
                 }
-            }
+            });
         });
-    });
     skeleton::announce(&response.response, "Loading the preview");
 }
 
@@ -543,14 +536,13 @@ mod tests {
     use std::sync::Arc;
 
     use egui::{Color32, ColorImage};
-    use review_core::FileCategory;
     use review_git::{ChangeKind, ChangedFile};
     use review_store::ImageCompare;
 
     use super::load::{changed_images, decode};
     use super::{Loaded, Preview, PreviewKind, Side, upload};
     use crate::markdown_diff::RenderedImages;
-    use cv_media::images::{Decoded, Natural};
+    use cv_media::images::{Decoded, MAX_TEXTURE_EDGE, Natural};
     use cv_runtime::load::Load;
 
     fn image(width: usize, height: usize) -> Side {
@@ -564,18 +556,7 @@ mod tests {
     }
 
     fn png(kind: ChangeKind) -> ChangedFile {
-        ChangedFile {
-            path: "assets/logo.png".into(),
-            old_path: None,
-            kind,
-            old_oid: "1".repeat(40),
-            new_oid: "2".repeat(40),
-            additions: None,
-            deletions: None,
-            is_binary: true,
-            category: FileCategory::Assets,
-            whitespace_only: false,
-        }
+        ChangedFile { is_binary: true, ..ChangedFile::sample("assets/logo.png", kind) }
     }
 
     #[test]
@@ -604,13 +585,7 @@ mod tests {
     /// images resolve in the first file's folder.
     #[test]
     fn files_with_the_same_blobs_in_other_folders_load_their_own_preview() {
-        let readme = |path: &str| ChangedFile {
-            path: path.into(),
-            kind: ChangeKind::Added,
-            category: FileCategory::Docs,
-            is_binary: false,
-            ..png(ChangeKind::Added)
-        };
+        let readme = |path: &str| ChangedFile::sample(path, ChangeKind::Added);
         let commits = || Some(("base".to_owned(), "head".to_owned()));
         assert_ne!(
             super::loaded_for(&readme("docs/a/README.md"), commits()),
@@ -623,7 +598,7 @@ mod tests {
     /// only say where its images resolve; a moved comparison reloads behind the shown preview.
     #[test]
     fn moved_commits_keep_the_versions_of_the_file() {
-        let readme = ChangedFile { path: "README.md".into(), ..png(ChangeKind::Modified) };
+        let readme = ChangedFile::sample("README.md", ChangeKind::Modified);
         let at =
             |head: &str| super::loaded_for(&readme, Some(("base".to_owned(), head.to_owned())));
         assert!(super::is_same_versions(&at("head"), &at("pushed")));
@@ -691,6 +666,18 @@ mod tests {
         let (first, next) = picture.frame_at(Some(0.0));
         assert!(next.is_some(), "a repaint is due for the next frame");
         assert_ne!(picture.frame_at(Some(0.15)).0, first, "the second frame shows");
+    }
+
+    /// Regression: a floor on the raster scale let an SVG declaring a huge size rasterize past the
+    /// texture cap (`width="1000000"` made a pixmap 10,000 pixels wide).
+    #[test]
+    fn a_huge_svg_rasterizes_within_the_texture_cap() {
+        let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="1000000" height="10"/>"#;
+        let Side::Image(decoded) = decode(svg, PreviewKind::Svg).expect("svg") else {
+            panic!("an SVG decodes to an image");
+        };
+        let [width, _] = decoded.frames[0].0.size;
+        assert!(width <= MAX_TEXTURE_EDGE as usize, "rasterized {width} pixels wide");
     }
 
     #[test]

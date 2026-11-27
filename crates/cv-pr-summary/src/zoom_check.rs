@@ -9,11 +9,10 @@ use review_git::{ChangeKind, ChangedFile};
 use review_store::{AppSettings, ThemePreference};
 
 use super::MARGIN;
-use super::shots::{Scene, card_of, file, harness, settle};
+use super::testing::{SIZE, Scene, file, harness, row_of, scroll_to_card, settle, view_of};
 use cv_code::line_source::Pane;
 
 const PATH: &str = "src/app/cart.rs";
-const SIZE: [f32; 2] = [1180.0, 860.0];
 /// Head line 125 of [`PATH`] sits this far below the top of the view before zooming.
 const BELOW_TOP: f32 = 320.0;
 
@@ -27,18 +26,14 @@ fn files() -> Vec<ChangedFile> {
 
 /// Where head line 125 of [`PATH`] shows.
 fn line(scene: &Scene) -> egui::Rect {
-    let body = scene.summary.bodies.get(PATH).expect("the card's diff is loaded");
-    body.view.text_area(Pane::Inline, body.view.row_of(&body.diff, None, Some(125))).rect
+    view_of(scene, PATH).text_area(Pane::Inline, row_of(scene, PATH, None, Some(125))).rect
 }
 
 /// The summary with head line 125 [`BELOW_TOP`] below the top of the view and the pointer on it.
 fn summary_on_the_line() -> (Harness<'static, Scene>, Pos2) {
     let mut harness = harness(Scene::new(files(), ThemePreference::Light), SIZE);
     settle(&mut harness);
-    let card = card_of(harness.state(), PATH);
-    let top = harness.state().summary.index.top(card);
-    harness.state_mut().summary.scroll_to = Some(top + MARGIN);
-    settle(&mut harness);
+    scroll_to_card(&mut harness, PATH, 0.0);
     let delta = line(harness.state()).top() - harness.state().summary.screen.top() - BELOW_TOP;
     let summary = &mut harness.state_mut().summary;
     summary.scroll_to = Some(summary.viewport.top() + MARGIN + delta);

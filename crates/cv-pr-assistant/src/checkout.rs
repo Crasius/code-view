@@ -17,6 +17,12 @@ use review_store::{AppPaths, agent_checkouts_dir, stable_hash};
 /// Checkouts kept; each is a full working tree of its repository.
 pub const MAX_CHECKOUTS: usize = 5;
 
+/// The checkout the agent reads, and its commit.
+pub struct Checkout {
+    pub dir: PathBuf,
+    pub head: String,
+}
+
 /// The checkout folder of pull request `number` of `repository_key`.
 pub fn dir(paths: &AppPaths, repository_key: &str, number: u64) -> PathBuf {
     agent_checkouts_dir(paths).join(format!("{}-{number}", stable_hash(repository_key)))
@@ -24,7 +30,7 @@ pub fn dir(paths: &AppPaths, repository_key: &str, number: u64) -> PathBuf {
 
 /// Puts the checkout at `dest` on `head` and drops the least recently used others. Returns the
 /// checkout, or git's message.
-pub async fn prepare(git: Arc<GitMirror>, head: String, dest: PathBuf) -> Result<PathBuf, String> {
+pub async fn prepare(git: Arc<GitMirror>, head: String, dest: PathBuf) -> Result<Checkout, String> {
     if detached_head(&dest).as_deref() != Some(head.as_str()) {
         git.checkout_detached(&head, &dest).await.map_err(|error| error.to_string())?;
     }
@@ -34,7 +40,7 @@ pub async fn prepare(git: Arc<GitMirror>, head: String, dest: PathBuf) -> Result
             remove(&old).await;
         }
     }
-    Ok(dest)
+    Ok(Checkout { dir: dest, head })
 }
 
 /// The commit a detached checkout is at, read from its git files without starting git.

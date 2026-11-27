@@ -8,11 +8,8 @@ use std::time::{Duration, Instant};
 
 use cv_base::theme::{self, icons, style};
 use cv_widgets::progress_log::{self, LineKind, ProgressLog, format_duration, redact};
-use cv_widgets::{buttons, glyph};
-use egui::text::{LayoutJob, TextWrapping};
-use egui::{
-    Align, Color32, FontId, Galley, Layout, Margin, Rect, Sense, Ui, UiBuilder, pos2, vec2,
-};
+use cv_widgets::{buttons, elide, glyph, states};
+use egui::{Align, FontId, Layout, Margin, Rect, Sense, Ui, UiBuilder, pos2, vec2};
 use review_git::GitEvent;
 
 /// How often the elapsed time and the log refresh while loading.
@@ -35,7 +32,7 @@ pub enum Step {
 }
 
 impl Step {
-    pub const ALL: [Step; 6] = [
+    const ALL: [Step; 6] = [
         Step::LoadingDetails,
         Step::ResolvingRemote,
         Step::OpeningMirror,
@@ -61,11 +58,10 @@ impl Step {
 }
 
 #[derive(Debug)]
-pub struct PrepareProgress {
+struct PrepareProgress {
     step: Step,
     started: Instant,
     step_started: Instant,
-    durations: Vec<(Step, Duration)>,
     log: ProgressLog,
     /// Total time until the failure; set once, freezes the elapsed time.
     failed_after: Option<Duration>,
@@ -77,7 +73,6 @@ impl PrepareProgress {
             step: Step::LoadingDetails,
             started: now,
             step_started: now,
-            durations: Vec::new(),
             log: ProgressLog::default(),
             failed_after: None,
         };
@@ -91,7 +86,6 @@ impl PrepareProgress {
         }
         let elapsed = now.saturating_duration_since(self.step_started);
         let finished = self.step;
-        self.durations.push((finished, elapsed));
         self.log.push(
             LineKind::Step,
             &format!("{} done in {}", finished.label(), format_duration(elapsed)),
@@ -196,29 +190,27 @@ pub fn show(
     let progress = progress.lock();
     let now = Instant::now();
     let mut action = None;
-    egui::Frame::new().inner_margin(Margin { left: 24, right: 24, top: 16, bottom: 16 }).show(
-        ui,
-        |ui| {
-            ui.set_max_width(MAX_WIDTH.min(ui.available_width()));
-            ui.spacing_mut().item_spacing.y = 0.0;
-            header(ui, &progress, now);
-            ui.add_space(style::SPACE_S);
-            segments(ui, &progress);
+    let margin = Margin::from(vec2(f32::from(style::PAGE_MARGIN_X), style::SPACE_L));
+    egui::Frame::new().inner_margin(margin).show(ui, |ui| {
+        ui.set_max_width(MAX_WIDTH.min(ui.available_width()));
+        ui.spacing_mut().item_spacing.y = 0.0;
+        header(ui, &progress, now);
+        ui.add_space(style::SPACE_S);
+        segments(ui, &progress);
+        ui.add_space(style::SPACE_L);
+        if let Some(failure) = failure {
+            action = failure_block(ui, failure);
             ui.add_space(style::SPACE_L);
-            if let Some(failure) = failure {
-                action = failure_block(ui, failure);
-                ui.add_space(style::SPACE_L);
-            }
-            let panel = progress_log::Panel {
-                id_salt: "prepare_log",
-                name: "Loading log",
-                min_height: LOG_MIN_HEIGHT,
-                max_height: LOG_MAX_HEIGHT,
-                is_live: !progress.is_failed(),
-            };
-            progress_log::show(ui, &progress.log, &panel);
-        },
-    );
+        }
+        let panel = progress_log::Panel {
+            id_salt: "prepare_log",
+            name: "Loading log",
+            min_height: LOG_MIN_HEIGHT,
+            max_height: LOG_MAX_HEIGHT,
+            is_live: !progress.is_failed(),
+        };
+        progress_log::show(ui, &progress.log, &panel);
+    });
     if !progress.is_failed() {
         ui.ctx().request_repaint_after(REPAINT);
     }
@@ -249,7 +241,7 @@ fn header(ui: &mut Ui, progress: &PrepareProgress, now: Instant) {
             palette.error,
         );
     } else {
-        egui::Spinner::new().size(icons::SIZE - 2.0).color(palette.accent).paint_at(ui, slot);
+        states::spinner(ui, slot, palette.accent);
     }
     let step = progress.step;
     let title =
@@ -262,16 +254,16 @@ fn header(ui: &mut Ui, progress: &PrepareProgress, now: Instant) {
     );
     let text_left = slot.right() + style::SPACE_S;
     let text_width = (copy.rect.left() - style::SPACE_M - text_left).max(0.0);
-    let meta_galley = one_line(
-        ui,
+    let meta_galley = elide::line(
+        ui.painter(),
         &meta,
         FontId::proportional(style::SMALL_SIZE),
         palette.text_secondary,
         text_width,
     );
     let title_width = (text_width - meta_galley.size().x - style::SPACE_S).max(0.0);
-    let title_galley = one_line(
-        ui,
+    let title_galley = elide::line(
+        ui.painter(),
         &title,
         theme::fonts::semibold_font(style::BODY_SIZE),
         palette.text,
@@ -341,17 +333,21 @@ fn failure_block(ui: &mut Ui, failure: &Failure<'_>) -> Option<FailureAction> {
     action
 }
 
-fn one_line(ui: &Ui, text: &str, font: FontId, color: Color32, max_width: f32) -> Arc<Galley> {
-    let mut job = LayoutJob::simple_singleline(text.to_owned(), font, color);
-    job.wrap = TextWrapping::truncate_at_width(max_width);
-    ui.painter().layout_job(job)
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::{Duration, Instant};
 
     use super::{LineKind, PrepareProgress, Step};
+
+    fn step_lines(progress: &PrepareProgress) -> Vec<&str> {
+        progress
+            .log
+            .lines()
+            .iter()
+            .filter(|line| line.kind == LineKind::Step)
+            .map(|line| line.text.as_str())
+            .collect()
+    }
 
     #[test]
     fn steps_log_their_start_and_their_duration() {
@@ -361,22 +357,7 @@ mod tests {
         progress.enter(Step::ResolvingRemote, start + Duration::from_millis(400));
         progress.enter(Step::OpeningMirror, start + Duration::from_millis(1_750));
         assert_eq!(
-            progress.durations,
-            [
-                (Step::LoadingDetails, Duration::from_millis(250)),
-                (Step::ResolvingRemote, Duration::from_millis(1_500))
-            ],
-            "entering the running step again changes nothing"
-        );
-        let steps: Vec<&str> = progress
-            .log
-            .lines()
-            .iter()
-            .filter(|line| line.kind == LineKind::Step)
-            .map(|line| line.text.as_str())
-            .collect();
-        assert_eq!(
-            steps,
+            step_lines(&progress),
             [
                 "Loading pull request details…",
                 "Loading pull request details done in 250 ms",
@@ -392,7 +373,10 @@ mod tests {
         );
         progress.fail("a later failure", start + Duration::from_secs(9));
         progress.enter(Step::Fetching, start + Duration::from_secs(10));
-        assert_eq!(progress.step, Step::OpeningMirror, "a failed load stays on its step");
+        assert!(
+            !step_lines(&progress).contains(&"Fetching commits and trees…"),
+            "a failed load stays on its step"
+        );
         assert_eq!(
             progress.elapsed(start + Duration::from_secs(60)),
             Duration::from_millis(3_250),

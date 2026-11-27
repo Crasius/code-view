@@ -119,17 +119,17 @@ pub fn outdent(doc: &mut Document, first: usize, last: usize) -> bool {
 pub fn indent(doc: &mut Document, first: usize, last: usize) -> bool {
     let Some(depth) = item_depth(doc, first) else { return false };
     let head = item_head(doc, first, depth);
-    let Some(previous) = head.checked_sub(1).map(|before| doc.block(before).clone()) else {
+    let Some(previous) = head.checked_sub(1).map(|before| &doc.block(before).nesting) else {
         return false;
     };
-    let here = doc.block(head).nesting.clone();
+    let here = &doc.block(head).nesting;
     let (Some(Container::Item { list, .. }), Some(Container::Item { list: before, task, .. })) =
-        (here.get(depth), previous.nesting.get(depth))
+        (here.get(depth), previous.get(depth))
     else {
         return false;
     };
     let shallower_continue =
-        here[..depth].iter().zip(&previous.nesting[..depth]).all(|(a, b)| a.continues(b));
+        here[..depth].iter().zip(&previous[..depth]).all(|(a, b)| a.continues(b));
     if !same_list(*list, *before) || !shallower_continue {
         return false;
     }
@@ -273,12 +273,13 @@ pub fn source_lines<'a>(blocks: impl IntoIterator<Item = &'a Block>) -> Inline {
 /// Inserts a horizontal rule at the caret and puts the caret in the paragraph after it.
 pub fn insert_rule(doc: &mut Document, at: Pos) -> Pos {
     let at = doc.clamp(at);
-    let block = doc.block(at.block).clone();
-    let rule_at = if block.content.is_empty() && block.kind == Kind::Paragraph {
+    let block = doc.block(at.block);
+    let is_empty_paragraph = block.content.is_empty() && block.kind == Kind::Paragraph;
+    let nesting = block.nesting.clone();
+    let rule_at = if is_empty_paragraph {
         doc.block_mut(at.block).kind = Kind::Rule;
         at.block
     } else if at.offset == 0 {
-        let nesting = block.nesting;
         doc.blocks.insert(
             at.block,
             Arc::new(Block { kind: Kind::Rule, nesting, content: Inline::default() }),
@@ -291,7 +292,7 @@ pub fn insert_rule(doc: &mut Document, at: Pos) -> Pos {
             doc.block_mut(after.block).kind = Kind::Rule;
             after.block
         } else {
-            let nesting = continuation(&block.nesting);
+            let nesting = continuation(&nesting);
             doc.blocks.insert(
                 after.block,
                 Arc::new(Block { kind: Kind::Rule, nesting, content: Inline::default() }),

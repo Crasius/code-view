@@ -62,10 +62,9 @@ use self::blocks::show_cell;
 use self::find::{BarFrame, BlockFind, FindRows, panes};
 use self::heights::{RowHeights, outward};
 pub use self::inputs::{RenderedEvent, RenderedImages, RenderedInputs};
-use self::keys::ScrollKey;
-use self::lanes::{Areas, Lanes, reading_room};
-use self::model::{Cell, Mode, Model, Row, Side};
-use self::rows::build;
+use self::lanes::{Areas, Lanes, reading_column, reading_room};
+use self::model::{Cell, Mode, Model, Row};
+use self::rows::{begin_frame, build};
 use self::threads::{CardAction, ThreadRow, is_hidden};
 
 /// Left of each block: the change bar and its "+" or "−" (under the pointer, the comment button).
@@ -84,12 +83,12 @@ enum Place {
     Top,
     /// A source line of one version (from the text diff): its block, opened if folded.
     Line {
-        side: Side,
+        side: DiffSide,
         line: u32,
     },
     /// A block, this far into it, as before the rows were rebuilt.
     Unit {
-        side: Side,
+        side: DiffSide,
         unit: usize,
         below_top: f32,
     },
@@ -97,7 +96,7 @@ enum Place {
     Thread(String),
     /// The find bar's current hit: its block in the middle of the view, opened if folded.
     Find {
-        side: Side,
+        side: DiffSide,
         unit: usize,
     },
 }
@@ -206,13 +205,13 @@ impl MarkdownDiff {
         let span = lines.end.saturating_sub(lines.start).max(1);
         let fraction = (below_top / self.heights.height(row).max(1.0)).clamp(0.0, 1.0);
         let line = lines.start + ((span as f32 * fraction) as u32).min(span - 1);
-        Some((side.diff_side(), line))
+        Some((side, line))
     }
 
     /// Opens at `line` of `side` (the text diff's place), or at the top.
     pub fn reveal_line(&mut self, place: Option<(DiffSide, u32)>) {
         self.pending = Some(match place {
-            Some((side, line)) => Place::Line { side: Side::of(side), line },
+            Some((side, line)) => Place::Line { side, line },
             None => Place::Top,
         });
     }
@@ -233,27 +232,20 @@ impl MarkdownDiff {
         threads_ui: &mut ThreadsUi,
     ) -> Option<RenderedEvent> {
         let palette = theme::palette(ui.ctx());
-        let model = self.ensure_model(inputs);
+        let (model, mode, has_banner) = begin_frame(self, ui.ctx(), inputs);
         if model.old.is_empty() && model.new.is_empty() {
             return show_empty(ui, &palette);
         }
-        let mode = Mode::of(model.has_old, model.has_new, inputs.layout);
-        self.follow_thread_visibility(inputs.show_threads);
-        self.ensure_rows(&model, mode, inputs.context, inputs.threads);
-        self.cards.begin(ui.ctx());
         let options = inputs.render_options();
         let id = ui.scope_id().with("markdown_diff");
         let full = ui.available_rect_before_wrap();
         let owns_keys = ui.rect_contains_pointer(full) || ui.memory(|m| m.focused().is_none());
         ui.painter().rect_filled(full, 0, palette.surface);
         cv_widgets::surfaces::mark_code(ui, full);
-        let has_banner = model.has_old && model.has_new && self.hunks.is_empty();
         let areas = Areas::new(full, mode, has_banner, *split, OVERVIEW_WIDTH);
         let content = areas.content;
         let bar = self.find.prepare(ui, panes(content, areas.left_width, mode), owns_keys, &model);
-        // Side by side, each half fills its width; one column is a reading column unless Full width.
-        let column =
-            (!width.full && mode != Mode::Columns).then(|| (width.reading * inputs.scale).round());
+        let column = reading_column(*width, mode, inputs.scale);
         let lanes = Lanes::new(mode, content.width(), areas.left_width, column);
         self.fills = lanes.fills();
         self.reading_room = reading_room(lanes.first) / inputs.scale;
@@ -605,7 +597,7 @@ impl MarkdownDiff {
     }
 
     /// The threads whose cards follow block row `row` in `lane`, by their index.
-    fn lane_threads(&self, row: usize, lane: Side) -> impl Iterator<Item = usize> + '_ {
+    fn lane_threads(&self, row: usize, lane: DiffSide) -> impl Iterator<Item = usize> + '_ {
         self.rows[row + 1..]
             .iter()
             .map_while(|row| match row {
@@ -653,7 +645,7 @@ impl MarkdownDiff {
     fn hidden_threads(
         &self,
         row: usize,
-        lane: Side,
+        lane: DiffSide,
         frame: &Frame<'_>,
         threads_ui: &ThreadsUi,
     ) -> markers::Hidden {
@@ -668,7 +660,7 @@ impl MarkdownDiff {
     }
 
     /// Shows the threads under block row `row` in `lane` while comments are hidden, or hides them again.
-    fn toggle_revealed(&mut self, row: usize, lane: Side, show: bool) {
+    fn toggle_revealed(&mut self, row: usize, lane: DiffSide, show: bool) {
         let ids: Vec<String> =
             self.lane_threads(row, lane).map(|thread| self.thread_ids[thread].clone()).collect();
         for id in ids {
@@ -698,7 +690,7 @@ impl MarkdownDiff {
 
     /// The first block at or below the top of the view: its row, side and unit, and how far the
     /// view starts below the row's top (negative when the row starts lower).
-    fn top_unit(&self) -> Option<(usize, Side, usize, f32)> {
+    fn top_unit(&self) -> Option<(usize, DiffSide, usize, f32)> {
         if !self.heights.is_placed() {
             return None;
         }
@@ -773,13 +765,13 @@ impl MarkdownDiff {
     fn row_of_unit(
         &mut self,
         model: &Model,
-        side: Side,
+        side: DiffSide,
         unit: usize,
         open_fold: bool,
     ) -> Option<usize> {
         let rows = match side {
-            Side::Old => &self.old_rows,
-            Side::New => &self.new_rows,
+            DiffSide::Old => &self.old_rows,
+            DiffSide::New => &self.new_rows,
         };
         if let Some(row) = rows.get(unit).copied().flatten() {
             return Some(row);
@@ -804,12 +796,12 @@ impl MarkdownDiff {
         if let Some(direction) = navigation::navigation_keys(ui) {
             self.go_to_change(direction);
         }
-        let Some(key) = ScrollKey::read(ui) else {
+        let Some(key) = keys::read(ui) else {
             return;
         };
         let page = (view_height - ARROW_STEP).max(ARROW_STEP);
         let ends = Ends::of(self.heights.tops(), view_height, ui.ctx());
-        self.scroll_to = Some(key.target(self.view_top(), ARROW_STEP, page, ends));
+        self.scroll_to = Some(keys::target(key, self.view_top(), ARROW_STEP, page, ends));
         ui.ctx().request_repaint();
     }
 
@@ -896,9 +888,9 @@ impl MarkdownDiff {
     ) -> (Option<RenderedEvent>, bool) {
         let palette = theme::palette(ui.ctx());
         let cells = match frame.mode {
-            Mode::Columns => vec![(Side::Old, left), (Side::New, right)],
+            Mode::Columns => vec![(DiffSide::Old, left), (DiffSide::New, right)],
             Mode::Unified | Mode::NewOnly | Mode::Whole(_) => {
-                vec![(left.map_or(Side::New, |cell| cell.side), left)]
+                vec![(left.map_or(DiffSide::New, |cell| cell.side), left)]
             }
         };
         let mut event = None;

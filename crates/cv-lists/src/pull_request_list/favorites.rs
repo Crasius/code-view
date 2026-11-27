@@ -240,7 +240,7 @@ impl FavoriteQueries {
 
 #[cfg(test)]
 mod tests {
-    use review_core::{DiffStat, ProviderKind, PullRequestState, PullRequestSummary, UserIdentity};
+    use review_core::{ProviderKind, PullRequestSummary};
     use time::macros::datetime;
 
     use super::FavoriteQueries;
@@ -250,22 +250,8 @@ mod tests {
         PullRequestSummary {
             repository_key: repository.into(),
             repository_name: repository.rsplit('/').next().unwrap_or(repository).into(),
-            number,
-            title: format!("Change {number}"),
-            author: UserIdentity::default(),
-            state: PullRequestState::Open,
-            is_draft: false,
-            source_branch: "feature".into(),
-            target_branch: "main".into(),
-            created_at: datetime!(2026-10-01 09:00 UTC),
             updated_at: Some(updated),
-            web_url: String::new(),
-            labels: Vec::new(),
-            reviewers: Vec::new(),
-            checks: None,
-            diff_stat: DiffStat::default(),
-            head_sha: None,
-            target_sha: None,
+            ..crate::pull_request_list::list_rows::tests::row(number)
         }
     }
 

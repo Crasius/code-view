@@ -2,7 +2,7 @@
 //! is at the top of the view, End goes to where the last block meets the bottom, and off the view
 //! stops there whatever scrolls it. New only and an added file go as far.
 
-use egui::{Key, pos2};
+use egui::{Key, pos2, vec2};
 use egui_kittest::Harness;
 use review_git::FULL_FILE_CONTEXT;
 use review_store::DiffLayout;
@@ -25,6 +25,14 @@ fn shown_scene(scene: Scene, on: bool) -> Harness<'static, Scene> {
     harness
 }
 
+/// Page Down until the view can go no further.
+fn page_to_the_end(harness: &mut Harness<'_, Scene>) {
+    for _ in 0..40 {
+        harness.key_press(Key::PageDown);
+        harness.run();
+    }
+}
+
 /// (the view's top, where the rows end, the last row's top) after the last frame.
 fn place(scene: &Scene) -> (f32, f32, f32) {
     let view = scene.view.viewport.0;
@@ -36,10 +44,7 @@ fn place(scene: &Scene) -> (f32, f32, f32) {
 #[test]
 fn page_down_reaches_the_last_block_at_the_top_and_end_goes_to_the_end() {
     let mut harness = shown(true);
-    for _ in 0..40 {
-        harness.key_press(Key::PageDown);
-        harness.run();
-    }
+    page_to_the_end(&mut harness);
     let (top, end, last) = place(harness.state());
     assert!(end > 0.0, "the notes are longer than the view");
     assert!((top - last).abs() < 1.0, "the last block stops at the top: {top} vs {last}");
@@ -49,7 +54,7 @@ fn page_down_reaches_the_last_block_at_the_top_and_end_goes_to_the_end() {
     let (top, end, _) = place(harness.state());
     assert!((top - end).abs() < 1.0, "End: the last block meets the bottom: {top} vs {end}");
 
-    wheel(&mut harness, pos2(450.0, 300.0), -20_000.0);
+    wheel(&mut harness, pos2(450.0, 300.0), vec2(0.0, -20_000.0));
     let (top, _, last) = place(harness.state());
     assert!((top - last).abs() < 1.0, "the wheel goes on to the last block: {top} vs {last}");
 }
@@ -57,11 +62,8 @@ fn page_down_reaches_the_last_block_at_the_top_and_end_goes_to_the_end() {
 #[test]
 fn off_the_view_stops_where_the_last_block_meets_the_bottom() {
     let mut harness = shown(false);
-    for _ in 0..40 {
-        harness.key_press(Key::PageDown);
-        harness.run();
-    }
-    wheel(&mut harness, pos2(450.0, 300.0), -20_000.0);
+    page_to_the_end(&mut harness);
+    wheel(&mut harness, pos2(450.0, 300.0), vec2(0.0, -20_000.0));
     let (top, end, _) = place(harness.state());
     assert!((top - end).abs() < 1.0, "off: the view stops at the end: {top} vs {end}");
 }
@@ -71,19 +73,16 @@ fn new_only_and_an_added_file_reach_the_last_block_at_the_top() {
     let (old, new) = sample();
     let new_only = Scene::new(&old, &new, DiffLayout::NewOnly, FULL_FILE_CONTEXT);
     let mut added = Scene::new("", &new, DiffLayout::NewOnly, FULL_FILE_CONTEXT);
-    added.old = None;
+    added.doc.old = None;
     for (name, scene) in [("new only", new_only), ("added file", added)] {
         let mut harness = shown_scene(scene, true);
-        for _ in 0..40 {
-            harness.key_press(Key::PageDown);
-            harness.run();
-        }
+        page_to_the_end(&mut harness);
         let (top, end, last) = place(harness.state());
         assert!(end > 0.0, "{name}: the notes are longer than the view");
         assert!((top - last).abs() < 1.0, "{name}: Page Down to the last block: {top} vs {last}");
         harness.key_press(Key::End);
         harness.run();
-        wheel(&mut harness, pos2(450.0, 300.0), -20_000.0);
+        wheel(&mut harness, pos2(450.0, 300.0), vec2(0.0, -20_000.0));
         let (top, _, last) = place(harness.state());
         assert!((top - last).abs() < 1.0, "{name}: the wheel to the last block: {top} vs {last}");
     }

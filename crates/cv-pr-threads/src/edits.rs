@@ -236,47 +236,24 @@ impl CommentEdits {
     ) -> bool {
         let mut is_delivered = false;
         for entry in &mut self.entries {
-            let failure = |message: String| Failure {
-                message,
-                needs_token: issues.get(connection_id).is_some(),
-            };
-            let next = match &mut entry.change {
-                Change::Saving { text, load } => {
-                    if !load.poll() {
-                        continue;
-                    }
-                    match std::mem::take(load) {
-                        Load::Ready(comment) => Change::Saved { comment, after_version: version },
-                        Load::Failed(message) => Change::Editing {
-                            text: std::mem::take(text),
-                            failure: Some(failure(message)),
-                            wants_focus: false,
-                        },
-                        Load::Idle | Load::Loading(_) => continue,
-                    }
+            let answer = match &mut entry.change {
+                Change::Saving { load, .. } => {
+                    load.take_finished().map(|result| result.map(Answer::Saved))
                 }
                 Change::Deleting { load } => {
-                    if !load.poll() {
-                        continue;
-                    }
-                    match std::mem::take(load) {
-                        Load::Ready(()) => Change::Deleted { after_version: version },
-                        Load::Failed(message) => Change::Confirming {
-                            failure: Some(failure(message)),
-                            wants_focus: false,
-                        },
-                        Load::Idle | Load::Loading(_) => continue,
-                    }
+                    load.take_finished().map(|result| result.map(|()| Answer::Deleted))
                 }
-                _ => continue,
+                _ => None,
             };
-            match next {
-                Change::Saved { .. } => toasts.success("Comment updated."),
-                Change::Deleted { .. } => toasts.success("Comment deleted."),
-                _ => {}
+            let Some(answer) = answer else {
+                continue;
+            };
+            let needs_token = issues.get(connection_id).is_some();
+            let answer = answer.map_err(|message| Failure { message, needs_token });
+            if let Some(done) = finish(&mut entry.change, answer, version) {
+                toasts.success(done);
+                is_delivered = true;
             }
-            is_delivered |= matches!(next, Change::Saved { .. } | Change::Deleted { .. });
-            entry.change = next;
         }
         is_delivered
     }
@@ -315,6 +292,41 @@ impl CommentEdits {
     }
 }
 
+/// What the platform answered for a save or a deletion.
+enum Answer {
+    Saved(ThreadComment),
+    Deleted,
+}
+
+/// Moves a save or deletion on with the platform's answer at threads `version`: a save shows the
+/// platform's copy, a deletion hides the comment; a failure opens the composer again with the text
+/// (or asks again) with the reason. Returns the confirmation when the change reached the platform.
+/// Only a change waiting for the platform takes an answer, and only one of its own kind.
+fn finish(
+    change: &mut Change,
+    answer: Result<Answer, Failure>,
+    version: u64,
+) -> Option<&'static str> {
+    let (next, done) = match (&mut *change, answer) {
+        (Change::Saving { .. }, Ok(Answer::Saved(comment))) => {
+            (Change::Saved { comment, after_version: version }, Some("Comment updated."))
+        }
+        (Change::Saving { text, .. }, Err(failure)) => {
+            let text = std::mem::take(text);
+            (Change::Editing { text, failure: Some(failure), wants_focus: false }, None)
+        }
+        (Change::Deleting { .. }, Ok(Answer::Deleted)) => {
+            (Change::Deleted { after_version: version }, Some("Comment deleted."))
+        }
+        (Change::Deleting { .. }, Err(failure)) => {
+            (Change::Confirming { failure: Some(failure), wants_focus: false }, None)
+        }
+        _ => return None,
+    };
+    *change = next;
+    done
+}
+
 /// Only the signed-in user's own comments, outside platform notices, and only with a token: other
 /// people's comments never offer Edit or Delete, even where the platform would let a maintainer.
 fn may_change(
@@ -338,72 +350,32 @@ impl CommentEdits {
         self.put(thread_id, comment_id, change);
     }
 
-    /// The platform answered at threads `version`: `Ok` with its copy (an edit) or nothing (a
-    /// deletion), or `Err` with the reason.
-    pub fn answer_for_tests(
+    /// The platform answered at threads `version`, as [`CommentEdits::poll`] hands the answer on;
+    /// returns the confirmation it shows.
+    fn answer_for_tests(
         &mut self,
         thread_id: &str,
         comment_id: &str,
-        answer: Result<Option<ThreadComment>, &str>,
+        answer: Result<Answer, Failure>,
         version: u64,
-    ) {
-        let Some(entry) = self.entry_mut(thread_id, comment_id) else {
-            return;
-        };
-        let failure =
-            |message: &str| Some(Failure { message: message.to_owned(), needs_token: false });
-        entry.change = match (
-            std::mem::replace(&mut entry.change, Change::Deleted { after_version: version }),
-            answer,
-        ) {
-            (Change::Saving { .. }, Ok(Some(comment))) => {
-                Change::Saved { comment, after_version: version }
-            }
-            (Change::Saving { text, .. }, Err(message)) => {
-                Change::Editing { text, failure: failure(message), wants_focus: false }
-            }
-            (Change::Deleting { .. }, Ok(None)) => Change::Deleted { after_version: version },
-            (Change::Deleting { .. }, Err(message)) => {
-                Change::Confirming { failure: failure(message), wants_focus: false }
-            }
-            (change, _) => change,
-        };
+    ) -> Option<&'static str> {
+        finish(&mut self.entry_mut(thread_id, comment_id)?.change, answer, version)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use review_core::{ThreadStatus, UserIdentity};
-    use time::OffsetDateTime;
+    use review_core::ThreadStatus;
 
+    use super::super::samples::{self, comment_at, person};
     use super::*;
 
-    fn person(id: &str) -> UserIdentity {
-        UserIdentity { id: id.into(), display_name: id.into(), login: None, avatar_url: None }
-    }
-
     fn comment(id: &str, author: &str, body: &str) -> ThreadComment {
-        ThreadComment {
-            id: id.into(),
-            author: person(author),
-            body: body.into(),
-            created_at: OffsetDateTime::UNIX_EPOCH,
-            updated_at: None,
-        }
+        comment_at(id, &person(author, author), 0, body)
     }
 
-    fn thread(comments: Vec<ThreadComment>) -> ReviewThread {
-        ReviewThread {
-            id: "t1".into(),
-            status: ThreadStatus::Active,
-            anchor: None,
-            is_outdated: false,
-            origin: None,
-            is_system: false,
-            can_reply: true,
-            can_resolve: true,
-            comments,
-        }
+    fn refused(message: &str, needs_token: bool) -> Result<Answer, Failure> {
+        Err(Failure { message: message.to_owned(), needs_token })
     }
 
     #[test]
@@ -411,14 +383,16 @@ mod tests {
         let mut edits = CommentEdits::default();
         edits.start_edit("t1", "c1", "old");
         *edits.text_mut("t1", "c1").expect("open composer") = "new".into();
+        assert!(edits.take_focus("t1", "c1"), "the opened composer takes the focus once");
         edits.send_for_tests("t1", "c1", Some("new"));
         assert_eq!(edits.view("t1", "c1"), View::Saving { body: "new".into() });
-        edits.answer_for_tests("t1", "c1", Err("Forbidden"), 3);
+        assert_eq!(edits.answer_for_tests("t1", "c1", refused("Forbidden", true), 3), None);
         let View::Editing { failure: Some(failure) } = edits.view("t1", "c1") else {
             panic!("the composer is open again");
         };
-        assert_eq!(failure.message, "Forbidden");
+        assert_eq!(failure, Failure { message: "Forbidden".into(), needs_token: true });
         assert_eq!(edits.text_mut("t1", "c1").map(|text| text.as_str()), Some("new"));
+        assert!(!edits.take_focus("t1", "c1"), "the reopened composer leaves the focus alone");
     }
 
     #[test]
@@ -426,7 +400,8 @@ mod tests {
         let mut edits = CommentEdits::default();
         edits.send_for_tests("t1", "c1", Some("new"));
         let stored = comment("c1", "me", "new (stored)");
-        edits.answer_for_tests("t1", "c1", Ok(Some(stored.clone())), 3);
+        let done = edits.answer_for_tests("t1", "c1", Ok(Answer::Saved(stored.clone())), 3);
+        assert_eq!(done, Some("Comment updated."));
         assert_eq!(edits.view("t1", "c1"), View::Saved(stored));
         edits.forget_landed(3);
         assert!(matches!(edits.view("t1", "c1"), View::Saved(_)), "threads from before the save");
@@ -437,20 +412,22 @@ mod tests {
     #[test]
     fn deleting_the_last_comment_hides_the_thread() {
         let mut edits = CommentEdits::default();
-        let two = thread(vec![comment("c1", "me", "a"), comment("c2", "me", "b")]);
+        let comments = vec![comment("c1", "me", "a"), comment("c2", "me", "b")];
+        let two = samples::thread("t1", ThreadStatus::Active, None, comments);
         edits.ask_delete("t1", "c2");
         edits.send_for_tests("t1", "c2", None);
-        edits.answer_for_tests("t1", "c2", Ok(None), 1);
+        let done = edits.answer_for_tests("t1", "c2", Ok(Answer::Deleted), 1);
+        assert_eq!(done, Some("Comment deleted."));
         assert!(edits.is_deleted("t1", "c2"));
         assert!(!edits.hides(&two), "one comment is left");
         edits.send_for_tests("t1", "c1", None);
-        edits.answer_for_tests("t1", "c1", Err("Not found"), 1);
+        edits.answer_for_tests("t1", "c1", refused("Not found", false), 1);
         assert!(
             matches!(edits.view("t1", "c1"), View::Confirming { failure: Some(_) }),
             "a failed deletion asks again, with the reason"
         );
         edits.send_for_tests("t1", "c1", None);
-        edits.answer_for_tests("t1", "c1", Ok(None), 1);
+        edits.answer_for_tests("t1", "c1", Ok(Answer::Deleted), 1);
         assert!(edits.hides(&two));
     }
 
@@ -467,8 +444,10 @@ mod tests {
 
     #[test]
     fn only_own_comments_outside_notices_may_change() {
-        let (me, mine, theirs) = (person("me"), comment("c1", "me", "a"), comment("c2", "cy", "b"));
-        let user_thread = thread(vec![mine.clone(), theirs.clone()]);
+        let (me, mine, theirs) =
+            (person("me", "me"), comment("c1", "me", "a"), comment("c2", "cy", "b"));
+        let comments = vec![mine.clone(), theirs.clone()];
+        let user_thread = samples::thread("t1", ThreadStatus::Active, None, comments);
         assert!(may_change(&user_thread, &mine, Some(&me), true));
         assert!(!may_change(&user_thread, &theirs, Some(&me), true), "someone else's comment");
         assert!(!may_change(&user_thread, &mine, None, true), "before the platform said who I am");

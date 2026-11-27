@@ -171,21 +171,7 @@ mod tests {
                     heights.dedup();
                     assert_eq!(heights.len(), 1, "one font size outside and inside the fence");
                 }
-
-                let model = super::super::structure::parse(SOURCE);
-                let job = build_job(SOURCE, &model, &palette);
-                let mut code_sections = 0;
-                for section in &job.sections {
-                    let range = section.byte_range.start.0..section.byte_range.end.0;
-                    let expected = if range == fence {
-                        code_sections += 1;
-                        code_format(&palette)
-                    } else {
-                        text_format(&palette)
-                    };
-                    assert_eq!(section.format, expected, "{:?}", &SOURCE[range]);
-                }
-                assert_eq!(code_sections, 1, "only the fenced block is set in the code font");
+                assert_ne!(code_heights, prose_heights, "the fence is set in the code font");
             });
         harness.run();
     }

@@ -37,7 +37,7 @@ pub fn for_pull_request(session: &PullRequestSession) -> Option<WebLink> {
 }
 
 /// The repository's (GitLab: the project's) web root, from a pull request's web address.
-pub fn repository_url(kind: ProviderKind, pull_request_url: &str) -> Option<String> {
+pub(crate) fn repository_url(kind: ProviderKind, pull_request_url: &str) -> Option<String> {
     let page = pull_request_url.split(['?', '#']).next()?.trim_end_matches('/');
     let (repository, _) = match kind {
         ProviderKind::GitHub => page.rsplit_once("/pull/")?,
@@ -49,7 +49,7 @@ pub fn repository_url(kind: ProviderKind, pull_request_url: &str) -> Option<Stri
 
 /// A repository file at `commit` as the browser shows a file itself (an image opens as the
 /// image): GitHub's and GitLab's raw view, Azure DevOps' file view.
-pub fn raw_file_url(
+pub(crate) fn raw_file_url(
     kind: ProviderKind,
     pull_request_url: &str,
     path: &str,
@@ -90,18 +90,18 @@ fn file_url(
     path: &str,
     commit: &str,
 ) -> Option<String> {
-    let page = pull_request_url.split(['?', '#']).next()?.trim_end_matches('/');
     match kind {
         ProviderKind::GitHub => {
-            let (repository, _) = page.rsplit_once("/pull/")?;
+            let repository = repository_url(kind, pull_request_url)?;
             Some(format!("{repository}/blob/{commit}/{}", encode_path(path)))
         }
         ProviderKind::GitLab => {
-            let (project, _) = page.rsplit_once("/-/merge_requests/")?;
+            let project = repository_url(kind, pull_request_url)?;
             Some(format!("{project}/-/blob/{commit}/{}", encode_path(path)))
         }
         // Azure DevOps opens the pull request's Files view on that file.
         ProviderKind::AzureDevOps => {
+            let page = pull_request_url.split(['?', '#']).next()?.trim_end_matches('/');
             Some(format!("{page}?_a=files&path={}", urlencoding::encode(&format!("/{path}"))))
         }
     }
@@ -122,8 +122,8 @@ mod tests {
     fn links_a_line_on_each_platform() {
         let line = |kind, page| line_url(kind, page, "src/a b.rs", "abc", 12);
         assert_eq!(
-            line(ProviderKind::GitHub, "https://github.com/cli/cli/pull/12").as_deref(),
-            Some("https://github.com/cli/cli/blob/abc/src/a%20b.rs#L12")
+            line(ProviderKind::GitHub, "https://github.com/octo/app/pull/12").as_deref(),
+            Some("https://github.com/octo/app/blob/abc/src/a%20b.rs#L12")
         );
         assert_eq!(
             line(ProviderKind::GitLab, "https://gitlab.com/g/p/-/merge_requests/7").as_deref(),
@@ -144,12 +144,12 @@ mod tests {
         assert_eq!(
             file_url(
                 ProviderKind::GitHub,
-                "https://github.com/cli/cli/pull/12",
+                "https://github.com/octo/app/pull/12",
                 "pkg/cmd/a b.go",
                 "abc"
             )
             .as_deref(),
-            Some("https://github.com/cli/cli/blob/abc/pkg/cmd/a%20b.go")
+            Some("https://github.com/octo/app/blob/abc/pkg/cmd/a%20b.go")
         );
         assert_eq!(
             file_url(
@@ -183,12 +183,12 @@ mod tests {
         assert_eq!(
             raw_file_url(
                 ProviderKind::GitHub,
-                "https://github.com/cli/cli/pull/12",
+                "https://github.com/octo/app/pull/12",
                 "docs/a b.png",
                 "abc"
             )
             .as_deref(),
-            Some("https://github.com/cli/cli/blob/abc/docs/a%20b.png?raw=true")
+            Some("https://github.com/octo/app/blob/abc/docs/a%20b.png?raw=true")
         );
         assert_eq!(
             raw_file_url(

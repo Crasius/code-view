@@ -1,17 +1,15 @@
 //! The rendered view's width: a centered reading column by default that its edges resize on both
 //! sides, Full width that fills the pane, and tables and code that never clip in either.
 
-use egui::{
-    Event, Modifiers, MouseWheelSource, MouseWheelUnit, PointerButton, Pos2, Rect, TouchPhase,
-    pos2, vec2,
-};
+use egui::{Pos2, Rect, pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
+use review_core::DiffSide;
 use review_git::FULL_FILE_CONTEXT;
 use review_store::{DiffLayout, RenderedWidth};
 
-use super::super::{GUTTER, RIGHT_PADDING, RenderedEvent, Side};
-use super::{Scene, harness};
+use super::super::{GUTTER, RIGHT_PADDING, RenderedEvent};
+use super::{Scene, harness, press, wheel};
 
 const PROSE: &str = "The reading column keeps lines to a length the eye can follow, and this paragraph runs long \
 enough to wrap in it many times over, so its laid-out text shows how wide the column is: every row but the last one \
@@ -25,7 +23,7 @@ name must carry it in full, so the export never shortens it and the check reject
 /// An added Markdown file: shown whole, in one column.
 fn added(text: &str, width: RenderedWidth) -> Scene {
     let mut scene = Scene::new("", text, DiffLayout::SideBySide, FULL_FILE_CONTEXT);
-    scene.old = None;
+    scene.doc.old = None;
     scene.width = width;
     scene
 }
@@ -35,7 +33,7 @@ fn full() -> RenderedWidth {
 }
 
 /// The lane of the first block of `side` on screen, as painted.
-fn lane(harness: &Harness<'_, Scene>, side: Side) -> Rect {
+fn lane(harness: &Harness<'_, Scene>, side: DiffSide) -> Rect {
     harness
         .state()
         .view
@@ -51,13 +49,9 @@ fn label(harness: &Harness<'_, Scene>, text: &str) -> Rect {
     harness.get_by_label(text).rect()
 }
 
-fn press(pos: Pos2, pressed: bool) -> Event {
-    Event::PointerButton {
-        pos,
-        button: PointerButton::Primary,
-        pressed,
-        modifiers: Modifiers::NONE,
-    }
+/// The paragraph `PROSE` ending in "Before." and in "After.", for both sides.
+fn before_after() -> (String, String) {
+    (format!("{PROSE} Before.\n"), format!("{PROSE} After.\n"))
 }
 
 /// Presses at `from`, moves to `to` in a few steps and lets go there.
@@ -84,35 +78,13 @@ fn double_click(harness: &mut Harness<'_, Scene>, pos: Pos2) {
     harness.run();
 }
 
-/// Scrolls sideways (a trackpad or Shift+wheel) with the pointer at `pointer`.
-fn wheel_sideways(harness: &mut Harness<'_, Scene>, pointer: Pos2, delta: f32) {
-    let event = |delta: f32, phase: TouchPhase| Event::MouseWheel {
-        unit: MouseWheelUnit::Point,
-        delta: vec2(delta, 0.0),
-        phase,
-        modifiers: Modifiers::NONE,
-        source: MouseWheelSource::Wheel,
-    };
-    harness.hover_at(pointer);
-    harness.input_mut().events.push(event(0.0, TouchPhase::Start));
-    harness.step();
-    harness.input_mut().events.push(event(delta, TouchPhase::Move));
-    harness.step();
-    harness.input_mut().events.push(event(0.0, TouchPhase::End));
-    harness.run();
-}
-
-/// Where the reading column's text starts and how wide it is, from a paragraph that wraps in it.
-fn column_of(text: Rect) -> (f32, f32) {
-    (text.left(), text.width())
-}
-
 #[test]
 fn the_reading_column_is_centered_by_default() {
     let mut harness = harness(added(PROSE, RenderedWidth::default()), [1650.0, 800.0]);
     harness.run();
-    let lane = lane(&harness, Side::New);
-    let (left, width) = column_of(label(&harness, PROSE));
+    let lane = lane(&harness, DiffSide::New);
+    let text = label(&harness, PROSE);
+    let (left, width) = (text.left(), text.width());
     let column = RenderedWidth::DEFAULT_READING;
     assert!(
         (left - (lane.center().x - column / 2.0)).abs() < 1.0,
@@ -129,8 +101,9 @@ fn the_reading_column_is_centered_by_default() {
 fn full_width_fills_the_pane() {
     let mut harness = harness(added(PROSE, full()), [1650.0, 800.0]);
     harness.run();
-    let lane = lane(&harness, Side::New);
-    let (left, width) = column_of(label(&harness, PROSE));
+    let lane = lane(&harness, DiffSide::New);
+    let text = label(&harness, PROSE);
+    let (left, width) = (text.left(), text.width());
     assert!(
         (left - (lane.left() + GUTTER)).abs() < 1.0,
         "the text starts after the gutter: {left} in {lane:?}"
@@ -147,22 +120,16 @@ fn full_width_fills_the_pane() {
 /// Full width.
 #[test]
 fn side_by_side_halves_each_fill_their_width() {
-    let old = format!(
-        "{PROSE} Before.
-"
-    );
-    let new = format!(
-        "{PROSE} After.
-"
-    );
+    let (old, new) = before_after();
     for (width, what) in [(full(), "full width"), (RenderedWidth::default(), "reading")] {
         let mut scene = Scene::new(&old, &new, DiffLayout::SideBySide, FULL_FILE_CONTEXT);
         scene.width = width;
         let mut harness = harness(scene, [1650.0, 800.0]);
         harness.run();
-        for (side, text) in [(Side::Old, old.trim_end()), (Side::New, new.trim_end())] {
+        for (side, text) in [(DiffSide::Old, old.trim_end()), (DiffSide::New, new.trim_end())] {
             let lane = lane(&harness, side);
-            let (left, text_width) = column_of(label(&harness, text));
+            let shown = label(&harness, text);
+            let (left, text_width) = (shown.left(), shown.width());
             let room = lane.width() - GUTTER - RIGHT_PADDING;
             assert!(
                 (left - (lane.left() + GUTTER)).abs() < 1.0,
@@ -181,13 +148,13 @@ fn side_by_side_halves_each_fill_their_width() {
 fn dragging_an_edge_widens_both_sides_and_is_saved() {
     let mut harness = harness(added(PROSE, RenderedWidth::default()), [1650.0, 800.0]);
     harness.run();
-    let lane = lane(&harness, Side::New);
+    let lane = lane(&harness, DiffSide::New);
     let column = RenderedWidth::DEFAULT_READING;
     let edge = pos2(lane.center().x + column / 2.0 + GUTTER, 300.0);
     drag(&mut harness, edge, edge + vec2(100.0, 0.0));
     let reading = harness.state().width.reading;
     assert!((reading - (column + 200.0)).abs() <= 4.0, "both sides moved out by 100: {reading}");
-    let (left, _) = column_of(label(&harness, PROSE));
+    let left = label(&harness, PROSE).left();
     assert!(
         (left - (lane.center().x - reading / 2.0)).abs() < 1.0,
         "still centered: starts at {left}"
@@ -210,7 +177,7 @@ fn double_clicking_an_edge_resets_the_width() {
     let width = RenderedWidth { reading: 400.0, ..RenderedWidth::default() };
     let mut harness = harness(added(PROSE, width), [1650.0, 800.0]);
     harness.run();
-    let lane = lane(&harness, Side::New);
+    let lane = lane(&harness, DiffSide::New);
     double_click(&mut harness, pos2(lane.center().x + 200.0 + GUTTER, 300.0));
     assert_eq!(harness.state().width, RenderedWidth::default());
     assert!(harness.state().events.contains(&RenderedEvent::WidthResized), "the reset is saved");
@@ -220,12 +187,12 @@ fn double_clicking_an_edge_resets_the_width() {
 fn a_column_dragged_to_the_pane_edge_switches_to_full_width_and_back() {
     let mut harness = harness(added(PROSE, RenderedWidth::default()), [1650.0, 800.0]);
     harness.run();
-    let lane = lane(&harness, Side::New);
+    let lane = lane(&harness, DiffSide::New);
     let edge = pos2(lane.center().x + RenderedWidth::DEFAULT_READING / 2.0 + GUTTER, 300.0);
     drag(&mut harness, edge, pos2(lane.right() - 4.0, 300.0));
     assert!(harness.state().width.full, "near the pane's edge the column snaps to full width");
     assert!(harness.state().view.fills_width(), "the switch shows Full width");
-    let (left, _) = column_of(label(&harness, PROSE));
+    let left = label(&harness, PROSE).left();
     assert!(
         (left - (lane.left() + GUTTER)).abs() < 1.0,
         "the text fills the pane: starts at {left}"
@@ -252,19 +219,12 @@ fn a_column_dragged_to_the_pane_edge_switches_to_full_width_and_back() {
 /// one column changes nothing.
 #[test]
 fn side_by_side_has_no_column_grips() {
-    let old = format!(
-        "{PROSE} Before.
-"
-    );
-    let new = format!(
-        "{PROSE} After.
-"
-    );
+    let (old, new) = before_after();
     let mut harness =
         harness(Scene::new(&old, &new, DiffLayout::SideBySide, FULL_FILE_CONTEXT), [1650.0, 800.0]);
     harness.run();
     assert!(harness.query_by_label("Reading width").is_none(), "no column edge to grab");
-    let right = lane(&harness, Side::New);
+    let right = lane(&harness, DiffSide::New);
     for x in [
         right.center().x + RenderedWidth::DEFAULT_READING / 2.0 + GUTTER,
         right.right() - RIGHT_PADDING / 2.0 - 4.0,
@@ -273,7 +233,7 @@ fn side_by_side_has_no_column_grips() {
     }
     assert_eq!(harness.state().width, RenderedWidth::default(), "the width setting is untouched");
     assert!(!harness.state().events.contains(&RenderedEvent::WidthResized));
-    let (left, _) = column_of(label(&harness, new.trim_end()));
+    let left = label(&harness, new.trim_end()).left();
     assert!((left - (right.left() + GUTTER)).abs() < 1.0, "the half still fills its width");
 }
 
@@ -321,7 +281,7 @@ fn a_wide_table_wraps_its_cells_and_nothing_is_clipped() {
     ] {
         let mut harness = harness(added(&doc, width), size);
         harness.run();
-        let lane = lane(&harness, Side::New);
+        let lane = lane(&harness, DiffSide::New);
         let room = if width.full {
             (lane.left() + GUTTER, lane.right() - RIGHT_PADDING)
         } else {
@@ -329,7 +289,8 @@ fn a_wide_table_wraps_its_cells_and_nothing_is_clipped() {
         };
         check_table(&harness, room, what);
         if !width.full {
-            let (left, column) = column_of(label(&harness, PROSE));
+            let text = label(&harness, PROSE);
+            let (left, column) = (text.left(), text.width());
             let table = label(&harness, "Field").union(label(&harness, "ACME GmbH"));
             assert!(
                 table.width() > column,
@@ -353,7 +314,7 @@ fn a_table_too_wide_for_its_columns_scrolls_inside_its_box() {
         format!("| {} |\n|{}\n| {} |\n", header.join(" | "), " --- |".repeat(8), cells.join(" | "));
     let mut harness = harness(added(&doc, full()), [600.0, 600.0]);
     harness.run();
-    let lane = lane(&harness, Side::New);
+    let lane = lane(&harness, DiffSide::New);
     let last = label(&harness, "Column 8 heading");
     assert!(last.left() > lane.right(), "the last column is past the view, not squeezed: {last:?}");
     assert!(
@@ -361,7 +322,7 @@ fn a_table_too_wide_for_its_columns_scrolls_inside_its_box() {
         "the first column shows"
     );
     let first = label(&harness, "Column 1 heading").center();
-    wheel_sideways(&mut harness, first, -4000.0);
+    wheel(&mut harness, first, vec2(-4000.0, 0.0));
     let last = label(&harness, "Column 8 heading");
     assert!(
         last.right() <= lane.right() - RIGHT_PADDING + 0.5,
@@ -378,10 +339,10 @@ fn a_long_code_line_scrolls_inside_its_block() {
     let doc = format!("Intro.\n\n```text\n{line}\n```\n");
     let mut harness = harness(added(&doc, full()), [600.0, 600.0]);
     harness.run();
-    let lane = lane(&harness, Side::New);
+    let lane = lane(&harness, DiffSide::New);
     let code = label(&harness, &line);
     assert!(code.right() > lane.right(), "the line runs on past the view: {code:?}");
-    wheel_sideways(&mut harness, pos2(lane.center().x, code.center().y), -8000.0);
+    wheel(&mut harness, pos2(lane.center().x, code.center().y), vec2(-8000.0, 0.0));
     let scrolled = label(&harness, &line);
     assert!(
         scrolled.left() < code.left() - 200.0,
@@ -402,13 +363,13 @@ fn resizing_the_column_of_a_long_readme_keeps_the_place() {
     let mut harness =
         harness(Scene::new(&old, &new, DiffLayout::Inline, FULL_FILE_CONTEXT), [1280.0, 900.0]);
     harness.run_steps(4);
-    super::wheel(&mut harness, pos2(640.0, 450.0), -6000.0);
+    wheel(&mut harness, pos2(640.0, 450.0), vec2(0.0, -6000.0));
     let anchor = |harness: &Harness<'_, Scene>| {
         harness.state().view.top_unit().map(|(_, side, unit, _)| (side, unit))
     };
     let before = anchor(&harness);
     assert!(before.is_some(), "scrolled into the README");
-    let lane = lane(&harness, Side::New);
+    let lane = lane(&harness, DiffSide::New);
     let mut x = lane.center().x + RenderedWidth::DEFAULT_READING / 2.0 + GUTTER;
     harness.hover_at(pos2(x, 450.0));
     harness.step();

@@ -1,31 +1,126 @@
 //! The pipelines tab's log page beside the run's jobs: the bar with the way back and the attempt
 //! switcher, the job list split from the log pane, and the earlier attempt on its way in place
-//! of the log. The tab owns the state; this draws it and says what was picked.
+//! of the log, resolved once a frame with the run's stages ([`RunStages`]). The tab owns the
+//! state; this draws it and says what was picked.
+
+use std::borrow::Cow;
 
 use cv_base::theme::{self, icons, style};
 use cv_pr_session::session::PullRequestSession;
 use cv_services::Services;
 use cv_shell::focus_mode;
+use cv_widgets::buttons;
 use cv_widgets::splitter::Splitter;
 use cv_widgets::states::{self, Action};
-use cv_widgets::{buttons, skeleton};
 use egui::{RichText, Ui};
-use review_core::PipelineJob;
+use review_core::{AttemptSource, PipelineJob};
 use review_store::PaneSizes;
 
 use super::attempts::{self, Known};
 use super::job_tree::{self, LogTarget};
-use super::log::viewer::LogViewer;
+use super::log::viewer::{LogViewer, panes as log_panes};
 use super::panes;
 use super::run_header::is_free_key;
+use super::tree::{find, replace_node};
+
+/// An earlier attempt on screen in place of the latest: the retried stage or job (by its id in
+/// the run's stages) and the attempt's number.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShownAttempt {
+    pub node_id: String,
+    pub number: u32,
+}
+
+impl ShownAttempt {
+    /// This attempt's node in `stages` of run `run_id`, as far as known.
+    fn node<'a>(
+        &self,
+        stages: &'a [PipelineJob],
+        run_id: &str,
+        session: &'a PullRequestSession,
+    ) -> AttemptNode<'a> {
+        let Some(attempt) = find(stages, &self.node_id).and_then(|node| {
+            node.previous_attempts.iter().find(|attempt| attempt.number == self.number)
+        }) else {
+            return AttemptNode::Gone;
+        };
+        match &attempt.source {
+            AttemptSource::Loaded(job) => AttemptNode::Ready(job),
+            AttemptSource::Lazy(target) => match session.attempt(run_id, target) {
+                Some(live) => match (live.ready(), live.error()) {
+                    (Some(job), _) => AttemptNode::Ready(job),
+                    (None, Some(message)) => AttemptNode::Failed(message),
+                    (None, None) => AttemptNode::Loading,
+                },
+                None => AttemptNode::Loading,
+            },
+        }
+    }
+}
 
 /// An earlier attempt's node, as far as it is known.
-pub enum AttemptNode {
-    Ready(Box<PipelineJob>),
+pub enum AttemptNode<'a> {
+    Ready(&'a PipelineJob),
     Loading,
-    Failed(String),
+    Failed(&'a str),
     /// The run no longer lists the node or the attempt (a new commit, a reload).
     Gone,
+}
+
+impl<'a> AttemptNode<'a> {
+    pub fn job(&self) -> Option<&'a PipelineJob> {
+        match self {
+            Self::Ready(job) => Some(job),
+            Self::Loading | Self::Failed(_) | Self::Gone => None,
+        }
+    }
+}
+
+/// A run's loaded stages, and as the log page shows them: the earlier attempt on screen, as far
+/// as known, in place of its latest.
+pub struct RunStages<'a> {
+    pub stages: &'a [PipelineJob],
+    pub view: Cow<'a, [PipelineJob]>,
+    /// `None` while the latest attempts are shown.
+    pub attempt: Option<AttemptNode<'a>>,
+}
+
+impl<'a> RunStages<'a> {
+    /// The loaded `stages` of run `run_id` with the attempt `shown`, which drops to `None` once
+    /// the run no longer lists it.
+    pub fn new(
+        stages: &'a [PipelineJob],
+        shown: &mut Option<ShownAttempt>,
+        run_id: &str,
+        session: &'a PullRequestSession,
+    ) -> Self {
+        let mut attempt = shown.as_ref().map(|shown| shown.node(stages, run_id, session));
+        if matches!(attempt, Some(AttemptNode::Gone)) {
+            (*shown, attempt) = (None, None);
+        }
+        let view = match (shown.as_ref(), attempt.as_ref().and_then(AttemptNode::job)) {
+            (Some(shown), Some(job)) => {
+                let mut view = stages.to_vec();
+                replace_node(&mut view, &shown.node_id, job.clone());
+                Cow::Owned(view)
+            }
+            _ => Cow::Borrowed(stages),
+        };
+        Self { stages, view, attempt }
+    }
+
+    pub fn attempt_job(&self) -> Option<&'a PipelineJob> {
+        self.attempt.as_ref().and_then(AttemptNode::job)
+    }
+}
+
+/// The ways out of an earlier attempt that did not load.
+#[derive(Clone, Copy)]
+pub enum AttemptWayOut {
+    /// Load the attempt again.
+    Retry,
+    /// Back to the latest attempt.
+    Latest,
 }
 
 /// What the log pane shows instead of a log while an earlier attempt is not there yet.
@@ -41,8 +136,8 @@ pub struct LogPicks {
     pub attempt: Option<(String, u32)>,
     /// A job or step clicked in the job list.
     pub job: Option<LogTarget>,
-    /// The way out picked on an attempt that did not load: 0 is Retry, 1 the latest attempt.
-    pub pane: Option<usize>,
+    /// The way out picked on an attempt that did not load.
+    pub pane: Option<AttemptWayOut>,
 }
 
 /// What the log pane shows: the open log, or the earlier attempt on its way.
@@ -130,7 +225,7 @@ fn bar_switcher(
 }
 
 /// The earlier attempt on its way, as the log pane shows it in place of the log.
-pub fn attempt_pending(state: Option<&AttemptNode>, switch: Switch<'_>) -> Option<AttemptPane> {
+pub fn attempt_pending(state: Option<&AttemptNode<'_>>, switch: Switch<'_>) -> Option<AttemptPane> {
     let (node, number) = switch?;
     match state? {
         AttemptNode::Loading => {
@@ -207,31 +302,26 @@ pub fn jobs_beside_log(
 }
 
 /// The log pane: the open log, or the earlier attempt on its way (loading, or why it did not
-/// load with Retry and the way back to the latest). Returns the action picked on a failure.
+/// load with Retry and the way back to the latest). Returns the way out picked on a failure.
 fn attempt_pane(
     ui: &mut Ui,
     pane: &LogPane<'_>,
     log: &mut LogViewer,
     session: &PullRequestSession,
     services: &mut Services,
-) -> Option<usize> {
-    let palette = theme::palette(ui.ctx());
+) -> Option<AttemptWayOut> {
     match &pane.pending {
         Some(AttemptPane::Loading(loading)) => {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                ui.label(RichText::new(loading).color(palette.text_secondary));
-            });
-            ui.add_space(8.0);
-            skeleton::code_lines(ui, 30, 18.0, false);
+            log_panes::waiting(ui, loading);
             None
         }
         Some(AttemptPane::Failed(failed)) => {
-            let actions = [
-                Action::primary(icons::ARROW_CLOCKWISE, "Retry"),
-                Action::secondary(icons::ARROW_LEFT, "Latest attempt"),
+            let ways_out = [
+                (Action::primary(icons::ARROW_CLOCKWISE, "Retry"), AttemptWayOut::Retry),
+                (Action::secondary(icons::ARROW_LEFT, "Latest attempt"), AttemptWayOut::Latest),
             ];
-            states::error_with_actions(ui, failed, &actions)
+            let actions = ways_out.map(|(action, _)| action);
+            states::error_with_actions(ui, failed, &actions).map(|index| ways_out[index].1)
         }
         None => {
             log.show(ui, pane.shown, pane.owner, session, services);

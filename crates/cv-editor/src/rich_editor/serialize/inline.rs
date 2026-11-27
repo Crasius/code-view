@@ -2,6 +2,7 @@
 //! stack so they nest. Emphasis whose delimiters would not read back takes tags instead (see the
 //! parent module).
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use review_core::ProviderKind;
@@ -392,7 +393,7 @@ fn destination(url: &str) -> String {
 }
 
 /// An atom as Markdown.
-pub fn atom_source(atom: &Atom, platform: ProviderKind) -> String {
+fn atom_source(atom: &Atom, platform: ProviderKind) -> String {
     match atom {
         Atom::Mention { key } if platform == ProviderKind::AzureDevOps => format!("@<{key}>"),
         Atom::Mention { key } => format!("@{key}"),
@@ -406,5 +407,13 @@ pub fn atom_source(atom: &Atom, platform: ProviderKind) -> String {
             format!("![{alt}]({}{title})", destination(src))
         }
         Atom::Raw(source) => source.clone(),
+    }
+}
+
+/// A run as Markdown source: an atom as its source, text as it is.
+pub fn run_source(run: &Run, platform: ProviderKind) -> Cow<'_, str> {
+    match &run.atom {
+        Some(atom) => Cow::Owned(atom_source(atom, platform)),
+        None => Cow::Borrowed(&run.text),
     }
 }

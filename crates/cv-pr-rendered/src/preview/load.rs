@@ -113,7 +113,7 @@ impl LoadJob {
                 image_blobs(
                     &git,
                     [text_of(old.as_ref()), text_of(new.as_ref())],
-                    [base, head],
+                    [base.as_str(), head.as_str()],
                     &paths,
                     Some(platform),
                 )
@@ -133,7 +133,7 @@ impl LoadJob {
 async fn image_blobs(
     git: &GitMirror,
     texts: [Option<&str>; 2],
-    commits: [&String; 2],
+    commits: [&str; 2],
     paths: &[String; 2],
     platform: Option<ProviderKind>,
 ) -> [BTreeMap<String, String>; 2] {
@@ -201,14 +201,16 @@ fn decode_raster(bytes: &[u8]) -> Result<Side, ProviderError> {
     Ok(Side::Image(decoded))
 }
 
+/// SVG previews rasterize with their longest edge at this many pixels (within the texture cap).
+const SVG_EDGE: f32 = 1024.0;
+
 fn decode_svg(bytes: &[u8]) -> Result<Side, ProviderError> {
     // Never reads files or addresses an SVG refers to (`<image href>`).
     let tree = resvg::usvg::Tree::from_data(bytes, &image_store::svg_options())
         .map_err(|error| ProviderError::Local(format!("cannot parse SVG: {error}")))?;
     let size = tree.size();
     let longest = size.width().max(size.height()).max(1.0);
-    let edge = image_store::MAX_TEXTURE_EDGE as f32;
-    let scale = (1024.0 / longest).min(edge / longest).max(0.01);
+    let scale = SVG_EDGE.min(image_store::MAX_TEXTURE_EDGE as f32) / longest;
     let width = ((size.width() * scale).ceil() as u32).max(1);
     let height = ((size.height() * scale).ceil() as u32).max(1);
     let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)

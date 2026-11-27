@@ -150,11 +150,11 @@ fn unknown_html_is_kept_verbatim() {
 
 #[test]
 fn marks_span_words_and_leave_their_edge_spaces() {
-    let doc = parse("**bold words** plain", ProviderKind::GitHub);
-    let runs = doc.blocks[0].content.runs();
-    assert_eq!(runs[0].text, "bold words");
-    assert!(runs[0].marks.has(Mark::Bold));
-    assert!(!runs[1].marks.has(Mark::Bold));
+    let mut doc = parse("a bold b", ProviderKind::GitHub);
+    std::sync::Arc::make_mut(&mut doc.blocks[0])
+        .content
+        .map_marks(1..7, |marks| marks.set(Mark::Bold, true));
+    assert_eq!(serialize(&doc, ProviderKind::GitHub), "a **bold** b");
 }
 
 #[test]

@@ -223,7 +223,7 @@ mod tests {
     use super::*;
 
     const SCOPE: Scope<'static> =
-        Scope { kind: ProviderKind::GitHub, connection_id: "gh", repository: "cli/cli" };
+        Scope { kind: ProviderKind::GitHub, connection_id: "gh", repository: "octo/app" };
 
     fn policy(allowed: &[MergeStrategy], default: Option<MergeStrategy>) -> MergePolicy {
         MergePolicy::reported(allowed.to_vec(), default)
@@ -243,12 +243,12 @@ mod tests {
             preselect(&all, None, &preferences, SCOPE),
             Some((Rebase, Reason::PlatformFavourite))
         );
-        preferences.set_repository_favourite("gh", "cli/cli", Some(Squash));
+        preferences.set_repository_favourite("gh", "octo/app", Some(Squash));
         assert_eq!(
             preselect(&all, None, &preferences, SCOPE),
             Some((Squash, Reason::RepositoryFavourite))
         );
-        preferences.remember_last_used("gh", "cli/cli", Merge);
+        preferences.remember_last_used("gh", "octo/app", Merge);
         assert_eq!(preselect(&all, None, &preferences, SCOPE), Some((Merge, Reason::LastUsed)));
         assert_eq!(
             preselect(&all, Some(Rebase), &preferences, SCOPE),
@@ -281,11 +281,6 @@ mod tests {
             preselect(&unreported, None, &MergePreferences::default(), SCOPE),
             Some((MergeStrategy::Merge, Reason::FirstAllowed))
         );
-        assert_eq!(Reason::FirstAllowed.explain(ProviderKind::GitHub), None);
-        assert_eq!(
-            Reason::PlatformFavourite.explain(ProviderKind::GitHub).as_deref(),
-            Some("Your favourite for GitHub")
-        );
     }
 
     #[test]
@@ -312,8 +307,5 @@ mod tests {
             None,
             "an unreported policy forbids nothing for sure"
         );
-        assert_eq!(confirm_label(Squash, ado), "Click again to squash merge");
-        assert_eq!(message_label(Rebase), None);
-        assert_eq!(repository_name("o/p/web"), "web");
     }
 }

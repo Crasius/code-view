@@ -4,7 +4,7 @@
 
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, icons, style};
-use cv_widgets::{buttons, focus, row};
+use cv_widgets::{buttons, elide, focus, row};
 use egui::{
     Align2, Color32, Context, FontId, Frame, Id, Margin, Order, Rect, Sense, Stroke, Ui, vec2,
 };
@@ -84,9 +84,7 @@ pub fn show(ctx: &Context, id: Id, canvas: Rect, zoom: f32) -> Option<Command> {
 fn level(ui: &mut Ui, zoom: f32) -> egui::Response {
     let palette = theme::palette(ui.ctx());
     let font = FontId::proportional(style::BODY_SIZE);
-    let slot =
-        ui.painter().layout_no_wrap(WIDEST_LEVEL.to_owned(), font.clone(), palette.text).size().x
-            + style::SPACE_S * 2.0;
+    let slot = elide::text_width(ui, WIDEST_LEVEL, &font) + style::SPACE_S * 2.0;
     let (rect, response) =
         ui.allocate_exact_size(vec2(slot, buttons::SUBTLE_HEIGHT), Sense::click());
     let text = format!("{:.0} %", zoom * 100.0);

@@ -4,8 +4,7 @@
 use std::sync::Arc;
 
 use cv_base::theme::{self, icons, motion, style};
-use cv_widgets::{badges, row};
-use egui::text::{LayoutJob, TextWrapping};
+use cv_widgets::{badges, elide, row};
 use egui::{
     Align2, Color32, FontId, Galley, Id, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder, pos2, vec2,
 };
@@ -79,8 +78,7 @@ pub fn show(
     let id = ui.scope_id().with(("stage_card", &stage.id));
     let mut action = None;
 
-    let header_rect = Rect::from_min_size(rect.min, vec2(rect.width(), HEADER_HEIGHT));
-    let header = ui.interact(header_rect, id.with("header"), Sense::click());
+    let header = ui.interact(header_rect(rect), id.with("header"), Sense::click());
     header.widget_info(|| {
         egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Stage {}", stage.name))
     });
@@ -95,18 +93,19 @@ pub fn show(
         pos2(rect.left() + SIDE, title_y),
         Align2::LEFT_CENTER,
         icon,
-        FontId::proportional(18.0),
+        icons::rest_font(&palette, icons::SIZE),
         color,
     );
     let name_left = rect.left() + SIDE + 26.0;
     let name_width = rect.right() - TOGGLE_SIZE - SIDE - 4.0 - name_left;
     let title_font = theme::fonts::semibold_font(style::BODY_SIZE);
-    let (title, is_cut) = ellipsized(ui, &stage.name, title_font, palette.text, name_width);
+    let title = elide::line(ui.painter(), &stage.name, title_font, palette.text, name_width);
+    let is_cut = title.elided;
     painter.galley(pos2(name_left, title_y - title.size().y / 2.0), title, palette.text);
     if let Some(picked) = card.summary_line(ui, &painter, stage, context) {
         action = Some(picked);
     }
-    cv_widgets::focus::ring(ui, &header, header_rect);
+    cv_widgets::focus::ring(ui, &header, header_rect(rect));
     let header = if is_cut { header.on_hover_text(&stage.name) } else { header };
     if header.clicked() {
         action = Some(CardAction::OpenStage);
@@ -123,6 +122,11 @@ pub fn show(
     action
 }
 
+/// The header strip at the top of a card at `card`.
+fn header_rect(card: Rect) -> Rect {
+    Rect::from_min_size(card.min, vec2(card.width(), HEADER_HEIGHT))
+}
+
 /// The card being drawn this frame.
 #[derive(Clone, Copy)]
 struct Card {
@@ -135,10 +139,6 @@ struct Card {
 }
 
 impl Card {
-    fn header_rect(self) -> Rect {
-        Rect::from_min_size(self.rect.min, vec2(self.rect.width(), HEADER_HEIGHT))
-    }
-
     /// The middle of the name line.
     fn title_y(self) -> f32 {
         self.rect.top() + HEADER_PADDING_Y + 10.0
@@ -154,7 +154,7 @@ impl Card {
                 egui::CornerRadius { nw: style::RADIUS_CARD, ne: style::RADIUS_CARD, sw: 0, se: 0 };
             let corners =
                 if opening > 0.0 { top } else { egui::CornerRadius::same(style::RADIUS_CARD) };
-            painter.rect_filled(self.header_rect(), corners, palette.hover.gamma_multiply(hover));
+            painter.rect_filled(header_rect(rect), corners, palette.hover.gamma_multiply(hover));
         }
         let border = motion::mix(palette.border, palette.border_strong, hover);
         painter.rect_stroke(rect, style::RADIUS_CARD, Stroke::new(1.0, border), StrokeKind::Inside);
@@ -183,13 +183,13 @@ impl Card {
         let small = FontId::proportional(style::SMALL_SIZE);
         let duration = super::super::duration(stage.started_at, stage.finished_at);
         let duration_width =
-            duration.as_ref().map_or(0.0, |text| text_width(ui, text, &small) + 8.0);
+            duration.as_ref().map_or(0.0, |text| elide::text_width(ui, text, &small) + 8.0);
         let retried = attempts::retried(stage);
         let badge_width =
             retried.map_or(0.0, |node| attempts::badge_width(ui, node, false) + style::SPACE_S);
         let summary_width = rect.width() - SIDE * 2.0 - duration_width - badge_width;
-        let (summary, _) = ellipsized(
-            ui,
+        let summary = elide::line(
+            ui.painter(),
             &summary(stage, context.platform),
             small.clone(),
             palette.text_secondary,
@@ -250,7 +250,7 @@ impl Card {
             toggle_rect.center(),
             Align2::CENTER_CENTER,
             chevron,
-            FontId::proportional(16.0),
+            icons::rest_font(&palette, icons::SIZE),
             chevron_color,
         );
         cv_widgets::focus::ring(ui, &toggle, toggle_rect);
@@ -268,7 +268,7 @@ impl Card {
     ) -> Option<CardAction> {
         let Self { rect, opening, .. } = self;
         let palette = theme::palette(ui.ctx());
-        let header_bottom = self.header_rect().bottom();
+        let header_bottom = header_rect(rect).bottom();
         let body = Rect::from_min_max(pos2(rect.left(), header_bottom), rect.max);
         let clip = body.intersect(visible);
         painter.hline(rect.x_range().shrink(1.0), header_bottom, Stroke::new(1.0, palette.border));
@@ -379,13 +379,13 @@ fn job_row(
         pos2(rect.left() + side, rect.center().y),
         Align2::LEFT_CENTER,
         icon,
-        FontId::proportional(15.0),
+        icons::rest_font(&palette, icons::SIZE),
         color.gamma_multiply(fade),
     );
     let small = FontId::proportional(style::SMALL_SIZE);
     let duration = super::super::duration(job.started_at, job.finished_at);
     let duration_width =
-        duration.as_ref().map_or(0.0, |text| text_width(ui, text, &small) + style::SPACE_M);
+        duration.as_ref().map_or(0.0, |text| elide::text_width(ui, text, &small) + style::SPACE_M);
     let has_badge = !job.previous_attempts.is_empty()
         && attempts::retried(stage).is_none_or(|node| node.id != job.id);
     let badge_width =
@@ -394,8 +394,9 @@ fn job_row(
     let text_color =
         if job.status == RunStatus::Skipped { palette.text_secondary } else { palette.text };
     let name_width = rect.right() - side - duration_width - badge_width - name_left;
-    let (name, is_cut) =
-        ellipsized(ui, &job.name, FontId::proportional(13.0), text_color, name_width);
+    let name =
+        elide::line(ui.painter(), &job.name, FontId::proportional(13.0), text_color, name_width);
+    let is_cut = name.elided;
     painter.galley(
         pos2(name_left, rect.center().y - name.size().y / 2.0),
         name,
@@ -468,7 +469,7 @@ pub fn summary(stage: &PipelineJob, platform: ProviderKind) -> String {
     }
 }
 
-/// One line of text cut to `max_width` with an ellipsis; true when it was cut.
+/// One line of text cut to `max_width` with an ellipsis ([`elide::line`]); true when it was cut.
 pub fn ellipsized(
     ui: &Ui,
     text: &str,
@@ -476,22 +477,9 @@ pub fn ellipsized(
     color: Color32,
     max_width: f32,
 ) -> (Arc<Galley>, bool) {
-    let mut job = LayoutJob::simple_singleline(text.to_owned(), font, color);
-    job.wrap = TextWrapping {
-        max_width: max_width.max(1.0),
-        max_rows: 1,
-        break_anywhere: true,
-        overflow_character: Some('…'),
-    };
-    let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
+    let galley = elide::line(ui.painter(), text, font, color, max_width);
     let is_cut = galley.elided;
     (galley, is_cut)
-}
-
-fn text_width(ui: &Ui, text: &str, font: &FontId) -> f32 {
-    ui.fonts_mut(|fonts| {
-        fonts.layout_no_wrap(text.to_owned(), font.clone(), Color32::WHITE).size().x
-    })
 }
 
 #[cfg(test)]
@@ -511,7 +499,7 @@ mod tests {
 
     #[test]
     fn summarizes_like_azure_devops() {
-        use RunStatus::*;
+        use RunStatus::{Failed, Queued, Running, Skipped, Succeeded};
         let azure = ProviderKind::AzureDevOps;
         assert_eq!(summary(&stage(Succeeded, &[Succeeded]), azure), "1 job completed");
         assert_eq!(summary(&stage(Succeeded, &[Succeeded; 6]), azure), "6 jobs completed");

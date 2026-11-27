@@ -5,7 +5,7 @@
 
 use std::ops::Range;
 
-use cv_base::theme::Palette;
+use cv_base::theme::{Palette, motion};
 use cv_widgets::mono_text;
 use cv_widgets::text_selection::{self, RowSelection};
 use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Shape, Stroke, Ui, pos2, vec2};
@@ -80,11 +80,16 @@ impl Metrics {
     /// New only: where the removal wedge between two rows sits, its point on the boundary `y`.
     /// The hit area is larger than the wedge, so it is easy to hover.
     pub fn wedge_rect(&self, pane_left: f32, y: f32) -> Rect {
-        let left = pane_left + self.text_inset(false) - MARKER_WIDTH;
+        let bar = self.focus_bar_left(pane_left);
         Rect::from_min_max(
-            pos2(left - 4.0, y - self.line_height * 0.4),
-            pos2(left + FOCUS_BAR_INSET + WEDGE_WIDTH + 6.0, y + self.line_height * 0.4),
+            pos2(bar - FOCUS_BAR_INSET - 4.0, y - self.line_height * 0.4),
+            pos2(bar + WEDGE_WIDTH + 6.0, y + self.line_height * 0.4),
         )
+    }
+
+    /// New only: the left edge of the change bar and the removal wedge in a pane at `pane_left`.
+    fn focus_bar_left(&self, pane_left: f32) -> f32 {
+        pane_left + self.text_inset(false) - MARKER_WIDTH + FOCUS_BAR_INSET
     }
 }
 
@@ -171,14 +176,14 @@ pub fn line_colors(kind: LineKind, palette: &Palette) -> LineColors {
     match kind {
         LineKind::Added => LineColors {
             background: palette.diff_added_line,
-            gutter: mix(palette.diff_added_line, palette.diff_added_word, 0.45),
+            gutter: motion::mix(palette.diff_added_line, palette.diff_added_word, 0.45),
             stripe: palette.success,
             word: palette.diff_added_word,
             marker: palette.success,
         },
         LineKind::Deleted => LineColors {
             background: palette.diff_deleted_line,
-            gutter: mix(palette.diff_deleted_line, palette.diff_deleted_word, 0.45),
+            gutter: motion::mix(palette.diff_deleted_line, palette.diff_deleted_word, 0.45),
             stripe: palette.error,
             word: palette.diff_deleted_word,
             marker: palette.error,
@@ -210,7 +215,7 @@ fn focus_colors(kind: LineKind, palette: &Palette) -> LineColors {
 }
 
 fn focus_tint(palette: &Palette) -> Color32 {
-    mix(palette.surface, palette.accent, if palette.is_dark { 0.10 } else { 0.05 })
+    motion::mix(palette.surface, palette.accent, if palette.is_dark { 0.10 } else { 0.05 })
 }
 
 /// New only: the red wedge in the marker column where lines were removed, pointing at the
@@ -224,7 +229,7 @@ pub fn paint_wedge(
     palette: &Palette,
     is_active: bool,
 ) {
-    let left = metrics.marker_rect(pane, false, 0.0).left() + FOCUS_BAR_INSET;
+    let left = metrics.focus_bar_left(pane.left());
     let grow = if is_active { 1.5 } else { 0.0 };
     if is_active {
         let code_left = pane.left() + metrics.text_inset(false);
@@ -286,7 +291,7 @@ fn paint_backdrop(
         // New only tints from the change bar rightwards: the numbers stay on the plain gutter, so a
         // changed line never reads like a (full-width) gap bar.
         let stripe_left = if line.style == LineStyle::Focus {
-            metrics.marker_rect(pane, false, 0.0).left() + FOCUS_BAR_INSET
+            metrics.focus_bar_left(pane.left())
         } else {
             pane.left()
         };
@@ -396,8 +401,7 @@ fn paint_code(
         syntax_mix: line.syntax_mix,
     };
     let origin = snap(pos2(text_left - line.h_offset, pane.top()));
-    let per_row =
-        line.wrap_width.map(|width| ((width / metrics.char_width).floor() as usize).max(1));
+    let per_row = code_job::wrap_columns(line.wrap_width, metrics.char_width);
     let (advance, line_height) = (metrics.char_width, metrics.line_height);
     let grid = Grid { origin, advance, line_height, per_row };
     find_paint::paint_marks(&clipped, &grid, code.text, finds, palette);
@@ -460,8 +464,7 @@ fn paint_whitespace_marks(
     }
     let mut column = 0;
     for (byte, character) in text.char_indices() {
-        let width =
-            if character == '\t' { code_job::TAB_WIDTH - column % code_job::TAB_WIDTH } else { 1 };
+        let width = if character == '\t' { code_job::tab_stop(column) } else { 1 };
         let is_changed = words.iter().any(|word| word.contains(&byte));
         if is_changed && (character == ' ' || character == '\t') {
             let cell = grid.cell(column);
@@ -589,8 +592,6 @@ fn words_outside(text: &str, words: &[Range<usize>], columns: &Range<usize>) -> 
         .collect()
 }
 
-/// A line of a multi-line comment: a light accent wash and an accent bar along the pane's edge.
-/// The draft being written is a little stronger than posted threads.
 /// The flash of a line the view was sent to, `strength` from 1 down to 0: an accent wash laid
 /// over the line's change tint (blended, so added and removed lines keep their color under the
 /// text) and the accent bar at its left edge.
@@ -604,6 +605,8 @@ fn paint_flash(painter: &Painter, pane: Rect, palette: &Palette, strength: f32) 
     );
 }
 
+/// A line of a multi-line comment: a light accent wash and an accent bar along the pane's edge.
+/// The draft being written is a little stronger than posted threads.
 fn paint_range_band(painter: &Painter, pane: Rect, palette: &Palette, mark: RangeMark) {
     let strength = match (mark, palette.is_dark) {
         (RangeMark::Draft, true) => 0.20,
@@ -638,7 +641,7 @@ pub fn paint_empty(painter: &Painter, pane: Rect, palette: &Palette) {
     }
 }
 
-pub fn hover_tint(palette: &Palette) -> Color32 {
+fn hover_tint(palette: &Palette) -> Color32 {
     if palette.is_dark { Color32::from_white_alpha(10) } else { Color32::from_black_alpha(9) }
 }
 

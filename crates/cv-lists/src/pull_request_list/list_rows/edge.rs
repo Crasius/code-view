@@ -16,7 +16,7 @@
 
 use cv_base::theme::{self, motion, style};
 use egui::{Color32, Id, Rect, Sense, Shape, Ui, pos2};
-use review_core::{ProviderKind, PullRequestSummary};
+use review_core::ProviderKind;
 
 use super::super::pauses::Pauses;
 use super::super::queries::ConnectionResult;
@@ -44,13 +44,12 @@ pub enum Edge<'a> {
     Failed(&'a str),
 }
 
-/// The edge of `pull_request`'s row in `result`'s card, while `pauses` hold requests back.
+/// The edge of `row` in `result`'s card, while `pauses` hold requests back.
 pub fn of<'a>(
     result: &'a ConnectionResult,
     statuses: &'a RowStatuses,
     pauses: &Pauses,
     row: &StatusRow,
-    pull_request: &PullRequestSummary,
 ) -> Edge<'a> {
     if let Some(message) = statuses.failure(row).or_else(|| result.load.refresh_error()) {
         Edge::Failed(message)
@@ -60,7 +59,7 @@ pub fn of<'a>(
         Edge::Updating
     } else if result.load.is_refreshing() {
         Edge::Waiting
-    } else if result.changes.is_changed(&pull_request.repository_key, pull_request.number) {
+    } else if result.changes.is_changed(&row.repository_key, row.number) {
         Edge::Changed
     } else {
         Edge::Fresh

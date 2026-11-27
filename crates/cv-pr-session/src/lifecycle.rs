@@ -15,7 +15,7 @@ use crate::actions::{ActionRunner, Refresh, Ticket, Write};
 use crate::session::PullRequestSession;
 
 /// Why the votes are off on the author's own pull request on GitHub, and what still works.
-pub const AUTHOR_CANNOT_VOTE: &str = "GitHub does not let authors approve their own pull request or \
+const AUTHOR_CANNOT_VOTE: &str = "GitHub does not let authors approve their own pull request or \
      request changes on it. Comments and replies still work.";
 
 /// Why the platform refuses any vote of a user standing as `standing`: GitHub, for the author.

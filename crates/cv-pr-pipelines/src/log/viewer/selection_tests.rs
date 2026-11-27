@@ -6,10 +6,9 @@ use cv_base::theme;
 use egui::{Event, Key, Modifiers, PointerButton, Pos2, Rect, Role, pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use review_store::ThemePreference;
 
-use super::copy_tests::{PLAIN, State, harness, wait_for_copy};
 use super::gutter_width;
+use super::test_harness::{PLAIN, State, harness, wait_for_copy};
 
 const FONT_SIZE: f32 = 13.0;
 const LINES: usize = 7;
@@ -20,30 +19,35 @@ fn button(pos: Pos2, pressed: bool, modifiers: Modifiers) -> Event {
     Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers }
 }
 
-/// The node screen readers get for the visible lines.
-fn lines_label(harness: &Harness<'_, State>) -> String {
+/// The node screen readers get for the visible lines: its label and where it is.
+fn lines_node(harness: &Harness<'_, State>) -> (String, Rect) {
     harness
         .query_all_by_role(Role::Document)
-        .filter_map(|node| node.accesskit_node().label())
-        .find(|label| label.starts_with("Log lines"))
+        .find_map(|node| {
+            let label =
+                node.accesskit_node().label().filter(|label| label.starts_with("Log lines"));
+            label.map(|label| (label, node.rect()))
+        })
         .expect("the log lines")
+}
+
+fn lines_label(harness: &Harness<'_, State>) -> String {
+    lines_node(harness).0
+}
+
+/// The width of one character of the log's font.
+fn char_width(harness: &Harness<'_, State>) -> f32 {
+    let font = theme::fonts::code_font(FONT_SIZE);
+    harness.ctx.fonts_mut(|fonts| fonts.glyph_width(&font, '0'))
 }
 
 /// Where character `column` of line `line` (counted after the timestamp) starts on screen.
 fn at(harness: &Harness<'_, State>, line: usize, column: usize) -> Pos2 {
-    let area: Rect = harness
-        .query_all_by_role(Role::Document)
-        .find(|node| {
-            node.accesskit_node().label().is_some_and(|label| label.starts_with("Log lines"))
-        })
-        .expect("the log lines")
-        .rect();
-    let font = theme::fonts::code_font(FONT_SIZE);
-    let char_width = harness.ctx.fonts_mut(|fonts| fonts.glyph_width(&font, '0'));
+    let area = lines_node(harness).1;
     let pitch = area.height() / LINES as f32;
     let text_left = area.left() + gutter_width(FONT_SIZE, LINES);
     pos2(
-        text_left + (TIMESTAMP_CHARS + column) as f32 * char_width + 1.0,
+        text_left + (TIMESTAMP_CHARS + column) as f32 * char_width(harness) + 1.0,
         area.top() + (line as f32 + 0.5) * pitch,
     )
 }
@@ -51,9 +55,7 @@ fn at(harness: &Harness<'_, State>, line: usize, column: usize) -> Pos2 {
 /// The middle of line `line`'s number.
 fn number_of(harness: &Harness<'_, State>, line: usize) -> Pos2 {
     let start = at(harness, line, 0);
-    let font = theme::fonts::code_font(FONT_SIZE);
-    let char_width = harness.ctx.fonts_mut(|fonts| fonts.glyph_width(&font, '0'));
-    pos2(start.x - TIMESTAMP_CHARS as f32 * char_width - 12.0, start.y)
+    pos2(start.x - TIMESTAMP_CHARS as f32 * char_width(harness) - 12.0, start.y)
 }
 
 fn click(harness: &mut Harness<'_, State>, pos: Pos2, modifiers: Modifiers) {
@@ -99,7 +101,7 @@ fn copy(harness: &mut Harness<'_, State>) -> String {
 
 #[test]
 fn dragging_selects_text_and_ctrl_c_copies_it_plain() {
-    let mut harness = harness(ThemePreference::Light);
+    let mut harness = harness();
     harness.run();
     assert_eq!(lines_label(&harness), "Log lines");
 
@@ -126,7 +128,7 @@ fn dragging_selects_text_and_ctrl_c_copies_it_plain() {
 
 #[test]
 fn shift_click_and_double_click_pick_text() {
-    let mut harness = harness(ThemePreference::Light);
+    let mut harness = harness();
     harness.run();
     let start = at(&harness, 2, 3);
     click(&mut harness, start, Modifiers::NONE);
@@ -152,7 +154,7 @@ fn shift_click_and_double_click_pick_text() {
 
 #[test]
 fn ctrl_a_selects_the_whole_log_once_it_has_focus() {
-    let mut harness = harness(ThemePreference::Light);
+    let mut harness = harness();
     harness.run();
     harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
     harness.step();

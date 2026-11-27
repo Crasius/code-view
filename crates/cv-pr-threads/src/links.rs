@@ -34,44 +34,30 @@ pub fn thread_url(
 
 #[cfg(test)]
 mod tests {
-    use review_core::{ThreadComment, ThreadStatus, UserIdentity};
+    use review_core::{ThreadStatus, UserIdentity};
 
     use super::*;
+    use crate::samples;
 
     fn thread(id: &str, comment_id: &str) -> ReviewThread {
-        ReviewThread {
-            id: id.into(),
-            status: ThreadStatus::Active,
-            anchor: None,
-            is_outdated: false,
-            origin: None,
-            is_system: false,
-            can_reply: true,
-            can_resolve: true,
-            comments: vec![ThreadComment {
-                id: comment_id.into(),
-                author: UserIdentity::default(),
-                body: String::new(),
-                created_at: time::OffsetDateTime::UNIX_EPOCH,
-                updated_at: None,
-            }],
-        }
+        let comment = samples::comment_at(comment_id, &UserIdentity::default(), 0, "");
+        samples::thread(id, ThreadStatus::Active, None, vec![comment])
     }
 
     #[test]
     fn links_threads_on_each_platform() {
-        let github = "https://github.com/cli/cli/pull/12";
+        let github = "https://github.com/acme/shop/pull/12";
         assert_eq!(
             thread_url(ProviderKind::GitHub, github, &thread("PRRT_kw", "991")).as_deref(),
-            Some("https://github.com/cli/cli/pull/12#discussion_r991")
+            Some("https://github.com/acme/shop/pull/12#discussion_r991")
         );
         assert_eq!(
             thread_url(ProviderKind::GitHub, github, &thread("issue-comment:5", "5")).as_deref(),
-            Some("https://github.com/cli/cli/pull/12#issuecomment-5")
+            Some("https://github.com/acme/shop/pull/12#issuecomment-5")
         );
         assert_eq!(
             thread_url(ProviderKind::GitHub, github, &thread("review:7", "7")).as_deref(),
-            Some("https://github.com/cli/cli/pull/12#pullrequestreview-7")
+            Some("https://github.com/acme/shop/pull/12#pullrequestreview-7")
         );
         assert_eq!(
             thread_url(

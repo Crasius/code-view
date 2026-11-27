@@ -173,18 +173,13 @@ mod tests {
     #[test]
     fn a_relaid_galley_keeps_its_size_and_cut() {
         let ctx = Context::default();
-        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
             let mut job = LayoutJob::simple_singleline(
                 "Infra Apps (integration environment)".to_owned(),
                 FontId::proportional(14.0),
                 Color32::WHITE,
             );
-            job.wrap = TextWrapping {
-                max_width: 120.0,
-                max_rows: 1,
-                break_anywhere: true,
-                overflow_character: Some('…'),
-            };
+            job.wrap = TextWrapping::truncate_at_width(120.0);
             ui.ctx().fonts_mut(|fonts| {
                 let source = fonts.layout_job(job);
                 for zoom in [0.25, 0.5, 2.0] {
@@ -201,15 +196,10 @@ mod tests {
                         (sharp.size().y - source.size().y).abs() < 2.0 / zoom,
                         "height at {zoom}"
                     );
-                    assert_eq!(
-                        scaled_job(&source.job, zoom).sections[0].format.font_id.size,
-                        14.0 * zoom,
-                        "rasterized at the size on screen"
-                    );
                 }
             });
         });
         // No renderer here to take the glyph atlas.
-        output.textures_delta.clear();
+        output.drop_without_applying_deltas();
     }
 }

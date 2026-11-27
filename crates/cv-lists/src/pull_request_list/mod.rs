@@ -52,7 +52,7 @@ use cv_services::self_review::{Identities, RowRequests};
 use cv_services::writes::{self, Added, Effect};
 use cv_widgets::refresh_status::RefreshStatus;
 use cv_widgets::states::{self, Action};
-use cv_widgets::{scroll, star};
+use cv_widgets::{elide, scroll, star};
 use egui::RichText;
 use review_core::{ProviderKind, PullRequestScope, PullRequestSummary, StateFilter};
 use review_store::{AppSettings, ListFilters};
@@ -64,7 +64,7 @@ use self::pauses::Pauses;
 use self::queries::ConnectionQueries;
 pub use self::queries::{ANONYMOUS_LIST_INTERVAL, LIST_INTERVAL, cache_stamp};
 use self::statuses::RowStatuses;
-pub use self::toolbar::GROUP_BY_REPOSITORY;
+pub use self::toolbar::{FAVORITES_LANE, GROUP_BY_REPOSITORY};
 use self::toolbar::{
     HEADER_ROW, HeaderAsks, HeaderLayout, HeaderStar, OverviewTools, TITLE_GAP, header_tools,
 };
@@ -74,6 +74,13 @@ use self::warm::Warming;
 pub enum ListSource {
     Mine,
     Repository { connection_id: String, repository_key: String },
+}
+
+impl ListSource {
+    /// The overview across every connection, not one repository's list.
+    pub fn is_overview(&self) -> bool {
+        matches!(self, Self::Mine)
+    }
 }
 
 pub const SEARCH_TOOLTIP: &str = concat!("Search (", shortcut!(command "K"), ")");
@@ -194,11 +201,8 @@ impl PullRequestListPage {
     /// Polls the cards' loads as a frame does; true while one of them still runs.
     #[cfg(any(test, feature = "test-support"))]
     pub fn poll_for_test(&mut self, services: &mut Services) -> bool {
-        writes::land(services);
-        self.queries.poll(services);
-        self.favorites.poll(services);
-        let pauses = Pauses::default();
-        self.queries.is_refreshing(&pauses) || self.favorites.is_refreshing(&pauses)
+        self.land(services);
+        self.is_refreshing(&Pauses::default())
     }
 
     /// The rows on their way out of the cards after a write of the user's.
@@ -275,9 +279,14 @@ impl PullRequestListPage {
         self.revisit(services);
     }
 
+    /// A card's or the Favorites card's newer listing is under way, unless `pauses` hold it back.
+    fn is_refreshing(&self, pauses: &Pauses) -> bool {
+        self.queries.is_refreshing(pauses) || self.favorites.is_refreshing(pauses)
+    }
+
     /// The overview with its Favorites lane shown.
     fn has_lane(&self, services: &Services) -> bool {
-        matches!(self.source, ListSource::Mine) && services.settings.favorites.is_lane_shown
+        self.source.is_overview() && services.settings.favorites.is_lane_shown
     }
 
     /// Sends the owed loads of the open cards on screen ([`Self::on_screen`]); automatic ones only
@@ -294,8 +303,8 @@ impl PullRequestListPage {
     /// After the frame's cards were painted: remembers which are on screen, lets the ones that
     /// came on screen and the scheduler's beats owe loads, and sends what is owed.
     fn follow(&mut self, services: &mut Services, cards: BTreeSet<String>) {
-        let before = self.on_screen.replace(cards);
-        let on_screen = self.on_screen.as_ref().expect("just set");
+        let before = self.on_screen.take();
+        let on_screen = &*self.on_screen.insert(cards);
         let mut has_beat = self.queries.follow(services, on_screen, before.as_ref());
         if on_screen.contains(list_rows::FAVORITES_KEY) {
             let came = before.is_none_or(|before| !before.contains(list_rows::FAVORITES_KEY));
@@ -395,24 +404,19 @@ impl PullRequestListPage {
                     ListSource::Repository { repository_key, .. } => repository_key.clone(),
                 };
                 let heading = egui::TextStyle::Heading.resolve(ui.style());
-                let title_width =
-                    ui.painter().layout_no_wrap(title.clone(), heading, palette.text).size().x;
-                let has_repository = matches!(self.source, ListSource::Mine);
+                let title_width = elide::text_width(ui, &title, &heading);
                 let layout = HeaderLayout::plan(
                     ui.available_width(),
                     title_width,
                     filters::fixed_width(ui, &self.source),
-                    has_repository,
+                    self.source.is_overview(),
                 );
                 let failure = self
                     .queries
                     .refresh_error()
                     .or_else(|| self.favorites.refresh_error())
                     .map(str::to_owned);
-                let status = RefreshStatus::of(
-                    self.queries.is_refreshing(pauses) || self.favorites.is_refreshing(pauses),
-                    failure.as_deref(),
-                );
+                let status = RefreshStatus::of(self.is_refreshing(pauses), failure.as_deref());
                 // One row: title, filters, then the tools from the right edge. Every width is planned
                 // above, so nothing moves while the window keeps its size.
                 asks = self.header_row(ui, settings, &title, layout, status);
@@ -429,7 +433,7 @@ impl PullRequestListPage {
                         );
                     });
                 }
-                if matches!(self.source, ListSource::Mine) {
+                if self.source.is_overview() {
                     ui.add_space(style::SPACE_S);
                 }
             });
@@ -480,7 +484,7 @@ impl PullRequestListPage {
                     || self.known_repositories(),
                 );
             }
-            let overview = matches!(self.source, ListSource::Mine).then_some(OverviewTools {
+            let overview = self.source.is_overview().then_some(OverviewTools {
                 is_lane_shown: settings.favorites.is_lane_shown,
                 is_grouped: settings.repository_sections.is_grouped,
             });
@@ -509,17 +513,9 @@ impl PullRequestListPage {
             ListSource::Repository { .. } | ListSource::Mine => EmptyOffer::Nothing,
         };
         // Repository lists show one repository already; the overview's repository filter is not theirs.
-        let repository =
-            filters.repository.as_ref().filter(|_| matches!(self.source, ListSource::Mine));
+        let repository = filters.repository.as_ref().filter(|_| self.source.is_overview());
         let filter = RowFilter::new(repository);
-        let is_overview = matches!(self.source, ListSource::Mine);
-        let with_token: BTreeSet<String> = services
-            .connections
-            .all()
-            .iter()
-            .filter(|connection| connection.token().is_some())
-            .map(|connection| connection.id.clone())
-            .collect();
+        let is_overview = self.source.is_overview();
         let hosts = list_rows::Hosts {
             collapsed: &services.settings.collapsed_connections,
             pauses,
@@ -527,7 +523,6 @@ impl PullRequestListPage {
             lifts_favorites: is_overview && !services.settings.favorites.is_lane_shown,
             sections: Some(&services.settings.repository_sections)
                 .filter(|sections| is_overview && sections.is_grouped),
-            with_token: &with_token,
             stats: &services.diff_stats,
             requests: &self.requests,
             statuses: &self.statuses,
@@ -553,7 +548,7 @@ impl PullRequestListPage {
         };
         let action = list_rows::show(ui, &input, navigator, &mut visible);
         if let Some(action) = action {
-            self.apply(services, action, &with_token);
+            self.apply(services, action);
         }
         // The page opens at the end of this frame and reads the row from the page cache.
         if let Some((key, summary)) = visible.opened.take() {
@@ -565,20 +560,16 @@ impl PullRequestListPage {
             queries::seen(&mut self.favorites.results, &key);
         }
         self.warming.rest(services, &visible.ahead, visible.rested);
-        diff_stats::want(services, &visible.stats, |row| self.project_rows(&with_token, row));
+        let painted = visible.ahead.iter().map(|ahead| &ahead.row);
+        diff_stats::want(services, painted, |row| self.project_rows(row));
         statuses::want(&mut self.statuses, services, &visible.statuses);
         visible.cards
     }
 
     /// Carries out what a card's button asked for.
-    fn apply(
-        &mut self,
-        services: &mut Services,
-        action: ListAction,
-        with_token: &BTreeSet<String>,
-    ) {
+    fn apply(&mut self, services: &mut Services, action: ListAction) {
         match action {
-            ListAction::Toggle(connection_id) => {
+            ListAction::ToggleConnectionCard(connection_id) => {
                 let collapsed = &mut services.settings.collapsed_connections;
                 if !collapsed.remove(&connection_id) {
                     collapsed.insert(connection_id.clone());
@@ -586,7 +577,7 @@ impl PullRequestListPage {
                 services.save_settings();
                 self.queries.expand(services, &connection_id);
             }
-            ListAction::ToggleFavorites => {
+            ListAction::ToggleFavoritesCard => {
                 let favorites = &mut services.settings.favorites;
                 favorites.is_collapsed = !favorites.is_collapsed;
                 let is_expanded = !favorites.is_collapsed;
@@ -596,7 +587,7 @@ impl PullRequestListPage {
                 }
             }
             ListAction::HideFavoritesLane => show_lane(services, false),
-            ListAction::ToggleFavorite { connection_id, repository_key } => {
+            ListAction::ToggleStar { connection_id, repository_key } => {
                 toggle_favorite(services, &connection_id, &repository_key);
             }
             ListAction::Retry => self.reload_by_hand(services),
@@ -613,7 +604,7 @@ impl PullRequestListPage {
                 services.save_settings();
             }
             ListAction::CountLines(row) => {
-                diff_stats::count(services, &row, |row| self.project_rows(with_token, row));
+                diff_stats::count(services, &row, |row| self.project_rows(row));
             }
             ListAction::AddMe(key) => self.requests.start(services, key),
             ListAction::ToggleSection(key) => {
@@ -650,10 +641,9 @@ impl PullRequestListPage {
 
     /// Every loaded row of `row`'s repository (each once), whose lines a platform that batches
     /// counts together.
-    fn project_rows(&self, with_token: &BTreeSet<String>, row: &StatRow) -> Vec<StatRow> {
+    fn project_rows(&self, row: &StatRow) -> Vec<StatRow> {
         let (connection_id, repository_key) =
             (row.connection_id.as_str(), row.repository_key.as_str());
-        let has_token = with_token.contains(connection_id);
         let mut rows: Vec<StatRow> = self
             .queries
             .results
@@ -664,7 +654,7 @@ impl PullRequestListPage {
                 let listed = result.load.ready().into_iter().flatten();
                 listed.filter(|pull_request| pull_request.repository_key == repository_key).map(
                     move |pull_request| {
-                        list_rows::stat_row(result, pull_request, has_token, row.is_favorite)
+                        list_rows::stat_row(result, pull_request, result.has_token, row.is_favorite)
                     },
                 )
             })
@@ -693,9 +683,8 @@ impl PullRequestListPage {
             .collect();
         // Sorted down to the id and the exact key, so equal entries are neighbours for `dedup`
         // also where two connections share a name.
-        repositories.sort_by(|a, b| {
-            let (key_a, key_b) = (a.2.to_lowercase(), b.2.to_lowercase());
-            key_a.cmp(&key_b).then_with(|| a.1.cmp(&b.1)).then_with(|| a.cmp(b))
+        repositories.sort_by_cached_key(|(id, name, key)| {
+            (key.to_lowercase(), name.clone(), id.clone(), key.clone())
         });
         repositories.dedup();
         repositories
@@ -722,7 +711,7 @@ mod tests {
             result.connection_name = "GitHub".into();
             result
         };
-        let mut queries = ConnectionQueries::loaded_for_test("gh-1", ProviderKind::GitHub, rows());
+        let mut queries = ConnectionQueries::default();
         queries.results = vec![named("gh-1"), named("gh-2")];
         let favorites = FavoriteQueries::loaded_for_test(vec![named("gh-1")]);
         let page = PullRequestListPage::new_for_test(queries, favorites);

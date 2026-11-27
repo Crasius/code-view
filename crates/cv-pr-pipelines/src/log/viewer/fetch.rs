@@ -74,19 +74,15 @@ impl LogFetch {
         if self.log.poll() && matches!(self.log, Load::Ready(Fetched::Log(_))) {
             self.missing = None;
         }
-        if !self.grow.poll() {
-            return None;
-        }
-        match std::mem::take(&mut self.grow) {
-            Load::Ready(grown) => {
+        match self.grow.take_finished()? {
+            Ok(grown) => {
                 self.grow_error = None;
                 Some(grown)
             }
-            Load::Failed(message) => {
+            Err(message) => {
                 self.grow_error = Some(message);
                 None
             }
-            Load::Idle | Load::Loading(_) => None,
         }
     }
 
@@ -120,13 +116,12 @@ impl LogFetch {
             }
             Load::Loading(_) | Load::Failed(_) => return,
             Load::Ready(Fetched::Failed(_)) => {
-                if matches!(missing, Some(Missing::NotYet | Missing::Publishing))
-                    && self.is_due(ctx, &key, services)
-                {
+                let asks_again = matches!(missing, Some(Missing::NotYet | Missing::Publishing));
+                if !asks_again {
+                    self.stop_polling(services);
+                } else if self.is_due(ctx, &key, services) {
                     self.missing = missing;
                     self.start_fetch(log_id, is_live, session, services);
-                } else if !matches!(missing, Some(Missing::NotYet | Missing::Publishing)) {
-                    self.stop_polling(services);
                 }
                 return;
             }

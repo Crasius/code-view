@@ -80,6 +80,18 @@ impl Marks {
         }
     }
 
+    /// [`Self::set`] for a toggle: subscript and superscript exclude each other.
+    pub fn switch(&mut self, mark: Mark, is_on: bool) {
+        self.set(mark, is_on);
+        if is_on {
+            match mark {
+                Mark::Subscript => self.set(Mark::Superscript, false),
+                Mark::Superscript => self.set(Mark::Subscript, false),
+                _ => {}
+            }
+        }
+    }
+
     #[must_use]
     pub fn with(mut self, mark: Mark) -> Self {
         self.set(mark, true);

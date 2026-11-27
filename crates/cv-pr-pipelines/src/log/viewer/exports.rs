@@ -8,13 +8,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use cv_base::platform::{self, shortcut};
-use cv_base::theme::{self, icons};
+use cv_base::theme::icons;
 use cv_runtime::background::Background;
 use cv_runtime::load::Load;
 use cv_runtime::toasts::{self, ToastAction, Toasts, WaysOut};
 use cv_widgets::buttons;
 use cv_widgets::text_selection::Selection;
-use egui::{Align, Color32, FontId, Layout, Ui, vec2};
+use egui::{Align, Layout, Ui, vec2};
 use review_core::ProviderError;
 
 use super::super::download::LoadedLog;
@@ -23,8 +23,11 @@ use super::raw_log;
 /// How long "Copied" replaces "Copy log".
 const COPIED_SECONDS: f64 = 1.5;
 /// The copy button's icon and label: idle, while the text is built, after it reached the clipboard.
-const COPY_STATES: [(&str, &str); 3] =
-    [(icons::COPY, "Copy log"), (icons::COPY, "Copying…"), (icons::CHECK, "Copied")];
+const COPY_IDLE: (&str, &str) = (icons::COPY, "Copy log");
+const COPY_BUSY: (&str, &str) = (icons::COPY, "Copying…");
+const COPY_DONE: (&str, &str) = (icons::CHECK, "Copied");
+/// Every face of the copy button, for the one width its slot keeps.
+const COPY_STATES: [(&str, &str); 3] = [COPY_IDLE, COPY_BUSY, COPY_DONE];
 const COPY_HINT: &str = concat!(
     "Copy the whole log as plain text, without colors (",
     shortcut!(command shift "C"),
@@ -89,33 +92,25 @@ impl LogExports {
         background: &Background,
     ) {
         self.retry_requested(ui, log, background);
-        if self.copy.poll() {
-            match std::mem::take(&mut self.copy) {
-                Load::Ready(text) => {
-                    ui.ctx().copy_text(text);
-                    self.copied_at = Some(ui.input(|input| input.time));
-                }
-                Load::Failed(message) => self.failed(toasts, log, Export::Copy, message, None),
-                Load::Idle | Load::Loading(_) => {}
+        match self.copy.take_finished() {
+            Some(Ok(text)) => {
+                ui.ctx().copy_text(text);
+                self.copied_at = Some(ui.input(|input| input.time));
             }
+            Some(Err(message)) => self.failed(toasts, log, Export::Copy, message, None),
+            None => {}
         }
-        if self.copy_selection.poll() {
-            match std::mem::take(&mut self.copy_selection) {
-                Load::Ready(text) => ui.ctx().copy_text(text),
-                Load::Failed(message) => {
-                    if let Some(selection) = self.selection {
-                        self.failed(toasts, log, Export::Selection(selection), message, None);
-                    }
+        match self.copy_selection.take_finished() {
+            Some(Ok(text)) => ui.ctx().copy_text(text),
+            Some(Err(message)) => {
+                if let Some(selection) = self.selection {
+                    self.failed(toasts, log, Export::Selection(selection), message, None);
                 }
-                Load::Idle | Load::Loading(_) => {}
             }
+            None => {}
         }
-        if self.download.poll() {
-            let saved = match std::mem::take(&mut self.download) {
-                Load::Ready(saved) => saved,
-                Load::Failed(message) => Saved::Failed { message, folder: None },
-                Load::Idle | Load::Loading(_) => Saved::Cancelled,
-            };
+        if let Some(result) = self.download.take_finished() {
+            let saved = result.unwrap_or_else(|message| Saved::Failed { message, folder: None });
             match saved {
                 Saved::To(path) => toasts.success(format!("Saved the log to {}", path.display())),
                 Saved::Failed { message, folder } => {
@@ -252,9 +247,9 @@ impl LogExports {
             ui.ctx().request_repaint_after(Duration::from_secs_f64(COPIED_SECONDS - elapsed));
         }
         match (self.copy.is_loading(), shown_for.is_some()) {
-            (true, _) => COPY_STATES[1],
-            (false, true) => COPY_STATES[2],
-            (false, false) => COPY_STATES[0],
+            (true, _) => COPY_BUSY,
+            (false, true) => COPY_DONE,
+            (false, false) => COPY_IDLE,
         }
     }
 
@@ -262,17 +257,10 @@ impl LogExports {
     /// so nothing in the toolbar moves.
     pub fn copy_button(&self, ui: &mut Ui) -> bool {
         let (icon, text) = self.copy_face(ui);
-        let font = FontId::proportional(theme::style::BODY_SIZE);
         let width = COPY_STATES
             .iter()
-            .map(|(icon, label)| {
-                ui.painter()
-                    .layout_no_wrap(format!("{icon}  {label}"), font.clone(), Color32::WHITE)
-                    .size()
-                    .x
-            })
-            .fold(0.0, f32::max)
-            + 2.0 * theme::style::SPACE_M;
+            .map(|(_, label)| buttons::subtle_width(ui, label))
+            .fold(0.0, f32::max);
         let slot = vec2(width, ui.spacing().interact_size.y);
         ui.allocate_ui_with_layout(slot, Layout::left_to_right(Align::Center), |ui| {
             ui.add_enabled_ui(!self.copy.is_loading(), |ui| {

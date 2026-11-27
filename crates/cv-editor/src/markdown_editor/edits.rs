@@ -7,8 +7,8 @@ use egui::text_edit::TextEditState;
 use egui::{Id, Ui};
 
 use super::Options;
-use super::context::FileContext;
-use super::formatting::{self, Format, ListMarker, Selection};
+use super::context::{self, FileContext};
+use super::formatting::{self, Format, Indent, ListMarker, Selection};
 use super::layout::WriteCache;
 use super::structure::{self, InlineKind};
 use super::toolbar::{Action, ActiveFormats};
@@ -142,15 +142,7 @@ fn toggle(
 ) -> Selection {
     let start = formatting::byte_offset(text, selection.start);
     let end = formatting::byte_offset(text, selection.end);
-    let inline = match format {
-        Format::Bold => Some(InlineKind::Bold),
-        Format::Italic => Some(InlineKind::Italic),
-        Format::Strikethrough => Some(InlineKind::Strike),
-        Format::InlineCode => Some(InlineKind::Code),
-        Format::Link => Some(InlineKind::Link),
-        _ => None,
-    };
-    if let Some(kind) = inline
+    if let Some(kind) = format.inline_kind()
         && let Some(span) = enclosing_span(model, kind, start, end)
     {
         let span = span.clone();
@@ -186,14 +178,10 @@ pub(super) fn active_formats(
     let mut active = ActiveFormats::default();
     let start = formatting::byte_offset(text, selection.start);
     let end = formatting::byte_offset(text, selection.end);
-    let pairs = [
-        (InlineKind::Bold, Format::Bold),
-        (InlineKind::Italic, Format::Italic),
-        (InlineKind::Strike, Format::Strikethrough),
-        (InlineKind::Code, Format::InlineCode),
-        (InlineKind::Link, Format::Link),
-    ];
-    for (kind, format) in pairs {
+    let inline =
+        [Format::Bold, Format::Italic, Format::Strikethrough, Format::InlineCode, Format::Link];
+    let kinds = inline.into_iter().filter_map(|format| Some((format, format.inline_kind()?)));
+    for (format, kind) in kinds {
         if enclosing_span(model, kind, start, end).is_some() {
             active.insert(format);
         }
@@ -245,7 +233,8 @@ pub(super) fn smart_paste(
             && let Some(file) = &file
             && file.contains_code(pasted)
         {
-            return Some(formatting::fenced_paste(text, selection, pasted, &file.language()));
+            let language = context::fence_language(&file.path);
+            return Some(formatting::fenced_paste(text, selection, pasted, &language));
         }
         Some(formatting::insert(text, selection, pasted))
     })
@@ -278,13 +267,13 @@ pub(super) fn indent(
     edit_id: Id,
     text: &mut String,
     cache: &mut WriteCache,
-    is_outdent: bool,
+    direction: Indent,
 ) -> bool {
     let model = cache.model_for(text);
     edit(ui, edit_id, text, |text, selection| {
-        formatting::indent_items(text, selection, is_outdent).or_else(|| {
+        formatting::indent_items(text, selection, direction).or_else(|| {
             let start = formatting::byte_offset(text, selection.start);
-            (model.is_in_code_block(start) && !is_outdent)
+            (model.is_in_code_block(start) && direction == Indent::In)
                 .then(|| formatting::insert(text, selection, "    "))
         })
     })

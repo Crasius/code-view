@@ -3,7 +3,7 @@
 //! stages get one bar of their own status.
 
 use cv_base::theme::{self, Palette, style};
-use cv_widgets::{badges, skeleton};
+use cv_widgets::{badges, elide, skeleton};
 use egui::{Align2, Color32, FontId, Id, Rect, Sense, Ui, pos2, vec2};
 use review_core::{CheckState, PipelineJob, RunStatus};
 
@@ -97,7 +97,7 @@ pub fn show(ui: &Ui, rect: Rect, id: Id, name: &str, stages: Stages<'_>) {
             let (succeeded, counted) = succeeded_of(stages);
             let label = (stages.len() > 1 && counted > 0).then(|| format!("{succeeded}/{counted}"));
             let label_width =
-                label.as_ref().map_or(0.0, |text| text_width(ui, text, &small) + LABEL_GAP);
+                label.as_ref().map_or(0.0, |text| elide::text_width(ui, text, &small) + LABEL_GAP);
             let room = ((rect.width() - label_width + BAR_GAP) / (BAR_WIDTH + BAR_GAP))
                 .floor()
                 .max(1.0) as usize;
@@ -141,12 +141,6 @@ fn paint_bar(ui: &Ui, rect: Rect, id: Id, color: Color32, tooltip: &str) {
     // A taller hover target than the bar itself; it only senses hover, so the row's click stays.
     let target = rect.expand2(vec2(BAR_GAP / 2.0, 8.0));
     ui.interact(target, id, Sense::hover()).on_hover_text(tooltip);
-}
-
-fn text_width(ui: &Ui, text: &str, font: &FontId) -> f32 {
-    ui.fonts_mut(|fonts| {
-        fonts.layout_no_wrap(text.to_owned(), font.clone(), Color32::WHITE).size().x
-    })
 }
 
 #[cfg(test)]

@@ -20,6 +20,7 @@
 
 use std::future::Future;
 
+use cv_base::mailbox;
 use cv_base::theme::icons;
 use cv_runtime::load::Load;
 use cv_runtime::route::PullRequestKey;
@@ -145,8 +146,7 @@ pub fn ask_auto_complete(
     session: &PullRequestSession,
     write: AutoCompleteWrite,
 ) {
-    ctx.data_mut(|data| data.insert_temp(asked_id(session), write));
-    ctx.request_repaint();
+    mailbox::post(ctx, asked_id(session), write);
 }
 
 /// Where the merge button leaves an auto-complete write for the page of `session`.
@@ -197,7 +197,7 @@ impl From<ProviderError> for WriteFailure {
 }
 
 /// What the failure toast's Reload leaves in the context; its own type keeps the id's slot apart.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 struct ReloadAsked;
 
 /// One write at a time per pull request (vote, comment, merge, …), with a toast on completion.
@@ -292,25 +292,17 @@ impl ActionRunner {
         session: &mut PullRequestSession,
     ) -> Option<Refresh> {
         self.retry_requested(services, session);
-        let asked = services.background.ctx().data_mut(|data| {
-            let id = asked_id(session);
-            let write = data.get_temp::<AutoCompleteWrite>(id);
-            data.remove::<AutoCompleteWrite>(id);
-            write
-        });
-        if let Some(write) = asked {
+        if let Some(write) = mailbox::take(&services.background.ctx(), asked_id(session)) {
             Write::AutoComplete(write).start(session, services, self);
         }
         if take_reload(&services.background.ctx(), reload_id(session)) {
             return Some(Refresh::PullRequest);
         }
-        if !self.running.poll() {
-            return None;
-        }
+        let finished = self.running.take_finished()?;
         let ticket = Ticket(self.next_ticket);
         let write = self.write.take();
-        let failure = match std::mem::take(&mut self.running) {
-            Load::Ready(Ok(())) => {
+        let failure = match finished {
+            Ok(Ok(())) => {
                 self.finished = Some((ticket, None));
                 services.toasts.success(std::mem::take(&mut self.success_text));
                 // Unless a list recorded it already.
@@ -318,11 +310,10 @@ impl ActionRunner {
                 session.catch_up_writes(services);
                 return self.refresh.take();
             }
-            Load::Ready(Err(failure)) => failure,
-            Load::Failed(message) => {
+            Ok(Err(failure)) => failure,
+            Err(message) => {
                 WriteFailure { failure: ProviderFailure::local(message), is_head_moved: false }
             }
-            Load::Idle | Load::Loading(_) => return None,
         };
         let WriteFailure { failure, is_head_moved } = failure;
         let text = match &write {
@@ -390,14 +381,13 @@ fn merge_settings(kind: ProviderKind, url: String) -> ToastAction {
 /// "Reload": leaves `id` for [`ActionRunner::poll`], which reloads the pull request.
 fn reload(id: egui::Id) -> ToastAction {
     ToastAction::new(icons::ARROW_CLOCKWISE, "Reload", move |ctx| {
-        ctx.data_mut(|data| data.insert_temp(id, ReloadAsked));
-        ctx.request_repaint();
+        mailbox::post(ctx, id, ReloadAsked);
     })
 }
 
 /// Whether a toast's Reload asked for `id` since the last call; true once per click.
 fn take_reload(ctx: &egui::Context, id: egui::Id) -> bool {
-    ctx.data_mut(|data| data.remove_temp::<ReloadAsked>(id)).is_some()
+    mailbox::take::<ReloadAsked>(ctx, id).is_some()
 }
 
 /// Where the failure toast's Reload asks for the pull request of `session` again.

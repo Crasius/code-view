@@ -14,17 +14,20 @@ use super::align::Pair;
 use super::blocks::lines_label;
 use super::heights::RowHeights;
 use super::lanes::Lanes;
-use super::model::{Model, Row, Side};
+use super::model::{Counts, Model, Row};
 use super::{Frame, GUTTER, RIGHT_PADDING, RenderedEvent, STRIPE_WIDTH};
+use cv_base::theme::motion::mix;
 use cv_base::theme::{self, Palette, icons, style};
-use cv_code::diff_paint::{self, mix};
+use cv_code::diff_paint;
 use cv_pr_diff::gap_bar;
-use cv_pr_diff::notice::{self, Action};
 use cv_widgets::numbers::group_digits;
+use cv_widgets::states::{self, Action};
 use cv_widgets::{buttons, focus, glyph};
 
 const WEDGE_WIDTH: f32 = 7.0;
 const WEDGE_HALF_HEIGHT: f32 = 5.0;
+/// The fold bar's icon in the gutter, between `icons::SIZE_SMALL` and `icons::SIZE`.
+const FOLD_ICON_SIZE: f32 = 15.0;
 /// Removed blocks a New only wedge shows when hovered; the rest are counted.
 const TOOLTIP_BLOCKS: usize = 6;
 const TOOLTIP_WIDTH: f32 = 520.0;
@@ -67,7 +70,7 @@ pub(super) fn show_fold(
         pos2(rect.left() + GUTTER / 2.0 + 1.0, rect.center().y),
         Align2::CENTER_CENTER,
         icons::ARROWS_OUT_LINE_VERTICAL,
-        FontId::proportional(15.0),
+        FontId::proportional(FOLD_ICON_SIZE),
         palette.accent,
     );
     let label_rect = painter.text(
@@ -184,7 +187,7 @@ pub(super) fn show_removal(
     palette: &Palette,
 ) -> bool {
     let model = frame.model;
-    let lane = frame.lanes.column(Side::New);
+    let lane = frame.lanes.column(DiffSide::New);
     let left = frame.origin.x + lane.min;
     let hit = Rect::from_center_size(
         pos2(left + GUTTER / 2.0, y),
@@ -231,7 +234,7 @@ pub(super) fn show_removal(
                 ui,
                 frame.id.with(("removed", *unit)),
                 *unit,
-                model.options(frame.options, Side::Old, None),
+                model.options(frame.options, DiffSide::Old, None),
                 [],
             );
             ui.add_space(style::SPACE_S);
@@ -252,13 +255,13 @@ pub(super) fn paint_header(ui: &Ui, rect: Rect, lanes: &Lanes, model: &Model, pa
     let painter = ui.painter();
     painter.rect_filled(rect, 0, palette.surface);
     painter.hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, palette.border));
-    let [added, removed, edited] = model.counts;
+    let Counts { added, removed, edited } = model.counts;
     let summary =
         |count: usize, what: &str| (count > 0).then(|| format!("{} {what}", group_digits(count)));
     let edited = summary(edited, "edited");
     let sides = [
-        (lanes.column(Side::Old), "Before", [summary(removed, "removed"), edited.clone()]),
-        (lanes.column(Side::New), "After", [summary(added, "added"), edited]),
+        (lanes.column(DiffSide::Old), "Before", [summary(removed, "removed"), edited.clone()]),
+        (lanes.column(DiffSide::New), "After", [summary(added, "added"), edited]),
     ];
     for (lane, title, parts) in sides {
         let left = rect.left() + lane.min + GUTTER;
@@ -307,9 +310,9 @@ pub(super) fn show_banner(ui: &mut Ui, rect: Rect, palette: &Palette) -> Option<
 
 /// Neither version renders anything: say so and offer the text diff.
 pub(super) fn show_empty(ui: &mut Ui, palette: &Palette) -> Option<RenderedEvent> {
-    let actions = [Action { icon: icons::FILE_TEXT, label: "Show text diff", is_primary: true }];
+    let actions = [Action::primary(icons::FILE_TEXT, "Show text diff")];
     let detail = "Both versions are empty or hold only comments, which Markdown does not show.";
-    notice::show(
+    states::notice(
         ui,
         icons::FILE_TEXT,
         palette.text_secondary,

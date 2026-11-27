@@ -4,6 +4,7 @@
 //! (a space after a non-space), at a caret move, a click, a formatting action and a change of
 //! the edit kind. At most `LIMIT` entries are kept, the oldest dropped first.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use super::model::{Block, Document, Selection};
@@ -33,7 +34,7 @@ struct Entry {
 
 #[derive(Clone, Default)]
 pub struct History {
-    undo: Vec<Entry>,
+    undo: VecDeque<Entry>,
     redo: Vec<Entry>,
     /// The open group: its kind, block and the time of its last edit.
     group: Option<(EditKind, usize, f64)>,
@@ -42,7 +43,8 @@ pub struct History {
 }
 
 impl History {
-    /// Call before applying an edit to `doc`.
+    /// Records an edit: `doc` and `selection` are the state before it. Call it only when the edit
+    /// changed something; a refused command calls `break_group` instead.
     pub fn record(
         &mut self,
         doc: &Document,
@@ -78,9 +80,9 @@ impl History {
     }
 
     fn push(&mut self, doc: &Document, selection: Selection) {
-        self.undo.push(Entry { blocks: doc.blocks.clone(), selection });
+        self.undo.push_back(Entry { blocks: doc.blocks.clone(), selection });
         if self.undo.len() > LIMIT {
-            self.undo.remove(0);
+            self.undo.pop_front();
         }
     }
 
@@ -96,7 +98,7 @@ impl History {
     }
 
     pub fn undo(&mut self, doc: &mut Document, selection: &mut Selection) -> bool {
-        let Some(entry) = self.undo.pop() else { return false };
+        let Some(entry) = self.undo.pop_back() else { return false };
         self.redo.push(Entry {
             blocks: std::mem::replace(&mut doc.blocks, entry.blocks),
             selection: *selection,
@@ -108,7 +110,7 @@ impl History {
 
     pub fn redo(&mut self, doc: &mut Document, selection: &mut Selection) -> bool {
         let Some(entry) = self.redo.pop() else { return false };
-        self.undo.push(Entry {
+        self.undo.push_back(Entry {
             blocks: std::mem::replace(&mut doc.blocks, entry.blocks),
             selection: *selection,
         });
