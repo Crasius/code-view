@@ -16,13 +16,9 @@ test-support = []
 
 [dependencies]
 review-core.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 # Whole sessions against fake CLIs: the test binary is its own fake (tests/sessions.rs).
 [[test]]

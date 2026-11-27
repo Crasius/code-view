@@ -120,7 +120,7 @@ pulldown-cmark = { version = "0.13", default-features = false }
 raw-window-handle = "0.6"
 # The TLS backend is chosen per system in review-core: the system's own (native-tls) on Windows
 # and macOS, rustls on Linux (no OpenSSL headers to build against).
-reqwest = { version = "0.13", default-features = false, features = ["http2", "charset", "json", "gzip", "query", "stream"] }
+reqwest = { version = "0.13", default-features = false, features = ["http2", "charset", "json", "gzip", "query"] }
 resvg = { version = "0.48", default-features = false }
 # Linux: access tokens in the Secret Service (GNOME Keyring, KWallet) over D-Bus; zbus and
 # RustCrypto, so no libdbus or OpenSSL to build against.
