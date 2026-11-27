@@ -116,8 +116,10 @@ step_commands() {
       echo 'cargo clippy --locked --workspace --all-targets -- -D warnings'
       echo 'cargo clippy --locked --workspace -- -D warnings'
       echo 'cargo clippy --locked --workspace --all-targets --features review-app/measurements -- -D warnings' ;;
-    deps) echo 'cargo deny --locked check bans sources' ;;
-    advisories) echo 'cargo deny --locked check advisories' ;;
+    # Without the inclusion graphs: the duplicate-version warnings alone print 12,000 lines of them
+    # on a passing run. `cargo deny check bans` by hand shows who pulls a crate in.
+    deps) echo 'cargo deny --locked check --hide-inclusion-graph bans sources' ;;
+    advisories) echo 'cargo deny --locked check --hide-inclusion-graph advisories' ;;
     shear) echo 'cargo shear' ;;
     test)
       rev=$(base_rev) || return 1
