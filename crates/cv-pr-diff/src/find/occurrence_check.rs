@@ -131,11 +131,11 @@ fn a_selected_word_marks_its_other_occurrences_in_the_whole_file() {
     assert!(!has_occurrences(&harness), "the setting turned off marks nothing");
 }
 
-/// Steps until the find widget's count passes `is_expected`.
-fn wait_for_count(harness: &mut Harness<'_, Fixture>, is_expected: impl Fn(&str) -> bool) {
-    cv_testkit::poll_until("the find count", || {
+/// Steps until the find widget's count ends in `suffix`.
+fn wait_for_count(harness: &mut Harness<'_, Fixture>, suffix: &str) {
+    cv_testkit::poll_until(&format!("the find count to end in {suffix:?}"), || {
         harness.step();
-        last_bar(&harness.ctx).is_some_and(|shown| is_expected(&shown.count))
+        last_bar(&harness.ctx).is_some_and(|shown| shown.count.ends_with(suffix))
     });
 }
 
@@ -183,7 +183,7 @@ fn a_dragged_identifier_marks_its_occurrences_beside_the_find_hits() {
         harness.key_press_modifiers(Modifiers::COMMAND, Key::F);
         harness.step();
         harness.event(Event::Text("return".to_owned()));
-        wait_for_count(&mut harness, |count| count.ends_with(" of 1"));
+        wait_for_count(&mut harness, " of 1");
 
         drag(&mut harness, from, to);
         wait_for_occurrences(&mut harness);

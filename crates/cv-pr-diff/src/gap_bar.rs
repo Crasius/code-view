@@ -10,6 +10,12 @@ use cv_code::gaps::{EXPAND_STEP, Expand, Gap, Reveal};
 use cv_widgets::numbers::group_digits;
 
 const BUTTON_WIDTH: f32 = 30.0;
+/// Space before the first expand button, and the label's hit area beyond its text on each side.
+const BAR_INSET: f32 = 6.0;
+/// How far an expand button's hover fill stays inside the button.
+const HOVER_INSET: f32 = 2.0;
+const HOVER_RADIUS: u8 = 3;
+const EXPAND_ICON_SIZE: f32 = 15.0;
 
 pub struct GapBar<'a> {
     pub gap: &'a Gap,
@@ -65,7 +71,7 @@ pub fn show(
 
     let hidden = bar.reveal.hidden(bar.gap);
     let mut expand = None;
-    let mut x = rect.left() + style::SPACE_S;
+    let mut x = rect.left() + BAR_INSET;
     if bar.can_expand {
         for (action, icon, tooltip) in buttons(bar.gap, hidden) {
             let button = Rect::from_min_size(
@@ -93,7 +99,7 @@ pub fn show(
     if bar.can_expand {
         let response = ui
             .interact(
-                label_rect.expand2(vec2(style::SPACE_S, style::SPACE_XS)),
+                label_rect.expand2(vec2(BAR_INSET, style::SPACE_XS)),
                 id.with("all"),
                 Sense::click(),
             )
@@ -168,8 +174,8 @@ fn expand_button(
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tooltip));
     if response.hovered() {
         ui.painter().rect_filled(
-            rect.shrink2(vec2(2.0, 2.0)),
-            style::RADIUS_CONTROL,
+            rect.shrink(HOVER_INSET),
+            HOVER_RADIUS,
             mix(palette.surface, palette.accent, 0.22),
         );
     }
@@ -177,7 +183,7 @@ fn expand_button(
         rect.center(),
         Align2::CENTER_CENTER,
         icon,
-        FontId::proportional(icons::SIZE_SMALL),
+        FontId::proportional(EXPAND_ICON_SIZE),
         palette.accent,
     );
     cv_widgets::focus::ring(ui, &response, rect);
