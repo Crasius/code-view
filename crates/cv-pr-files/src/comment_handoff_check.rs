@@ -202,7 +202,7 @@ fn posting_a_new_thread_hands_the_composer_to_the_comment_in_place() {
     let version = harness.state().version;
     harness.state_mut().fixture.threads_ui.deliver_for_tests(
         &key,
-        Delivery { thread: Some(stored(&new)), ..Delivery::default() },
+        Delivery::Created(stored(&new)),
         version,
     );
     let answered = record(&mut harness, 30);
@@ -274,7 +274,7 @@ fn a_failed_post_brings_the_composer_back_with_the_text_and_retry() {
     let version = harness.state().version;
     harness.state_mut().fixture.threads_ui.deliver_for_tests(
         &key,
-        Delivery { thread: Some(stored(&new)), ..Delivery::default() },
+        Delivery::Created(stored(&new)),
         version,
     );
     let scene = harness.state_mut();
@@ -311,7 +311,7 @@ fn a_reply_hands_its_composer_to_the_reply_in_place() {
     let version = harness.state().version;
     harness.state_mut().fixture.threads_ui.deliver_for_tests(
         "reply:t-1",
-        Delivery { comment: Some(reply.clone()), ..Delivery::default() },
+        Delivery::Replied { comment: reply.clone(), resolve_failed: None },
         version,
     );
     let answered = record(&mut harness, 30);

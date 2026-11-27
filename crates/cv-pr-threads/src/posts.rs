@@ -67,14 +67,12 @@ impl PostKind {
 }
 
 /// What the platform sent back for a post.
-#[derive(Default)]
-pub struct Delivery {
+pub enum Delivery {
     /// The new thread as the platform stored it.
-    pub thread: Option<ReviewThread>,
-    /// The reply as the platform stored it.
-    pub comment: Option<ThreadComment>,
-    /// The reply went out but resolving the thread failed, with the reason.
-    pub warning: Option<String>,
+    Created(ReviewThread),
+    /// The reply as the platform stored it; `resolve_failed` is the reason when the reply went
+    /// out but resolving the thread afterwards failed.
+    Replied { comment: ThreadComment, resolve_failed: Option<String> },
 }
 
 /// What finished posts have to say: confirmations, warnings for replies whose thread could not
@@ -203,8 +201,10 @@ impl Posts {
             .into_iter()
             .filter_map(|key| {
                 let post = self.by_key.remove(&key)?;
-                let created =
-                    post.delivery.and_then(|delivery| delivery.thread).map(|thread| thread.id);
+                let created = match post.delivery {
+                    Some(Delivery::Created(thread)) => Some(thread.id),
+                    Some(Delivery::Replied { .. }) | None => None,
+                };
                 let thread_id = post.kind.thread_id().map(str::to_owned).or(created);
                 Some(Landed { key, thread_id })
             })
@@ -239,12 +239,18 @@ impl Posts {
 
     /// The new thread as the platform stored it, once it answered.
     pub fn created(&self, key: &str) -> Option<&ReviewThread> {
-        self.by_key.get(key)?.delivery.as_ref()?.thread.as_ref()
+        match self.by_key.get(key)?.delivery.as_ref()? {
+            Delivery::Created(thread) => Some(thread),
+            Delivery::Replied { .. } => None,
+        }
     }
 
     /// The reply as the platform stored it, once it answered.
     pub fn replied(&self, key: &str) -> Option<&ThreadComment> {
-        self.by_key.get(key)?.delivery.as_ref()?.comment.as_ref()
+        match self.by_key.get(key)?.delivery.as_ref()? {
+            Delivery::Replied { comment, .. } => Some(comment),
+            Delivery::Created(_) => None,
+        }
     }
 
     /// Keys of the new threads on their way (not failed), in the order they were sent.
@@ -303,11 +309,13 @@ impl Posts {
 
 /// The platform has the post: its copy is kept for the pending comment.
 fn deliver(key: &str, post: &mut Post, delivery: Delivery, version: u64, news: &mut PostNews) {
-    match &delivery.warning {
-        Some(reason) => news
+    match &delivery {
+        Delivery::Replied { resolve_failed: Some(reason), .. } => news
             .warnings
             .push(format!("Reply posted, but the thread could not be resolved: {reason}")),
-        None => news.done.push(post.kind.done()),
+        Delivery::Replied { resolve_failed: None, .. } | Delivery::Created(_) => {
+            news.done.push(post.kind.done());
+        }
     }
     news.delivered.push(key.to_owned());
     post.state = PostState::Sent { after_version: version };
@@ -332,21 +340,18 @@ fn send(
             PostKind::Reply { thread_id, body, resolve } => {
                 let comment = provider.reply(&repository, number, &thread_id, &body).await?;
                 if !resolve {
-                    return Ok(Delivery { comment: Some(comment), ..Delivery::default() });
+                    return Ok(Delivery::Replied { comment, resolve_failed: None });
                 }
                 // The reply is out: a failed resolve must not make a retry post it twice.
                 let resolved = provider
                     .set_thread_status(&repository, number, &thread_id, ThreadStatus::Resolved)
                     .await;
-                Ok(Delivery {
-                    comment: Some(comment),
-                    warning: resolved.err().map(|error| error.to_string()),
-                    ..Delivery::default()
-                })
+                let resolve_failed = resolved.err().map(|error| error.to_string());
+                Ok(Delivery::Replied { comment, resolve_failed })
             }
             PostKind::Create(thread) => {
                 let created = provider.create_thread(&repository, number, &thread).await?;
-                Ok(Delivery { thread: Some(created), ..Delivery::default() })
+                Ok(Delivery::Created(created))
             }
         }
     }

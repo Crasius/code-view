@@ -104,5 +104,5 @@ fn web_url(
     let page = threads_ui.context.web_url.as_deref();
     let thread = session.threads.ready()?.iter().find(|thread| thread.id == thread_id)?;
     let own = thread.origin.as_ref().and_then(|origin| origin.web_url.clone());
-    own.or_else(|| cv_pr_threads::thread_url(session.kind, page?, thread))
+    own.or_else(|| cv_pr_threads::thread_url(session.provider.as_ref(), page?, thread))
 }

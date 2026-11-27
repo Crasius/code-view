@@ -212,8 +212,7 @@ fn show_focus_strip(
     let file = selected.map(|index| &files[index]);
     let state = file.map(|file| tab.file_state(file, env.services));
     let threads = env.session.threads.ready().map_or(&[][..], Vec::as_slice);
-    let listed =
-        || threads.iter().filter(|thread| !thread.is_system && !thread.comments.is_empty());
+    let counts = cv_pr_threads::toggle_counts(threads, env.threads_ui);
     let inputs = focus_strip::StripInputs {
         file,
         folder: tab.summary.folder(),
@@ -227,8 +226,8 @@ fn show_focus_strip(
         edge_hint: selected
             .zip(file)
             .and_then(|(index, file)| stepping::edge_hint(tab, ui, index, &file.path)),
-        open_threads: listed().filter(|thread| thread.status == ThreadStatus::Active).count(),
-        has_news: listed().any(|thread| env.threads_ui.is_unread(thread)),
+        open_threads: counts.active,
+        has_news: counts.unread > 0,
     };
     focus_strip::show(ui, &inputs, env.services)
 }
