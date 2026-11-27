@@ -3,7 +3,6 @@
 //! follows the XDG defaults.
 
 use std::io;
-use std::path::PathBuf;
 use std::process::Command;
 
 use super::DataRoots;
@@ -39,13 +38,7 @@ pub(crate) fn enter_background_priority() {}
 pub(crate) fn hide_console(_command: &mut Command) {}
 
 pub(crate) fn data_roots() -> DataRoots {
-    let home = std::env::var_os("HOME").map_or_else(std::env::temp_dir, PathBuf::from);
-    DataRoots {
-        config: std::env::var_os("XDG_CONFIG_HOME")
-            .map_or_else(|| home.join(".config"), PathBuf::from),
-        cache: std::env::var_os("XDG_CACHE_HOME")
-            .map_or_else(|| home.join(".cache"), PathBuf::from),
-    }
+    super::xdg_data_roots()
 }
 
 fn unsupported() -> VaultProblem {

@@ -10,7 +10,6 @@
 //! file ([`crate::TokenVault::File`]).
 
 use std::io;
-use std::path::PathBuf;
 use std::process::Command;
 
 use super::DataRoots;
@@ -51,13 +50,7 @@ pub(crate) fn hide_console(_command: &mut Command) {}
 
 /// `$XDG_CONFIG_HOME` (`~/.config`) for the config, `$XDG_CACHE_HOME` (`~/.cache`) for the cache.
 pub(crate) fn data_roots() -> DataRoots {
-    let home = std::env::var_os("HOME").map_or_else(std::env::temp_dir, PathBuf::from);
-    let absolute =
-        |name: &str| std::env::var_os(name).map(PathBuf::from).filter(|path| path.is_absolute());
-    DataRoots {
-        config: absolute("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config")),
-        cache: absolute("XDG_CACHE_HOME").unwrap_or_else(|| home.join(".cache")),
-    }
+    super::xdg_data_roots()
 }
 
 /// What went wrong talking to the secret store.
@@ -371,17 +364,14 @@ mod tests {
     fn forgetting_without_a_keyring_lets_tokenless_connections_save() {
         forget_with(&failing(Failure::Unavailable("no session bus".to_owned())), "gh-1").unwrap();
         let locked = forget_with(&failing(Failure::Locked), "gh-1").unwrap_err();
-        assert_eq!(
-            VaultProblem::of(&locked).map(|problem| problem.title.as_str()),
-            Some("The keyring stayed locked")
-        );
+        assert_eq!(VaultProblem::of(&locked), Some(&problem(&Failure::Locked, "")));
     }
 
     #[test]
-    fn reading_from_a_locked_keyring_says_how_to_unlock() {
+    fn reading_from_a_locked_keyring_returns_the_locked_problem() {
         let error =
             unprotect_with(&failing(Failure::Locked), "gh-1", "secret-service").unwrap_err();
-        assert!(VaultProblem::of(&error).is_some_and(|problem| problem.fix.contains("Unlock")));
+        assert_eq!(VaultProblem::of(&error), Some(&problem(&Failure::Locked, "")));
     }
 
     #[test]
