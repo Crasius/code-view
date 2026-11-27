@@ -117,7 +117,7 @@ pub(super) fn show(
 ) -> Option<HeaderAction> {
     let mut action = None;
     let votes = &session.capabilities.votes;
-    let me = known_user(ui, session, services);
+    let me = known_user(session, services);
     let standing = self_review::standing(&detail.summary, me.as_ref());
     let own = own_vote(standing);
     let refusal = author_refusal(session.kind, standing);
@@ -217,17 +217,15 @@ fn vote(vote: ReviewVote, comment: Option<String>) -> HeaderAction {
 
 /// The signed-in user once the platform said; asks for them once per connection with a token.
 fn known_user(
-    ui: &Ui,
     session: &PullRequestSession,
     services: &mut Services,
 ) -> Option<review_core::UserIdentity> {
     let connection_id = &session.key.connection_id;
-    let identities = Identities::of(ui.ctx());
-    if session.has_token && identities.state(connection_id).is_none() {
-        identities.ask(connection_id);
-        identities.start_asked(services);
+    if session.has_token && services.identities.state(connection_id).is_none() {
+        services.identities.ask(connection_id);
+        Identities::start_asked(services);
     }
-    identities.known(connection_id)
+    services.identities.known(connection_id)
 }
 
 /// "Approve", or the user's own vote with its icon in the vote's colour.

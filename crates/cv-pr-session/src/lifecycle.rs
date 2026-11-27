@@ -7,7 +7,7 @@
 //! depending on the page.
 
 use cv_services::Services;
-use cv_services::self_review::{self, Identities, Standing};
+use cv_services::self_review::{self, Standing};
 use cv_services::writes::{Added, Effect};
 use review_core::{ProviderKind, PullRequestState, ReviewVote};
 
@@ -136,7 +136,7 @@ impl LifecycleAction {
                 let connection_id = session.key.connection_id.clone();
                 let future = self_review::add_me(
                     provider,
-                    Identities::of(&ctx),
+                    services.identities.clone(),
                     connection_id,
                     repository,
                     number,

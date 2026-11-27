@@ -514,7 +514,9 @@ fn paint_pull_request(
     let shown = hosts.stats.shown(&stat_row);
     let (is_running, failure) =
         hosts.requests.state_of(connection_id, &pull_request.repository_key, pull_request.number);
-    let ask = RowAsk { connection_id, has_token, is_running, failure };
+    let identities = hosts.identities;
+    let me = has_token.then(|| identities.known(connection_id)).flatten();
+    let ask = RowAsk { connection_id, has_token, is_running, failure, me: me.as_ref(), identities };
     let status_row = StatusRow::new(
         connection_id,
         result.kind,
@@ -526,7 +528,6 @@ fn paint_pull_request(
     let checks = hosts.statuses.checks(&status_row, pull_request.checks);
     let reviewers = hosts.statuses.reviewers(&status_row, &pull_request.reviewers);
     let required_approvals = hosts.statuses.required_approvals(&status_row);
-    let me = has_token.then(|| hosts.identities.known(connection_id)).flatten();
     let interest = Interest::of(pull_request, reviewers, required_approvals, me.as_ref());
     let pending =
         hosts.flights.pending_on(connection_id, &pull_request.repository_key, pull_request.number);

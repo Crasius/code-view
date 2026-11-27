@@ -83,6 +83,8 @@ pub struct Services {
     pub writes: writes::Writes,
     /// Pull requests checked out locally, the checkouts that run and their upkeep.
     pub checkouts: Checkouts,
+    /// The signed-in user of each connection, learned once per run.
+    pub identities: self_review::Identities,
 }
 
 impl Services {
@@ -164,6 +166,7 @@ impl Services {
             agents: AgentDirectory::default(),
             writes: writes::Writes::default(),
             checkouts,
+            identities: self_review::Identities::default(),
         }
     }
 

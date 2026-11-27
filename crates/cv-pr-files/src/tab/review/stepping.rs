@@ -20,7 +20,7 @@ use cv_pr_session::lifecycle::{LifecycleAction, author_refusal};
 use cv_pr_tree::{FileFilter, ReviewStep, TreeEvent, VoteOffer, goto};
 use cv_runtime::route::PullRequestKey;
 use cv_runtime::toasts::ToastAction;
-use cv_services::self_review::{self, Identities, Standing};
+use cv_services::self_review::{self, Standing};
 use cv_widgets::badges;
 
 /// How long the note after a step past the last or first change shows, and a second press of the
@@ -141,7 +141,7 @@ fn next_unviewed(
         ),
         Unviewed::AllViewed => {
             let mut actions = Vec::new();
-            if let VoteOffer::Approve { is_enabled: true } = vote_offer(ctx, env) {
+            if let VoteOffer::Approve { is_enabled: true } = vote_offer(env) {
                 actions.push(action(icons::CHECK, "Approve", ReviewStep::Approve));
             }
             actions.push(action(icons::BOOK_OPEN_TEXT, "Overview", ReviewStep::Overview));
@@ -179,7 +179,7 @@ pub fn run(
             }
         }
         ReviewStep::Approve => {
-            if let VoteOffer::Approve { is_enabled: true } = vote_offer(ctx, env) {
+            if let VoteOffer::Approve { is_enabled: true } = vote_offer(env) {
                 let approve = LifecycleAction::Vote { vote: ReviewVote::Approved, comment: None };
                 approve.run(env.session, env.services, env.actions);
             }
@@ -198,7 +198,7 @@ pub fn run(
 /// What the review can offer for the vote: "Approve" on an open pull request whose platform
 /// takes approvals, with a token; the user's vote once the platform lists one, so a second
 /// approval never goes out. Nothing where the platform refuses the author's vote.
-pub fn vote_offer(ctx: &Context, env: &Env<'_>) -> VoteOffer {
+pub fn vote_offer(env: &Env<'_>) -> VoteOffer {
     let session = &*env.session;
     let Some(detail) = session.detail.ready() else {
         return VoteOffer::None;
@@ -209,7 +209,7 @@ pub fn vote_offer(ctx: &Context, env: &Env<'_>) -> VoteOffer {
     if !can_approve {
         return VoteOffer::None;
     }
-    let me = Identities::of(ctx).known(&session.key.connection_id);
+    let me = env.services.identities.known(&session.key.connection_id);
     let standing = self_review::standing(&detail.summary, me.as_ref());
     if author_refusal(session.kind, standing).is_some() {
         return VoteOffer::None;
