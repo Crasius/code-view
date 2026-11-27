@@ -10,7 +10,6 @@
 
 mod auto_complete;
 
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 
@@ -19,26 +18,24 @@ use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{
-    AutoComplete, Capabilities, Connection, GitRemote, Label, MergeOptions, MergePolicy,
-    MergeStatus, MergeStrategy, NewThread, PipelineJob, PipelineRun, Provider, ProviderError,
-    ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestState, PullRequestSummary,
-    RepositoryInfo, Result, ReviewThread, ReviewVote, ThreadComment, ThreadStatus, UserIdentity,
+    AutoComplete, Capabilities, Connection, MergeOptions, MergePolicy, MergeStatus, MergeStrategy,
+    ProviderError, ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestState,
+    PullRequestSummary, Result, ReviewVote, UserIdentity,
 };
-use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
 use super::walkthrough::{
     app_with, has, opened_urls, press, pump, saved_paths, saved_settings, set_focus, wait_until,
 };
 use cv_runtime::route::{PullRequestKey, Route};
+use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{Clicks, ScratchDir, samples};
 
 const REPOSITORY: &str = "contoso/Web/site";
 const POLICIES: &str = "https://dev.azure.com/contoso/Web/_settings/repositories?_a=policiesMid";
 const OPTIONS: &str = "Merge options";
 
-/// Every merge a connection's scripted provider was asked for, and how often for a policy.
-/// Each test has its own connection, so tests running side by side count apart.
+/// Every merge a test's scripted provider was asked for, and how often for a policy.
 #[derive(Default)]
 struct Calls {
     merges: Mutex<Vec<MergeOptions>>,
@@ -50,9 +47,6 @@ struct Calls {
     /// The platform refuses to set auto-complete, as GitHub does where a repository forbids it.
     refuses_auto_complete: bool,
 }
-
-static CALLS: LazyLock<Mutex<HashMap<String, Arc<Calls>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[test]
 fn merge_button_confirms_in_place_and_remembers_the_choice() {
@@ -230,7 +224,7 @@ fn start_on(
     calls: Calls,
 ) -> (Harness<'static, ReviewApp>, Arc<Calls>) {
     let calls = Arc::new(calls);
-    CALLS.lock().unwrap().insert(name.to_owned(), calls.clone());
+    let script_calls = calls.clone();
     let connection = Connection {
         name: "Contoso".to_owned(),
         organizations: vec!["contoso".to_owned()],
@@ -238,7 +232,9 @@ fn start_on(
         ..samples::connection(name, kind, "https://dev.azure.com/contoso")
     };
     let builder = Harness::builder().with_size([1280.0, 860.0]).with_step_dt(1.0 / 30.0);
-    let harness = app_with(builder, saved_paths(scratch, &[connection]), scripted_provider);
+    let harness = app_with(builder, saved_paths(scratch, &[connection]), move |_, _| {
+        Arc::new(Scripted(MergeButtonScript { calls: script_calls.clone() }))
+    });
     (harness, calls)
 }
 
@@ -269,21 +265,7 @@ fn web_url(number: u64) -> String {
     format!("https://dev.azure.com/contoso/Web/_git/site/pullrequest/{number}")
 }
 
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "a ProviderFactory, whose signature hands the connection and the client over"
-)]
-fn scripted_provider(connection: Connection, _http: reqwest::Client) -> Arc<dyn Provider> {
-    let calls = CALLS
-        .lock()
-        .unwrap()
-        .get(&connection.id)
-        .cloned()
-        .unwrap_or_else(|| panic!("no script for connection {}", connection.id));
-    Arc::new(ScriptedProvider { calls })
-}
-
-struct ScriptedProvider {
+struct MergeButtonScript {
     calls: Arc<Calls>,
 }
 
@@ -336,28 +318,14 @@ static CAPABILITIES: LazyLock<Capabilities> = LazyLock::new(|| Capabilities {
     running_logs: review_core::RunningLogs::Growing,
 });
 
-impl ScriptedProvider {
-    fn unused<T>() -> Result<T> {
-        Err(ProviderError::Unsupported("Not part of the merge button walkthrough.".to_owned()))
-    }
-}
-
 #[async_trait]
-impl Provider for ScriptedProvider {
+impl Script for MergeButtonScript {
     fn capabilities(&self) -> &Capabilities {
         &CAPABILITIES
     }
 
     async fn current_user(&self) -> Result<UserIdentity> {
         Ok(person("1", "Ada Lovelace"))
-    }
-
-    async fn list_repositories(&self, _search: Option<&str>) -> Result<Vec<RepositoryInfo>> {
-        Ok(Vec::new())
-    }
-
-    async fn git_remote(&self, _repo: &str) -> Result<GitRemote> {
-        Err(ProviderError::Unsupported("No files in this walkthrough.".to_owned()))
     }
 
     async fn list_pull_requests(
@@ -371,16 +339,13 @@ impl Provider for ScriptedProvider {
         Ok(PullRequestDetail {
             summary: summary(number),
             description: "Completes with the branch's merge types.".to_owned(),
-            target_sha: "b".repeat(40),
-            head_sha: "a".repeat(40),
             merge_status: change(number).2,
-            git_fetch_refs: Vec::new(),
-            closed_at: None,
             auto_complete: if number == 3 {
                 self.calls.auto_complete.lock().unwrap().clone()
             } else {
                 None
             },
+            ..samples::detail(REPOSITORY, number)
         })
     }
 
@@ -419,109 +384,5 @@ impl Provider for ScriptedProvider {
         self.calls.auto_completes.lock().unwrap().push(None);
         *self.calls.auto_complete.lock().unwrap() = None;
         Ok(())
-    }
-
-    async fn close(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn reopen(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_draft(&self, _repo: &str, _number: u64, _is_draft: bool) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn update_title_description(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _title: &str,
-        _description: &str,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_vote(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _vote: ReviewVote,
-        _comment: Option<&str>,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn add_reviewer(&self, _repo: &str, _number: u64, _user: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn remove_reviewer(&self, _repo: &str, _number: u64, _reviewer_id: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn threads(&self, _repo: &str, _number: u64) -> Result<Vec<ReviewThread>> {
-        Ok(Vec::new())
-    }
-
-    async fn create_thread(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread: &NewThread,
-    ) -> Result<ReviewThread> {
-        Self::unused()
-    }
-
-    async fn reply(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _body: &str,
-    ) -> Result<ThreadComment> {
-        Self::unused()
-    }
-
-    async fn set_thread_status(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _status: ThreadStatus,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn available_labels(&self, _repo: &str) -> Result<Vec<Label>> {
-        Ok(Vec::new())
-    }
-
-    async fn set_labels(&self, _repo: &str, _number: u64, _labels: &[String]) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn pipeline_runs(&self, _repo: &str, _number: u64) -> Result<Vec<PipelineRun>> {
-        Ok(Vec::new())
-    }
-
-    async fn pipeline_jobs(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _run_id: &str,
-    ) -> Result<Vec<PipelineJob>> {
-        Ok(Vec::new())
-    }
-
-    async fn download_log(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _log_id: &str,
-        _sink: &mut (dyn AsyncWrite + Unpin + Send),
-    ) -> Result<()> {
-        Self::unused()
     }
 }
