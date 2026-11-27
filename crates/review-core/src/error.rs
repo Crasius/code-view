@@ -14,7 +14,8 @@ pub enum ProviderError {
     #[error("{} ({status} from {path})", readable_body(.body))]
     Status { status: u16, path: String, body: String },
 
-    /// The request never got an answer (DNS, TLS, timeout, connection reset).
+    /// The request never got an answer (DNS, TLS, timeout, connection reset); the message names
+    /// the cause after reqwest's own text.
     #[error("network error: {0}")]
     Network(String),
 
@@ -85,11 +86,16 @@ pub(crate) fn readable_body(body: &str) -> String {
     if text.is_empty() {
         return "No details from the server".to_owned();
     }
+    shortened(text)
+}
+
+/// `text`, or its first [`MAX_BODY_CHARS`] characters and an ellipsis when it is longer.
+fn shortened(text: &str) -> String {
     if text.chars().count() <= MAX_BODY_CHARS {
         return text.to_owned();
     }
-    let shortened: String = text.chars().take(MAX_BODY_CHARS).collect();
-    format!("{shortened}…")
+    let head: String = text.chars().take(MAX_BODY_CHARS).collect();
+    format!("{head}…")
 }
 
 /// The first line of `<Message>` in an XML error document (`<Error><Code>BlobNotFound</Code>
@@ -121,10 +127,83 @@ fn html_title(body: &str) -> Option<&str> {
 
 impl From<reqwest::Error> for ProviderError {
     fn from(error: reqwest::Error) -> Self {
+        let message = with_cause(&error);
         if error.is_decode() {
-            return ProviderError::Decode(error.to_string());
+            return ProviderError::Decode(message);
         }
-        ProviderError::Network(error.to_string())
+        ProviderError::Network(message)
+    }
+}
+
+/// reqwest's own text, then why the request failed, on one line:
+/// `error sending request for url (http://127.0.0.1:8080/x): tcp connect error: connection refused: …`.
+///
+/// reqwest's `Display` names only its own layer; the reason sits in the
+/// [`source`](std::error::Error::source) chain, which [`cause`] reads. reqwest's text stays whole;
+/// the cause is capped like a body, since one level of it (h2's GOAWAY debug data) is the
+/// server's own text. With this client's settings (no `https_only`, no custom redirect policy,
+/// no proxy) no level below reqwest's carries the URL, so the message holds no more of it than
+/// reqwest's own text; a setting that adds such a level must keep that true.
+fn with_cause(error: &reqwest::Error) -> String {
+    match cause(std::error::Error::source(error)) {
+        Some(cause) => format!("{error}: {cause}"),
+        None => error.to_string(),
+    }
+}
+
+/// The reason at the bottom of a source chain, after the step that failed, on one line and at
+/// most [`MAX_BODY_CHARS`] characters long.
+///
+/// The innermost level is the reason (the OS error, the resolver's answer, the TLS library's
+/// text, `operation timed out`); the nearest level above it names the step that failed where
+/// hyper adds one (`tcp connect error`, `error resolving DNS`, `connection error`). hyper-util's
+/// `client error (Connect)` level only repeats, as a debug name, what reqwest's text and the
+/// step already say, so it is never the step: a TLS failure, which sits right under it, reads
+/// `<reqwest's text>: <the TLS text>`. hyper-util is no dependency of this crate, so the level is
+/// known by the prefix its `Display` writes.
+fn cause(source: Option<&(dyn std::error::Error + 'static)>) -> Option<String> {
+    let mut levels = Vec::new();
+    let mut level = source;
+    while let Some(current) = level {
+        levels.push(current);
+        level = current.source();
+    }
+    let (innermost, above) = levels.split_last()?;
+    let mut cause = reason(*innermost);
+    if let Some(step) =
+        above.iter().rev().map(ToString::to_string).find(|step| !step.starts_with("client error ("))
+        && !cause.to_lowercase().contains(&step.to_lowercase())
+    {
+        cause = format!("{step}: {cause}");
+    }
+    Some(shortened(&cause.split_whitespace().collect::<Vec<_>>().join(" ")))
+}
+
+/// The innermost level of a request error. An OS error reads in the system's language (Windows
+/// localizes socket errors), so a network [`std::io::ErrorKind`] goes in front in English unless
+/// the text already says it (`Connection refused (os error 111)` on Linux).
+fn reason(level: &(dyn std::error::Error + 'static)) -> String {
+    use std::io::ErrorKind;
+    let text = level.to_string();
+    let kind = level.downcast_ref::<std::io::Error>().map(std::io::Error::kind).filter(|kind| {
+        matches!(
+            kind,
+            ErrorKind::ConnectionRefused
+                | ErrorKind::ConnectionReset
+                | ErrorKind::ConnectionAborted
+                | ErrorKind::NotConnected
+                | ErrorKind::TimedOut
+                | ErrorKind::HostUnreachable
+                | ErrorKind::NetworkUnreachable
+                | ErrorKind::NetworkDown
+                | ErrorKind::AddrNotAvailable
+                | ErrorKind::BrokenPipe
+                | ErrorKind::UnexpectedEof
+        )
+    });
+    match kind {
+        Some(kind) if !text.to_lowercase().contains(&kind.to_string()) => format!("{kind}: {text}"),
+        _ => text,
     }
 }
 
@@ -140,9 +219,68 @@ impl From<std::io::Error> for ProviderError {
     }
 }
 
+/// A loopback port nobody listens on: a listener is bound to it and dropped. Another listener can
+/// take the port between this call and the request, so a test that expects a refusal can, rarely,
+/// meet an answer instead.
+#[cfg(test)]
+pub(crate) fn closed_port() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a loopback port");
+    listener.local_addr().expect("bound address").port()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::ProviderError;
+    use super::{MAX_BODY_CHARS, ProviderError, cause, closed_port};
+
+    /// One level of a source chain, with the levels below it.
+    #[derive(Debug)]
+    struct Level {
+        text: String,
+        below: Option<Box<Level>>,
+    }
+
+    impl std::fmt::Display for Level {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&self.text)
+        }
+    }
+
+    impl std::error::Error for Level {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            self.below.as_deref().map(|below| below as &(dyn std::error::Error + 'static))
+        }
+    }
+
+    /// The chain below reqwest's level, outermost first.
+    fn chain(texts: &[&str]) -> Level {
+        texts
+            .iter()
+            .rev()
+            .fold(None, |below, text| {
+                Some(Level { text: (*text).to_owned(), below: below.map(Box::new) })
+            })
+            .expect("at least one level")
+    }
+
+    /// h2's GOAWAY debug data is the server's text; the cause stops at the body limit.
+    #[test]
+    fn a_long_cause_is_capped() {
+        let goaway = "x".repeat(MAX_BODY_CHARS * 2);
+        let levels = chain(&["client error (SendRequest)", "http2 error", &goaway]);
+        let text = cause(Some(&levels)).expect("a cause");
+        assert_eq!(text.chars().count(), MAX_BODY_CHARS + 1, "{text}");
+        assert!(text.starts_with("http2 error: xxx") && text.ends_with('…'), "{text}");
+    }
+
+    /// A TLS failure sits right under hyper-util's `client error (Connect)`, which is no step.
+    #[test]
+    fn a_tls_failure_reads_without_the_client_error_level() {
+        let levels = chain(&["client error (Connect)", "invalid peer certificate: UnknownIssuer"]);
+        assert_eq!(
+            cause(Some(&levels)).as_deref(),
+            Some("invalid peer certificate: UnknownIssuer")
+        );
+    }
 
     #[test]
     fn shows_the_platform_message_instead_of_raw_json() {
@@ -183,6 +321,46 @@ mod tests {
             body: "<!DOCTYPE html><html><body>down</body></html>".into(),
         };
         assert_eq!(untitled.to_string(), "No details from the server (503 from /x)");
+    }
+
+    /// The message names the refusal next to reqwest's own text. `connection refused` is the
+    /// English name of `io::ErrorKind::ConnectionRefused`, the same on every system; the OS text
+    /// after it is the system's own (German on a German Windows).
+    #[tokio::test]
+    async fn a_refused_connection_says_it_was_refused() {
+        let url = format!("http://127.0.0.1:{}/repos/acme/site?page=2", closed_port());
+        let client = crate::http::build_client();
+        let error = ProviderError::from(client.get(&url).send().await.unwrap_err());
+        let ProviderError::Network(message) = &error else { panic!("{error:?}") };
+        assert!(
+            message.starts_with(&format!("error sending request for url ({url}): ")),
+            "reqwest's own text stays first: {message}"
+        );
+        assert!(message.to_lowercase().contains("connection refused"), "{message}");
+        assert!(!message.contains('\n'), "one line: {message}");
+        assert_eq!(message.matches(url.as_str()).count(), 1, "the URL once: {message}");
+    }
+
+    /// A request that outlives the client's timeout keeps saying that it timed out.
+    #[tokio::test]
+    async fn a_timeout_says_it_timed_out() {
+        let silent = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let address = silent.local_addr().expect("bound address");
+        let _held = tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((stream, _)) = silent.accept().await {
+                held.push(stream);
+            }
+        });
+        let client = crate::http::client_builder()
+            .timeout(std::time::Duration::from_millis(200))
+            .build()
+            .expect("client");
+        let error = client.get(format!("http://{address}/x")).send().await.unwrap_err();
+        assert!(error.is_timeout(), "{error:?}");
+        let error = ProviderError::from(error);
+        assert!(matches!(&error, ProviderError::Network(_)), "{error:?}");
+        assert!(error.to_string().contains("timed out"), "{error}");
     }
 
     #[test]

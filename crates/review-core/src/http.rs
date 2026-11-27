@@ -66,7 +66,7 @@ pub async fn send(request: RequestBuilder) -> Result<Response> {
 /// Made only for a write: a guard made and dropped at once would end the sharing of the GETs in
 /// flight as a finished write does.
 fn write_guard(request: &Request) -> Option<cache::Write> {
-    is_write(request).then(|| cache::Write)
+    is_write(request).then(|| cache::Cache::shared().write())
 }
 
 /// Whether `request` may change what the host answers: anything but a GET and a GraphQL query.
@@ -122,7 +122,7 @@ pub async fn fetch(request: RequestBuilder) -> Result<Fetched> {
         let _write = write_guard(&request);
         return Fetched::read(budget::execute(&client, request).await?).await;
     }
-    cache::fetch(client, request).await
+    cache::Cache::shared().fetch(client, request).await
 }
 
 /// Sends, checks the status and decodes the JSON body.

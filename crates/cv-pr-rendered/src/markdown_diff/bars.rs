@@ -14,7 +14,7 @@ use super::align::Pair;
 use super::blocks::lines_label;
 use super::heights::RowHeights;
 use super::lanes::Lanes;
-use super::model::{Counts, Model, Row};
+use super::model::{Counts, MarkdownModel, Row};
 use super::{Frame, GUTTER, RIGHT_PADDING, RenderedEvent, STRIPE_WIDTH};
 use cv_base::theme::motion::mix;
 use cv_base::theme::{self, Palette, icons, style};
@@ -110,7 +110,7 @@ pub(super) fn show_fold(
 
 /// "12 unchanged blocks (lines 40–96)": how many blocks `pairs` folds and where they are in the
 /// new version (the old one for blocks only it has), so the user knows what is hidden.
-fn fold_label(model: &Model, pairs: &Range<usize>) -> String {
+fn fold_label(model: &MarkdownModel, pairs: &Range<usize>) -> String {
     let lines = |pair: &Pair| {
         pair.new.or(pair.old).map(|unit| {
             let units = if pair.new.is_some() { &model.new } else { &model.old };
@@ -251,7 +251,13 @@ pub(super) fn show_removal(
 }
 
 /// "Before" and "After" over the lanes, each with what changed on its side.
-pub(super) fn paint_header(ui: &Ui, rect: Rect, lanes: &Lanes, model: &Model, palette: &Palette) {
+pub(super) fn paint_header(
+    ui: &Ui,
+    rect: Rect,
+    lanes: &Lanes,
+    model: &MarkdownModel,
+    palette: &Palette,
+) {
     let painter = ui.painter();
     painter.rect_filled(rect, 0, palette.surface);
     painter.hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, palette.border));

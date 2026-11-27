@@ -15,7 +15,7 @@ use egui::{Rect, RichText, Ui, pos2, vec2};
 use review_core::{DiffSide, ReviewThread};
 
 use super::model::{other, slot};
-use super::{GUTTER, Model, RIGHT_PADDING, Row};
+use super::{GUTTER, MarkdownModel, RIGHT_PADDING, Row};
 use cv_base::theme::{self, icons, style};
 use cv_pr_diff::diff_composer;
 use cv_pr_diff::diff_view::cards::{CARD_GAP, CARD_MAX_WIDTH, measure_card};
@@ -79,7 +79,7 @@ pub(super) fn threads_key(threads: &[&ReviewThread]) -> u64 {
 
 /// The block of `thread`'s line: its side and unit, and the line when the rendered text does not
 /// show it (the unit is then the next block, or the last). `None` without a line or blocks.
-fn locate(model: &Model, thread: &ReviewThread) -> Option<(DiffSide, usize, Option<u32>)> {
+fn locate(model: &MarkdownModel, thread: &ReviewThread) -> Option<(DiffSide, usize, Option<u32>)> {
     let anchor = thread.anchor.as_ref()?;
     let wanted = if diff_composer::is_right(anchor) { DiffSide::New } else { DiffSide::Old };
     let line = anchor.line_in(wanted).or(anchor.new_line).or(anchor.old_line)?;
@@ -99,7 +99,7 @@ fn locate(model: &Model, thread: &ReviewThread) -> Option<(DiffSide, usize, Opti
 /// (an unchanged block shows once inline, an edited one only in its new version in New only),
 /// under the next block where its removed block is left out, or in a fold.
 pub(super) fn place(
-    model: &Model,
+    model: &MarkdownModel,
     rows: &[Row],
     unit_rows: [&[Option<usize>]; 2],
     pair_rows: &[usize],

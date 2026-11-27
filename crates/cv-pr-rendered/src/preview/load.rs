@@ -1,6 +1,7 @@
 //! Loading a preview in the background: the file's versions from the mirror, decoded (images
 //! and SVG to pixels, Markdown to text), and for Markdown the blobs of the repository images each
-//! version shows, so an image that changed under the same source counts as a change.
+//! version shows, so an image that changed under the same source counts as a change, and the
+//! rendered diff's model: both versions parsed and lined up, which takes long for a large file.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -10,7 +11,7 @@ use review_core::{ProviderError, ProviderKind};
 use review_git::{ChangedFile, GitMirror};
 
 use super::{Loaded, PreviewKind, Side, rendered_key, text_of};
-use crate::markdown_diff::RenderedImages;
+use crate::markdown_diff::{MarkdownModel, RenderedImages};
 use cv_markdown::{self as markdown, ImageBase, file_base};
 use cv_media::image_clipboard::Original;
 use cv_media::images::{self as image_store, Decoded, Natural};
@@ -37,24 +38,18 @@ pub fn load_markdown(
 
 impl Loaded {
     #[cfg(any(test, feature = "test-support"))]
-    /// A Markdown file's versions without images, as a test's fake source hands them out.
-    pub fn markdown(old: Option<&str>, new: Option<&str>) -> Self {
-        let text = |text: Option<&str>| text.map(|text| Side::Text(text.to_owned()));
-        Self { old: text(old), new: text(new), images: RenderedImages::default(), images_key: 0 }
-    }
-
-    /// A loaded Markdown file as the rendered diff takes it: its key, the old and the new text and
-    /// their images.
-    pub fn rendered(
-        &self,
+    /// A Markdown file's versions without images, as a test's fake source hands them out: the
+    /// model is built right here, where the load builds it in the background.
+    pub fn markdown(
         file: &ChangedFile,
-    ) -> (u64, Option<&str>, Option<&str>, &RenderedImages) {
-        (
-            rendered_key(file, self),
-            text_of(self.old.as_ref()),
-            text_of(self.new.as_ref()),
-            &self.images,
-        )
+        old: Option<&str>,
+        new: Option<&str>,
+        platform: ProviderKind,
+    ) -> Self {
+        let text = |text: Option<&str>| text.map(|text| Side::Text(text.to_owned()));
+        let (key, images) = (rendered_key(file, 0), RenderedImages::default());
+        let model = MarkdownModel::new(key, old, new, platform, &images);
+        Self { old: text(old), new: text(new), images_key: 0, model: Some(Arc::new(model)) }
     }
 }
 
@@ -62,7 +57,8 @@ impl Loaded {
 /// on the UI thread, run in the background.
 pub(super) struct LoadJob {
     git: Arc<GitMirror>,
-    oids: [Option<String>; 2],
+    /// The file loaded, whose blobs and paths key the rendered diff ([`rendered_key`]).
+    file: ChangedFile,
     /// The file's old and new path.
     paths: [String; 2],
     /// Markdown: the compared (base, head) commits its images resolve in.
@@ -90,24 +86,20 @@ impl LoadJob {
             }
             None => [None, None],
         };
-        Self {
-            git,
-            oids: [
-                file.has_old_blob().then(|| file.old_oid.clone()),
-                file.has_new_blob().then(|| file.new_oid.clone()),
-            ],
-            paths,
-            commits,
-            bases,
-            platform,
-            kind,
-        }
+        Self { git, file: file.clone(), paths, commits, bases, platform, kind }
     }
 
+    /// The file's versions decoded; for Markdown also their images and the rendered diff's model,
+    /// parsed and lined up off the UI thread.
     pub(super) async fn run(self) -> Result<Arc<Loaded>, ProviderError> {
-        let Self { git, oids: [old_oid, new_oid], paths, commits, bases, platform, kind } = self;
+        let Self { git, file, paths, commits, bases, platform, kind } = self;
+        let old_oid = file.has_old_blob().then(|| file.old_oid.clone());
+        let new_oid = file.has_new_blob().then(|| file.new_oid.clone());
         let old = load_side(&git, old_oid, kind).await?;
         let new = load_side(&git, new_oid, kind).await?;
+        if kind != PreviewKind::Markdown {
+            return Ok(Arc::new(Loaded { old, new, images_key: 0, model: None }));
+        }
         let blobs = match &commits {
             Some((base, head)) => {
                 image_blobs(
@@ -122,8 +114,17 @@ impl LoadJob {
             None => Default::default(),
         };
         let images_key = egui::epaint::util::hash((&paths, &blobs));
-        let content = changed_images(blobs);
-        Ok(Arc::new(Loaded { old, new, images: RenderedImages { bases, content }, images_key }))
+        let images = RenderedImages { bases, content: changed_images(blobs) };
+        let key = rendered_key(&file, images_key);
+        let built = tokio::task::spawn_blocking(move || {
+            let (old_text, new_text) = (text_of(old.as_ref()), text_of(new.as_ref()));
+            let model = MarkdownModel::new(key, old_text, new_text, platform, &images);
+            Loaded { old, new, images_key, model: Some(Arc::new(model)) }
+        });
+        let loaded = built
+            .await
+            .map_err(|error| ProviderError::Local(format!("lining up stopped: {error}")))?;
+        Ok(Arc::new(loaded))
     }
 }
 
