@@ -18,7 +18,9 @@ use super::github_mock::{
 };
 use super::walkthrough::{
     app, opened_urls, press, saved_settings, set_focus, settle_background, type_into, wait_until,
+    wait_until_unsettled,
 };
+use cv_runtime::cache::page_cache::{REVISIT_FRESH, pull_request_part};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_shell::links::clipboard_links::ClipboardSource;
 use cv_shell::links::link_access::BUDGET;
@@ -95,26 +97,38 @@ fn clipboard_link_opens_once_with_back_and_not_again_after_a_restart() {
     // A new link opens, and its page reuses the check's read of the detail.
     restarted.copy(&format!("{}/{REPOSITORY}/pull/{READABLE_NUMBER}", connection.base_url));
     come_back(&mut harness);
-    wait_until(&mut harness, "pull request 8", |harness| {
+    // The frame that took the check's answer into the page cache opens the page at its end.
+    wait_until_unsettled(&mut harness, "pull request 8", |harness| {
         harness.state().route == Route::PullRequest(key(READABLE_NUMBER))
     });
+    let opened_at = harness.state().services.now();
     harness.step();
+    let first_frame_at = harness.state().services.now();
     assert!(
         harness.query_by_label_contains(TITLE).is_some(),
         "the first frame of the page shows the detail the check read"
     );
-    // The detail's URL is asked twice: by the check, and by the page's pipelines, which GitHub
-    // lists by head commit (`provider-github`'s `pipelines::runs`). A page that read the detail
-    // itself would send a third request. The window goes to the background first: the live probe,
-    // which asks the same URL, is due `cv_pr_page::live::INTERVAL` of egui time after the page
-    // opened, and a settle that steps more frames on a slow machine would reach it; unfocused, it
-    // waits for the focus, while the page's own reads go out as with the window in front.
+    // The window goes to the background first: the live probe, which asks the detail's URL too,
+    // is due `cv_pr_page::live::INTERVAL` of egui time after the page opened, and a settle that
+    // steps more frames on a slow machine would reach it; unfocused, it waits for the focus, while
+    // the page's own reads go out as with the window in front.
     set_focus(&mut harness, false);
     settle_background(&mut harness);
+    // The page cache still holds the check's answer, stored by the frame that opened the page. A
+    // detail the page read itself is stored on one of its own frames, from `first_frame_at` on,
+    // also when its GET joined one in flight (`review_core::http`) and never reached the host.
+    let detail = pull_request_part(&key(READABLE_NUMBER).storage_key(), "detail");
+    let between = f64::midpoint(opened_at, first_frame_at) + REVISIT_FRESH.as_secs_f64();
+    let cache = &harness.state().services.cache;
+    assert!(!cache.is_stale(&detail, opened_at), "the check's answer is in the page cache");
+    assert!(cache.is_stale(&detail, between), "the page did not read the detail again");
+    // On the wire: the check and the page's pipelines, which GitHub lists by head commit
+    // (`provider-github`'s `pipelines::runs`), and no live probe. A page read that joined the
+    // pipelines' GET would not show here; the page cache above catches it.
     assert_eq!(
         host.count("GET", &pull_path(READABLE_NUMBER)),
         2,
-        "the page did not read the detail again"
+        "the check's read and the pipelines' head commit, no probe"
     );
 }
 
