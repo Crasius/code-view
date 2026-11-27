@@ -211,7 +211,7 @@ impl PullRequestSession {
         if is_git_failed || self.detail.error().is_some() {
             self.progress.reset();
         }
-        if let Some(mirror) = commits_to_list_again(&self.mirror, &self.commits) {
+        if let Some(mirror) = commits_to_list_again(self.mirror.ready(), self.commits.error()) {
             self.start_commits(services, &mirror);
         }
         let provider = self.provider.clone();
@@ -652,8 +652,8 @@ fn settled<T: Clone>(live: &mut Live<T>, settle: impl FnOnce(&mut T) -> bool) ->
 
 /// The mirror to list the commits from again when only their listing failed: the mirror is fine,
 /// so nothing else would start it before the head moves (the Commits tab's Retry).
-fn commits_to_list_again<M: Clone, C>(mirror: &Load<M>, commits: &Live<C>) -> Option<M> {
-    commits.error().and(mirror.ready()).cloned()
+fn commits_to_list_again<M: Clone>(mirror: Option<&M>, listing_error: Option<&str>) -> Option<M> {
+    listing_error.and(mirror).cloned()
 }
 
 /// Drops the stages and attempts of runs that `runs` no longer lists. Such a run is shown nowhere
@@ -689,32 +689,18 @@ fn is_source_gone(gone: &[String], source_branch: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::time::{Duration, Instant};
-
-    use cv_runtime::background::Background;
-    use cv_runtime::load::{Live, Load};
-    use review_core::ProviderError;
 
     use super::commits_to_list_again;
 
     #[test]
     fn retry_lists_the_commits_again_when_only_their_listing_failed() {
-        let background = Background::new(egui::Context::default());
-        let mut commits: Live<Vec<String>> = Live::default();
-        commits.start(&background, async { Err(ProviderError::Decode("bad revision".into())) });
-        let started = Instant::now();
-        while commits.is_loading() {
-            commits.poll();
-            assert!(started.elapsed() < Duration::from_secs(10), "the listing never ended");
-            cv_testkit::let_threads_run(Duration::from_millis(5));
-        }
-        assert!(commits.error().is_some());
-        let ready = Load::Ready("mirror");
-        assert_eq!(commits_to_list_again(&ready, &commits), Some("mirror"));
-        let preparing: Load<&str> = Load::Idle;
-        assert_eq!(commits_to_list_again(&preparing, &commits), None, "the mirror lists them");
-        let listed: Live<Vec<String>> = Live::seeded(Some(Vec::new()));
-        assert_eq!(commits_to_list_again(&ready, &listed), None, "nothing failed");
+        assert_eq!(commits_to_list_again(Some(&"mirror"), Some("bad revision")), Some("mirror"));
+        assert_eq!(
+            commits_to_list_again::<&str>(None, Some("bad revision")),
+            None,
+            "the mirror lists them"
+        );
+        assert_eq!(commits_to_list_again(Some(&"mirror"), None), None, "nothing failed");
     }
 
     /// A pipeline polled for hours lists a new run every few minutes: the stages and attempts of

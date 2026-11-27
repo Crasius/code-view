@@ -34,7 +34,7 @@ use crate::web_link;
 
 /// Where one image source points, before anything is loaded.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Resolved {
+enum Resolved {
     Web(String),
     /// `path` in the repository at `commit`.
     Repository {
@@ -46,17 +46,17 @@ pub enum Resolved {
 
 /// What a page knows to resolve image sources.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Origin {
-    pub kind: ProviderKind,
+struct Origin {
+    kind: ProviderKind,
     /// The pull request's web page, for the repository's address.
-    pub pull_request_url: String,
+    pull_request_url: String,
     /// The commit relative paths in descriptions and comments point into; `None` until the mirror is ready.
-    pub head: Option<String>,
+    head: Option<String>,
 }
 
 /// Resolves `src` as written in a document: a repository file at `base`, or a description or
 /// comment of the pull request in `context`.
-pub fn resolve(src: &str, base: Option<&FileBase>, context: &Origin) -> Option<Resolved> {
+fn resolve(src: &str, base: Option<&FileBase>, context: &Origin) -> Option<Resolved> {
     let src = src.trim();
     if src.is_empty() {
         return Some(Resolved::Blocked("The image has no address".to_owned()));
@@ -90,8 +90,10 @@ pub fn resolve(src: &str, base: Option<&FileBase>, context: &Origin) -> Option<R
         return Some(Resolved::Web(format!("{project}{src}")));
     }
     if src.starts_with('/') {
-        let origin =
-            reqwest::Url::parse(&context.pull_request_url).ok()?.origin().ascii_serialization();
+        let Ok(url) = reqwest::Url::parse(&context.pull_request_url) else {
+            return Some(Resolved::Blocked("The pull request has no web address".to_owned()));
+        };
+        let origin = url.origin().ascii_serialization();
         return Some(Resolved::Web(format!("{origin}{src}")));
     }
     let head = context.head.as_ref()?;
@@ -126,7 +128,7 @@ fn scheme_of(src: &str) -> Option<String> {
 /// The repository path `src` points at from the file `file` (both `/`-separated): relative to the
 /// file's folder, or to the root with a leading `/`. Query and fragment are dropped and escapes
 /// decoded. `None` when it leaves the repository or names no file.
-pub fn repository_path(file: &str, src: &str) -> Option<String> {
+fn repository_path(file: &str, src: &str) -> Option<String> {
     let src = src.split(['?', '#']).next().unwrap_or_default();
     let src = urlencoding::decode(src).ok()?;
     let mut parts: Vec<&str> = if src.starts_with('/') {
@@ -251,7 +253,7 @@ pub fn description_targets(
 }
 
 /// The [`ImageSource`] of one pull request page.
-pub struct PullRequestImages {
+struct PullRequestImages {
     store: Arc<ImageStore>,
     owner: Owner,
     git: Option<Arc<GitMirror>>,
@@ -352,12 +354,8 @@ mod tests {
         }
     }
 
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "mirrors resolve's return type, so each assertion compares one value"
-    )]
-    fn web(url: &str) -> Option<Resolved> {
-        Some(Resolved::Web(url.to_owned()))
+    fn web(url: &str) -> Resolved {
+        Resolved::Web(url.to_owned())
     }
 
     #[test]
@@ -393,11 +391,11 @@ mod tests {
         );
         assert_eq!(
             resolve("https://x.test/a.png", Some(&base), &context),
-            web("https://x.test/a.png")
+            Some(web("https://x.test/a.png"))
         );
         assert_eq!(
             resolve("//cdn.test/a.png", Some(&base), &context),
-            web("https://cdn.test/a.png")
+            Some(web("https://cdn.test/a.png"))
         );
         assert!(matches!(
             resolve("../../a.png", Some(&base), &context),
@@ -424,7 +422,7 @@ mod tests {
         let github = context(ProviderKind::GitHub, "https://github.com/o/r/pull/1");
         assert_eq!(
             resolve("https://github.com/user-attachments/assets/1b2c", None, &github),
-            web("https://github.com/user-attachments/assets/1b2c")
+            Some(web("https://github.com/user-attachments/assets/1b2c"))
         );
         assert_eq!(
             resolve("docs/a.png", None, &github),
@@ -437,13 +435,13 @@ mod tests {
         );
         assert_eq!(
             resolve("/uploads/0123456789abcdef0123456789abcdef/shot.png", None, &gitlab),
-            web(
+            Some(web(
                 "https://gitlab.example.com/group/sub/project/uploads/0123456789abcdef0123456789abcdef/shot.png"
-            )
+            ))
         );
         assert_eq!(
             resolve("/-/project/4/uploads/ab/x.png", None, &gitlab),
-            web("https://gitlab.example.com/-/project/4/uploads/ab/x.png")
+            Some(web("https://gitlab.example.com/-/project/4/uploads/ab/x.png"))
         );
 
         let azure = context(
@@ -451,10 +449,16 @@ mod tests {
             "https://dev.azure.com/org/project/_git/repo/pullrequest/42",
         );
         let attachment = "https://dev.azure.com/org/project/_apis/git/repositories/r/pullRequests/42/attachments/a.png";
-        assert_eq!(resolve(attachment, None, &azure), web(attachment));
+        assert_eq!(resolve(attachment, None, &azure), Some(web(attachment)));
         assert_eq!(
             resolve("/org/_apis/wit/attachments/9?fileName=a.png", None, &azure),
-            web("https://dev.azure.com/org/_apis/wit/attachments/9?fileName=a.png")
+            Some(web("https://dev.azure.com/org/_apis/wit/attachments/9?fileName=a.png"))
+        );
+
+        let unparsable = context(ProviderKind::GitHub, "");
+        assert!(
+            matches!(resolve("/x.png", None, &unparsable), Some(Resolved::Blocked(_))),
+            "an absolute path without the pull request's web address is blocked, not waiting"
         );
     }
 

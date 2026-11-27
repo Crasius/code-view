@@ -53,7 +53,7 @@ pub fn collect(
     }
 
     let mut entries: Vec<LinkedEntry> = Vec::new();
-    let mut positions: HashMap<(String, String, u64, u8), usize> = HashMap::new();
+    let mut positions: HashMap<ItemIdentity, usize> = HashMap::new();
     let mut tracker: Option<String> = None;
     let mut add_target = |target: Target, entries: &mut Vec<LinkedEntry>| {
         if is_self(&target, here, number) {
@@ -127,24 +127,49 @@ fn is_self(target: &Target, here: &Here, number: u64) -> bool {
         && target.item.number == number
 }
 
-/// Two targets naming the same item share this: GitHub numbers issues and pull requests in one
-/// sequence, GitLab and Azure DevOps keep separate ones, and Azure DevOps pull request ids are
-/// unique per organization.
-fn identity(target: &Target, connections: &[Connection]) -> (String, String, u64, u8) {
+/// What two targets naming the same item share.
+#[derive(Hash, PartialEq, Eq)]
+struct ItemIdentity {
+    connection_id: String,
+    /// The repository, or the organization where numbers are unique across it.
+    scope: String,
+    number: u64,
+    sequence: Sequence,
+}
+
+/// The numbering an item's number belongs to.
+#[derive(Hash, PartialEq, Eq)]
+enum Sequence {
+    /// Numbered with the pull requests.
+    PullRequests,
+    /// Numbered apart from them.
+    Separate,
+}
+
+/// GitHub numbers issues and pull requests in one sequence, GitLab and Azure DevOps keep separate
+/// ones, and Azure DevOps pull request ids are unique per organization.
+fn identity(target: &Target, connections: &[Connection]) -> ItemIdentity {
     let kind = connections
         .iter()
         .find(|connection| connection.id == target.connection_id)
         .map_or(ProviderKind::GitHub, |connection| connection.kind);
     let item = &target.item;
-    let (scope, class) = match (kind, item.kind) {
+    let (scope, sequence) = match (kind, item.kind) {
         (ProviderKind::AzureDevOps, ItemKind::PullRequest) => {
-            (organization(&item.repository_key), 0)
+            (organization(&item.repository_key), Sequence::PullRequests)
         }
-        (ProviderKind::AzureDevOps, _) => (organization(&item.repository_key), 1),
-        (ProviderKind::GitLab, ItemKind::Issue) => (item.repository_key.clone(), 1),
-        _ => (item.repository_key.clone(), 0),
+        (ProviderKind::AzureDevOps, _) => (organization(&item.repository_key), Sequence::Separate),
+        (ProviderKind::GitLab, ItemKind::Issue) => {
+            (item.repository_key.clone(), Sequence::Separate)
+        }
+        _ => (item.repository_key.clone(), Sequence::PullRequests),
     };
-    (target.connection_id.clone(), scope, item.number, class)
+    ItemIdentity {
+        connection_id: target.connection_id.clone(),
+        scope,
+        number: item.number,
+        sequence,
+    }
 }
 
 fn organization(key: &str) -> String {
@@ -153,7 +178,7 @@ fn organization(key: &str) -> String {
 
 /// Where a click on a linked item goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Decision {
+enum Decision {
     Navigate(PullRequestKey),
     Browser(String),
     /// Only the platform knows whether it is a pull request (and in which repository): ask first.
@@ -162,7 +187,7 @@ pub enum Decision {
 
 /// The click decision for `target` given what the cache knows. `fallback_url` is the page built
 /// from the reference when the platform gave none.
-pub fn decide(target: &Target, status: Status<'_>, fallback_url: &str) -> Decision {
+fn decide(target: &Target, status: Status<'_>, fallback_url: &str) -> Decision {
     if let Status::Found(item) = status {
         return if item.kind == ItemKind::PullRequest {
             Decision::Navigate(PullRequestKey {
@@ -248,18 +273,16 @@ impl PageLinks {
         navigator: &mut Navigator,
     ) {
         let fallback = fallback_url(&target, services.connections.all());
-        let decision =
-            decide(&target, services.linked.status(&target.connection_id, &target.item), &fallback);
+        let status = services.linked.status(&target.connection_id, &target.item);
         if browser {
-            let url = match (&decision, services.linked.status(&target.connection_id, &target.item))
-            {
-                (_, Status::Found(item)) => item.web_url.clone(),
+            let url = match status {
+                Status::Found(item) => item.web_url.clone(),
                 _ => fallback,
             };
             ctx.open_url(egui::OpenUrl::new_tab(url));
             return;
         }
-        match decision {
+        match decide(&target, status, &fallback) {
             Decision::Navigate(key) => navigator.go(Route::PullRequest(key)),
             Decision::Browser(url) => ctx.open_url(egui::OpenUrl::new_tab(url)),
             Decision::Ask => {
@@ -325,7 +348,7 @@ pub fn fallback_url(target: &Target, connections: &[Connection]) -> String {
 }
 
 /// Resolves the links of one pull request's texts for the Markdown renderer.
-pub struct PullRequestLinks {
+struct PullRequestLinks {
     connections: Vec<Connection>,
     here: Here,
     known: HashMap<(String, ItemRef), LinkedItem>,

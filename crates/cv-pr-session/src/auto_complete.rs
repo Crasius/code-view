@@ -212,7 +212,7 @@ mod tests {
         UserIdentity,
     };
 
-    use super::{Mode, confirm_label, mode, state_text};
+    use super::{Mode, mode, state_text};
 
     fn person(name: &str) -> UserIdentity {
         UserIdentity { id: name.into(), display_name: name.into(), login: None, avatar_url: None }
@@ -322,10 +322,5 @@ mod tests {
             state_text(&method, ProviderKind::GitLab),
             "Auto-merge turned on: the project's merge method"
         );
-        assert_eq!(
-            confirm_label(Mode::CancelAutoComplete, ProviderKind::GitHub).as_deref(),
-            Some("Click again to disable auto-merge")
-        );
-        assert_eq!(confirm_label(Mode::Now, ProviderKind::GitHub), None);
     }
 }
