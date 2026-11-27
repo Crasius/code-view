@@ -16,12 +16,12 @@ use cv_widgets::{buttons, glyph};
 /// the text changes.
 const BANNER_HEIGHT: f32 = 32.0;
 
-pub const SHOW_LABEL: &str = "Show whitespace changes";
-pub const HIDE_LABEL: &str = "Hide whitespace changes";
+pub(crate) const SHOW_LABEL: &str = "Show whitespace changes";
+pub(crate) const HIDE_LABEL: &str = "Hide whitespace changes";
 
 /// What changed, in one sentence: "Line endings changed from LF to CRLF (all 412 lines).",
 /// "Only whitespace changed: indentation tabs → spaces in 37 lines.", or a short combined list.
-pub fn describe(summary: &WhitespaceSummary) -> String {
+pub(crate) fn describe(summary: &WhitespaceSummary) -> String {
     let mut parts = Vec::new();
     if let Some(endings) = line_endings(summary) {
         parts.push(endings);
@@ -188,9 +188,16 @@ pub fn banner(ui: &mut Ui, summary: &WhitespaceSummary, ignores_whitespace: bool
     clicked
 }
 
-/// "Ignore whitespace" left this file without changes: say so and offer to show them. Returns
-/// `Some(true)` for "Show whitespace changes", `Some(false)` for the platform link.
-pub fn hidden_notice(ui: &mut Ui, web_link: Option<&WebLink>) -> Option<bool> {
+/// What the user picked on the notice of a file whose every change is whitespace.
+pub enum HiddenNoticePick {
+    /// "Show whitespace changes": turn "Ignore whitespace" off.
+    ShowWhitespace,
+    /// The platform link.
+    OpenLink,
+}
+
+/// "Ignore whitespace" left this file without changes: say so and offer to show them.
+pub fn hidden_notice(ui: &mut Ui, web_link: Option<&WebLink>) -> Option<HiddenNoticePick> {
     let mut actions = vec![Action::primary(icons::EYE, SHOW_LABEL)];
     if let Some(link) = web_link {
         actions.push(Action::secondary(link.icon, &link.label));
@@ -198,7 +205,15 @@ pub fn hidden_notice(ui: &mut Ui, web_link: Option<&WebLink>) -> Option<bool> {
     let detail =
         "Every change in this file is whitespace or a line ending, which Ignore whitespace hides.";
     states::message_with_actions(ui, icons::EYE_SLASH, "Only whitespace changed", detail, &actions)
-        .map(|index| index == 0)
+        .map(
+            |index| {
+                if index == 0 {
+                    HiddenNoticePick::ShowWhitespace
+                } else {
+                    HiddenNoticePick::OpenLink
+                }
+            },
+        )
 }
 
 #[cfg(test)]

@@ -28,12 +28,12 @@ pub(crate) struct GoTo {
 }
 
 impl GoTo {
-    pub fn is_active(&self) -> bool {
+    pub(crate) fn is_active(&self) -> bool {
         self.before.is_some()
     }
 
     /// Whether the filter should take the keyboard now (once).
-    pub fn take_focus_request(&mut self) -> bool {
+    pub(crate) fn take_focus_request(&mut self) -> bool {
         std::mem::take(&mut self.wants_focus)
     }
 }

@@ -14,17 +14,12 @@ use review_core::{DiffSide, ReviewThread, ThreadStatus};
 
 use crate::diff_view::DiffEvent;
 use crate::testing::{
-    Fixture, NEW, OLD, PATH, fixture, fixture_of, harness, harness_sized, line_of, settle,
-    thread_on_old_line, whole_file_fixture,
+    FLASH_STEPS, Fixture, NEW, OLD, PATH, fixture, fixture_of, harness, harness_sized, line_of,
+    settle, thread_on_old_line, whole_file_fixture,
 };
 
 /// A spot in the code area away from every wedge and popover.
 const AWAY: egui::Pos2 = egui::pos2(1000.0, 740.0);
-
-/// Steps of kittest's default 0.25 s that outlast the flash of a line jumped to
-/// (`flash::DURATION`); the flash repaints every frame, so [`settle`] alone would exceed its
-/// step limit.
-const FLASH_STEPS: usize = 12;
 
 fn wedge_labels(harness: &Harness<'_, Fixture>) -> Vec<String> {
     harness
@@ -425,30 +420,19 @@ fn switching_comments_keeps_the_view_in_place() {
 #[test]
 fn a_comment_request_selects_its_lines_and_opens_the_composer_also_in_collapsed_lines() {
     use crate::diff_view::LineRequest;
-    use crate::testing::show_diff;
-    use cv_base::theme;
     use cv_code::diff_rows::RangeOwner;
     for (what, needle) in [
         ("changed lines", "pub fn is_empty(&self) -> bool {"),
         ("collapsed lines", "pub struct Item {"),
     ] {
         let first = line_of(NEW, needle);
-        let mut harness = Harness::builder()
-            .with_size([1180.0, 760.0])
-            .with_context_setup(theme::fonts::install)
-            .build_ui_state(
-                |ui, state: &mut Fixture| {
-                    theme::activate(ui.ctx(), state.theme);
-                    show_diff(ui, state);
-                },
-                fixture(Layout::SideBySide),
-            );
-        harness.run();
+        let mut harness = harness(fixture(Layout::SideBySide));
+        settle(&mut harness);
         harness
             .state_mut()
             .view
             .request_lines(LineRequest::Comment { side: DiffSide::New, lines: first..first + 3 });
-        harness.run();
+        settle(&mut harness);
         let view = &harness.state().view;
         assert!(view.composer().is_some(), "{what}: a new comment opened");
         let draft = view

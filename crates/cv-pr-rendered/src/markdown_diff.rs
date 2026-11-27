@@ -178,12 +178,12 @@ pub struct MarkdownDiff {
 impl MarkdownDiff {
     /// Where the change in focus is among the changes, for the header; `None` until the texts
     /// with `key` are laid out.
-    pub fn change_position(&self, key: u64) -> Option<ChangePosition> {
+    pub(crate) fn change_position(&self, key: u64) -> Option<ChangePosition> {
         self.model.as_ref().filter(|model| model.key == key && self.rows_key.is_some())?;
         Some(ChangePosition { current: self.current, total: self.hunks.len() })
     }
 
-    pub fn go_to_change(&mut self, direction: Direction) {
+    pub(crate) fn go_to_change(&mut self, direction: Direction) {
         let (tops, total) = (self.heights.tops(), self.heights.total());
         let top_of = |index: usize| tops.get(self.hunks[index].start).copied().unwrap_or(0.0);
         let view = self.viewport.0;
@@ -198,7 +198,7 @@ impl MarkdownDiff {
 
     /// The source line at the top of the view and the version it is from, so the text diff can
     /// open at the same place.
-    pub fn top_line(&self) -> Option<(DiffSide, u32)> {
+    pub(crate) fn top_line(&self) -> Option<(DiffSide, u32)> {
         let model = self.model.as_ref()?;
         let (row, side, unit, below_top) = self.top_unit()?;
         let lines = &model.units(side).units.get(unit)?.lines;
@@ -209,7 +209,7 @@ impl MarkdownDiff {
     }
 
     /// Opens at `line` of `side` (the text diff's place), or at the top.
-    pub fn reveal_line(&mut self, place: Option<(DiffSide, u32)>) {
+    pub(crate) fn reveal_line(&mut self, place: Option<(DiffSide, u32)>) {
         self.pending = Some(match place {
             Some((side, line)) => Place::Line { side, line },
             None => Place::Top,
@@ -218,12 +218,12 @@ impl MarkdownDiff {
 
     /// Scrolls to the thread's card once the rows hold it: its fold opens, and while comments are
     /// hidden it shows.
-    pub fn reveal_thread(&mut self, thread_id: &str) {
+    pub(crate) fn reveal_thread(&mut self, thread_id: &str) {
         self.pending = Some(Place::Thread(thread_id.to_owned()));
     }
 
     /// `width` is the reading column (or full width); dragging the column's edges changes it.
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut Ui,
         inputs: &RenderedInputs<'_>,
@@ -388,13 +388,13 @@ impl MarkdownDiff {
 
     /// The text filled the pane last frame: Full width was chosen, or the reading column was as
     /// wide as the pane allows.
-    pub fn fills_width(&self) -> bool {
+    pub(crate) fn fills_width(&self) -> bool {
         self.fills
     }
 
     /// The width toggle: from a full pane to the reading column (back to its default width when
     /// the one chosen would fill the pane anyway), or to full width.
-    pub fn switch_width(&self, width: &mut RenderedWidth) {
+    pub(crate) fn switch_width(&self, width: &mut RenderedWidth) {
         if !self.fills {
             width.full = true;
             return;

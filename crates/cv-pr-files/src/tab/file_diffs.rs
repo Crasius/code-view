@@ -31,7 +31,7 @@ use cv_syntax::pool::Priority;
 use cv_widgets::skeleton;
 
 #[derive(Default)]
-pub struct FileDiffs {
+pub(crate) struct FileDiffs {
     diff: Load<Arc<FileDiff>>,
     diff_key: Option<DiffKey>,
     /// When `diff` started loading, on egui's clock: its placeholder waits a moment.
@@ -57,7 +57,7 @@ impl FileDiffs {
     /// The page went out of sight: the diffs, their colors and the file versions go, each loads
     /// again from the mirror when it shows. The open file stays named, so its diff loads into the
     /// view the user left (see [`Self::ensure`]), and so does a file the user colored anyway.
-    pub fn hibernate(&mut self) {
+    pub(crate) fn hibernate(&mut self) {
         self.patch_colors.release_all();
         *self = Self {
             diff_key: self.diff_key.take(),
@@ -68,7 +68,7 @@ impl FileDiffs {
     }
 
     /// Takes in the colors worked out since the last frame, on every tab.
-    pub fn poll_colors(&mut self) {
+    pub(crate) fn poll_colors(&mut self) {
         self.patch_colors.poll();
     }
 
@@ -86,13 +86,13 @@ impl FileDiffs {
 
     /// Whether a diff of `path` is cached (shown before or loaded ahead).
     #[cfg(any(test, feature = "test-support"))]
-    pub fn has_cached_diff(&self, path: &str) -> bool {
+    pub(crate) fn has_cached_diff(&self, path: &str) -> bool {
         self.cache.has_path(path)
     }
 
     /// The open file's versions are loaded and colored.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn coloring_is_done(&self) -> bool {
+    pub(crate) fn coloring_is_done(&self) -> bool {
         self.contents
             .current()
             .is_some_and(|contents| contents.coloring == cv_code::contents::Coloring::Done)
@@ -100,7 +100,7 @@ impl FileDiffs {
 
     /// The languages of the pull request's changed files whose compiled grammars the process keeps.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn held_languages(&self) -> Vec<String> {
+    pub(crate) fn held_languages(&self) -> Vec<String> {
         let used: Vec<String> = self
             .warmed_files
             .iter()
@@ -114,12 +114,12 @@ impl FileDiffs {
     }
 
     /// The open file's diff, once it loaded.
-    pub fn ready(&self) -> Option<&Arc<FileDiff>> {
+    pub(crate) fn ready(&self) -> Option<&Arc<FileDiff>> {
         self.diff.ready()
     }
 
     /// The grammars of `files` were compiled already.
-    pub fn is_warmed(&self, files: &Arc<Vec<ChangedFile>>) -> bool {
+    pub(crate) fn is_warmed(&self, files: &Arc<Vec<ChangedFile>>) -> bool {
         self.warmed_files.as_ref().is_some_and(|warmed| Arc::ptr_eq(warmed, files))
     }
 
@@ -133,7 +133,7 @@ impl FileDiffs {
     /// else from the mirror. The diff is the file's versions' ([`DiffKey`]), so an update that
     /// leaves them as they are keeps it. Returns true when another file's diff started, so its
     /// view starts anew; a newer diff of the same file keeps the older one on screen meanwhile.
-    pub fn ensure(
+    pub(crate) fn ensure(
         &mut self,
         ctx: &egui::Context,
         session: &PullRequestSession,
@@ -186,13 +186,13 @@ impl FileDiffs {
     }
 
     /// The next [`Self::ensure`] loads the open file's diff again.
-    pub fn reload(&mut self) {
+    pub(crate) fn reload(&mut self) {
         self.diff_key = None;
     }
 
     /// The diff to show for `path`: the loaded one, or its previous version while a newer one
     /// loads. Shows the failure or the skeleton in its place otherwise.
-    pub fn diff_to_show(
+    pub(crate) fn diff_to_show(
         &mut self,
         ui: &mut egui::Ui,
         path: &str,
@@ -225,7 +225,7 @@ impl FileDiffs {
 
     /// Loads `file`'s versions from the mirror for coloring the whole file, unless they are
     /// there; above the size limit only when the user asked for this file's colors.
-    pub fn ensure_contents(
+    pub(crate) fn ensure_contents(
         &mut self,
         file: &ChangedFile,
         session: &PullRequestSession,
@@ -238,18 +238,18 @@ impl FileDiffs {
     }
 
     /// "Color anyway" on a file above the automatic size limit.
-    pub fn force_colors(&mut self, file: &ChangedFile) {
+    pub(crate) fn force_colors(&mut self, file: &ChangedFile) {
         self.forced_colors = Some(file.new_oid.clone());
     }
 
     /// The file versions failed to load: the next [`Self::ensure_contents`] tries again.
-    pub fn retry_contents(&mut self) {
+    pub(crate) fn retry_contents(&mut self) {
         self.contents.retry();
     }
 
     /// The colors for `diff` on screen: the file versions, and the colors by diff line of the
     /// diff loaded for the key (not of a stale one shown meanwhile).
-    pub fn coloring(
+    pub(crate) fn coloring(
         &mut self,
         diff: &Arc<FileDiff>,
     ) -> (Option<&FileContents>, Option<&LineSpans>) {
@@ -264,7 +264,7 @@ impl FileDiffs {
     /// Loads the diffs the user is likely to open next ahead, from the local mirror only: the
     /// file whose tree row the pointer rests on, and the files around the open file `open` (an
     /// index into `files`) in the tree's order. Files that show as a preview are left out.
-    pub fn load_ahead(
+    pub(crate) fn load_ahead(
         &mut self,
         session: &PullRequestSession,
         services: &Services,
@@ -317,7 +317,7 @@ impl FileDiffs {
     }
 
     /// Where the folder summary loads its diffs: this cache and these colors, then the mirror.
-    pub fn summary_source<'a>(
+    pub(crate) fn summary_source<'a>(
         &'a mut self,
         ctx: &egui::Context,
         session: &PullRequestSession,
@@ -338,7 +338,7 @@ impl FileDiffs {
 }
 
 /// The threads on `path`'s lines.
-pub fn threads_on<'a>(session: &'a PullRequestSession, path: &str) -> Vec<&'a ReviewThread> {
+pub(crate) fn threads_on<'a>(session: &'a PullRequestSession, path: &str) -> Vec<&'a ReviewThread> {
     session
         .threads
         .ready()

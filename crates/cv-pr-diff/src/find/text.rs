@@ -34,7 +34,7 @@ use cv_syntax::blob_text::BlobText;
 
 /// The text diff's find widget and where its hits are among the rows.
 #[derive(Default)]
-pub struct TextFind {
+pub(crate) struct TextFind {
     bar: FindBar,
     /// The panes this frame and the side searched, for the widget painted after the rows.
     focus: Option<(Panes, HitSide)>,
@@ -52,14 +52,14 @@ pub struct TextFind {
 
 /// Text selected within one line of the diff, whose other occurrences show.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Selected {
+pub(crate) struct Selected {
     pub text: String,
     /// The selection is a whole word there, so only whole words match.
     pub is_word: bool,
 }
 
 /// The rows the find widget works with this frame.
-pub struct TextRows<'a> {
+pub(crate) struct TextRows<'a> {
     /// The panes the rows show in.
     pub panes: Panes,
     pub rows: &'a [Row],
@@ -95,7 +95,7 @@ impl TextFind {
     /// The widget's keys while the diff `owns_keys`, the focused pane, the search over `inputs`
     /// and where to go for the current hit; before the rows paint (the widget paints after them,
     /// [`Self::show_widget`]).
-    pub fn prepare(
+    pub(crate) fn prepare(
         &mut self,
         ui: &Ui,
         inputs: &DiffInputs<'_>,
@@ -139,7 +139,7 @@ impl TextFind {
     }
 
     /// The widget over the focused pane, after the rows painted; true when it closed.
-    pub fn show_widget(&mut self, ui: &mut Ui) -> bool {
+    pub(crate) fn show_widget(&mut self, ui: &mut Ui) -> bool {
         let Some((panes, side)) = self.focus else {
             return false;
         };
@@ -148,7 +148,7 @@ impl TextFind {
 
     /// The hits `pane` paints on `line`, the current one marked, and the selection's other
     /// occurrences that no hit covers.
-    pub fn marks(&self, pane: Pane, line: Option<&CodeLine<'_>>) -> Vec<FindMark> {
+    pub(crate) fn marks(&self, pane: Pane, line: Option<&CodeLine<'_>>) -> Vec<FindMark> {
         let Some(line) = line else {
             return Vec::new();
         };
@@ -182,7 +182,7 @@ impl TextFind {
     /// The current hit on a line painted in pane `slot` at `columns`, `advance` wide each, of a
     /// code area `width` wide scrolled `offset`: once it became current, the pane scrolls to it
     /// next frame.
-    pub fn reveal(
+    pub(crate) fn reveal(
         &mut self,
         slot: usize,
         columns: std::ops::Range<usize>,

@@ -37,7 +37,7 @@ pub struct RenderedInputs<'a> {
 
 impl RenderedInputs<'_> {
     /// How the blocks render: the platform's Markdown at the code zoom.
-    pub fn render_options(&self) -> RenderOptions {
+    pub(crate) fn render_options(&self) -> RenderOptions {
         RenderOptions {
             platform: Some(self.platform),
             scale: self.scale,

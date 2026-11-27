@@ -14,7 +14,7 @@ use cv_widgets::{badges, buttons, skeleton};
 /// Label chips plus an editor: a catalog picker (GitHub, GitLab) or free-text tags (Azure DevOps).
 /// Editing works on a draft: Apply sends it once (only when it differs), Cancel or Esc drops it.
 #[derive(Default)]
-pub struct LabelEditor {
+pub(crate) struct LabelEditor {
     /// The labels being edited; `None` while not editing.
     draft: Option<Vec<Label>>,
     catalog: Load<Vec<Label>>,
@@ -23,7 +23,7 @@ pub struct LabelEditor {
 
 /// What the card's title-line buttons asked for this frame.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum CardAction {
+pub(crate) enum CardAction {
     None,
     Edit,
     Apply,
@@ -32,7 +32,7 @@ pub enum CardAction {
 
 /// The card's title-line buttons: Edit, or Apply and Cancel while editing. Apply waits while
 /// another write runs (`is_busy`).
-pub fn card_actions(ui: &mut Ui, is_editing: bool, is_busy: bool) -> CardAction {
+pub(crate) fn card_actions(ui: &mut Ui, is_editing: bool, is_busy: bool) -> CardAction {
     if !is_editing {
         return if buttons::icon(ui, icons::PENCIL_SIMPLE, "Edit labels").clicked() {
             CardAction::Edit
@@ -53,12 +53,12 @@ pub fn card_actions(ui: &mut Ui, is_editing: bool, is_busy: bool) -> CardAction 
 
 impl LabelEditor {
     /// The editor is open: the user is changing the labels.
-    pub fn is_editing(&self) -> bool {
+    pub(crate) fn is_editing(&self) -> bool {
         self.draft.is_some()
     }
 
     /// `action`: what the card's title-line buttons asked for this frame.
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut Ui,
         session: &PullRequestSession,

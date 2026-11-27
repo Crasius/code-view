@@ -9,7 +9,7 @@ use cv_pr_session::session::CompareRange;
 use cv_widgets::buttons;
 
 /// Returns true when the user asked to see all changes again.
-pub fn show(ui: &mut Ui, range: &CompareRange) -> bool {
+pub(crate) fn show(ui: &mut Ui, range: &CompareRange) -> bool {
     let text = match range {
         CompareRange::SinceSeen { seen, head } => format!(
             "Showing what was pushed since you last looked: {} to {}",

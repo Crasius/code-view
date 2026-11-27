@@ -3,14 +3,14 @@
 
 use super::super::Env;
 use super::super::focus_strip;
-use super::super::origin_view::{OriginEvent, OriginInputs, OriginView};
+use super::super::origin_view::{OriginAction, OriginEvent, OriginInputs, OriginView};
 use super::choices::diff_options;
 use cv_pr_session::session::PullRequestSession;
 use cv_pr_threads::{Jump, ThreadsUi};
 use cv_services::Services;
 
 /// What the original version did this frame.
-pub enum Shown {
+pub(crate) enum Shown {
     /// None is open: the file view or the summary shows.
     No,
     /// It took the place of the file view; a thread card in it may ask to go elsewhere.
@@ -18,7 +18,7 @@ pub enum Shown {
 }
 
 /// Opens the original version asked for last frame, once the threads are known.
-pub fn open_pending(
+pub(crate) fn open_pending(
     slot: &mut Option<OriginView>,
     pending: &mut Option<String>,
     session: &PullRequestSession,
@@ -30,7 +30,7 @@ pub fn open_pending(
 }
 
 /// The original version of a thread while one is open; Back closes it.
-pub fn show(slot: &mut Option<OriginView>, ui: &mut egui::Ui, env: &mut Env<'_>) -> Shown {
+pub(crate) fn show(slot: &mut Option<OriginView>, ui: &mut egui::Ui, env: &mut Env<'_>) -> Shown {
     let Some(origin) = slot.as_mut() else {
         return Shown::No;
     };
@@ -73,7 +73,7 @@ pub fn show(slot: &mut Option<OriginView>, ui: &mut egui::Ui, env: &mut Env<'_>)
 
 /// Focus mode's bar while the original version shows. Back to latest lays the frame out again, so
 /// the file's own bar replaces this one before anything is painted.
-pub fn show_strip(
+pub(crate) fn show_strip(
     slot: &mut Option<OriginView>,
     ui: &mut egui::Ui,
     session: &PullRequestSession,
@@ -85,11 +85,11 @@ pub fn show_strip(
     };
     let web_url = web_url(origin.thread_id(), session, threads_ui);
     match focus_strip::show_origin(ui, &origin.face(), web_url.as_deref(), session.kind, services) {
-        Some(focus_strip::OriginAction::Back) => {
+        Some(OriginAction::Back) => {
             *slot = None;
             ui.ctx().request_discard("the original version closed");
         }
-        Some(focus_strip::OriginAction::Retry) => origin.retry(),
+        Some(OriginAction::Retry) => origin.retry(),
         None => {}
     }
 }

@@ -15,7 +15,7 @@ use crate::FilesTab;
 use cv_services::Services;
 
 /// What the tab knows from the last visit and the settings when the pull request opened.
-pub struct Resume {
+pub(crate) struct Resume {
     /// The file open when the user last left the pull request, until the files first show.
     file: Option<String>,
     /// "Pull requests open on: Files": without a file to resume, the first file opens rather than
@@ -24,7 +24,7 @@ pub struct Resume {
 }
 
 impl Resume {
-    pub fn new(viewed: &ViewedMarks, settings: &AppSettings) -> Self {
+    pub(crate) fn new(viewed: &ViewedMarks, settings: &AppSettings) -> Self {
         Self {
             file: viewed.last_place().and_then(|place| place.file.clone()),
             opens_first_file: settings.pull_request_start == PullRequestStart::Files,
@@ -32,19 +32,19 @@ impl Resume {
     }
 
     /// "Files tab opens on", unless the pull request opens on its first file.
-    pub fn choice(&self, choice: FilesStart) -> FilesStart {
+    pub(crate) fn choice(&self, choice: FilesStart) -> FilesStart {
         if self.opens_first_file { FilesStart::FirstFile } else { choice }
     }
 }
 
 /// The tab the user left the pull request on, if they ever left it.
-pub fn last_tab(tab: &FilesTab) -> Option<PullRequestTab> {
+pub(crate) fn last_tab(tab: &FilesTab) -> Option<PullRequestTab> {
     tab.viewed.last_place().map(|place| place.tab)
 }
 
 /// Saves where the user is: `shown`, and the open file once the tab chose it (until then, the file
 /// to resume stays saved).
-pub fn remember_place(tab: &mut FilesTab, services: &mut Services, shown: PullRequestTab) {
+pub(crate) fn remember_place(tab: &mut FilesTab, services: &mut Services, shown: PullRequestTab) {
     let file = if tab.start == Start::Undecided { &tab.resume.file } else { &tab.selected_path };
     tab.viewed.remember_place(services, shown, file.as_deref());
 }
@@ -52,7 +52,7 @@ pub fn remember_place(tab: &mut FilesTab, services: &mut Services, shown: PullRe
 /// The first time the files show: the file the user left open opens again while it is still
 /// changed and nothing else was asked for. One that left the list falls back to the tab's default
 /// without a hint; nothing the user did took it away.
-pub fn open_left_file(tab: &mut FilesTab, files: &[ChangedFile]) {
+pub(crate) fn open_left_file(tab: &mut FilesTab, files: &[ChangedFile]) {
     let Some(path) = tab.resume.file.take() else {
         return;
     };
@@ -67,7 +67,11 @@ pub fn open_left_file(tab: &mut FilesTab, files: &[ChangedFile]) {
 
 /// Once per list of changed files: compiles the grammars of all their languages in the
 /// background, the file the tab opens first first, so the first file of each colors at once.
-pub fn warm_up_grammars(tab: &mut FilesTab, files: &Arc<Vec<ChangedFile>>, choice: FilesStart) {
+pub(crate) fn warm_up_grammars(
+    tab: &mut FilesTab,
+    files: &Arc<Vec<ChangedFile>>,
+    choice: FilesStart,
+) {
     if tab.diffs.is_warmed(files) {
         return;
     }

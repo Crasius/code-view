@@ -48,20 +48,20 @@ use cv_runtime::load::Load;
 use cv_syntax::pool::Priority;
 
 /// Files after the open one that load ahead.
-pub const NEXT: usize = 4;
+pub(crate) const NEXT: usize = 4;
 /// Files before the open one that load ahead: the one the user just came from is usually still
 /// cached, so this one is cheap.
-pub const PREVIOUS: usize = 1;
+pub(crate) const PREVIOUS: usize = 1;
 /// How many files on each side of the open one the plan looks through, skipped ones included.
-pub const SCAN: usize = 12;
+pub(crate) const SCAN: usize = 12;
 /// How long the pointer rests on a file row before its diff loads.
-pub const DWELL: Duration = Duration::from_millis(150);
+pub(crate) const DWELL: Duration = Duration::from_millis(150);
 /// Bigger changes take long enough to diff that working ahead could hold up the next file opened.
 const MAX_CHANGED_LINES: u32 = 5_000;
 
 /// The commits and the options every diff of a plan compares.
 #[derive(Clone, PartialEq, Eq)]
-pub struct Compare {
+pub(crate) struct Compare {
     pub base: String,
     pub head: String,
     pub options: DiffOptions,
@@ -74,7 +74,7 @@ impl Compare {
 }
 
 #[derive(Default)]
-pub struct Prefetch {
+pub(crate) struct Prefetch {
     /// What the current plan compares, and the diff of every file it asked for, done or not: the
     /// next plan only replaces the queue when it asks for something else.
     compare: Option<Compare>,
@@ -96,7 +96,11 @@ impl Prefetch {
     /// events.
     /// A thread row the pointer is on ([`hover`]) rests the same way; its file goes to the next
     /// [`Self::plan`].
-    pub fn rested_on(&mut self, ctx: &egui::Context, hovered: Option<usize>) -> Option<usize> {
+    pub(crate) fn rested_on(
+        &mut self,
+        ctx: &egui::Context,
+        hovered: Option<usize>,
+    ) -> Option<usize> {
         let now = ctx.input(|input| input.time);
         let thread_file = hover::file(ctx);
         let thread_path = thread_file.as_ref().map(|file| file.path.clone());
@@ -109,7 +113,7 @@ impl Prefetch {
     /// the pointer rested on. Another open file, the pointer resting elsewhere, line counts
     /// arriving or a filter changing the order makes a new plan; otherwise the queue goes on
     /// where it was. Returns whether the plan changed.
-    pub fn plan(
+    pub(crate) fn plan(
         &mut self,
         compare: &Compare,
         order: &[&ChangedFile],
@@ -118,44 +122,44 @@ impl Prefetch {
         is_wanted: impl Fn(&ChangedFile) -> bool,
     ) -> bool {
         let rested = rested.or(self.thread_rested.as_ref());
-        let wanted = wanted(order, open, rested, is_wanted, can_load_ahead);
+        let ahead = wanted(order, open, rested, is_wanted, can_load_ahead);
         // The count does not know sizes before it counted: the near files whatever their size.
-        let near = self::wanted(order, open, rested, |_| true, |_| true);
+        let near = wanted(order, open, rested, |_| true, |_| true);
         let open_file = open.and_then(|position| order.get(position)).copied();
         self.count_wanted.clear();
-        for file in open_file.into_iter().chain(near).chain(wanted.iter().copied()) {
+        for file in open_file.into_iter().chain(near).chain(ahead.iter().copied()) {
             if !self.count_wanted.contains(&file.path) {
                 self.count_wanted.push(file.path.clone());
             }
         }
         // Compared in place: planning runs every frame.
         let is_same = self.compare.as_ref() == Some(compare)
-            && wanted.len() == self.planned.len()
-            && wanted.iter().zip(&self.planned).all(|(file, key)| key.is_of(file, compare.options));
+            && ahead.len() == self.planned.len()
+            && ahead.iter().zip(&self.planned).all(|(file, key)| key.is_of(file, compare.options));
         if is_same {
             return false;
         }
         self.compare = Some(compare.clone());
-        self.planned = wanted.iter().map(|file| compare.key(file)).collect();
-        self.queue = wanted.into_iter().cloned().collect();
+        self.planned = ahead.iter().map(|file| compare.key(file)).collect();
+        self.queue = ahead.into_iter().cloned().collect();
         true
     }
 
     /// The current plan asks for `key`; a diff loaded ahead that it does not ask for any more is
     /// released.
-    pub fn is_planned(&self, key: &DiffKey) -> bool {
+    pub(crate) fn is_planned(&self, key: &DiffKey) -> bool {
         self.planned.contains(key)
     }
 
     /// Drops the plan, for a pull request without compared commits yet.
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.planned.clear();
         self.queue.clear();
         self.count_wanted.clear();
     }
 
     /// Moves a diff that finished loading ahead into `cache`. Returns whether one finished.
-    pub fn collect(&mut self, cache: &mut DiffCache) -> bool {
+    pub(crate) fn collect(&mut self, cache: &mut DiffCache) -> bool {
         let Some((key, load)) = &mut self.running else {
             return false;
         };
@@ -172,7 +176,7 @@ impl Prefetch {
 
     /// The load of `key` in flight, for the open file: the user opened the file loading ahead,
     /// and it goes on instead of starting again.
-    pub fn take_running(&mut self, key: &DiffKey) -> Option<Load<Arc<FileDiff>>> {
+    pub(crate) fn take_running(&mut self, key: &DiffKey) -> Option<Load<Arc<FileDiff>>> {
         let is_running = self.running.as_ref().is_some_and(|(running, _)| running == key);
         if !is_running {
             return None;
@@ -183,7 +187,7 @@ impl Prefetch {
     /// Collects a finished diff and starts the next queued one, unless one is in flight, the
     /// open file is still loading (`is_busy`) or there is no mirror yet. Each diff is colored by
     /// diff line ahead too, so the file opens colored. Returns whether a diff finished.
-    pub fn step(
+    pub(crate) fn step(
         &mut self,
         cache: &mut DiffCache,
         git: Option<&Arc<GitMirror>>,

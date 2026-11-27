@@ -17,7 +17,7 @@ const HOVER_INSET: f32 = 2.0;
 const HOVER_RADIUS: u8 = 3;
 const EXPAND_ICON_SIZE: f32 = 15.0;
 
-pub struct GapBar<'a> {
+pub(crate) struct GapBar<'a> {
     pub gap: &'a Gap,
     pub reveal: Reveal,
     /// Function or section heading of the hunk below, empty when git found none.
@@ -46,7 +46,12 @@ pub fn paint_band(painter: &egui::Painter, rect: Rect, palette: &Palette, fill: 
 
 /// A compact diff's unchanged lines left out: a thin band in the bar's tint, dots in both number
 /// columns.
-pub fn paint_separator(painter: &egui::Painter, rect: Rect, metrics: &Metrics, palette: &Palette) {
+pub(crate) fn paint_separator(
+    painter: &egui::Painter,
+    rect: Rect,
+    metrics: &Metrics,
+    palette: &Palette,
+) {
     painter.rect_filled(rect, 0, background(palette));
     let edge = Stroke::new(1.0, palette.border);
     painter.hline(rect.x_range(), rect.top() + 0.5, edge);
@@ -64,7 +69,7 @@ pub fn paint_separator(painter: &egui::Painter, rect: Rect, metrics: &Metrics, p
     }
 }
 
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     rect: Rect,
     id: Id,

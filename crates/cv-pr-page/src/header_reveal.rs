@@ -60,7 +60,7 @@ const PEEK_DWELL_SECONDS: f64 = 0.2;
 const PEEK_STRIP: f32 = 10.0;
 
 /// What the page knows this frame that decides whether the header may move.
-pub struct Frame {
+pub(crate) struct Frame {
     pub tab: Tab,
     /// How the header behaves on [`Frame::tab`], from the settings.
     pub mode: HeaderMode,
@@ -83,7 +83,7 @@ struct Glide {
 }
 
 #[derive(Debug, Default)]
-pub struct HeaderReveal {
+pub(crate) struct HeaderReveal {
     /// Points of the header slid out of view; 0 shows it whole.
     hidden: f32,
     /// The header's full height when it was last laid out.
@@ -117,7 +117,7 @@ pub struct HeaderReveal {
 
 impl HeaderReveal {
     /// The page is shown again: the next frame enters its tab anew, as when it opened.
-    pub fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.show_whole();
         self.tab = None;
     }
@@ -134,7 +134,12 @@ impl HeaderReveal {
     /// Draws the header with `add_header`, slid up by the hidden part and clipped at its top
     /// edge, and takes the height still shown. `add_header` returns true when one of the header's
     /// actions ran. Call before the content runs: the header takes its part of the scroll here.
-    pub fn show(&mut self, ui: &mut Ui, frame: &Frame, add_header: impl FnOnce(&mut Ui) -> bool) {
+    pub(crate) fn show(
+        &mut self,
+        ui: &mut Ui,
+        frame: &Frame,
+        add_header: impl FnOnce(&mut Ui) -> bool,
+    ) {
         let ctx = ui.ctx().clone();
         let now = ctx.input(|input| input.time);
         let seconds = f64::from(motion::duration(&ctx, motion::MEDIUM));
@@ -164,7 +169,7 @@ impl HeaderReveal {
     }
 
     /// Remembers where the content starts, right below the tab bar at the cursor of `ui`.
-    pub fn mark_content(&mut self, ui: &Ui) {
+    pub(crate) fn mark_content(&mut self, ui: &Ui) {
         let below = ui.cursor().top();
         self.content = Some(ui.max_rect().intersect(Rect::everything_below(below)));
     }
@@ -172,7 +177,7 @@ impl HeaderReveal {
     /// Runs the tab's content with `add_content` in a scope that counts as a scroll area, so that
     /// its scroll areas hand on what they cannot scroll; then the header takes what is left of a
     /// scroll up. `has_band` is false while the band is left out (focus mode).
-    pub fn show_content<R>(
+    pub(crate) fn show_content<R>(
         &mut self,
         ui: &mut Ui,
         has_band: bool,
@@ -201,7 +206,7 @@ impl HeaderReveal {
     }
 
     /// Points of the header slid out of view as drawn this frame; 0 while it shows whole.
-    pub fn drawn_hidden(&self) -> f32 {
+    pub(crate) fn drawn_hidden(&self) -> f32 {
         self.drawn_hidden
     }
 

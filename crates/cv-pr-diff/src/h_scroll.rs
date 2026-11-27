@@ -10,7 +10,7 @@ const THICK: f32 = 8.0;
 const MIN_THUMB: f32 = 32.0;
 
 /// `track` spans the pane's code area at the bottom of the viewport.
-pub fn show(ui: &Ui, track: Rect, id: Id, content_width: f32, offset: &mut f32) {
+pub(crate) fn show(ui: &Ui, track: Rect, id: Id, content_width: f32, offset: &mut f32) {
     let overflow = content_width - track.width();
     if overflow <= 0.0 {
         *offset = 0.0;

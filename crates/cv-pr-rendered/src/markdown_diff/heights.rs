@@ -36,7 +36,7 @@ pub(super) struct RowHeights {
 
 impl RowHeights {
     /// `rows` rows were built anew: none is measured or placed yet.
-    pub fn reset(&mut self, rows: usize) {
+    pub(crate) fn reset(&mut self, rows: usize) {
         self.heights = vec![0.0; rows];
         self.fresh = vec![false; rows];
         self.tops.clear();
@@ -45,7 +45,7 @@ impl RowHeights {
 
     /// What the blocks' heights depend on (the lanes' widths, the zoom, the images loaded): when
     /// it changes, every block is measured again.
-    pub fn rekey(&mut self, key: u64) {
+    pub(crate) fn rekey(&mut self, key: u64) {
         if key != self.key {
             self.key = key;
             self.cells.clear();
@@ -54,48 +54,48 @@ impl RowHeights {
     }
 
     /// A row's height changed: the rows are placed again before the next paint.
-    pub fn mark_dirty(&mut self) {
+    pub(crate) fn mark_dirty(&mut self) {
         self.is_dirty = true;
     }
 
-    pub fn is_dirty(&self) -> bool {
+    pub(crate) fn is_dirty(&self) -> bool {
         self.is_dirty
     }
 
     /// The rows were placed since they were last built.
-    pub fn is_placed(&self) -> bool {
+    pub(crate) fn is_placed(&self) -> bool {
         self.tops.len() == self.heights.len() + 1
     }
 
     /// The top of each row, and the total height last.
-    pub fn tops(&self) -> &[f32] {
+    pub(crate) fn tops(&self) -> &[f32] {
         &self.tops
     }
 
-    pub fn top(&self, row: usize) -> f32 {
+    pub(crate) fn top(&self, row: usize) -> f32 {
         self.tops[row]
     }
 
-    pub fn height(&self, row: usize) -> f32 {
+    pub(crate) fn height(&self, row: usize) -> f32 {
         self.heights[row]
     }
 
     /// The rows' height with the padding above and below them.
-    pub fn total(&self) -> f32 {
+    pub(crate) fn total(&self) -> f32 {
         self.tops.last().copied().unwrap_or(0.0)
     }
 
     /// The row was measured, not estimated.
-    pub fn is_measured(&self, row: usize) -> bool {
+    pub(crate) fn is_measured(&self, row: usize) -> bool {
         self.fresh[row]
     }
 
-    pub fn is_all_measured(&self) -> bool {
+    pub(crate) fn is_all_measured(&self) -> bool {
         self.fresh.iter().all(|fresh| *fresh)
     }
 
     /// The row at content height `y`: the last one starting at or above it.
-    pub fn row_at(&self, y: f32) -> usize {
+    pub(crate) fn row_at(&self, y: f32) -> usize {
         self.tops
             .partition_point(|top| *top <= y)
             .saturating_sub(1)
@@ -103,20 +103,20 @@ impl RowHeights {
     }
 
     /// The rows reaching from `top` to `bottom`.
-    pub fn rows_between(&self, top: f32, bottom: f32) -> impl Iterator<Item = usize> + '_ {
+    pub(crate) fn rows_between(&self, top: f32, bottom: f32) -> impl Iterator<Item = usize> + '_ {
         let first = self.tops.partition_point(|offset| *offset < top).saturating_sub(1);
         (first..self.heights.len()).take_while(move |row| self.tops[*row] <= bottom)
     }
 
     /// Block `cell` was laid out `height` tall where it shows; true when that differs from what
     /// was known (a font arriving), so the rows are placed again.
-    pub fn note_shown(&mut self, cell: Cell, height: f32) -> bool {
+    pub(crate) fn note_shown(&mut self, cell: Cell, height: f32) -> bool {
         let known = self.cells.insert((cell.side, cell.unit), height);
         known.is_none_or(|known| (known - height).abs() > 0.5)
     }
 
     /// Lays the blocks of `cells` not measured yet out unseen, at their lane's width in `lanes`.
-    pub fn measure(
+    pub(crate) fn measure(
         &mut self,
         ui: &mut Ui,
         model: &MarkdownModel,
@@ -156,7 +156,7 @@ impl RowHeights {
 
     /// Places `rows` from the heights known, `spaces` (at zoom 1) above each, at zoom `scale`;
     /// `card` gives the height of a thread's card row.
-    pub fn place(
+    pub(crate) fn place(
         &mut self,
         rows: &[Row],
         spaces: &[f32],

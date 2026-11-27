@@ -7,7 +7,7 @@ use review_core::{PullRequestDetail, PullRequestState, ReviewThread};
 use review_git::CommitInfo;
 
 /// The shown or the newer state of a pull request page.
-pub struct PageData<'a> {
+pub(crate) struct PageData<'a> {
     pub detail: &'a PullRequestDetail,
     pub threads: &'a [ReviewThread],
 }
@@ -17,7 +17,7 @@ pub struct PageData<'a> {
     clippy::struct_excessive_bools,
     reason = "each flag is an independent fact the banner names as its own part"
 )]
-pub struct ChangeSummary {
+pub(crate) struct ChangeSummary {
     /// The head moved.
     pub pushed: bool,
     /// The new head does not contain the shown one (rebase, amend).
@@ -38,7 +38,7 @@ pub struct ChangeSummary {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StateChange {
+pub(crate) enum StateChange {
     Merged,
     Closed,
     Reopened,
@@ -46,7 +46,7 @@ pub enum StateChange {
     Published,
 }
 
-pub fn describe(
+pub(crate) fn describe(
     shown: &PageData<'_>,
     newer: &PageData<'_>,
     commits: &[CommitInfo],
@@ -120,17 +120,17 @@ pub fn describe(
 
 impl ChangeSummary {
     /// Nothing the user would notice changed (a recomputed merge status, an edited system note).
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.parts().is_empty()
     }
 
     /// The banner's title: pushes are the news that matter most for a review in progress.
-    pub fn title(&self) -> &'static str {
+    pub(crate) fn title(&self) -> &'static str {
         if self.pushed { "New changes pushed" } else { "New activity on this pull request" }
     }
 
     /// "2 new commits by Ana", "1 new comment by Ben", "Reviews changed", most important first.
-    pub fn parts(&self) -> Vec<String> {
+    pub(crate) fn parts(&self) -> Vec<String> {
         let mut parts = Vec::new();
         if self.pushed {
             let commits = match self.new_commits {

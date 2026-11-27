@@ -14,9 +14,10 @@
 //!
 //! GitHub refuses every review vote by the pull request's author (422 "Can not approve your own
 //! pull request"), so for the author there both votes stay in place but off, with that reason
-//! ([`author_refusal`], in `cv-pr-session` so the Files tab asks it too); the Overview's and the Files tab's Approve ask the same. GitLab lets
-//! authors approve only where the project allows it, which the app is not told, so it keeps the
-//! vote and shows GitLab's reason when refused; Azure DevOps lets authors vote.
+//! ([`author_refusal`], in `cv-pr-session` because the Overview's and the Files tab's Approve ask
+//! it too). GitLab lets authors approve only where the project allows it, which the app is not
+//! told, so it keeps the vote and shows GitLab's reason when refused; Azure DevOps lets authors
+//! vote.
 
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, icons, style};
@@ -348,10 +349,13 @@ fn composer(
 
 #[cfg(test)]
 mod tests {
+    use cv_pr_session::lifecycle::LifecycleAction;
+    use cv_runtime::route::PullRequestKey;
+    use egui::{Key, Modifiers};
     use review_core::{ProviderKind, ReviewVote};
 
     use super::{Comment, Draft, Entry, VoteComposer, entries, show_draft};
-    use cv_runtime::route::PullRequestKey;
+    use crate::header::HeaderAction;
 
     #[test]
     fn github_change_requests_need_a_comment_and_approvals_offer_one() {
@@ -386,6 +390,17 @@ mod tests {
         assert!(composer.has_unsent_text());
     }
 
+    struct Scene {
+        composer: VoteComposer,
+        can_write: bool,
+        submitted: Option<HeaderAction>,
+    }
+
+    fn submit(harness: &mut egui_kittest::Harness<'_, Scene>) {
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+        harness.run_steps(2);
+    }
+
     #[test]
     fn the_vote_composer_keeps_its_text_while_another_write_runs() {
         let key = PullRequestKey {
@@ -394,20 +409,49 @@ mod tests {
             number: 7,
         };
         let entry = Entry { vote: ReviewVote::ChangesRequested, comment: Comment::Required };
-        let draft = Draft { entry, text: "Please split this".into(), grab_focus: false };
+        let draft = Draft { entry, text: "Please split this".into(), grab_focus: true };
         let mut harness = egui_kittest::Harness::new_ui_state(
-            move |ui, composer: &mut VoteComposer| {
+            move |ui, scene: &mut Scene| {
                 cv_base::theme::fonts::install(ui.ctx());
                 let anchor =
                     egui::Rect::from_min_size(egui::pos2(500.0, 10.0), egui::vec2(80.0, 24.0));
-                let submitted =
-                    show_draft(ui, &key, ProviderKind::GitHub, anchor, &mut composer.draft, false);
-                assert!(submitted.is_none(), "nothing is sent while the other write runs");
+                let draft = &mut scene.composer.draft;
+                let action =
+                    show_draft(ui, &key, ProviderKind::GitHub, anchor, draft, scene.can_write);
+                if action.is_some() {
+                    scene.submitted = action;
+                }
             },
-            VoteComposer { draft: Some(draft) },
+            Scene {
+                composer: VoteComposer { draft: Some(draft) },
+                can_write: false,
+                submitted: None,
+            },
         );
-        // The busy Submit spins, so the frames never settle.
-        harness.run_steps(2);
-        assert!(harness.state().has_unsent_text(), "a thread resolve or label edit runs meanwhile");
+        harness.run_steps(3);
+        submit(&mut harness);
+        assert!(harness.state().submitted.is_none(), "nothing is sent while the other write runs");
+        assert!(
+            harness.state().composer.has_unsent_text(),
+            "the text stays while the other write runs"
+        );
+
+        // The busy editor is disabled and lost the focus; the user puts it back once the write ends.
+        let scene = harness.state_mut();
+        scene.can_write = true;
+        scene.composer.draft.as_mut().expect("the composer stays open").grab_focus = true;
+        harness.run_steps(3);
+        submit(&mut harness);
+        assert!(
+            matches!(
+                harness.state().submitted,
+                Some(HeaderAction::Run(LifecycleAction::Vote {
+                    vote: ReviewVote::ChangesRequested,
+                    comment: Some(ref text),
+                })) if text == "Please split this"
+            ),
+            "the vote goes out with its comment once writing is allowed"
+        );
+        assert!(!harness.state().composer.has_unsent_text(), "the sent text leaves the composer");
     }
 }

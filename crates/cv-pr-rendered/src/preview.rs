@@ -159,12 +159,12 @@ fn rendered_key(file: &ChangedFile, images_key: u64) -> u64 {
     ))
 }
 
-pub fn can_preview(file: &ChangedFile) -> bool {
+pub(crate) fn can_preview(file: &ChangedFile) -> bool {
     PreviewKind::of(&file.path).is_some()
 }
 
 /// Previews the user can switch off for the text diff: images always show as images.
-pub fn is_optional(file: &ChangedFile) -> bool {
+pub(crate) fn is_optional(file: &ChangedFile) -> bool {
     matches!(PreviewKind::of(&file.path), Some(PreviewKind::Svg | PreviewKind::Markdown))
 }
 
@@ -254,12 +254,12 @@ impl Preview {
     }
 
     /// The rendered Markdown fills the pane (Full width, or a reading column as wide as the pane).
-    pub fn fills_width(&self) -> bool {
+    pub(crate) fn fills_width(&self) -> bool {
         self.markdown.fills_width()
     }
 
     /// Switches the rendered Markdown between its reading column and full width.
-    pub fn switch_width(&self, width: &mut RenderedWidth) {
+    pub(crate) fn switch_width(&self, width: &mut RenderedWidth) {
         self.markdown.switch_width(width);
     }
 
@@ -421,14 +421,12 @@ impl Preview {
         let is_reload = self.content.ready().is_some()
             && self.loaded_for.as_ref().is_some_and(|shown| shown.same_versions(&key));
         self.loaded_for = Some(key);
-        if !is_reload {
-            self.reloading = Load::Idle;
-            self.started = skeleton::now(ctx);
-            self.textures = Textures::default();
-        }
         if is_reload {
             self.reloading.start(&services.background, job.run());
         } else {
+            self.reloading = Load::Idle;
+            self.started = skeleton::now(ctx);
+            self.textures = Textures::default();
             self.content.start(&services.background, job.run());
         }
     }
@@ -449,7 +447,8 @@ impl Preview {
         ui.add_space(style::SPACE_S);
         match self.compare {
             ImageCompare::SideBySide => {
-                columns_splitter("preview_images_splitter")
+                Splitter::new("preview_images_splitter", "Resize Before and After")
+                    .default_value(PaneSizes::DEFAULT.preview_split)
                     .show_columns(
                         ui,
                         split,
@@ -513,11 +512,6 @@ fn upload_side(ctx: &egui::Context, side: &mut Option<Side>, name: &str) -> Opti
     };
     *side = Some(Side::Uploaded);
     Some(image_store::upload(ctx, name, decoded).0)
-}
-
-fn columns_splitter(id_salt: &str) -> Splitter {
-    Splitter::new(id_salt, "Resize Before and After")
-        .default_value(PaneSizes::DEFAULT.preview_split)
 }
 
 /// `shown` is how much of the placeholder to draw ([`skeleton::reveal`]); at 0 the area stays empty.

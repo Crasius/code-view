@@ -4,12 +4,12 @@
 use review_git::{ChangeKind, ChangedFile};
 
 use cv_base::theme::{self, icons};
-use cv_pr_diff::whitespace_notice;
+use cv_pr_diff::whitespace_notice::{self, HiddenNoticePick};
 use cv_pr_session::web_link;
 use cv_widgets::states::{self, Action};
 
 /// What the user picked on the notice of a diff without changed lines.
-pub enum NoChanges {
+pub(crate) enum NoChanges {
     /// Turn "Ignore whitespace" off: every change was whitespace.
     ShowWhitespace,
     /// Reload the pull request: the file list is older than the compared commits.
@@ -20,7 +20,7 @@ pub enum NoChanges {
 /// change, an empty file) says so; other content has changes git did not show: all of them
 /// whitespace while "Ignore whitespace" is on, or none in the compared commits because the file
 /// list is older than they are.
-pub fn without_changes(
+pub(crate) fn without_changes(
     ui: &mut egui::Ui,
     file: &ChangedFile,
     ignores_whitespace: bool,
@@ -32,8 +32,8 @@ pub fn without_changes(
     }
     if ignores_whitespace {
         return match whitespace_notice::hidden_notice(ui, web_link) {
-            Some(true) => Some(NoChanges::ShowWhitespace),
-            Some(false) => {
+            Some(HiddenNoticePick::ShowWhitespace) => Some(NoChanges::ShowWhitespace),
+            Some(HiddenNoticePick::OpenLink) => {
                 open_link(ui, web_link);
                 None
             }
@@ -56,7 +56,7 @@ pub fn without_changes(
 }
 
 /// "Couldn't load the diff" with the reason: returns true for Retry.
-pub fn diff_failure(
+pub(crate) fn diff_failure(
     ui: &mut egui::Ui,
     message: &str,
     web_link: Option<&web_link::WebLink>,
@@ -94,7 +94,7 @@ fn show_with_link(
 }
 
 /// "Binary file" with the platform link and Download: returns true for Download.
-pub fn binary(
+pub(crate) fn binary(
     ui: &mut egui::Ui,
     is_downloading: bool,
     web_link: Option<&web_link::WebLink>,
@@ -141,7 +141,7 @@ fn unchanged(ui: &mut egui::Ui, file: &ChangedFile, web_link: Option<&web_link::
     show_with_link(ui, icons::FILE_TEXT, palette.text_secondary, title, &detail, None, web_link);
 }
 
-pub fn open_link(ui: &egui::Ui, link: Option<&web_link::WebLink>) {
+pub(crate) fn open_link(ui: &egui::Ui, link: Option<&web_link::WebLink>) {
     if let Some(link) = link {
         ui.ctx().open_url(egui::OpenUrl::new_tab(&link.url));
     }

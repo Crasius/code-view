@@ -24,7 +24,7 @@ use cv_widgets::states::{self, Action};
 use cv_widgets::{buttons, glyph, provider_icon, skeleton, time_text};
 
 const BANNER_HEIGHT: f32 = 36.0;
-pub const BACK_LABEL: &str = "Back to latest";
+pub(crate) const BACK_LABEL: &str = "Back to latest";
 
 /// What the mirror gave for the origin.
 enum Version {
@@ -35,7 +35,7 @@ enum Version {
 }
 
 /// What the banner says, for focus mode's strip to say it in its place.
-pub struct Face {
+pub(crate) struct Face {
     /// "Showing the version from 1a2b3c4 · 3 days ago", or why another view shows.
     pub text: String,
     /// The file the comment was written on.
@@ -45,13 +45,13 @@ pub struct Face {
 }
 
 /// What the banner and the view asked for.
-pub enum OriginEvent {
+pub(crate) enum OriginEvent {
     Back,
     Thread(ThreadEvent),
 }
 
 /// What the origin view takes from the Files tab and the settings each frame.
-pub struct OriginInputs<'a> {
+pub(crate) struct OriginInputs<'a> {
     /// The pull request's mirror and target commit; `None` while the mirror is being prepared.
     pub mirror: Option<(Arc<GitMirror>, String)>,
     pub layout: DiffLayout,
@@ -65,7 +65,7 @@ pub struct OriginInputs<'a> {
 }
 
 /// The version an outdated thread was written on, while it is shown.
-pub struct OriginView {
+pub(crate) struct OriginView {
     /// The thread as it sits in that version: at its original lines, not outdated there.
     thread: ReviewThread,
     origin: ThreadOrigin,
@@ -77,7 +77,8 @@ pub struct OriginView {
     hunk: Option<Arc<FileDiff>>,
 }
 
-enum BannerAction {
+/// What the banner, or focus mode's strip in its place, asks of the original version.
+pub(crate) enum OriginAction {
     Back,
     Retry,
 }
@@ -100,7 +101,7 @@ struct VersionDiff {
 
 impl OriginView {
     /// `None` for a thread without an origin.
-    pub fn new(thread: &ReviewThread) -> Option<Self> {
+    pub(crate) fn new(thread: &ReviewThread) -> Option<Self> {
         let origin = thread.origin.clone()?;
         let mut shown = thread.clone();
         shown.anchor = Some(origin.anchor.clone());
@@ -123,17 +124,17 @@ impl OriginView {
         })
     }
 
-    pub fn thread_id(&self) -> &str {
+    pub(crate) fn thread_id(&self) -> &str {
         &self.thread.id
     }
 
     /// Loads the version again (Retry).
-    pub fn retry(&mut self) {
+    pub(crate) fn retry(&mut self) {
         self.version = Load::Idle;
     }
 
     /// What the banner says right now.
-    pub fn face(&self) -> Face {
+    pub(crate) fn face(&self) -> Face {
         let short = short_sha(&self.origin.head_sha);
         let missing = match self.version.ready() {
             Some(Version::Missing(reason)) if self.hunk.is_some() => Some(reason.clone()),
@@ -156,7 +157,7 @@ impl OriginView {
     }
 
     /// Follows the thread when a reload brought new replies or another status.
-    pub fn update_thread(&mut self, thread: &ReviewThread) {
+    pub(crate) fn update_thread(&mut self, thread: &ReviewThread) {
         if thread.comments != self.thread.comments || thread.status != self.thread.status {
             self.thread.comments.clone_from(&thread.comments);
             self.thread.status = thread.status;
@@ -164,7 +165,7 @@ impl OriginView {
     }
 
     /// The banner, then the diff of the origin's file with the thread at its original line.
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut Ui,
         inputs: &mut OriginInputs<'_>,
@@ -175,8 +176,8 @@ impl OriginView {
         // In focus mode the strip says what the banner says, with the same ways out.
         let banner = if focus_mode::is_shown(ui.ctx()) { None } else { self.banner(ui, inputs) };
         let mut event = match banner {
-            Some(BannerAction::Back) => Some(OriginEvent::Back),
-            Some(BannerAction::Retry) => {
+            Some(OriginAction::Back) => Some(OriginEvent::Back),
+            Some(OriginAction::Retry) => {
                 self.retry();
                 ui.ctx().request_repaint();
                 None
@@ -320,7 +321,7 @@ impl OriginView {
 
     /// "Showing the version from 1a2b3c4 · 3 days ago" with the file, Open on the platform and
     /// Back to latest. While the commits are gone it says what is shown instead.
-    fn banner(&self, ui: &mut Ui, inputs: &OriginInputs<'_>) -> Option<BannerAction> {
+    fn banner(&self, ui: &mut Ui, inputs: &OriginInputs<'_>) -> Option<OriginAction> {
         let palette = theme::palette(ui.ctx());
         let Face { text, missing, .. } = self.face();
         let mut event = None;
@@ -338,14 +339,14 @@ impl OriginView {
                             .on_hover_text("Back to the latest version (Esc)")
                             .clicked()
                         {
-                            event = Some(BannerAction::Back);
+                            event = Some(OriginAction::Back);
                         }
                         if let Some(reason) = &missing
                             && buttons::subtle(ui, icons::ARROW_CLOCKWISE, "Retry")
                                 .on_hover_text(reason)
                                 .clicked()
                         {
-                            event = Some(BannerAction::Retry);
+                            event = Some(OriginAction::Retry);
                         }
                         if let Some(url) = &inputs.web_url
                             && buttons::subtle(

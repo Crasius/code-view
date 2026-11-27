@@ -48,7 +48,7 @@ pub mod patch_colors;
 #[cfg(test)]
 mod placed_scroll_check;
 mod removal_popover;
-pub mod selection;
+pub(crate) mod selection;
 #[cfg(any(test, feature = "test-support"))]
 pub mod testing;
 #[cfg(test)]

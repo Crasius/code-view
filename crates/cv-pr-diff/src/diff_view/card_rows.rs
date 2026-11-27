@@ -76,23 +76,27 @@ pub(super) struct Revealed {
 
 impl Revealed {
     /// The card of `thread` is shown although comments are hidden.
-    pub fn contains(&self, thread: &ReviewThread) -> bool {
+    pub(crate) fn contains(&self, thread: &ReviewThread) -> bool {
         self.ids.contains(&thread.id)
     }
 
     /// The card of `thread` is left out: comments are hidden in the diff (`show_threads` is off)
     /// and the user did not show it.
-    pub fn hides(&self, show_threads: bool, thread: &ReviewThread) -> bool {
+    pub(crate) fn hides(&self, show_threads: bool, thread: &ReviewThread) -> bool {
         !show_threads && !self.contains(thread)
     }
 
     /// Shows the card of thread `thread_id`; false when it showed already.
-    pub fn insert(&mut self, thread_id: &str) -> bool {
+    pub(crate) fn insert(&mut self, thread_id: &str) -> bool {
         self.ids.insert(thread_id.to_owned())
     }
 
     /// Shows the cards of `threads`, or hides them again.
-    pub fn set<'a>(&mut self, threads: impl IntoIterator<Item = &'a ReviewThread>, show: bool) {
+    pub(crate) fn set<'a>(
+        &mut self,
+        threads: impl IntoIterator<Item = &'a ReviewThread>,
+        show: bool,
+    ) {
         for thread in threads {
             if show {
                 self.ids.insert(thread.id.clone());
@@ -104,7 +108,7 @@ impl Revealed {
 
     /// Comments are on or off in the diff (`show_threads`); after a switch, which this tells, the
     /// cards shown one by one go back under the switch.
-    pub fn follow(&mut self, show_threads: bool) -> bool {
+    pub(crate) fn follow(&mut self, show_threads: bool) -> bool {
         let showed = self.showed_threads.replace(show_threads);
         if showed.is_none_or(|showed| showed == show_threads) {
             return false;
@@ -148,24 +152,24 @@ pub(super) struct Placed<'a> {
 impl Drafting {
     /// A card just opened was not laid out yet: the pass laying it out measures it and is
     /// discarded.
-    pub fn is_measuring(&self) -> bool {
+    pub(crate) fn is_measuring(&self) -> bool {
         self.reveal.is_some_and(|reveal| !reveal.is_measured)
     }
 
     /// This pass leaves a card just opened out of the rows: it could not be discarded after
     /// measuring it (see [`is_last_pass`]).
-    pub fn holds_card(&self, ctx: &egui::Context) -> bool {
+    pub(crate) fn holds_card(&self, ctx: &egui::Context) -> bool {
         self.is_measuring() && is_last_pass(ctx)
     }
 
     /// Until a new card is measured it counts as taller than the view: the pass that measures it
     /// then scrolls within content at least as tall as the final one, never past its end.
-    pub fn unmeasured_height(&self, view_height: f32) -> Option<f32> {
+    pub(crate) fn unmeasured_height(&self, view_height: f32) -> Option<f32> {
         self.is_measuring().then(|| (view_height * 2.0).max(DEFAULT_CARD_HEIGHT))
     }
 
     /// Opens the composer of a new-thread draft kept for the file at `path`, once per file.
-    pub fn restore(&mut self, path: &str, threads_ui: &ThreadsUi) {
+    pub(crate) fn restore(&mut self, path: &str, threads_ui: &ThreadsUi) {
         if self.is_restored || self.composer.is_some() {
             return;
         }
@@ -179,7 +183,7 @@ impl Drafting {
     /// composer's place in the rows built next, with the height (and any ease) the composer's card
     /// had in `cards`, so nothing below it moves. Without a match (the platform renamed it) the
     /// card is measured in a discarded pass as any new card is.
-    pub fn hand_over_landed(
+    pub(crate) fn hand_over_landed(
         &mut self,
         threads: &[&ReviewThread],
         threads_ui: &ThreadsUi,
@@ -202,7 +206,7 @@ impl Drafting {
     /// Opens a new comment on `anchor`'s lines: right above the line the pointer or keyboard is at
     /// when `above` (a range picked dragging up), else below. That line, `below_top` below the
     /// top of the view, keeps its place on screen and the card scrolls fully into view.
-    pub fn open(&mut self, anchor: ThreadAnchor, above: bool, below_top: f32) {
+    pub(crate) fn open(&mut self, anchor: ThreadAnchor, above: bool, below_top: f32) {
         let composer = Composer::new(anchor, above);
         let focus = match (&composer.anchor.range, composer.anchor.above) {
             (Some(range), true) => (range.start_old_line, range.start_new_line),
@@ -213,7 +217,7 @@ impl Drafting {
     }
 
     /// How far below the top of the view the card posted from above its lines goes back to, once.
-    pub fn take_keep(&mut self) -> Option<f32> {
+    pub(crate) fn take_keep(&mut self) -> Option<f32> {
         self.keep_below_top.take()
     }
 
@@ -226,7 +230,7 @@ impl Drafting {
     /// The first pass counts the card taller than the view (see [`Self::unmeasured_height`]), so
     /// the scroll area's extent from it covers the final scroll offset: past that extent the
     /// scroll area would spring back over the next frames.
-    pub fn reveal_target(
+    pub(crate) fn reveal_target(
         &mut self,
         placed: &Placed<'_>,
         diff: &FileDiff,
@@ -253,7 +257,7 @@ impl Drafting {
     }
 
     /// The new comment's card on a band across `row.rect`, under its side's code.
-    pub fn show_card(
+    pub(crate) fn show_card(
         &mut self,
         ui: &mut Ui,
         row: &CardRow,

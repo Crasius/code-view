@@ -80,7 +80,7 @@ impl CardHeights {
 
     /// The card under `from` goes on as the card under `to`, with its height and any ease: a
     /// posted comment's card becomes the loaded thread's at the same height.
-    pub fn hand_over(&mut self, from: &str, to: &str) {
+    pub(crate) fn hand_over(&mut self, from: &str, to: &str) {
         if let Some(height) = self.measured.remove(from) {
             self.measured.insert(to.to_owned(), height);
         }
@@ -90,7 +90,7 @@ impl CardHeights {
     }
 
     /// The rows were laid out anew (another layout): every card is measured again.
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.measured.clear();
         self.tweens.clear();
     }
@@ -98,7 +98,7 @@ impl CardHeights {
     /// A card laid out on `row` at another height than its row now has (it just appeared, its
     /// text changed, or an ease just started that this pass did not clip: `was_clipped`) has this
     /// pass redone with the right height, so the rows below never show at a stale one.
-    pub fn redo_unless_shown(&self, ui: &Ui, row: Rect, key: &str, was_clipped: bool) {
+    pub(crate) fn redo_unless_shown(&self, ui: &Ui, row: Rect, key: &str, was_clipped: bool) {
         let starts_easing = !was_clipped && self.is_easing(key);
         let is_off = self.shown(key).is_some_and(|shown| (row.height() - shown).abs() > 0.5);
         if (is_off || starts_easing) && can_discard(ui.ctx()) {

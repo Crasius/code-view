@@ -10,33 +10,33 @@ use cv_code::diff_rows::Layout;
 use cv_services::Services;
 
 /// How the diff of every file is worked out, from the user's choices.
-pub fn diff_options(settings: &AppSettings) -> DiffOptions {
+pub(crate) fn diff_options(settings: &AppSettings) -> DiffOptions {
     DiffOptions { context: settings.context_lines, ignore_whitespace: settings.ignore_whitespace }
 }
 
 /// The diff toolbar's "Ignore whitespace", from the banner, a notice or Alt+W; saved like the
 /// other diff choices.
-pub fn toggle_ignore_whitespace(services: &mut Services) {
+pub(crate) fn toggle_ignore_whitespace(services: &mut Services) {
     services.settings.ignore_whitespace = !services.settings.ignore_whitespace;
     services.save_settings();
 }
 
 /// Alt+H: "Show comments in the diff", saved like the other diff choices.
-pub fn toggle_comments_in_diff(services: &mut Services) {
+pub(crate) fn toggle_comments_in_diff(services: &mut Services) {
     services.settings.show_comments_in_diff = !services.settings.show_comments_in_diff;
     services.save_settings();
 }
 
 /// "Scroll past the end" switched in the overview strip's menu of the rendered diff, the text
 /// diff or a thread's original version: saved for every diff.
-pub fn switch_past_end(services: &mut Services, is_on: bool) {
+pub(crate) fn switch_past_end(services: &mut Services, is_on: bool) {
     services.settings.scroll_past_end = is_on;
     services.save_settings();
 }
 
 /// An added file has only a head version and a deleted file only a base version: either is shown
 /// whole, in one full-width pane, whatever layout the user picked.
-pub fn whole_file_side(file: &ChangedFile) -> Option<DiffSide> {
+pub(crate) fn whole_file_side(file: &ChangedFile) -> Option<DiffSide> {
     match file.kind {
         ChangeKind::Added => Some(DiffSide::New),
         ChangeKind::Deleted => Some(DiffSide::Old),
@@ -49,7 +49,7 @@ pub fn whole_file_side(file: &ChangedFile) -> Option<DiffSide> {
 
 /// The layout a file is shown in: whole for added and deleted files, the user's choice otherwise
 /// (which stays saved, so the next changed file shows it again).
-pub fn file_layout(whole_file: Option<DiffSide>, chosen: DiffLayout) -> Layout {
+pub(crate) fn file_layout(whole_file: Option<DiffSide>, chosen: DiffLayout) -> Layout {
     match (whole_file, chosen) {
         (Some(side), _) => Layout::WholeFile(side),
         (None, DiffLayout::SideBySide) => Layout::SideBySide,
@@ -59,12 +59,12 @@ pub fn file_layout(whole_file: Option<DiffSide>, chosen: DiffLayout) -> Layout {
 }
 
 /// Alt+N switches New only on and off.
-pub fn toggles_new_only(ui: &egui::Ui) -> bool {
+pub(crate) fn toggles_new_only(ui: &egui::Ui) -> bool {
     ui.input_mut(|input| input.consume_key(egui::Modifiers::ALT, egui::Key::N))
 }
 
 /// The layout after Alt+N: into New only, or back to the layout it was entered from.
-pub fn new_only_toggled(current: DiffLayout, before_new_only: DiffLayout) -> DiffLayout {
+pub(crate) fn new_only_toggled(current: DiffLayout, before_new_only: DiffLayout) -> DiffLayout {
     match current {
         DiffLayout::NewOnly => before_new_only,
         DiffLayout::SideBySide | DiffLayout::Inline => DiffLayout::NewOnly,

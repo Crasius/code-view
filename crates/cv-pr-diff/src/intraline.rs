@@ -8,12 +8,12 @@ use similar::{Algorithm, ChangeTag, TextDiff};
 const MAX_LINE_BYTES: usize = 2_000;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Highlights {
+pub(crate) struct Highlights {
     pub old: Vec<Range<usize>>,
     pub new: Vec<Range<usize>>,
 }
 
-pub fn compute(old: &str, new: &str) -> Highlights {
+pub(crate) fn compute(old: &str, new: &str) -> Highlights {
     let is_too_long = old.len() > MAX_LINE_BYTES || new.len() > MAX_LINE_BYTES;
     if is_too_long || old == new {
         return Highlights::default();

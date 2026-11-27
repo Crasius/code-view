@@ -23,7 +23,7 @@ mod matcher;
 #[cfg(test)]
 mod occurrence_check;
 mod occurrences;
-pub mod text;
+pub(crate) mod text;
 
 use std::collections::HashMap;
 use std::ops::Range;
@@ -34,7 +34,7 @@ use cv_syntax::pool::{Pool, Priority};
 use review_store::AppSettings;
 
 use self::matcher::find_all;
-pub use self::matcher::{MatchOptions, is_word};
+pub(crate) use self::matcher::{MatchOptions, is_word};
 
 /// One thread searches, the newest search first; a search over a large file takes a few
 /// milliseconds, so one is enough.
@@ -123,7 +123,7 @@ pub struct Hits {
 }
 
 impl Hits {
-    pub fn new(list: Vec<Hit>) -> Self {
+    pub(crate) fn new(list: Vec<Hit>) -> Self {
         let (mut by_old, mut by_new) = (HashMap::new(), HashMap::new());
         for (index, hit) in list.iter().enumerate() {
             if let Some(old) = hit.old {

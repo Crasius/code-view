@@ -47,7 +47,8 @@ use self::place::Place;
 use self::removals::Popover;
 pub use self::requests::LineRequest;
 use self::requests::Requests;
-use self::rows::{Change, DiffRows, KeepPlace};
+pub(crate) use self::rows::DiffRows;
+use self::rows::{Change, KeepPlace};
 use self::selecting::{Code, Drag, KeysView, Selecting};
 use crate::detached_threads::{self, Detached, DetachedEvent};
 use crate::diff_overview::past_end::Ends;
@@ -60,9 +61,9 @@ use crate::removal_popover::RemovalPopover;
 use crate::selection::{DiffSelection, Selection};
 use cv_base::platform::shortcut;
 use cv_base::theme;
-use cv_code::diff_rows::{self, Layout, Row, RowKind};
 #[cfg(any(test, feature = "test-support"))]
-use cv_code::diff_rows::{RangeOwner, RangeRows};
+use cv_code::diff_rows::RangeOwner;
+use cv_code::diff_rows::{self, Layout, Row, RowKind};
 use cv_code::gaps::Expand;
 use cv_code::line_source::{self, Pane};
 use cv_pr_threads::{ThreadEvent, ThreadsUi};
@@ -70,7 +71,7 @@ use cv_widgets::surfaces;
 
 pub const OVERVIEW_WIDTH: f32 = 14.0;
 /// Opens a comment on the selected lines.
-pub const COMMENT_SHORTCUT: &str = shortcut!(alt "C");
+pub(crate) const COMMENT_SHORTCUT: &str = shortcut!(alt "C");
 
 #[derive(Debug)]
 pub enum DiffEvent {
@@ -312,8 +313,7 @@ impl DiffView {
         }
         let detached = Detached {
             threads: &self.built.detached,
-            gaps: &self.built.gaps,
-            reveals: &self.built.reveals,
+            rows: &self.built,
             can_expand: inputs.can_expand(),
         };
         match detached_threads::show(ui, &detached, inputs, threads_ui)? {
@@ -951,9 +951,9 @@ impl DiffView {
         (probe, pane_rect)
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     /// Screen position just inside character `column` of the line `pane` shows on `row`.
-    pub fn text_point(&self, pane: Pane, row: usize, column: usize) -> egui::Pos2 {
+    pub(crate) fn text_point(&self, pane: Pane, row: usize, column: usize) -> egui::Pos2 {
         let (probe, rect) = self.probe_pane(pane, row);
         pos2(
             rect.left() + probe.text_inset + (column as f32 + 0.25) * probe.char_width,
@@ -980,10 +980,10 @@ impl DiffView {
             || self.built.ranges.iter().any(|range| range.owner == RangeOwner::Draft)
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     /// Selects the text of every row of `pane`, as a drag from the first line to the end of the
     /// last would.
-    pub fn select_all_text(&mut self, pane: Pane) {
+    pub(crate) fn select_all_text(&mut self, pane: Pane) {
         use cv_widgets::text_selection::{Caret, Unit};
         let last = self.built.rows.len().saturating_sub(1);
         self.selecting.selection =
@@ -1010,15 +1010,15 @@ impl DiffView {
         pos2(rect.left() + probe.number_width / 2.0, rect.top() + probe.line_height / 2.0)
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     /// The top of the view on the rows in the last frame.
-    pub fn view_top(&self) -> f32 {
+    pub(crate) fn view_top(&self) -> f32 {
         self.place.top()
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     /// Where row `row` starts, from the top of the first row.
-    pub fn row_top(&self, row: usize) -> f32 {
+    pub(crate) fn row_top(&self, row: usize) -> f32 {
         self.offsets[row]
     }
 
@@ -1036,8 +1036,8 @@ impl DiffView {
         pos2(rect.left() + probe.marker_center, rect.top() + probe.line_height / 2.0)
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn range_rows(&self) -> &[RangeRows] {
+    #[cfg(test)]
+    pub(crate) fn range_rows(&self) -> &[cv_code::diff_rows::RangeRows] {
         &self.built.ranges
     }
 

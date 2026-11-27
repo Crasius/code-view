@@ -21,7 +21,7 @@ const MAX_MARKED_BYTES: usize = 60_000;
 const WORD_DIFF_TIMEOUT: Duration = Duration::from_millis(40);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Change {
+pub(crate) enum Change {
     Equal,
     Added,
     Removed,
@@ -30,14 +30,14 @@ pub enum Change {
 }
 
 impl Change {
-    pub fn is_change(self) -> bool {
+    pub(crate) fn is_change(self) -> bool {
         self != Change::Equal
     }
 }
 
 /// One line of the aligned pieces: the old piece, the new piece, or both.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Pair {
+pub(crate) struct Pair {
     pub old: Option<usize>,
     pub new: Option<usize>,
     pub change: Change,
@@ -47,12 +47,12 @@ pub struct Pair {
 }
 
 impl Pair {
-    pub fn one_sided(old: Option<usize>, new: Option<usize>, change: Change) -> Self {
+    pub(crate) fn one_sided(old: Option<usize>, new: Option<usize>, change: Change) -> Self {
         Self { old, new, change, old_words: Vec::new(), new_words: Vec::new() }
     }
 }
 
-pub fn align(old: &Units, new: &Units) -> Vec<Pair> {
+pub(crate) fn align(old: &Units, new: &Units) -> Vec<Pair> {
     let old_signatures: Vec<u64> = old.units.iter().map(|unit| unit.signature).collect();
     let new_signatures: Vec<u64> = new.units.iter().map(|unit| unit.signature).collect();
     let mut pairs = Vec::with_capacity(old.len().max(new.len()));
@@ -223,7 +223,7 @@ fn similarity(old: &str, new: &str) -> f32 {
 
 /// Byte ranges of the words `new` changed, in `old` and in `new`. Changed words separated only by
 /// spaces form one range, so an edited phrase reads as one mark.
-pub fn changed_words(old: &str, new: &str) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
+pub(crate) fn changed_words(old: &str, new: &str) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
     if old == new || old.len() > MAX_MARKED_BYTES || new.len() > MAX_MARKED_BYTES {
         return (Vec::new(), Vec::new());
     }

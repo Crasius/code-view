@@ -69,7 +69,7 @@ pub(super) struct BlockMarks {
 impl BlockFind {
     /// The widget's keys while the diff `owns_keys`, the focused one of `panes` and the search of
     /// `model` there; before the rows paint (the widget paints after them, [`Self::show_widget`]).
-    pub fn prepare(
+    pub(crate) fn prepare(
         &mut self,
         ui: &Ui,
         panes: Panes,
@@ -79,7 +79,7 @@ impl BlockFind {
         let step = self.bar.keys(ui, owns_keys, || None);
         let side = self.bar.follow_focus(ui, &panes, None);
         self.focus = Some((panes, side));
-        let source = egui::epaint::util::hash((model.key, Arc::as_ptr(model) as usize));
+        let source = model.key;
         let (ctx, model) = (ui.ctx().clone(), Arc::clone(model));
         self.bar.refresh(ui.ctx(), side, source, move |query| {
             spawn(&ctx, move || {
@@ -93,7 +93,7 @@ impl BlockFind {
 
     /// The widget over the focused column, after the rows painted, so it is on top of them and
     /// takes its own clicks.
-    pub fn show_widget(&mut self, ui: &mut Ui) {
+    pub(crate) fn show_widget(&mut self, ui: &mut Ui) {
         if let Some((panes, side)) = self.focus {
             // Closing drops the field's keyboard, so the diff's keys work again.
             let _closed = self.bar.show(ui, &panes, side);
@@ -102,7 +102,7 @@ impl BlockFind {
 
     /// Places the hits among `rows` when either is new, steps where the bar asked (or to the first
     /// hit in view when hits arrived) and ticks the strip; the block to go to.
-    pub fn go(
+    pub(crate) fn go(
         &mut self,
         frame: &BarFrame,
         rows: &FindRows<'_>,
@@ -126,7 +126,7 @@ impl BlockFind {
 
     /// The hits `cell` paints (side by side only those of the column searched), and whether the
     /// current one is among them.
-    pub fn marks(&self, cell: Cell, mode: Mode, palette: &Palette) -> Option<BlockMarks> {
+    pub(crate) fn marks(&self, cell: Cell, mode: Mode, palette: &Palette) -> Option<BlockMarks> {
         let hits = self.bar.hits()?;
         let unit = cell.unit as u32;
         let is_column = mode == Mode::Columns;

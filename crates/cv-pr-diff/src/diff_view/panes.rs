@@ -22,7 +22,7 @@ pub(super) struct PaneRects {
 }
 
 impl PaneRects {
-    pub fn as_slice(&self) -> &[(Pane, usize, Rect)] {
+    pub(crate) fn as_slice(&self) -> &[(Pane, usize, Rect)] {
         &self.rects[..self.len]
     }
 }
@@ -113,7 +113,7 @@ pub(super) struct Reach {
 impl Sideways {
     /// How wide each pane's code of `widest` columns is with `layout` and how far it can scroll
     /// sideways; the offsets are kept within that.
-    pub fn clamp(&mut self, widest: [usize; 2], layout: &RowLayout) -> Reach {
+    pub(crate) fn clamp(&mut self, widest: [usize; 2], layout: &RowLayout) -> Reach {
         let char_width = layout.metrics.char_width;
         let content_widths = widest.map(|columns| columns as f32 * char_width + TEXT_END_PADDING);
         let max_offsets =
@@ -126,7 +126,13 @@ impl Sideways {
 
     /// Shift+wheel or a sideways wheel scrolls the pane under the pointer. What it scrolls leaves
     /// the frame's scroll delta, as a scroll area's does, so a trackpad swipe sees it taken.
-    pub fn wheel(&mut self, ui: &Ui, frame: &Frame<'_>, single_pane: bool, max_offsets: [f32; 2]) {
+    pub(crate) fn wheel(
+        &mut self,
+        ui: &Ui,
+        frame: &Frame<'_>,
+        single_pane: bool,
+        max_offsets: [f32; 2],
+    ) {
         let delta = ui.input(|input| input.smooth_scroll_delta.x);
         if delta == 0.0 || !ui.rect_contains_pointer(ui.clip_rect()) {
             return;
@@ -142,7 +148,7 @@ impl Sideways {
     }
 
     /// A scrollbar under each pane's code on `screen`, as wide as its code reaches.
-    pub fn show_scrollbars(&mut self, ui: &Ui, screen: &Screen<'_>, layout: Layout) {
+    pub(crate) fn show_scrollbars(&mut self, ui: &Ui, screen: &Screen<'_>, layout: Layout) {
         let inset = screen.layout.metrics.text_inset(layout.has_two_numbers());
         let content_widths = screen.reach.content_widths;
         for (_, slot, pane) in

@@ -3,13 +3,12 @@
 
 use egui::{RichText, Ui};
 
-use crate::diff_view::DiffInputs;
+use crate::diff_view::{DiffInputs, DiffRows};
 use cv_base::theme::{self, icons};
-use cv_code::gaps::{Gap, Reveal};
 use cv_pr_threads::{self as threads, CardOptions, ThreadEvent, ThreadsUi};
 use cv_widgets::{buttons, glyph};
 
-pub enum DetachedEvent {
+pub(crate) enum DetachedEvent {
     Thread(ThreadEvent),
     /// Reveal gap `gap` and scroll to the thread.
     ShowLine {
@@ -18,14 +17,13 @@ pub enum DetachedEvent {
     },
 }
 
-pub struct Detached<'a> {
+pub(crate) struct Detached<'a> {
     pub threads: &'a [usize],
-    pub gaps: &'a [Gap],
-    pub reveals: &'a [Reveal],
+    pub rows: &'a DiffRows,
     pub can_expand: bool,
 }
 
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     detached: &Detached<'_>,
     inputs: &DiffInputs<'_>,
@@ -81,7 +79,8 @@ fn line_note(
     detached: &Detached<'_>,
     thread: &review_core::ReviewThread,
 ) -> Option<DetachedEvent> {
-    if let (Some(gap), Some(line)) = (hidden_gap(detached, thread), thread_line(thread)) {
+    let gap = detached.rows.thread_gap(thread, detached.can_expand);
+    if let (Some(gap), Some(line)) = (gap, thread_line(thread)) {
         let label = format!("Show line {line} in the diff");
         let clicked = buttons::subtle(ui, icons::ARROWS_OUT_LINE_VERTICAL, &label).clicked();
         return clicked.then(|| DetachedEvent::ShowLine { gap, thread_id: thread.id.clone() });
@@ -105,18 +104,6 @@ fn line_note_text(thread: &review_core::ReviewThread) -> String {
         (None, false) => "On the file".to_owned(),
         (None, true) => "The file changed after this comment".to_owned(),
     }
-}
-
-/// The collapsed gap holding the thread's line, when revealing it would place the thread inline.
-fn hidden_gap(detached: &Detached<'_>, thread: &review_core::ReviewThread) -> Option<usize> {
-    if thread.is_outdated || !detached.can_expand {
-        return None;
-    }
-    let anchor = thread.anchor.as_ref()?;
-    detached.gaps.iter().enumerate().position(|(index, gap)| {
-        let is_hidden = detached.reveals.get(index).copied().unwrap_or_default().hidden(gap) > 0;
-        is_hidden && gap.contains(anchor.old_line, anchor.new_line)
-    })
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 //! The rendered view's width: a centered reading column by default that its edges resize on both
 //! sides, Full width that fills the pane, and tables and code that never clip in either.
 
+use cv_testkit::poll_until;
 use egui::{Pos2, Rect, pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
@@ -362,7 +363,10 @@ fn resizing_the_column_of_a_long_readme_keeps_the_place() {
     let (old, new) = super::long_readme();
     let mut harness =
         harness(Scene::new(&old, &new, DiffLayout::Inline, FULL_FILE_CONTEXT), [1280.0, 900.0]);
-    harness.run_steps(4);
+    poll_until("every row of the README measured", || {
+        harness.step();
+        harness.state().view.heights.is_all_measured()
+    });
     wheel(&mut harness, pos2(640.0, 450.0), vec2(0.0, -6000.0));
     let anchor = |harness: &Harness<'_, Scene>| {
         harness.state().view.top_unit().map(|(_, side, unit, _)| (side, unit))

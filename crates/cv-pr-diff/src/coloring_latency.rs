@@ -366,9 +366,8 @@ fn coloring_latency() {
         let patch_compiled = time_patch(grammar, &cold_set, &hunk);
         let middle = text.line_count() / 2;
         println!(
-            "{path} ({} lines)\n  whole file from line 0, cold: first {} lines {:.1} ms, all {:.1} ms; compiled: first chunk {:.1} ms, all {:.1} ms; both sides to line {middle} at once: {:.1} ms\n  by diff line: hunk of {} diff lines cold {:.1} ms; warm-up {:.1} ms, then the hunk {:.1} ms; compiled {:.1} ms",
+            "{path} ({} lines)\n  whole file from line 0, cold: first chunk {:.1} ms, all {:.1} ms; compiled: first chunk {:.1} ms, all {:.1} ms; both sides to line {middle} at once: {:.1} ms\n  by diff line: hunk of {} diff lines cold {:.1} ms; warm-up {:.1} ms, then the hunk {:.1} ms; compiled {:.1} ms",
             text.line_count(),
-            250,
             cold.first_chunk,
             cold.full,
             compiled.first_chunk,

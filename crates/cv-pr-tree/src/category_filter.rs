@@ -32,7 +32,7 @@ const TOGGLE_GAP: f32 = 4.0;
 /// The dropdown never gets narrower than this, even in a very narrow side panel.
 const MIN_BUTTON_WIDTH: f32 = 120.0;
 
-pub fn counts(files: &[ChangedFile]) -> HashMap<FileCategory, usize> {
+pub(crate) fn counts(files: &[ChangedFile]) -> HashMap<FileCategory, usize> {
     let mut counts = HashMap::new();
     for file in files {
         *counts.entry(file.category).or_insert(0) += 1;
@@ -42,7 +42,7 @@ pub fn counts(files: &[ChangedFile]) -> HashMap<FileCategory, usize> {
 
 /// The dropdown and the toggle on one row, `style::CONTROL_HEIGHT` high. Returns true when the
 /// filter changed.
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     filter: &mut FileFilter,
     counts: &HashMap<FileCategory, usize>,
@@ -458,7 +458,7 @@ fn paint_only(ui: &Ui, only: &Response, label: std::sync::Arc<Galley>) {
     ui.painter().galley(only.rect.center() - label.size() / 2.0, label, palette.accent_text);
 }
 
-pub fn category_icon(category: FileCategory) -> &'static str {
+pub(crate) fn category_icon(category: FileCategory) -> &'static str {
     match category {
         FileCategory::Code => icons::CODE,
         FileCategory::Tests => icons::FLASK,

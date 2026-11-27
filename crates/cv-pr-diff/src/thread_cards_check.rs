@@ -8,7 +8,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_core::{ReviewThread, ThreadStatus};
 
-use crate::testing::{self as check, Fixture, NEW, PATH, click_with, line_of, settle};
+use crate::testing::{self as check, FLASH_STEPS, Fixture, NEW, PATH, click_with, line_of, settle};
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
 use cv_pr_threads::samples::{self, comment, jonas, lines};
@@ -45,11 +45,12 @@ fn inline_threads_show_status_markers_and_collapse_from_the_marker() {
         .threads_ui
         .open_reply_for_tests("t-total", "Agreed. A test for an empty cart would be good too.");
     harness.state_mut().view.reveal_thread("t-add");
-    harness.run_steps(12);
+    harness.run_steps(FLASH_STEPS);
+    settle(&mut harness);
     assert_eq!(
         harness.query_all_by_label("Status: Active").count(),
         2,
-        "the status pill is a menu"
+        "both active threads show a status pill"
     );
     assert!(
         harness.query_by_label_contains("Resolved thread: ").is_some(),
@@ -75,7 +76,7 @@ fn inline_threads_show_status_markers_and_collapse_from_the_marker() {
     // A click on the marker collapses the card, another opens it again.
     harness
         .click_at(harness.get_by_label_contains("Thread by Jonas Weber, click to collapse").rect());
-    harness.run_steps(4);
+    settle(&mut harness);
     assert!(harness.query_by_label_contains("Thread by Jonas Weber, click to show").is_some());
 }
 
