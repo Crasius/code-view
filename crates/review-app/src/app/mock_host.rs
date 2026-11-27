@@ -7,7 +7,7 @@
 //!
 //! [`super::github_mock::GitHubHost`] keeps its own start on its shared runtime.
 
-use wiremock::{Mock, MockServer, Request, Respond};
+use wiremock::{Mock, MockServer, Respond};
 
 /// A wiremock server on a runtime of its own that answers every request through the responder
 /// [`MockHost::start`] built, unless a mock [`MockHost::mount`]ed later matches; its origin starts
@@ -40,11 +40,6 @@ impl MockHost {
 
     pub(super) fn uri(&self) -> String {
         self.server.uri()
-    }
-
-    /// Every request the server received so far.
-    pub(super) fn requests(&self) -> Vec<Request> {
-        self.runtime.block_on(self.server.received_requests()).unwrap_or_default()
     }
 
     /// Answers the requests `mock` matches through it from now on.

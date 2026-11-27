@@ -87,20 +87,11 @@ fn favorites_star_in_the_repository_browser_persists() {
 fn favorites_card_mixes_two_platforms_newest_updated_first() {
     let gitlab = GitLabHost::start();
     let github = GitHubHost::start("acme", &github_rows());
-    let scratch = ScratchDir::new("favorites-mixed");
-    let paths = saved_paths(
-        &scratch,
+    let (_scratch, mut harness) = with_favorites(
+        "favorites-mixed",
         &[gitlab.connection("gitlab", "Team GitLab"), github.connection("github", "Acme GitHub")],
+        &[("gitlab", "team/app"), ("github", "acme/widgets"), ("github", "acme/tools")],
     );
-    let mut settings = AppSettings::default();
-    for (connection_id, repository_key) in
-        [("gitlab", "team/app"), ("github", "acme/widgets"), ("github", "acme/tools")]
-    {
-        settings.favorites.toggle(connection_id, repository_key);
-    }
-    settings.save(&paths.settings_file()).expect("save the favorites");
-
-    let mut harness = start_app(&paths);
     wait_until_unsettled(&mut harness, "the Favorites card's rows", |harness| {
         has(harness, "Favorites (3 repositories), 4 pull requests, expanded")
     });
@@ -157,20 +148,11 @@ fn favorites_card_mixes_two_platforms_newest_updated_first() {
 fn favorites_card_follows_the_role_filter() {
     let gitlab = GitLabHost::start();
     let github = GitHubHost::start("acme", &github_rows());
-    let scratch = ScratchDir::new("favorites-role");
-    let paths = saved_paths(
-        &scratch,
+    let (_scratch, mut harness) = with_favorites(
+        "favorites-role",
         &[gitlab.connection("gitlab", "Team GitLab"), github.connection("github", "Acme GitHub")],
+        &[("gitlab", "team/app"), ("github", "acme/widgets"), ("github", "acme/tools")],
     );
-    let mut settings = AppSettings::default();
-    for (connection_id, repository_key) in
-        [("gitlab", "team/app"), ("github", "acme/widgets"), ("github", "acme/tools")]
-    {
-        settings.favorites.toggle(connection_id, repository_key);
-    }
-    settings.save(&paths.settings_file()).expect("save the favorites");
-
-    let mut harness = start_app(&paths);
     wait_until_unsettled(&mut harness, "the Favorites card's rows", |harness| {
         has(harness, "Favorites (3 repositories), 4 pull requests, expanded")
     });
@@ -195,13 +177,11 @@ fn favorites_card_follows_the_role_filter() {
 #[test]
 fn favorites_card_emptied_by_a_filter_offers_to_clear_it() {
     let gitlab = GitLabHost::start();
-    let scratch = ScratchDir::new("favorites-role-empty");
-    let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab")]);
-    let mut settings = AppSettings::default();
-    settings.favorites.toggle("gitlab", "team/app");
-    settings.save(&paths.settings_file()).expect("save the favorite");
-
-    let mut harness = start_app(&paths);
+    let (_scratch, mut harness) = with_favorites(
+        "favorites-role-empty",
+        &[gitlab.connection("gitlab", "Team GitLab")],
+        &[("gitlab", "team/app")],
+    );
     wait_until_unsettled(&mut harness, "the Favorites card's rows", |harness| {
         has(harness, "Favorites (1 repository), 2 pull requests, expanded")
     });
@@ -231,15 +211,12 @@ fn favorites_card_emptied_by_a_filter_offers_to_clear_it() {
 #[test]
 fn favorites_hidden_by_a_role_are_named_with_the_way_to_a_token() {
     let gitlab = GitLabHost::start();
-    let scratch = ScratchDir::new("favorites-role-hidden");
     let public = Connection { token: None, ..gitlab.connection("public", "Public GitLab") };
-    let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab"), public]);
-    let mut settings = AppSettings::default();
-    settings.favorites.toggle("gitlab", "team/app");
-    settings.favorites.toggle("public", "team/api");
-    settings.save(&paths.settings_file()).expect("save the favorites");
-
-    let mut harness = start_app(&paths);
+    let (_scratch, mut harness) = with_favorites(
+        "favorites-role-hidden",
+        &[gitlab.connection("gitlab", "Team GitLab"), public],
+        &[("gitlab", "team/app"), ("public", "team/api")],
+    );
     wait_until_unsettled(&mut harness, "the Favorites card's rows", |harness| {
         has(harness, "Favorites (2 repositories), 2 pull requests, expanded")
     });
@@ -533,6 +510,24 @@ fn first_top(harness: &Harness<'_, ReviewApp>, label: &str) -> f32 {
         .map(|node| node.rect().min.y)
         .reduce(f32::min)
         .unwrap_or_else(|| panic!("no row labelled {label}"))
+}
+
+/// The app on `connections`, started with `favorites` (connection id, repository) saved; the
+/// scratch folder named `name` lives as long as the returned guard.
+fn with_favorites(
+    name: &str,
+    connections: &[Connection],
+    favorites: &[(&str, &str)],
+) -> (ScratchDir, Harness<'static, ReviewApp>) {
+    let scratch = ScratchDir::new(name);
+    let paths = saved_paths(&scratch, connections);
+    let mut settings = AppSettings::default();
+    for (connection_id, repository_key) in favorites {
+        settings.favorites.toggle(connection_id, repository_key);
+    }
+    settings.save(&paths.settings_file()).expect("save the favorites");
+    let harness = start_app(&paths);
+    (scratch, harness)
 }
 
 fn start_app(paths: &AppPaths) -> Harness<'static, ReviewApp> {

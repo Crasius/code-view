@@ -10,7 +10,7 @@ use review_core::{Connection, ProviderKind};
 use review_store::FrameRateLimit;
 
 use super::ReviewApp;
-use super::provider_icons_walkthrough::scripted_provider;
+use super::scripted_platforms::platforms;
 use super::walkthrough::{app_with, saved_paths, saved_settings, wait_until};
 use cv_runtime::route::Route;
 use cv_testkit::{Clicks, ScratchDir, samples};
@@ -28,7 +28,7 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
         ..samples::connection("gh", ProviderKind::GitHub, "https://github.com")
     };
     let builder = Harness::builder().with_size([1280.0, 1000.0]).with_step_dt(1.0 / 60.0);
-    let mut harness = app_with(builder, saved_paths(&scratch, &[connection]), scripted_provider);
+    let mut harness = app_with(builder, saved_paths(&scratch, &[connection]), platforms(None));
     harness.state_mut().navigator.go(Route::Settings);
     settle(&mut harness);
     harness.click_at(harness.get_by_role_and_label(Role::Tab, "Appearance").rect());

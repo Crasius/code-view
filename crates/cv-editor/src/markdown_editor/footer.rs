@@ -63,21 +63,7 @@ pub(super) fn show(
             return;
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // While posting, the same button shows a spinner in its icon slot: nothing moves.
-            let submit = ui.add_enabled_ui(has_text || options.is_busy, |ui| {
-                buttons::primary_busy(
-                    ui,
-                    icons::PAPER_PLANE_RIGHT,
-                    options.submit_label,
-                    options.is_busy,
-                )
-            });
-            let submit = if options.is_busy {
-                submit.inner.on_hover_text("Posting…")
-            } else {
-                submit.inner.on_hover_text(SUBMIT_SHORTCUT)
-            };
-            if submit.clicked() {
+            if submit_button(ui, options, has_text) {
                 clicked = Some(FooterAction::Submit);
             }
             if options.can_cancel
@@ -87,31 +73,33 @@ pub(super) fn show(
             }
             // The hint takes what the buttons leave and shortens itself in narrow composers.
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                ui.add(
-                    egui::Label::new(
-                        RichText::new(hint).size(style::SMALL_SIZE).color(palette.text_secondary),
-                    )
-                    .truncate(),
-                );
+                hint_label(ui, &hint);
             });
         });
     });
     clicked
 }
 
-/// Thread composers: primary, secondary and Cancel buttons from the left, the hint at the right end.
-fn leading(ui: &mut Ui, options: &Options<'_>, has_text: bool, hint: &str) -> Option<FooterAction> {
-    let palette = theme::palette(ui.ctx());
-    let mut clicked = None;
+/// The primary button; while posting it shows a spinner in its icon slot, so nothing moves.
+/// Returns whether it was clicked.
+fn submit_button(ui: &mut Ui, options: &Options<'_>, has_text: bool) -> bool {
     let submit = ui.add_enabled_ui(has_text || options.is_busy, |ui| {
         buttons::primary_busy(ui, icons::PAPER_PLANE_RIGHT, options.submit_label, options.is_busy)
     });
-    let submit = if options.is_busy {
-        submit.inner.on_hover_text("Posting…")
-    } else {
-        submit.inner.on_hover_text(SUBMIT_SHORTCUT)
-    };
-    if submit.clicked() {
+    let hover = if options.is_busy { "Posting…" } else { SUBMIT_SHORTCUT };
+    submit.inner.on_hover_text(hover).clicked()
+}
+
+fn hint_label(ui: &mut Ui, hint: &str) {
+    let palette = theme::palette(ui.ctx());
+    let text = RichText::new(hint).size(style::SMALL_SIZE).color(palette.text_secondary);
+    ui.add(egui::Label::new(text).truncate());
+}
+
+/// Thread composers: primary, secondary and Cancel buttons from the left, the hint at the right end.
+fn leading(ui: &mut Ui, options: &Options<'_>, has_text: bool, hint: &str) -> Option<FooterAction> {
+    let mut clicked = None;
+    if submit_button(ui, options, has_text) {
         clicked = Some(FooterAction::Submit);
     }
     if let Some(label) = options.secondary_label {
@@ -124,14 +112,7 @@ fn leading(ui: &mut Ui, options: &Options<'_>, has_text: bool, hint: &str) -> Op
     if options.can_cancel && buttons::secondary(ui, "Cancel").on_hover_text("Esc").clicked() {
         clicked = Some(FooterAction::Cancel);
     }
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        ui.add(
-            egui::Label::new(
-                RichText::new(hint).size(style::SMALL_SIZE).color(palette.text_secondary),
-            )
-            .truncate(),
-        );
-    });
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| hint_label(ui, hint));
     clicked
 }
 
@@ -287,13 +268,7 @@ mod tests {
 
     #[test]
     fn content_tells_an_unchanged_edit_from_new_text() {
-        assert_eq!(
-            Content::of(
-                "  
-", None
-            ),
-            Content::Empty
-        );
+        assert_eq!(Content::of("  \n", None), Content::Empty);
         assert_eq!(Content::of("LGTM", Some("LGTM")), Content::AsStarted);
         assert_eq!(Content::of("LGTM!", Some("LGTM")), Content::Edited);
         assert_eq!(Content::of("draft", None), Content::Edited, "a new comment starts empty");

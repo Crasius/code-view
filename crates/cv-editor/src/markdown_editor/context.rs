@@ -99,11 +99,6 @@ impl FileContext {
             .map(|(_, context)| context)
     }
 
-    /// The fence language for the file, a name all three platforms highlight.
-    pub fn language(&self) -> String {
-        fence_language(&self.path)
-    }
-
     /// Head-side text of `wanted` when all of its lines are in the diff. An empty range (a reversed
     /// one included) names no lines, so it has no text either.
     pub fn new_lines(&self, wanted: RangeInclusive<u32>) -> Option<String> {
@@ -151,7 +146,7 @@ impl FileContext {
 
 /// Maps a file name to a fence tag that GitHub (Linguist), GitLab (Rouge) and Azure DevOps
 /// (highlight.js) all know; unknown extensions are used as they are.
-pub fn fence_language(path: &str) -> String {
+pub(super) fn fence_language(path: &str) -> String {
     let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
     let lower = name.to_lowercase();
     if lower == "dockerfile" {

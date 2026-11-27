@@ -33,8 +33,9 @@ use review_core::ProviderKind;
 mod inline;
 mod prepare;
 
-pub use self::inline::{Context, atom_source, inline_markdown};
-use super::model::{Block, Container, Document, Inline, Kind, ListKind};
+pub use self::inline::run_source;
+use self::inline::{Context, inline_markdown};
+use super::model::{Alert, Block, Container, Document, Inline, Kind, ListKind};
 
 /// Serialized inline content of unchanged blocks, keyed by block pointer (the entry holds the
 /// block, so the pointer is never reused while cached). Entries of blocks that left the
@@ -119,14 +120,7 @@ fn content_markdown(block: &Block, platform: ProviderKind) -> String {
 
 /// A source block's text as written: an atom (a mention moved into it) as its source.
 fn source_text(content: &Inline, platform: ProviderKind) -> String {
-    content
-        .runs()
-        .iter()
-        .map(|run| match &run.atom {
-            Some(atom) => atom_source(atom, platform),
-            None => run.text.clone(),
-        })
-        .collect()
+    content.runs().iter().map(|run| run_source(run, platform)).collect()
 }
 
 fn longest_run(text: &str, wanted: char) -> usize {
@@ -263,8 +257,7 @@ impl BlockWriter {
     }
 }
 
-fn alert_name(alert: super::model::Alert) -> &'static str {
-    use super::model::Alert;
+fn alert_name(alert: Alert) -> &'static str {
     match alert {
         Alert::Note => "NOTE",
         Alert::Tip => "TIP",

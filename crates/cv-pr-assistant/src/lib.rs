@@ -47,8 +47,6 @@ mod turns;
 mod view;
 mod wheel;
 
-use std::path::PathBuf;
-
 use cv_pr_session::session::PullRequestSession;
 use cv_runtime::background::Background;
 use cv_runtime::route::PullRequestKey;
@@ -58,6 +56,7 @@ use cv_services::agents::Detection;
 use review_agent::{AgentError, AgentKind, ModelChoice, SessionConfig};
 use review_store::{AssistantChats, Chat, ChatQuote, TurnEnd, chats_dir};
 
+use self::checkout::Checkout;
 use self::citations::links;
 use self::runner::{Runner, RunnerEvent};
 use self::transcript::Applied;
@@ -112,12 +111,6 @@ enum Action {
     DropQuote,
 }
 
-/// The checkout the agent reads, and its commit.
-struct Checkout {
-    dir: PathBuf,
-    head: String,
-}
-
 pub struct Assistant {
     key: PullRequestKey,
     chats: AssistantChats,
@@ -134,8 +127,6 @@ pub struct Assistant {
     /// The prompt waiting for the checkout and the session.
     pending: Option<String>,
     checkout: Option<Checkout>,
-    /// The commit the checkout is being moved to.
-    preparing: Option<String>,
     /// "Update the agent": the head the checkout moves to before the agent is told.
     move_to: Option<String>,
     /// What the session answers with, as the CLI reported it.
@@ -178,7 +169,6 @@ impl Assistant {
             quote: None,
             pending: None,
             checkout: None,
-            preparing: None,
             move_to: None,
             model_in_use: None,
             block: None,
@@ -256,7 +246,6 @@ impl Assistant {
         }
         self.runner.abandon();
         self.pending = None;
-        self.preparing = None;
         self.move_to = None;
         self.waiting = None;
         self.is_stopping = false;
@@ -279,16 +268,14 @@ impl Assistant {
 
     fn take_in(&mut self, event: RunnerEvent, services: &mut Services) {
         match event {
-            RunnerEvent::CheckoutReady(dir) => {
-                let head = self.preparing.take().unwrap_or_default();
+            RunnerEvent::CheckoutReady(checkout) => {
                 if self.chat.head.is_none() || self.move_to.take().is_some() {
-                    self.chat.head = Some(head.clone());
+                    self.chat.head = Some(checkout.head.clone());
                 }
-                self.checkout = Some(Checkout { dir, head });
+                self.checkout = Some(checkout);
                 self.links.to_check = (0..self.chat.turns.len()).collect();
             }
             RunnerEvent::CheckoutFailed(message) => {
-                self.preparing = None;
                 self.block = Some(Block::Checkout(message));
             }
             RunnerEvent::SessionStarted => {}
@@ -328,7 +315,11 @@ impl Assistant {
         let block = match error {
             AgentError::NotInstalled(kind) => Some(Block::NotInstalled(*kind)),
             AgentError::NotSignedIn(kind) => Some(Block::NotSignedIn(*kind)),
-            _ => None,
+            AgentError::Spawn(_)
+            | AgentError::Protocol(_)
+            | AgentError::Turn(_)
+            | AgentError::Exited { .. }
+            | AgentError::Timeout(_) => None,
         };
         if let Some(block) = block {
             self.runner.end();
@@ -403,7 +394,6 @@ impl Assistant {
         };
         self.waiting = Some("Preparing the checkout…");
         let dir = checkout::dir(paths, &self.key.repository_key, self.key.number);
-        self.preparing = Some(head.clone());
         self.runner.prepare_checkout(background, mirror.git.clone(), head, dir);
     }
 
@@ -486,11 +476,6 @@ impl Assistant {
         mini::show(self, ui.ctx(), session, services)
     }
 
-    /// Makes the answers drawn next resolve their citation links.
-    fn links_publish(&mut self, ctx: &egui::Context, session: &PullRequestSession) {
-        self.resolver.publish(ctx, session);
-    }
-
     /// Keeps the conversation shown and writes it on the background ([`transcript::saver`]).
     fn save(&mut self, services: &mut Services) {
         self.chats.put(self.chat.clone());
@@ -513,10 +498,6 @@ impl Drop for Assistant {
     fn drop(&mut self) {
         self.saver.finish(&self.chats);
     }
-}
-
-fn short_sha(sha: &str) -> &str {
-    sha.get(..7).unwrap_or(sha)
 }
 
 #[cfg(test)]

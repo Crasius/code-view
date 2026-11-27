@@ -13,7 +13,7 @@ use review_store::{DiffLayout, TreeSide};
 
 use super::ReviewApp;
 use super::github_mock::GitHubHost;
-use super::provider_icons_walkthrough::scripted_provider;
+use super::scripted_platforms::platforms;
 use super::tree_side_walkthrough as tree_side;
 use super::walkthrough::{app, app_with, has, saved_paths, saved_settings, wait_until};
 use cv_runtime::route::Route;
@@ -243,7 +243,7 @@ fn harness(scratch: &ScratchDir, width: f32) -> Harness<'static, ReviewApp> {
         ..samples::connection(id, kind, base_url)
     });
     let builder = Harness::builder().with_size([width, 900.0]).with_step_dt(1.0 / 60.0);
-    app_with(builder, saved_paths(scratch, &connections), scripted_provider)
+    app_with(builder, saved_paths(scratch, &connections), platforms(None))
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

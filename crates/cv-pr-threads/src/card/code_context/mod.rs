@@ -15,7 +15,7 @@
 //! ([`review_git::GitMirror::file_diff_after_count`]): no blob downloads twice. Unlike a diff in
 //! the Files tab it is not bounded by [`review_git::COUNT_WAIT`]: the reader is on the overview,
 //! not waiting for this code, and a 3,000-file pull request's first chunk takes about that long.
-//! A wait on the frame clock, from when the card asked, ran out before the chunk came.
+//! So the wait has no frame-clock deadline.
 
 mod code_file;
 mod rows;

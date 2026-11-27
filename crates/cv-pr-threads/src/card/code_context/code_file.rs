@@ -1,8 +1,9 @@
 //! The file a thread's code excerpt reads from: every line of the head version, with the removed
 //! lines of the diff between them where they were, numbered in both versions. Built once in the
 //! background from the head blob and a zero-context diff, so every mode and expansion is a
-//! slice of the same rows (Split's paired up once, as the Files tab pairs them). Syntax colors arrive later from the coloring thread; until they do the
-//! rows paint plain in the same font, so nothing moves.
+//! slice of the same rows (Split's paired up once, as the Files tab pairs them). Syntax colors
+//! arrive later from the coloring thread; until they do the rows paint plain in the same font, so
+//! nothing moves.
 
 use std::sync::{Arc, OnceLock};
 

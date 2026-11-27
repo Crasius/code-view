@@ -1,14 +1,14 @@
 //! The assistant on screen: the card in the Overview's side column and the full-height panel. Both
-//! show the same parts top to bottom: the agent and model chip, a blocking state with its fix, the
-//! note about new commits, the conversation ([`super::turns`]), what a waiting question waits for,
-//! the attached lines and the composer. In the card the conversation fills the side column's room
-//! down to its bottom edge until the user drags the flat splitter between conversation and
-//! composer; that height is kept in the settings. The composer is plain text: what the user types
-//! goes to the agent as written. Every part returns what the user did as an [`Action`], which
-//! [`super::actions::act`] carries out after drawing. The card's conversation takes the mouse wheel
-//! only once the card is armed ([`super::wheel`]). The title lines' buttons are in
-//! [`super::title`]; after a new conversation the empty one offers Undo. The chip is
-//! [`super::chip`]; with its option on it sits in the title line instead.
+//! show the same parts top to bottom: the menu of the title line's agent and model chip
+//! ([`super::chip`]), a blocking state with its fix, the note about new commits, the conversation
+//! ([`super::turns`]), what a waiting question waits for, the attached lines and the composer. In
+//! the card the conversation fills the side column's room down to its bottom edge until the user
+//! drags the flat splitter between conversation and composer; that height is kept in the
+//! settings. The composer is plain text: what the user types goes to the agent as written. Every
+//! part returns what the user did as an [`Action`], which [`super::actions::act`] carries out
+//! after drawing. The card's conversation takes the mouse wheel only once the card is armed
+//! ([`super::wheel`]). The title lines' buttons are in [`super::title`]; after a new conversation
+//! the empty one offers Undo.
 
 use cv_base::theme::{self, icons, style};
 use cv_pr_session::session::PullRequestSession;
@@ -269,7 +269,7 @@ fn conversation(
     room: Room,
     height: f32,
 ) -> Option<Action> {
-    assistant.links_publish(ui.ctx(), session);
+    assistant.resolver.publish(ui.ctx(), session);
     let waiting = assistant.waiting.filter(|_| assistant.block.is_none());
     let action = if assistant.chat.turns.is_empty() {
         empty_conversation(ui, assistant, room, height)

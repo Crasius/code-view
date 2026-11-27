@@ -9,23 +9,21 @@
 //! a pasted link and the rail, which all fall back to the structure.
 //! `cargo test -p review-app crumb_trail`
 
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_core::{
-    Capabilities, Connection, GitRemote, ItemKind, ItemRef, Label, LinkedItem, LinkedState,
-    MergeOptions, MergeStrategy, NewThread, PipelineJob, PipelineRun, Provider, ProviderError,
-    ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestState, PullRequestSummary,
-    RepositoryInfo, Result, ReviewThread, ReviewVote, ThreadComment, ThreadStatus, UserIdentity,
+    Connection, ItemKind, ItemRef, LinkedItem, LinkedState, ProviderKind, PullRequestDetail,
+    PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result,
 };
-use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
 use super::walkthrough::{app_with, has, saved_paths, settle_background, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
+use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{Clicks, ScratchDir, samples};
 
 const CONNECTION_ID: &str = "crumb-trail";
@@ -238,33 +236,16 @@ fn start(scratch: &ScratchDir) -> Harness<'static, ReviewApp> {
         )
     };
     let builder = Harness::builder().with_size([1280.0, 860.0]).with_step_dt(1.0 / 30.0);
-    app_with(builder, saved_paths(scratch, &[connection]), scripted_provider)
+    app_with(builder, saved_paths(scratch, &[connection]), |_, _| {
+        Arc::new(Scripted(CrumbTrailScript))
+    })
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {
     harness.run_steps(20);
 }
 
-fn scripted_provider(_connection: Connection, _http: reqwest::Client) -> Arc<dyn Provider> {
-    Arc::new(ScriptedProvider)
-}
-
-struct ScriptedProvider;
-
-impl ScriptedProvider {
-    fn unused<T>() -> Result<T> {
-        Err(ProviderError::Unsupported("Not part of the crumb trail walkthrough.".to_owned()))
-    }
-}
-
-fn author() -> UserIdentity {
-    UserIdentity {
-        id: "1".to_owned(),
-        display_name: "Ada Lovelace".to_owned(),
-        login: Some("ada".to_owned()),
-        avatar_url: None,
-    }
-}
+struct CrumbTrailScript;
 
 fn title(number: u64) -> &'static str {
     if number == 12 { "Twelfth change" } else { "Thirteenth change" }
@@ -276,7 +257,7 @@ fn summary(number: u64) -> PullRequestSummary {
         repository_name: "site".to_owned(),
         number,
         title: title(number).to_owned(),
-        author: author(),
+        author: samples::author(),
         state: PullRequestState::Open,
         is_draft: false,
         source_branch: format!("feature/{number}"),
@@ -293,23 +274,8 @@ fn summary(number: u64) -> PullRequestSummary {
     }
 }
 
-static CAPABILITIES: LazyLock<Capabilities> = LazyLock::new(|| Capabilities {
-    votes: vec![ReviewVote::Approved, ReviewVote::None],
-    merge_strategies: vec![MergeStrategy::Merge],
-    has_label_catalog: false,
-    running_logs: review_core::RunningLogs::WhenFinished,
-});
-
 #[async_trait]
-impl Provider for ScriptedProvider {
-    fn capabilities(&self) -> &Capabilities {
-        &CAPABILITIES
-    }
-
-    async fn current_user(&self) -> Result<UserIdentity> {
-        Ok(author())
-    }
-
+impl Script for CrumbTrailScript {
     async fn list_repositories(&self, _search: Option<&str>) -> Result<Vec<RepositoryInfo>> {
         Ok(vec![RepositoryInfo {
             key: REPOSITORY.to_owned(),
@@ -318,10 +284,6 @@ impl Provider for ScriptedProvider {
             web_url: format!("https://github.com/{REPOSITORY}"),
             default_branch: Some("main".to_owned()),
         }])
-    }
-
-    async fn git_remote(&self, _repo: &str) -> Result<GitRemote> {
-        Err(ProviderError::Unsupported("No files in this walkthrough.".to_owned()))
     }
 
     async fn list_pull_requests(
@@ -364,113 +326,5 @@ impl Provider for ScriptedProvider {
             })
             .collect();
         Ok(linked)
-    }
-
-    async fn merge(&self, _repo: &str, _number: u64, _options: &MergeOptions) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn close(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn reopen(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_draft(&self, _repo: &str, _number: u64, _is_draft: bool) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn update_title_description(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _title: &str,
-        _description: &str,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_vote(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _vote: ReviewVote,
-        _comment: Option<&str>,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn add_reviewer(&self, _repo: &str, _number: u64, _user: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn remove_reviewer(&self, _repo: &str, _number: u64, _reviewer_id: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn threads(&self, _repo: &str, _number: u64) -> Result<Vec<ReviewThread>> {
-        Ok(Vec::new())
-    }
-
-    async fn create_thread(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread: &NewThread,
-    ) -> Result<ReviewThread> {
-        Self::unused()
-    }
-
-    async fn reply(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _body: &str,
-    ) -> Result<ThreadComment> {
-        Self::unused()
-    }
-
-    async fn set_thread_status(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _status: ThreadStatus,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn available_labels(&self, _repo: &str) -> Result<Vec<Label>> {
-        Ok(Vec::new())
-    }
-
-    async fn set_labels(&self, _repo: &str, _number: u64, _labels: &[String]) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn pipeline_runs(&self, _repo: &str, _number: u64) -> Result<Vec<PipelineRun>> {
-        Ok(Vec::new())
-    }
-
-    async fn pipeline_jobs(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _run_id: &str,
-    ) -> Result<Vec<PipelineJob>> {
-        Ok(Vec::new())
-    }
-
-    async fn download_log(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _log_id: &str,
-        _sink: &mut (dyn AsyncWrite + Unpin + Send),
-    ) -> Result<()> {
-        Self::unused()
     }
 }

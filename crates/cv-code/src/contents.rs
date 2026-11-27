@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
+use review_core::DiffSide;
 use review_git::{ChangedFile, GitMirror};
 
 use cv_runtime::cache::memory::{BoundedCache, Holder};
@@ -22,12 +23,6 @@ pub const AUTO_HIGHLIGHT_MAX_LINES: usize = 150_000;
 /// last, so going back to one is instant. Half of it (12 MB) is the largest side kept, above the
 /// largest file colored without asking; one further away loads and colors again in the background.
 const CACHE_BUDGET_BYTES: usize = 24 * 1024 * 1024;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Side {
-    Old,
-    New,
-}
 
 #[derive(Clone)]
 pub struct SideContents {
@@ -70,24 +65,24 @@ pub struct FileContents {
 }
 
 impl FileContents {
-    pub fn side(&self, side: Side) -> Option<&SideContents> {
+    pub fn side(&self, side: DiffSide) -> Option<&SideContents> {
         match side {
-            Side::Old => self.old.as_ref(),
-            Side::New => self.new.as_ref(),
+            DiffSide::Old => self.old.as_ref(),
+            DiffSide::New => self.new.as_ref(),
         }
     }
 
-    fn side_mut(&mut self, side: Side) -> &mut Option<SideContents> {
+    fn side_mut(&mut self, side: DiffSide) -> &mut Option<SideContents> {
         match side {
-            Side::Old => &mut self.old,
-            Side::New => &mut self.new,
+            DiffSide::Old => &mut self.old,
+            DiffSide::New => &mut self.new,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Request {
-    side: Side,
+    side: DiffSide,
     oid: String,
     path: String,
 }
@@ -99,9 +94,9 @@ impl Request {
 }
 
 enum Message {
-    Text { side: Side, text: Arc<BlobText> },
-    Spans { side: Side, chunk: LineSpans },
-    Finished { side: Side },
+    Text { side: DiffSide, text: Arc<BlobText> },
+    Spans { side: DiffSide, chunk: LineSpans },
+    Finished { side: DiffSide },
     Skipped { bytes: usize },
     Failed(String),
 }
@@ -112,7 +107,7 @@ struct Current {
     contents: FileContents,
     receiver: Option<Receiver<Message>>,
     /// Sides whose highlighting finished, waiting for the other side before caching.
-    finished: Vec<Side>,
+    finished: Vec<DiffSide>,
     _cancel: Cancel,
 }
 
@@ -146,14 +141,13 @@ impl ContentsLoader {
         services: &Services,
         force: bool,
     ) {
-        let requests = requests_for(file);
-        let is_current = self
-            .current
-            .as_ref()
-            .is_some_and(|current| current.requests == requests && current.force == force);
+        let is_current = self.current.as_ref().is_some_and(|current| {
+            current.force == force && matches_requests(&current.requests, file)
+        });
         if is_current {
             return;
         }
+        let requests = requests_for(file);
         let mut contents =
             FileContents { old: None, new: None, coloring: Coloring::Waiting, error: None };
         let mut missing = Vec::new();
@@ -220,19 +214,34 @@ fn requests_for(file: &ChangedFile) -> Vec<Request> {
     let mut requests = Vec::with_capacity(2);
     if file.has_new_blob() {
         requests.push(Request {
-            side: Side::New,
+            side: DiffSide::New,
             oid: file.new_oid.clone(),
             path: file.path.clone(),
         });
     }
     if file.has_old_blob() {
         requests.push(Request {
-            side: Side::Old,
+            side: DiffSide::Old,
             oid: file.old_oid.clone(),
             path: file.old_path.clone().unwrap_or_else(|| file.path.clone()),
         });
     }
     requests
+}
+
+/// Whether `requests` are what [`requests_for`] would build for `file`, without building them:
+/// [`ContentsLoader::ensure`] asks this every frame the diff shows.
+fn matches_requests(requests: &[Request], file: &ChangedFile) -> bool {
+    let new = file.has_new_blob().then(|| (DiffSide::New, &*file.new_oid, &*file.path));
+    let old = file
+        .has_old_blob()
+        .then(|| (DiffSide::Old, &*file.old_oid, file.old_path.as_deref().unwrap_or(&file.path)));
+    let mut expected = new.into_iter().chain(old);
+    requests.iter().all(|request| {
+        expected.next().is_some_and(|(side, oid, path)| {
+            request.side == side && request.oid == oid && request.path == path
+        })
+    }) && expected.next().is_none()
 }
 
 fn apply(current: &mut Current, message: Message, cache: &mut ContentsCache) {
@@ -409,16 +418,16 @@ mod tests {
 
     use super::*;
 
-    fn loaded(side: Side, source: String) -> (Request, Arc<BlobText>) {
+    fn loaded(side: DiffSide, source: String) -> (Request, Arc<BlobText>) {
         let request = Request { side, oid: format!("{side:?}"), path: "a.rs".into() };
         (request, Arc::new(BlobText::from_bytes(source.into_bytes())))
     }
 
     /// Colors a long new side and a short old one, in the order `requests_for` asks for them.
     /// Returns the sides in the order they finished and the threads that sent the colors.
-    fn color_sides() -> (Vec<Side>, Vec<String>) {
+    fn color_sides() -> (Vec<DiffSide>, Vec<String>) {
         let new = "fn read(a: u32) -> u32 { let b = a * 2; b + 1 }\n".repeat(20_000);
-        let sides = [loaded(Side::New, new), loaded(Side::Old, "fn a() {}\n".into())];
+        let sides = [loaded(DiffSide::New, new), loaded(DiffSide::Old, "fn a() {}\n".into())];
         let (sender, messages) = mpsc::channel();
         let threads = Arc::new(Mutex::new(Vec::new()));
         let senders = threads.clone();
@@ -440,7 +449,7 @@ mod tests {
     #[test]
     fn colors_both_sides_on_the_reader_threads_short_side_first() {
         let (finished, threads) = color_sides();
-        assert_eq!(finished, [Side::Old, Side::New]);
+        assert_eq!(finished, [DiffSide::Old, DiffSide::New]);
         let others: Vec<_> =
             threads.iter().filter(|name| !name.starts_with("syntax-colors-reader")).collect();
         assert!(others.is_empty(), "colors sent from {others:?}");

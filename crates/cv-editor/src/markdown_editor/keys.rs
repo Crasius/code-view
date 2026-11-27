@@ -4,7 +4,7 @@
 
 use egui::{Event, Key, Modifiers, Ui};
 
-use super::formatting::Format;
+use super::formatting::{Format, Indent};
 use super::toolbar::{Action, Features};
 
 /// Keys and pastes the editor handles itself, taken out of the input before the text edit sees them.
@@ -13,8 +13,7 @@ pub(super) struct Requests {
     pub action: Option<Action>,
     pub paste: Option<String>,
     pub enter: bool,
-    /// `Some(true)` for Shift+Tab.
-    pub tab: Option<bool>,
+    pub tab: Option<Indent>,
     pub submit: bool,
     pub cancel: bool,
 }
@@ -46,7 +45,7 @@ pub(super) fn take_requests(ui: &Ui, is_mention_open: bool, features: &Features)
                     && !modifiers.alt
                     && requests.tab.is_none()
                 {
-                    requests.tab = Some(modifiers.shift);
+                    requests.tab = Some(if modifiers.shift { Indent::Out } else { Indent::In });
                     return false;
                 }
                 if *key == Key::Escape && modifiers.is_none() {

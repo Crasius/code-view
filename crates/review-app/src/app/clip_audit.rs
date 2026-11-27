@@ -11,7 +11,7 @@
 
 use std::fmt::Write as _;
 use std::path::Path;
-use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock};
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -20,11 +20,10 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{
     Capabilities, Connection, GitRemote, ItemKind, ItemRef, Label, LinkedItem, LinkedState,
-    MergeOptions, MergePolicy, MergeStatus, MergeStrategy, NewThread, PipelineAttempt, PipelineJob,
-    PipelineRun, Provider, ProviderError, ProviderKind, PullRequestDetail, PullRequestQuery,
-    PullRequestState, PullRequestSummary, RepositoryInfo, RerunAction, RerunKind, Result,
-    ReviewThread, ReviewVote, Reviewer, RunStatus, ThreadAnchor, ThreadComment, ThreadOrigin,
-    ThreadStatus, Timestamp, UserIdentity,
+    MergePolicy, MergeStatus, MergeStrategy, PipelineAttempt, PipelineJob, PipelineRun,
+    ProviderError, ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestState,
+    PullRequestSummary, RerunAction, RerunKind, Result, ReviewThread, ReviewVote, Reviewer,
+    RunStatus, ThreadAnchor, ThreadComment, ThreadOrigin, ThreadStatus, Timestamp, UserIdentity,
 };
 use review_store::AppPaths;
 use time::macros::datetime;
@@ -38,6 +37,7 @@ use super::{ReviewApp, clip_check};
 use cv_base::platform::FOCUS_MODE_KEY;
 use cv_pr_diff::find::bar::last_bar as last_find_bar;
 use cv_runtime::route::{PullRequestKey, Route};
+use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{Clicks, ScratchDir, git, samples};
 
 const CONNECTION: &str = "clip-audit";
@@ -84,8 +84,6 @@ const SIZES: [(f32, f32, f32); 7] = [
 /// one row.
 const NARROW: (f32, f32, f32) = (720.0, 800.0, 1.0);
 
-static FIXTURE: Mutex<Option<Fixture>> = Mutex::new(None);
-
 #[derive(Clone)]
 struct Fixture {
     clone_url: String,
@@ -99,9 +97,8 @@ struct Fixture {
 fn clip_audit_every_screen_keeps_its_text_and_controls_inside() {
     let scratch = ScratchDir::new("clip-audit");
     let fixture = create_origin(&scratch.path().join("origin"));
-    *FIXTURE.lock().unwrap_or_else(PoisonError::into_inner) = Some(fixture);
     let paths = saved_paths(&scratch, &connections());
-    let mut audit = Audit { harness: harness(paths), findings: Vec::new() };
+    let mut audit = Audit { harness: harness(paths, fixture), findings: Vec::new() };
 
     audit.walk_lists();
     audit.walk_overview();
@@ -479,10 +476,15 @@ fn open(harness: &mut Harness<'_, ReviewApp>, connection_id: &str, repository_ke
     harness.step();
 }
 
-fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
+fn harness(paths: AppPaths, fixture: Fixture) -> Harness<'static, ReviewApp> {
     let builder =
         Harness::builder().with_size(BASE_SIZE).with_step_dt(1.0 / 60.0).allow_missing_glyphs();
-    let mut harness = app_with(builder, paths, scripted_provider);
+    let mut harness = app_with(builder, paths, move |connection: Connection, _| {
+        Arc::new(Scripted(ClipAuditScript {
+            connection_id: connection.id,
+            fixture: fixture.clone(),
+        }))
+    });
     clip_check::install(&harness.ctx);
     harness.state_mut().title_bar.integrate_for_test();
     harness
@@ -584,12 +586,7 @@ fn create_origin(origin: &Path) -> Fixture {
         ],
     );
     let head = git(origin, &["rev-parse", "HEAD"]);
-    Fixture {
-        clone_url: format!("file:///{}", origin.display().to_string().replace('\\', "/")),
-        target,
-        first,
-        head,
-    }
+    Fixture { clone_url: cv_testkit::file_url(origin), target, first, head }
 }
 
 fn generated_path(index: usize) -> String {
@@ -619,24 +616,9 @@ fn connections() -> Vec<Connection> {
         .collect()
 }
 
-fn scripted_provider(connection: Connection, _http: reqwest::Client) -> Arc<dyn Provider> {
-    let fixture = FIXTURE.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    Arc::new(ScriptedProvider { connection_id: connection.id, fixture })
-}
-
-struct ScriptedProvider {
+struct ClipAuditScript {
     connection_id: String,
-    fixture: Option<Fixture>,
-}
-
-impl ScriptedProvider {
-    fn fixture(&self) -> Result<&Fixture> {
-        self.fixture.as_ref().ok_or_else(|| ProviderError::Local("no fixture".to_owned()))
-    }
-
-    fn unused<T>() -> Result<T> {
-        Err(ProviderError::Unsupported("Not part of the clipping audit.".to_owned()))
-    }
+    fixture: Fixture,
 }
 
 fn person(id: &str, name: &str) -> UserIdentity {
@@ -1082,7 +1064,7 @@ static CAPABILITIES: LazyLock<Capabilities> = LazyLock::new(|| Capabilities {
 });
 
 #[async_trait]
-impl Provider for ScriptedProvider {
+impl Script for ClipAuditScript {
     fn capabilities(&self) -> &Capabilities {
         &CAPABILITIES
     }
@@ -1091,15 +1073,11 @@ impl Provider for ScriptedProvider {
         Ok(person("a1", "Maximiliane Theodora von Hohenzollern-Sigmaringen"))
     }
 
-    async fn list_repositories(&self, _search: Option<&str>) -> Result<Vec<RepositoryInfo>> {
-        Ok(Vec::new())
-    }
-
     async fn git_remote(&self, repo: &str) -> Result<GitRemote> {
         if repo == SLOW_REPOSITORY {
             std::future::pending::<()>().await;
         }
-        Ok(GitRemote { clone_url: self.fixture()?.clone_url.clone(), authorization_header: None })
+        Ok(GitRemote { clone_url: self.fixture.clone_url.clone(), authorization_header: None })
     }
 
     async fn list_pull_requests(
@@ -1122,14 +1100,13 @@ impl Provider for ScriptedProvider {
     }
 
     async fn pull_request(&self, repo: &str, number: u64) -> Result<PullRequestDetail> {
-        let fixture = self.fixture()?;
         let mut summary = summary(number, repo, 0);
         summary.labels = labels(LABELS.len());
         Ok(PullRequestDetail {
             summary,
             description: DESCRIPTION.to_owned(),
-            target_sha: fixture.target.clone(),
-            head_sha: fixture.head.clone(),
+            target_sha: self.fixture.target.clone(),
+            head_sha: self.fixture.head.clone(),
             merge_status: MergeStatus::Mergeable,
             git_fetch_refs: vec!["refs/heads/feature".to_owned(), "refs/heads/main".to_owned()],
             closed_at: None,
@@ -1144,81 +1121,8 @@ impl Provider for ScriptedProvider {
         )))
     }
 
-    async fn merge(&self, _repo: &str, _number: u64, _options: &MergeOptions) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn close(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn reopen(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_draft(&self, _repo: &str, _number: u64, _is_draft: bool) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn update_title_description(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _title: &str,
-        _description: &str,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_vote(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _vote: ReviewVote,
-        _comment: Option<&str>,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn add_reviewer(&self, _repo: &str, _number: u64, _user: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn remove_reviewer(&self, _repo: &str, _number: u64, _reviewer_id: &str) -> Result<()> {
-        Self::unused()
-    }
-
     async fn threads(&self, _repo: &str, _number: u64) -> Result<Vec<ReviewThread>> {
-        Ok(threads(self.fixture()?))
-    }
-
-    async fn create_thread(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread: &NewThread,
-    ) -> Result<ReviewThread> {
-        Self::unused()
-    }
-
-    async fn reply(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _body: &str,
-    ) -> Result<ThreadComment> {
-        Self::unused()
-    }
-
-    async fn set_thread_status(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _status: ThreadStatus,
-    ) -> Result<()> {
-        Self::unused()
+        Ok(threads(&self.fixture))
     }
 
     async fn linked_references(&self, repo: &str, _number: u64) -> Result<Vec<ItemRef>> {
@@ -1255,10 +1159,6 @@ impl Provider for ScriptedProvider {
 
     async fn available_labels(&self, _repo: &str) -> Result<Vec<Label>> {
         Ok(labels(LABELS.len()))
-    }
-
-    async fn set_labels(&self, _repo: &str, _number: u64, _labels: &[String]) -> Result<()> {
-        Self::unused()
     }
 
     async fn pipeline_runs(&self, _repo: &str, _number: u64) -> Result<Vec<PipelineRun>> {

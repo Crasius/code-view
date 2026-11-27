@@ -71,7 +71,7 @@ mod tests {
                 )),
                 ..egui::RawInput::default()
             };
-            let mut output = ctx.run_ui(input, |ui| {
+            ctx.run_ui(input, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 let top = ui.cursor().top();
                 for index in 0..200 {
@@ -83,8 +83,8 @@ mod tests {
                     }
                 }
                 bottom = ui.cursor().top() - top;
-            });
-            output.textures_delta.clear();
+            })
+            .drop_without_applying_deltas();
             (shown, bottom)
         };
         let (first, height) = frame(&mut heights);

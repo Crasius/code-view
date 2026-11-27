@@ -187,7 +187,7 @@ impl Inline {
         *self = rebuilt;
     }
 
-    /// Whether every char in `range` (or the char at a bare caret's marks) passes `test`.
+    /// Whether `range` holds chars and every one of them passes `test`.
     pub fn all_marked(&self, range: Range<usize>, test: impl Fn(&Marks) -> bool) -> bool {
         let slice = self.slice(range);
         !slice.runs.is_empty() && slice.runs.iter().all(|run| test(&run.marks))

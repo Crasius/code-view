@@ -653,6 +653,18 @@ pub fn spans_hunks(diff: &FileDiff, rows: &[Row], start: usize, end: usize) -> b
     diff.lines()[low as usize..=high as usize].iter().any(|line| line.kind == LineKind::Hunk)
 }
 
+/// The rows of `diff` without a comment being written.
+#[cfg(test)]
+pub(crate) fn rows_of(
+    diff: &FileDiff,
+    layout: Layout,
+    gaps: &[Gap],
+    reveals: &[Reveal],
+    threads: &[&ReviewThread],
+) -> DiffRows {
+    build(&RowInputs { diff, layout, gaps, reveals, threads, composer: None })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -682,16 +694,6 @@ mod tests {
             "+added end\n",
         );
         FileDiff::parse_unified(text.as_bytes())
-    }
-
-    fn rows_of(
-        diff: &FileDiff,
-        layout: Layout,
-        gaps: &[Gap],
-        reveals: &[Reveal],
-        threads: &[&ReviewThread],
-    ) -> DiffRows {
-        build(&RowInputs { diff, layout, gaps, reveals, threads, composer: None })
     }
 
     #[test]
@@ -768,7 +770,7 @@ mod tests {
             .as_bytes(),
         );
         let gaps = gaps::find(&diff, Some(59));
-        let on_removed = thread(None, Some(7));
+        let on_removed = on_old(7);
         let threads = [&on_removed];
         let result = rows_of(&diff, Layout::NewOnly, &gaps, &[], &threads);
         let kinds: Vec<RowKind> = result.rows.iter().map(|row| row.kind).collect();
@@ -855,7 +857,7 @@ mod tests {
     fn places_threads_on_revealed_lines_and_detaches_hidden_ones() {
         let diff = two_hunks();
         let gaps = gaps::find(&diff, Some(70));
-        let hidden = thread(Some(20), None);
+        let hidden = on_new(20);
         let threads = [&hidden];
         let collapsed = rows_of(&diff, Layout::Inline, &gaps, &[], &threads);
         assert_eq!(collapsed.detached_threads, [0]);
@@ -870,9 +872,9 @@ mod tests {
     #[test]
     fn places_threads_after_their_line_and_detaches_unknown_lines() {
         let diff = sample();
-        let on_new_line = thread(Some(2), None);
-        let on_deleted = thread(None, Some(3));
-        let outside = thread(Some(99), None);
+        let on_new_line = on_new(2);
+        let on_deleted = on_old(3);
+        let outside = on_new(99);
         let threads = [&on_new_line, &on_deleted, &outside];
         let result = rows_of(&diff, Layout::Inline, &[], &[], &threads);
         let positions: Vec<usize> = result
@@ -973,7 +975,7 @@ mod tests {
             "one line is a plain anchor"
         );
 
-        let mut on_range = thread(Some(2), None);
+        let mut on_range = on_new(2);
         on_range.anchor = Some(anchor);
         let threads = [&on_range];
         let placed = rows_of(&diff, Layout::Inline, &[], &[], &threads);
@@ -996,7 +998,7 @@ mod tests {
         };
         let mut composer =
             ComposerAnchor { old_line: None, new_line: Some(2), range: Some(range), above: false };
-        let on_keep = thread(Some(1), Some(1));
+        let on_keep = on_both(1);
         let threads = [&on_keep];
         let rows = |composer: &ComposerAnchor| {
             build(&RowInputs {
@@ -1033,14 +1035,14 @@ mod tests {
     #[test]
     fn marks_the_line_of_an_active_thread_but_not_of_a_resolved_one() {
         let diff = sample();
-        let on_line = thread(Some(2), None);
+        let on_line = on_new(2);
         let threads = [&on_line];
         let placed = rows_of(&diff, Layout::Inline, &[], &[], &threads);
         assert_eq!(
             placed.ranges,
             [RangeRows { start: 3, end: 3, side: DiffSide::New, is_draft: false }]
         );
-        let mut resolved = thread(Some(2), None);
+        let mut resolved = on_new(2);
         resolved.status = review_core::ThreadStatus::Resolved;
         let threads = [&resolved];
         assert_eq!(rows_of(&diff, Layout::Inline, &[], &[], &threads).ranges, []);
@@ -1057,7 +1059,19 @@ mod tests {
         assert!(spans_hunks(&diff, &with_gaps, 1, 5), "a collapsed gap lies between");
     }
 
-    fn thread(new_line: Option<u32>, old_line: Option<u32>) -> ReviewThread {
+    fn on_new(line: u32) -> ReviewThread {
+        anchored(None, Some(line))
+    }
+
+    fn on_old(line: u32) -> ReviewThread {
+        anchored(Some(line), None)
+    }
+
+    fn on_both(line: u32) -> ReviewThread {
+        anchored(Some(line), Some(line))
+    }
+
+    fn anchored(old_line: Option<u32>, new_line: Option<u32>) -> ReviewThread {
         ReviewThread {
             id: "t".into(),
             status: review_core::ThreadStatus::Active,

@@ -12,6 +12,8 @@ mod collapsed;
 mod comment;
 mod own_comment;
 mod reply;
+#[cfg(test)]
+mod walkthrough;
 
 use cv_base::theme::{self, Palette, icons, motion, style};
 use cv_widgets::{buttons, focus, row};
@@ -19,13 +21,13 @@ use egui::{
     Align, Color32, CornerRadius, Layout, Margin, Rect, RichText, Sense, Stroke, Ui, pos2, vec2,
 };
 use review_core::provider::CommentActions;
-use review_core::{ReviewThread, ThreadStatus};
+use review_core::{ReviewThread, ThreadComment, ThreadStatus};
 
 use self::collapsed::collapsed;
 pub use self::collapsed::excerpt;
 use self::comment::{comment_row, comments};
-use self::reply::reply_area;
 pub use self::reply::{FailureAction, failure_row};
+use self::reply::{ReplyBox, reply_area};
 use super::posts::PostState;
 use super::suggestion;
 use super::{ThreadEvent, ThreadsUi, drafts, links};
@@ -65,7 +67,7 @@ pub fn show(
     let event = if is_collapsed {
         collapsed(ui, thread, threads)
     } else {
-        card(ui, thread, threads, options, None)
+        card(ui, thread, threads, options, Phase::Loaded)
     };
     // Laid out is not seen: a list lays out cards just beyond the view too. A collapsed card shows
     // none of the replies, so its news stays news.
@@ -85,29 +87,45 @@ pub fn show_pending(
     options: &CardOptions,
     is_sending: bool,
 ) {
-    card(ui, thread, threads, options, Some(is_sending));
+    let phase = if is_sending { Phase::Sending } else { Phase::Sent };
+    card(ui, thread, threads, options, phase);
 }
 
-/// `pending`: the thread is on its way (`Some(true)` until the platform has it).
+/// Where a card's thread is: loaded from the platform, or a new one on its way.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Phase {
+    Loaded,
+    /// On its way; the platform does not have it yet.
+    Sending,
+    /// The platform has it; shown until the reloaded threads carry it.
+    Sent,
+}
+
+impl Phase {
+    fn is_pending(self) -> bool {
+        self != Phase::Loaded
+    }
+}
+
 fn card(
     ui: &mut Ui,
     thread: &ReviewThread,
     threads: &mut ThreadsUi,
     options: &CardOptions,
-    pending: Option<bool>,
+    phase: Phase,
 ) -> Option<ThreadEvent> {
     let palette = theme::palette(ui.ctx());
     let mut event = None;
-    let new = if pending.is_some() { None } else { threads.new_comments(thread) };
+    let new = if phase.is_pending() { None } else { threads.new_comments(thread) };
     let response = style::card_frame(&palette).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.spacing_mut().item_spacing.y = 0.0;
-        if let Some(is_sending) = pending {
-            inert(ui, is_sending);
+        if phase.is_pending() {
+            inert(ui, phase == Phase::Sending);
         }
         header(ui, thread, threads, options, &mut event);
         if options.show_location
-            && pending.is_none()
+            && !phase.is_pending()
             && let Some(code_event) = code_context::show(ui, thread, threads)
         {
             event = Some(code_event);
@@ -122,13 +140,13 @@ fn card(
                 event = Some(ThreadEvent::ShowOrigin { thread_id: thread.id.clone() });
             }
         }
-        if let Some(comment_event) = comments(ui, thread, threads, new.as_ref(), pending) {
+        if let Some(comment_event) = comments(ui, thread, threads, new.as_ref(), phase) {
             event = Some(comment_event);
         }
-        if pending.is_some() {
+        if phase.is_pending() {
             if thread.can_reply || thread.can_resolve {
                 hairline(ui, &palette);
-                reply_area(ui, thread, threads, true);
+                reply_area(ui, thread, threads, ReplyBox::Inert);
             }
             return;
         }
@@ -146,11 +164,11 @@ fn card(
             hairline(ui, &palette);
             ui.scope(|ui| {
                 inert(ui, false);
-                reply_area(ui, thread, threads, true);
+                reply_area(ui, thread, threads, ReplyBox::Inert);
             });
         } else if thread.can_reply || thread.can_resolve {
             hairline(ui, &palette);
-            if let Some(reply) = reply_area(ui, thread, threads, false) {
+            if let Some(reply) = reply_area(ui, thread, threads, ReplyBox::Live) {
                 event = Some(reply);
             }
         }
@@ -226,7 +244,7 @@ fn header(
                     {
                         ui.ctx().copy_text(url.clone());
                     }
-                    ui.add_space(8.0);
+                    ui.add_space(style::SPACE_S);
                     ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                         // The icon buttons' 2 points would run the path into its meta.
                         ui.spacing_mut().item_spacing.x = 8.0;
@@ -362,13 +380,8 @@ fn status_look(status: ThreadStatus, palette: &Palette) -> (&'static str, Color3
 
 fn outdated_pill(ui: &mut Ui, palette: &Palette) {
     let response =
-        cv_widgets::badges::pill(ui, "Outdated", palette.warning_surface, outdated_text(palette));
+        cv_widgets::badges::pill(ui, "Outdated", palette.warning_surface, palette.warning_text);
     response.on_hover_text("The code changed after this comment was written");
-}
-
-/// Warning text on `warning_surface`; the dark theme's warning yellow is too bright for small text.
-fn outdated_text(palette: &Palette) -> Color32 {
-    if palette.is_dark { Color32::from_rgb(0xE8, 0xC5, 0x5A) } else { palette.warning }
 }
 
 /// New comments in a thread: from other people, newer than what the user has seen.
@@ -379,8 +392,32 @@ pub struct NewComments {
     pub count: usize,
     /// First names of their authors, each once, in order.
     pub authors: Vec<String>,
+}
+
+impl NewComments {
+    /// The comments of `thread` that `is_new` tells; `None` when there are none.
+    pub fn of(thread: &ReviewThread, is_new: impl Fn(&ThreadComment) -> bool) -> Option<Self> {
+        let first = thread.comments.iter().position(&is_new)?;
+        let mut authors: Vec<String> = Vec::new();
+        let mut count = 0;
+        for comment in thread.comments[first..].iter().filter(|comment| is_new(comment)) {
+            count += 1;
+            let name = first_name(&comment.author.display_name);
+            if !authors.iter().any(|known| known == name) {
+                authors.push(name.to_owned());
+            }
+        }
+        Some(Self { first, count, authors })
+    }
+
     /// The whole thread is new (its first comment is new).
-    pub is_new_thread: bool,
+    pub fn is_new_thread(&self) -> bool {
+        self.first == 0
+    }
+}
+
+fn first_name(display_name: &str) -> &str {
+    display_name.split_whitespace().next().unwrap_or(display_name)
 }
 
 /// "● 2 new replies from Jonas, Mara · Jump to first new".
@@ -394,13 +431,13 @@ fn new_banner(ui: &mut Ui, thread: &ReviewThread, threads: &mut ThreadsUi, new: 
                 Align::Center,
                 |ui| {
                     let label =
-                        if new.is_new_thread { "Mark as read" } else { "Jump to first new" };
+                        if new.is_new_thread() { "Mark as read" } else { "Jump to first new" };
                     ui.link(RichText::new(label).size(style::SMALL_SIZE + 1.0)).clicked()
                 },
                 |ui| {
                     let (dot, _) = ui.allocate_exact_size(vec2(NEW_DOT, NEW_DOT), Sense::hover());
                     ui.painter().circle_filled(dot.center(), NEW_DOT / 2.0, palette.accent);
-                    let title = match (new.is_new_thread, new.count) {
+                    let title = match (new.is_new_thread(), new.count) {
                         (true, _) => "New thread".to_owned(),
                         (false, 1) => "1 new reply".to_owned(),
                         (false, count) => format!("{count} new replies"),
@@ -415,7 +452,7 @@ fn new_banner(ui: &mut Ui, thread: &ReviewThread, threads: &mut ThreadsUi, new: 
                 },
             );
             if clicked {
-                if !new.is_new_thread {
+                if !new.is_new_thread() {
                     threads.jump_to_new = Some((thread.id.clone(), new.first));
                 }
                 threads.mark_read(thread);
@@ -440,10 +477,12 @@ fn outdated_note(ui: &mut Ui, thread: &ReviewThread, threads: &ThreadsUi) -> boo
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 10.0;
             let text = format!("Written on an earlier version: {line} changed since.");
-            ui.label(RichText::new(text).size(style::SMALL_SIZE + 1.0).color(palette.text_secondary));
+            ui.label(
+                RichText::new(text).size(style::SMALL_SIZE + 1.0).color(palette.text_secondary),
+            );
             if thread.origin.is_some() {
                 let link = ui.link(RichText::new(SHOW_ORIGIN).size(style::SMALL_SIZE + 1.0));
-                show_origin = link.on_hover_text("The file as it was when the comment was written, with the comment at its line").clicked();
+                show_origin = link.on_hover_text(ORIGIN_HINT).clicked();
             }
             if let Some(url) = url {
                 let label = if thread.origin.is_some() {
@@ -462,6 +501,8 @@ fn outdated_note(ui: &mut Ui, thread: &ReviewThread, threads: &ThreadsUi) -> boo
 
 /// The action that opens the version an outdated thread was written on, wherever it is offered.
 pub const SHOW_ORIGIN: &str = "Show original version";
+const ORIGIN_HINT: &str =
+    "The file as it was when the comment was written, with the comment at its line";
 
 #[cfg(test)]
 mod tests {
@@ -471,21 +512,21 @@ mod tests {
     use super::super::{CardOptions, ThreadsUi};
     use super::show;
 
-    /// Shows `thread`'s card (or nothing) for frames at `times`, each followed by the read tracking
-    /// the page runs before the next frame.
+    /// Frames at `times`, each started as the page starts it (read tracking first), then showing
+    /// `thread`'s card or nothing.
     fn frames(threads: &mut ThreadsUi, thread: &review_core::ReviewThread, times: &[(f64, bool)]) {
         let ctx = egui::Context::default();
         cv_base::theme::fonts::install(&ctx);
         for &(time, is_shown) in times {
             let input = egui::RawInput { time: Some(time), ..egui::RawInput::default() };
-            let mut output = ctx.run_ui(input, |ui| {
+            ctx.run_ui(input, |ui| {
                 cv_base::theme::activate(ui.ctx(), review_store::ThemePreference::Light);
+                threads.begin_frame_for_tests(ui.ctx(), std::slice::from_ref(thread), 1);
                 if is_shown {
                     show(ui, thread, threads, &CardOptions { show_location: false });
                 }
-            });
-            output.textures_delta.clear();
-            threads.reading.track(time, &mut threads.store);
+            })
+            .drop_without_applying_deltas();
         }
     }
 
@@ -501,7 +542,7 @@ mod tests {
         assert!(threads.is_unread(&thread), "the new reply was never on screen");
 
         threads.set_collapsed(&thread.id, false);
-        frames(&mut threads, &thread, &[(4.0, true), (6.0, true), (7.0, false)]);
+        frames(&mut threads, &thread, &[(4.0, true), (6.0, true), (7.0, false), (8.0, false)]);
         assert!(!threads.is_unread(&thread), "the open card showed it long enough");
     }
 }

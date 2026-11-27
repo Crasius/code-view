@@ -191,53 +191,27 @@ pub fn paint_ticks(
 /// Notes the current hit painted at `rect` in the area `visible` shows (see [`last_current`]).
 #[cfg(any(test, feature = "test-support"))]
 pub fn note_current(ctx: &egui::Context, rect: Rect, visible: Rect) {
-    let pass = ctx.cumulative_pass_nr();
-    ctx.data_mut(|data| {
-        let notes = data.get_temp_mut_or_default::<CurrentNotes>(egui::Id::unique(CURRENT_NOTE));
-        if notes.0 != pass {
-            *notes = (pass, Vec::new());
-        }
-        notes.1.push((rect, visible));
-    });
+    cv_base::frame_probe::note(ctx, CURRENT_NOTE, (rect, visible));
 }
 
 /// Where the last frame painted the current hit (its text in each pane, or its block in the
 /// rendered diff), each with the area that shows it; empty when it painted none.
 #[cfg(any(test, feature = "test-support"))]
 pub fn last_current(ctx: &egui::Context) -> Vec<(Rect, Rect)> {
-    let (pass, notes) = ctx
-        .data(|data| data.get_temp::<CurrentNotes>(egui::Id::unique(CURRENT_NOTE)))
-        .unwrap_or_default();
-    if pass + 1 == ctx.cumulative_pass_nr() { notes } else { Vec::new() }
+    cv_base::frame_probe::last(ctx, CURRENT_NOTE)
 }
-
-#[cfg(any(test, feature = "test-support"))]
-type CurrentNotes = (u64, Vec<(Rect, Rect)>);
 
 /// Notes a mark painted at `rect` in `color` (see [`last_marks`]).
 #[cfg(any(test, feature = "test-support"))]
 fn note_mark(ctx: &egui::Context, look: MarkLook, rect: Rect, color: Color32) {
-    let pass = ctx.cumulative_pass_nr();
-    ctx.data_mut(|data| {
-        let notes = data.get_temp_mut_or_default::<MarkNotes>(egui::Id::unique(MARK_NOTE));
-        if notes.0 != pass {
-            *notes = (pass, Vec::new());
-        }
-        notes.1.push((look, rect, color));
-    });
+    cv_base::frame_probe::note(ctx, MARK_NOTE, (look, rect, color));
 }
 
 /// Every mark the last frame painted in text: how it looks, where and in which fill.
 #[cfg(any(test, feature = "test-support"))]
 pub fn last_marks(ctx: &egui::Context) -> Vec<(MarkLook, Rect, Color32)> {
-    let (pass, notes) = ctx
-        .data(|data| data.get_temp::<MarkNotes>(egui::Id::unique(MARK_NOTE)))
-        .unwrap_or_default();
-    if pass + 1 == ctx.cumulative_pass_nr() { notes } else { Vec::new() }
+    cv_base::frame_probe::last(ctx, MARK_NOTE)
 }
-
-#[cfg(any(test, feature = "test-support"))]
-type MarkNotes = (u64, Vec<(MarkLook, Rect, Color32)>);
 
 #[cfg(any(test, feature = "test-support"))]
 const MARK_NOTE: &str = "diff_find_marks";
@@ -248,6 +222,7 @@ const CURRENT_NOTE: &str = "diff_find_current";
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cv_base::theme::palette::{contrast_ratio, over};
 
     #[test]
     fn a_hit_out_of_view_scrolls_in_from_the_near_edge() {
@@ -263,34 +238,10 @@ mod tests {
         assert_eq!(columns("\tab", &(1..3)), 4..6, "a tab spans to the next stop");
     }
 
-    /// `color` (premultiplied) over the opaque `background`.
-    fn over(color: Color32, background: Color32) -> [f32; 3] {
-        let keep = 1.0 - f32::from(color.a()) / 255.0;
-        let channels = [color.r(), color.g(), color.b()].map(f32::from);
-        let under = [background.r(), background.g(), background.b()].map(f32::from);
-        [0, 1, 2].map(|index| channels[index] + under[index] * keep)
-    }
-
-    /// WCAG relative luminance of an sRGB colour with 0–255 channels.
-    fn luminance(rgb: [f32; 3]) -> f32 {
-        let linear = |channel: f32| {
-            let channel = channel / 255.0;
-            if channel <= 0.039_28 {
-                channel / 12.92
-            } else {
-                ((channel + 0.055) / 1.055).powf(2.4)
-            }
-        };
-        0.2126 * linear(rgb[0]) + 0.7152 * linear(rgb[1]) + 0.0722 * linear(rgb[2])
-    }
-
-    fn contrast(a: [f32; 3], b: [f32; 3]) -> f32 {
-        let (a, b) = (luminance(a), luminance(b));
-        (a.max(b) + 0.05) / (a.min(b) + 0.05)
-    }
-
-    fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
-        a.iter().zip(b).map(|(a, b)| (a - b).powi(2)).sum::<f32>().sqrt()
+    /// The straight-line distance of two colours in 0–255 RGB.
+    fn distance(a: Color32, b: Color32) -> f32 {
+        let channels = |color: Color32| [color.r(), color.g(), color.b()].map(f32::from);
+        channels(a).iter().zip(channels(b)).map(|(a, b)| (a - b).powi(2)).sum::<f32>().sqrt()
     }
 
     /// The occurrence fill reads on every row background (it was near invisible in the dark
@@ -304,7 +255,7 @@ mod tests {
                 let occurrence = over(palette.occurrence, row);
                 let hit = over(fill(&palette, false), row);
                 let theme = if palette.is_dark { "dark" } else { "light" };
-                let seen = contrast(occurrence, plain);
+                let seen = contrast_ratio(occurrence, plain);
                 assert!(seen >= 1.4, "{theme}: occurrence on {row:?} at {seen:.2}:1");
                 let apart = distance(occurrence, hit);
                 assert!(apart >= 35.0, "{theme}: occurrence and hit {apart:.0} apart on {row:?}");

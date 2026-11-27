@@ -110,7 +110,7 @@ impl RowText {
         let first = &thread.comments[0];
         let name = painter.layout_no_wrap(
             first.author.display_name.clone(),
-            theme::fonts::semibold_font(13.0),
+            theme::fonts::semibold_font(style::SMALL_SIZE + 1.0),
             palette.text,
         );
         let line =
@@ -127,7 +127,7 @@ impl RowText {
         let meta = painter.layout_no_wrap(meta_text.clone(), small.clone(), palette.text_secondary);
         let mut job = LayoutJob::simple(
             excerpt(&first.body, 240),
-            egui::FontId::proportional(13.0),
+            egui::FontId::proportional(style::SMALL_SIZE + 1.0),
             palette.text_secondary,
             text_width,
         );
