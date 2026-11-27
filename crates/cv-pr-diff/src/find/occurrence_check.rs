@@ -3,8 +3,6 @@
 //! collapsed unchanged lines; blanks, several lines and the setting turned off mark none. A query
 //! in the find widget leaves them be: its hits show beside them in another colour.
 
-use std::time::{Duration, Instant};
-
 use egui::{Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
 use review_store::ThemePreference;
@@ -16,7 +14,6 @@ use cv_base::theme;
 use cv_code::diff_rows::Layout;
 use cv_code::find_paint::{self as paint, MarkLook, last_marks};
 use cv_code::line_source::Pane;
-use cv_testkit as test_support;
 
 /// The line that changes; "count" is on it in both versions.
 const CHANGED: u32 = 30;
@@ -75,15 +72,10 @@ fn drag(harness: &mut Harness<'_, Fixture>, from: Pos2, to: Pos2) {
 
 /// Steps until the occurrences are found; their rows and overview ticks.
 fn wait_for_occurrences(harness: &mut Harness<'_, Fixture>) -> OccurrenceRows {
-    let started = Instant::now();
-    loop {
+    cv_testkit::poll_for("the occurrences", || {
         harness.step();
-        if let Some(found) = harness.state().view.occurrences() {
-            return found;
-        }
-        assert!(started.elapsed() < Duration::from_secs(10), "timed out waiting for occurrences");
-        test_support::let_threads_run(Duration::from_millis(10));
-    }
+        harness.state().view.occurrences()
+    })
 }
 
 fn has_occurrences(harness: &Harness<'_, Fixture>) -> bool {
@@ -139,22 +131,16 @@ fn a_selected_word_marks_its_other_occurrences_in_the_whole_file() {
     assert!(!has_occurrences(&harness), "the setting turned off marks nothing");
 }
 
-/// Steps until the find widget's count passes `is_expected`.
-fn wait_for_count(harness: &mut Harness<'_, Fixture>, is_expected: impl Fn(&str) -> bool) {
-    let started = Instant::now();
-    loop {
+/// Steps until the find widget's count ends in `suffix`.
+fn wait_for_count(harness: &mut Harness<'_, Fixture>, suffix: &str) {
+    cv_testkit::poll_until(&format!("the find count to end in {suffix:?}"), || {
         harness.step();
-        if last_bar(&harness.ctx).is_some_and(|shown| is_expected(&shown.count)) {
-            return;
-        }
-        let count = last_bar(&harness.ctx).map(|shown| shown.count);
-        assert!(started.elapsed() < Duration::from_secs(10), "timed out at {count:?}");
-        test_support::let_threads_run(Duration::from_millis(10));
-    }
+        last_bar(&harness.ctx).is_some_and(|shown| shown.count.ends_with(suffix))
+    });
 }
 
-/// C#, as the owner met it: `endsTheContract` declared on line 28 and tested on line 29, both
-/// unchanged and shown as context around the change on line 31.
+/// C#-like lines (highlighted as Rust): `endsTheContract` declared on line 28 and tested on
+/// line 29, both unchanged and shown as context around the change on line 31.
 fn contract_fixture() -> Fixture {
     let text = |result: &str| -> String {
         let line = |number: u32| match number {
@@ -163,13 +149,7 @@ fn contract_fixture() -> Fixture {
             31 => format!("            return {result};"),
             number => format!("        int filler{number} = {number};"),
         };
-        (1..=60)
-            .map(|number| {
-                line(number)
-                    + "
-"
-            })
-            .collect()
+        (1..=60).map(|number| line(number) + "\n").collect()
     };
     let (old, new) = (text("1"), text("2"));
     fixture_of(Layout::SideBySide, Some(&old), Some(&new))
@@ -203,7 +183,7 @@ fn a_dragged_identifier_marks_its_occurrences_beside_the_find_hits() {
         harness.key_press_modifiers(Modifiers::COMMAND, Key::F);
         harness.step();
         harness.event(Event::Text("return".to_owned()));
-        wait_for_count(&mut harness, |count| count.ends_with(" of 1"));
+        wait_for_count(&mut harness, " of 1");
 
         drag(&mut harness, from, to);
         wait_for_occurrences(&mut harness);

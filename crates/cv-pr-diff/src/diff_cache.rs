@@ -248,6 +248,6 @@ mod tests {
         assert_eq!(released, [key("ahead-gone")]);
         assert!(cache.contains(&key("shown")) && cache.contains(&key("ahead-kept")));
         assert_eq!(cache.bytes, size * 2);
-        assert!(cache.release_unopened(|_| false).len() == 1, "a shown diff is never released");
+        assert_eq!(cache.release_unopened(|_| false).len(), 1, "a shown diff is never released");
     }
 }

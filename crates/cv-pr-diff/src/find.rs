@@ -31,9 +31,10 @@ use std::sync::mpsc::{self, Receiver};
 
 use cv_code::find_paint::HitSide;
 use cv_syntax::pool::{Pool, Priority};
-pub use review_store::AppSettings;
+use review_store::AppSettings;
 
-pub use self::matcher::{MatchOptions, find_all, is_word};
+use self::matcher::find_all;
+pub use self::matcher::{MatchOptions, is_word};
 
 /// One thread searches, the newest search first; a search over a large file takes a few
 /// milliseconds, so one is enough.

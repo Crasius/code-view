@@ -66,16 +66,17 @@ fn push_merged(ranges: &mut Vec<Range<usize>>, range: Range<usize>) {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Range;
-
     use super::compute;
 
     #[test]
+    #[expect(
+        clippy::single_range_in_vec_init,
+        reason = "one changed word: a list of one range, not a range of indices"
+    )]
     fn highlights_changed_words_only() {
         let highlights = compute("let total = price * 2;", "let total = price * 3;");
-        let changed = Range { start: 20, end: 21 };
-        assert_eq!(highlights.old, std::slice::from_ref(&changed));
-        assert_eq!(highlights.new, std::slice::from_ref(&changed));
+        assert_eq!(highlights.old, [20..21]);
+        assert_eq!(highlights.new, [20..21]);
     }
 
     #[test]
@@ -92,9 +93,13 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::single_range_in_vec_init,
+        reason = "one changed run: a list of one range, not a range of indices"
+    )]
     fn marks_a_changed_indentation() {
         let highlights = compute("    const anon = 1;", "const anon = 1;");
-        assert_eq!(highlights.old, [Range { start: 0, end: 4 }]);
-        assert_eq!(highlights.new, [] as [Range<usize>; 0]);
+        assert_eq!(highlights.old, [0..4]);
+        assert!(highlights.new.is_empty(), "the new line lost the indentation, nothing to mark");
     }
 }

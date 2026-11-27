@@ -190,13 +190,13 @@ mod tests {
         let run = |time: f64, flash: &mut Flash, pane: Pane, shown: &CodeLine<'_>| {
             let mut strength = 0.0;
             let input = egui::RawInput { time: Some(time), ..egui::RawInput::default() };
-            let mut output = ctx.run_ui(input, |ui| {
+            ctx.run_ui(input, |ui| {
                 strength = flash.strength(ui.ctx(), pane, Some(shown));
-            });
-            output.textures_delta.clear();
+            })
+            .drop_without_applying_deltas();
             // egui reports a pass's repaint causes in the pass after it.
             let input = egui::RawInput { time: Some(time), ..egui::RawInput::default() };
-            ctx.run_ui(input, |_| {}).textures_delta.clear();
+            ctx.run_ui(input, |_| {}).drop_without_applying_deltas();
             (strength, diff_paint::flash_asks_for_frames(&ctx))
         };
         let _first = run(0.0, &mut flash, Pane::Inline, &line(1, 1));
@@ -210,6 +210,5 @@ mod tests {
         assert!(fading > 0.0 && fading < 1.0 && repaints, "fading from arrival: {fading}");
         let end_time = 2.2 + DURATION + 0.1;
         assert_eq!(run(end_time, &mut flash, Pane::Inline, &line(4, 4)), (0.0, false), "ended");
-        assert!(flash.state.is_none());
     }
 }

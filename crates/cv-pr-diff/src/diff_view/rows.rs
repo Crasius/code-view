@@ -256,7 +256,10 @@ impl DiffRows {
 
     /// The collapsed gap holding the line `old_line` / `new_line`.
     pub fn gap_of(&self, old_line: Option<u32>, new_line: Option<u32>) -> Option<usize> {
-        self.gaps.iter().position(|gap| gap.contains(old_line, new_line))
+        self.gaps
+            .iter()
+            .zip(&self.reveals)
+            .position(|(gap, reveal)| reveal.hidden(gap) > 0 && gap.contains(old_line, new_line))
     }
 
     /// The row holding the anchor's line in these rows of `diff`, or the collapsed gap hiding it.

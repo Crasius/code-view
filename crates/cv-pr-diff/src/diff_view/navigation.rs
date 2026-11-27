@@ -107,8 +107,7 @@ mod tests {
             egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
         let input = egui::RawInput { events: vec![event], ..egui::RawInput::default() };
         let mut direction = None;
-        let mut output = ctx.run_ui(input, |ui| direction = navigation_keys(ui));
-        output.textures_delta.clear();
+        ctx.run_ui(input, |ui| direction = navigation_keys(ui)).drop_without_applying_deltas();
         direction
     }
 

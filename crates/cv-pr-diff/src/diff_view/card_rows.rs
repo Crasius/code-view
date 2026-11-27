@@ -12,7 +12,9 @@ use egui::{Rect, Ui, pos2, vec2};
 use review_core::{ReviewThread, ThreadAnchor};
 use review_git::FileDiff;
 
-use super::cards::{CARD_GAP, CARD_MAX_WIDTH, CardHeights, DEFAULT_CARD_HEIGHT, measure_card};
+use super::cards::{
+    CARD_GAP, CARD_MAX_WIDTH, CardHeights, DEFAULT_CARD_HEIGHT, can_discard, measure_card,
+};
 use super::offsets::RowOffsets;
 use super::{DiffEvent, DiffInputs, Frame};
 use crate::diff_composer::{self, Composer, ComposerOutcome};
@@ -354,6 +356,5 @@ fn card_rect(rect: Rect, layout: Layout, is_right: bool, frame: &Frame<'_>) -> R
 /// This pass is the last egui runs for this frame although it would run more: one asking to be
 /// discarded would be shown anyway. With a single pass per frame there is no later one to wait for.
 fn is_last_pass(ctx: &egui::Context) -> bool {
-    let max_passes = ctx.options(|options| options.max_passes.get());
-    max_passes > 1 && ctx.current_pass_index() + 1 >= max_passes
+    ctx.options(|options| options.max_passes.get()) > 1 && !can_discard(ctx)
 }

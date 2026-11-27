@@ -35,7 +35,7 @@ use cv_widgets::find_bar::{self, FieldLook, Step};
 use cv_widgets::{buttons, focus};
 
 /// How long typing has to pause before the text is searched (our own choice).
-pub const TYPING_PAUSE: Duration = Duration::from_millis(160);
+const TYPING_PAUSE: Duration = Duration::from_millis(160);
 /// The widget's distance from the pane's top and right edge.
 const INSET: f32 = style::SPACE_S;
 const PADDING: f32 = style::SPACE_XS;

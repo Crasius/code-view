@@ -36,7 +36,7 @@ use crate::diff_cache::DiffKey;
 use crate::warm_up::{self, WarmUp};
 
 /// Larger diffs color only their first lines this way; the file's own colors cover the rest.
-pub const MAX_LINES: usize = 50_000;
+const MAX_LINES: usize = 50_000;
 /// The first chunk covers a screen of rows, so the view can show colored before the rest is done.
 const FIRST_CHUNK_LINES: usize = 120;
 const CHUNK_LINES: usize = 1_000;
@@ -64,7 +64,7 @@ static POOL: Pool = Pool::new("patch-colors", 2);
 
 /// The grammar for a diff of `path`, falling back to its first line (shebangs, `<?xml`). Loads
 /// the grammar set on first use, so only call this from background work.
-pub fn grammar_for(path: &str, diff: &FileDiff) -> Option<Grammar> {
+fn grammar_for(path: &str, diff: &FileDiff) -> Option<Grammar> {
     let first_line = diff
         .lines()
         .iter()
@@ -80,7 +80,7 @@ pub fn grammar_for(path: &str, diff: &FileDiff) -> Option<Grammar> {
 /// first change, and again once a change is closed) only the new side does, so unchanged lines
 /// cost one parse, not two. A long diff reads in parts at once (see [`highlight::read_lines`]),
 /// with the same colors.
-pub fn highlight_patch(
+pub(crate) fn highlight_patch(
     grammar: Grammar,
     working: &Arc<WorkingSet>,
     diff: &FileDiff,
@@ -323,7 +323,7 @@ impl Colorer {
                 if let (Some(cold), Some(all), true) = (&cold, all, is_complete)
                     && started.elapsed() >= cold_worthy
                 {
-                    cold.write(COLD_KIND, COLD_VERSION, cold_key(&key), move || Some(encode(&all)));
+                    cold.write(COLD_KIND, COLD_VERSION, cold_key(&key), move || encode(&all));
                 }
             }
             let _pull_request_closed = sender.send(Message::Finished { key, job });
@@ -346,18 +346,19 @@ fn cold_key(key: &DiffKey) -> String {
     )
 }
 
-/// Per line its span count, then per span its start (4 bytes) and kind (1 byte), little-endian.
-fn encode(spans: &LineSpans) -> Vec<u8> {
+/// Per line its span count, then per span its start (4 bytes) and kind (1 byte), little-endian;
+/// `None` when a count or a start does not fit in 4 bytes.
+fn encode(spans: &LineSpans) -> Option<Vec<u8>> {
     let mut bytes = Vec::new();
     for index in 0..spans.line_count() {
         let line = spans.line(index).unwrap_or_default();
-        bytes.extend_from_slice(&u32::try_from(line.len()).unwrap_or(0).to_le_bytes());
+        bytes.extend_from_slice(&u32::try_from(line.len()).ok()?.to_le_bytes());
         for span in line {
-            bytes.extend_from_slice(&u32::try_from(span.start()).unwrap_or(0).to_le_bytes());
+            bytes.extend_from_slice(&u32::try_from(span.start()).ok()?.to_le_bytes());
             bytes.push(span.kind() as u8);
         }
     }
-    bytes
+    Some(bytes)
 }
 
 /// The spans [`encode`] wrote; `None` for bytes it did not write.
@@ -794,12 +795,14 @@ mod tests {
             Arc::new(FileDiff::parse_unified(b"@@ -1,1 +1,1 @@\n-let a = 1;\n+let a = 2;\n"));
         let key = key("src/b.rs");
         colors.ensure(&ctx, &key, &diff);
-        let job = colors.entries[&key].job;
-        colors.ensure(&ctx, &key, &diff);
-        assert_eq!(colors.entries[&key].job, job, "a second ensure does not start again");
-        let finished = colors.wait_finished(&repaints, &key);
-        assert_eq!(finished.map(|spans| spans.line_count()), Some(3));
+        let first = colors.wait_finished(&repaints, &key).expect("colors for the diff");
+        assert_eq!(first.line_count(), 3);
         assert!(ctx.has_requested_repaint(), "the worker asked for a frame");
+        colors.ensure(&ctx, &key, &diff);
+        assert!(
+            colors.finished(&key).is_some_and(|again| Arc::ptr_eq(&again, &first)),
+            "a second ensure keeps the colors"
+        );
     }
 
     #[test]
@@ -807,7 +810,7 @@ mod tests {
         let body = "+let a = \"text\"; // note\n".repeat(40);
         let diff = FileDiff::parse_unified(format!("@@ -0,0 +1,40 @@\n{body}").as_bytes());
         let spans = patch_spans("a.rs", &diff);
-        let bytes = encode(&spans);
+        let bytes = encode(&spans).expect("spans fit");
         assert_eq!(decode(&bytes), Some(spans));
         assert_eq!(decode(&bytes[..bytes.len() - 1]), None, "a cut file is no colors");
     }
@@ -817,20 +820,19 @@ mod tests {
     #[test]
     fn large_colors_go_to_the_disk_tier_and_come_back() {
         let dir = cv_testkit::ScratchDir::new("patch-colors-cold");
-        let paths =
-            review_store::AppPaths::new(dir.path().join("config"), dir.path().join("cache"));
-        let cold = ColdTier::new(&paths);
+        let cold = ColdTier::new(&dir.app_paths());
         let body = "+let a = 1;\n".repeat(COLD_MIN_LINES);
         let diff = Arc::new(FileDiff::parse_unified(
             format!("@@ -0,0 +1,{COLD_MIN_LINES} @@\n{body}").as_bytes(),
         ));
         let (key, ctx) = (key("src/cold.rs"), egui::Context::default());
         let repaints = observe_repaints(&ctx);
-        let stored = || {
-            let deadline = Instant::now() + Duration::from_secs(30);
+        let stored_is = |wanted: &LineSpans| {
+            let deadline = Instant::now() + cv_testkit::WAIT_LIMIT;
             loop {
-                if let Some(bytes) = cold.read(COLD_KIND, COLD_VERSION, &cold_key(&key)) {
-                    return decode(&bytes);
+                let stored = cold.read(COLD_KIND, COLD_VERSION, &cold_key(&key));
+                if stored.and_then(|bytes| decode(&bytes)).as_ref() == Some(wanted) {
+                    return;
                 }
                 assert!(Instant::now() < deadline, "the colors reach the disk tier");
                 repaints.recv_timeout(Duration::from_millis(20)).ok();
@@ -841,15 +843,15 @@ mod tests {
         colors.use_cold(&cold);
         colors.ensure(&ctx, &key, &diff);
         let finished = colors.wait_finished(&repaints, &key).expect("colors");
-        assert_eq!(stored().as_ref(), Some(&*finished));
+        stored_is(&finished);
 
         let mut marked = LineSpans::default();
         for _ in 0..diff.lines().len() {
             marked.push_line(&[Span::new(0, TokenKind::Heading)]);
         }
         let expected = marked.clone();
-        cold.write(COLD_KIND, COLD_VERSION, cold_key(&key), move || Some(encode(&marked)));
-        while stored().as_ref() != Some(&expected) {}
+        cold.write(COLD_KIND, COLD_VERSION, cold_key(&key), move || encode(&marked));
+        stored_is(&expected);
         let mut restarted = PatchColors::default();
         restarted.use_cold(&cold);
         restarted.ensure(&ctx, &key, &diff);

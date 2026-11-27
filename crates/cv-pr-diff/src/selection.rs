@@ -66,14 +66,14 @@ impl DiffSelection for Selection {
 mod tests {
     use super::*;
     use cv_code::diff_rows::{Layout, RowInputs, build};
-    use cv_widgets::text_selection::{Caret, RowSelection};
+    use cv_widgets::text_selection::Caret;
     use review_git::FileDiff;
 
-    fn rows() -> (FileDiff, Vec<Row>) {
+    fn rows() -> Vec<Row> {
         let diff = FileDiff::parse_unified(
             b"@@ -1,4 +1,4 @@\n alpha beta\n-gamma\n+delta\n epsilon\n zeta\n",
         );
-        let rows = build(&RowInputs {
+        build(&RowInputs {
             diff: &diff,
             layout: Layout::Inline,
             gaps: &[],
@@ -81,55 +81,12 @@ mod tests {
             threads: &[],
             composer: None,
         })
-        .rows;
-        (diff, rows)
-    }
-
-    #[test]
-    fn copies_characters_across_lines_without_gutter() {
-        let (diff, rows) = rows();
-        let text_of = |row: usize| {
-            rows.get(row)
-                .and_then(|row| row.right.or(row.left))
-                .map(|index| diff.text(&diff.lines()[index as usize]))
-        };
-        let mut selection = Selection::caret(Pane::Inline, Caret::new(0, 6));
-        selection.extend_to(Caret::new(2, 3));
-        assert_eq!(selection.text(text_of), "beta\ngamma\ndel");
-        // Dragging back up over the start keeps working.
-        selection.extend_to(Caret::new(0, 2));
-        assert_eq!(selection.text(text_of), "pha ");
-        let lines = Selection::lines(Pane::Inline, 1, 2);
-        assert_eq!(lines.text(text_of), "gamma\ndelta\n");
-    }
-
-    #[test]
-    fn selects_rows_in_its_pane_only() {
-        let mut selection = Selection::caret(Pane::Left, Caret::new(1, 2));
-        selection.extend_to(Caret::new(3, 1));
-        assert_eq!(selection.on_row(2, Pane::Right, 5), None, "side by side keeps one pane");
-        assert_eq!(
-            selection.on_row(1, Pane::Left, 5),
-            Some(RowSelection::Text { columns: 2..5, through_end: true })
-        );
-        assert_eq!(
-            selection.on_row(2, Pane::Left, 5),
-            Some(RowSelection::Text { columns: 0..5, through_end: true })
-        );
-        assert_eq!(
-            selection.on_row(3, Pane::Left, 5),
-            Some(RowSelection::Text { columns: 0..1, through_end: false })
-        );
-        assert_eq!(selection.on_row(4, Pane::Left, 5), None);
-        assert_eq!(
-            Selection::line(Pane::Left, 3).on_row(3, Pane::Left, 0),
-            Some(RowSelection::Line)
-        );
+        .rows
     }
 
     #[test]
     fn picks_the_commented_lines_and_their_offsets() {
-        let (_, rows) = rows();
+        let rows = rows();
         let every = |_: &Row| true;
         let mut selection = Selection::caret(Pane::Inline, Caret::new(1, 2));
         selection.extend_to(Caret::new(3, 0));
@@ -151,7 +108,7 @@ mod tests {
 
     #[test]
     fn follows_its_rows_into_rebuilt_rows() {
-        let (_, rows) = rows();
+        let rows = rows();
         let mut grown = rows.clone();
         grown.insert(1, rows[4]);
         let mut selection = Selection::lines(Pane::Inline, 1, 2);

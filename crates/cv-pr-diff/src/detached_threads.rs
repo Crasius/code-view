@@ -81,21 +81,30 @@ fn line_note(
     detached: &Detached<'_>,
     thread: &review_core::ReviewThread,
 ) -> Option<DetachedEvent> {
-    let line =
-        thread.anchor.as_ref().and_then(|anchor| anchor.new_line.or(anchor.old_line)).unwrap_or(0);
-    if let Some(gap) = hidden_gap(detached, thread) {
+    if let (Some(gap), Some(line)) = (hidden_gap(detached, thread), thread_line(thread)) {
         let label = format!("Show line {line} in the diff");
         let clicked = buttons::subtle(ui, icons::ARROWS_OUT_LINE_VERTICAL, &label).clicked();
         return clicked.then(|| DetachedEvent::ShowLine { gap, thread_id: thread.id.clone() });
     }
-    let note = if thread.is_outdated {
-        format!("Line {line} changed after this comment")
-    } else {
-        format!("Line {line}")
-    };
     let palette = theme::palette(ui.ctx());
+    let note = line_note_text(thread);
     ui.label(RichText::new(note).size(theme::style::SMALL_SIZE).color(palette.text_secondary));
     None
+}
+
+/// The line the thread is on, the new side first; none for a comment on the whole file.
+fn thread_line(thread: &review_core::ReviewThread) -> Option<u32> {
+    thread.anchor.as_ref().and_then(|anchor| anchor.new_line.or(anchor.old_line))
+}
+
+/// Which line a thread is on, or that it is on the file, and whether that changed since.
+fn line_note_text(thread: &review_core::ReviewThread) -> String {
+    match (thread_line(thread), thread.is_outdated) {
+        (Some(line), false) => format!("Line {line}"),
+        (Some(line), true) => format!("Line {line} changed after this comment"),
+        (None, false) => "On the file".to_owned(),
+        (None, true) => "The file changed after this comment".to_owned(),
+    }
 }
 
 /// The collapsed gap holding the thread's line, when revealing it would place the thread inline.
@@ -108,4 +117,31 @@ fn hidden_gap(detached: &Detached<'_>, thread: &review_core::ReviewThread) -> Op
         let is_hidden = detached.reveals.get(index).copied().unwrap_or_default().hidden(gap) > 0;
         is_hidden && gap.contains(anchor.old_line, anchor.new_line)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::line_note_text;
+    use crate::testing::thread_on_old_line;
+
+    /// GitHub anchors a comment on the whole file with neither line: it read "Line 0".
+    #[test]
+    fn a_file_level_comment_is_labelled_on_the_file_not_line_0() {
+        let on_line = thread_on_old_line(7, "on a line");
+        let mut outdated = on_line.clone();
+        outdated.is_outdated = true;
+        let mut on_file = on_line.clone();
+        on_file.anchor.as_mut().expect("the sample is anchored").old_line = None;
+        let mut file_outdated = on_file.clone();
+        file_outdated.is_outdated = true;
+        let cases = [
+            (on_line, "Line 7"),
+            (outdated, "Line 7 changed after this comment"),
+            (on_file, "On the file"),
+            (file_outdated, "The file changed after this comment"),
+        ];
+        for (thread, expected) in cases {
+            assert_eq!(line_note_text(&thread), expected);
+        }
+    }
 }
