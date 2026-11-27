@@ -1235,7 +1235,6 @@ dependencies = [
  "review-core",
  "review-git",
  "review-store",
- "time",
  "tokio",
  "urlencoding",
 ]
@@ -4299,7 +4298,6 @@ dependencies = [
  "cv-media",
  "cv-pr-assistant",
  "cv-pr-diff",
- "cv-pr-files",
  "cv-pr-page",
  "cv-pr-rendered",
  "cv-pr-session",
