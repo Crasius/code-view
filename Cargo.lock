@@ -1141,8 +1141,6 @@ dependencies = [
  "review-core",
  "review-git",
  "review-store",
- "similar",
- "time",
  "tokio",
 ]
 
