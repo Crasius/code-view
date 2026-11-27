@@ -10,7 +10,7 @@ use super::mirrors::{MirrorGuard, NothingInUse};
 use super::sweep::{CacheLimits, Sweeper};
 use super::{DAY, Limits, MirrorUse, mirror_stamp};
 use crate::flat_layout::{FlatLayout, pull_request_file};
-use crate::test_support::{TestDir, wait_for, write_connections, write_file};
+use crate::test_support::{TestDir, wait_until, write_connections, write_file};
 use crate::{AppPaths, Draft, ThreadStore, ViewedFiles, stable_hash};
 
 pub(super) fn now() -> SystemTime {
@@ -185,7 +185,7 @@ fn a_mirror_with_read_only_packs_is_deleted_completely() {
     assert!(!git_dir.exists());
     // The sweep started the purge thread; a second purge here would race it for the same files
     // (Windows then refuses one of the deletes).
-    assert!(wait_for(|| sweeper.trash().is_empty()), "the purge thread deletes the read-only pack");
+    wait_until("the purge thread deletes the read-only pack", || sweeper.trash().is_empty());
 }
 
 #[test]

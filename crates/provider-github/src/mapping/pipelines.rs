@@ -346,7 +346,7 @@ mod tests {
             ]
         );
         assert_eq!(runs[0].description.as_deref(), Some("Fix the widget (pull_request)"));
-        assert!(runs[0].finished_at.is_some());
+        assert_eq!(runs[0].finished_at, Some(time::macros::datetime!(2024-05-01 10:05 UTC)));
         assert!(runs[1].finished_at.is_none());
         assert_eq!(runs[2].description.as_deref(), Some("2 issues"));
         assert_eq!(runs[3].web_url, None);

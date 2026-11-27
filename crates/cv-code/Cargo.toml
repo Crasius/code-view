@@ -42,3 +42,4 @@ cv-runtime = { workspace = true, features = ["test-support"] }
 cv-services = { workspace = true, features = ["test-support"] }
 cv-syntax = { workspace = true, features = ["test-support"] }
 cv-widgets = { workspace = true, features = ["test-support"] }
+cv-testkit.workspace = true

@@ -13,7 +13,7 @@ use super::sweep::{CacheLimits, FinishedPullRequest};
 use super::sweep_tests::{Cache, InUse};
 use super::{MirrorUse, Retention, Schedule, mirror_stamp};
 use crate::flat_layout::pull_request_file;
-use crate::test_support::{wait_for, write_file};
+use crate::test_support::{wait_until, write_file};
 use crate::{AppPaths, stable_hash};
 
 const MERGED: &str = "gh-1|cli/cli|1";
@@ -174,17 +174,16 @@ fn the_open_pull_request_keeps_its_data_until_its_page_closes() {
     // The thread takes requests in order: once this measurement is in, the finished pull request
     // was handled (and kept, its page being open).
     retention.measure();
-    assert!(wait_for(|| retention.status().usage.is_some()));
+    wait_until("the usage measured", || retention.status().usage.is_some());
     assert!(
         merged_log.exists() && merged_viewed.exists(),
         "nothing goes while the page (and its drafts) is open"
     );
 
     drop(page);
-    assert!(
-        wait_for(|| !merged_log.exists() && !merged_viewed.exists()),
-        "the retry cleans up once the page closed"
-    );
+    wait_until("the retry cleans up once the page closed", || {
+        !merged_log.exists() && !merged_viewed.exists()
+    });
 }
 
 #[test]

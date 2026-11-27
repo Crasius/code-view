@@ -199,29 +199,21 @@ mod tests {
     }
 
     fn thread(path: Option<&str>, status: ThreadStatus, body: &str) -> ReviewThread {
-        ReviewThread {
-            id: "t".into(),
-            status,
-            anchor: path.map(|path| ThreadAnchor {
-                path: path.into(),
-                old_path: None,
-                old_line: None,
-                new_line: Some(77),
-                range: None,
-            }),
-            is_outdated: false,
-            origin: None,
-            is_system: false,
-            can_reply: true,
-            can_resolve: true,
-            comments: vec![ThreadComment {
-                id: "c".into(),
-                author: person("Grace"),
-                body: body.into(),
-                created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
-                updated_at: None,
-            }],
-        }
+        let anchor = path.map(|path| ThreadAnchor {
+            path: path.into(),
+            old_path: None,
+            old_line: None,
+            new_line: Some(77),
+            range: None,
+        });
+        let comment = ThreadComment {
+            id: "c".into(),
+            author: person("Grace"),
+            body: body.into(),
+            created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
+            updated_at: None,
+        };
+        samples::thread("t", status, anchor, vec![comment])
     }
 
     fn run(name: &str, status: RunStatus) -> PipelineRun {

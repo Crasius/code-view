@@ -243,7 +243,7 @@ impl Worker {
 mod tests {
     use super::*;
     use crate::retention::mirrors::NothingInUse;
-    use crate::test_support::{TestDir, wait_for, write_file};
+    use crate::test_support::{TestDir, wait_until, write_file};
 
     #[test]
     fn sweeps_on_schedule_and_resumes_the_trash() {
@@ -266,9 +266,10 @@ mod tests {
         };
         let retention =
             Retention::start(paths.clone(), Arc::new(NothingInUse), Arc::new(|| {}), schedule);
-        assert!(wait_for(|| !old_log.exists()), "the scheduled sweep removes the week-old log");
-        assert!(wait_for(|| std::fs::read_dir(paths.trash_dir())
-            .is_ok_and(|mut entries| entries.next().is_none())));
+        wait_until("the scheduled sweep removes the week-old log", || !old_log.exists());
+        wait_until("the trash emptied", || {
+            std::fs::read_dir(paths.trash_dir()).is_ok_and(|mut entries| entries.next().is_none())
+        });
         drop(retention);
     }
 
@@ -285,7 +286,7 @@ mod tests {
         let retention = Retention::start(paths, Arc::new(NothingInUse), Arc::new(|| {}), schedule);
 
         retention.clear_cache();
-        assert!(wait_for(|| retention.status().usage.is_some()));
+        wait_until("the usage measured", || retention.status().usage.is_some());
         let status = retention.status();
         assert_eq!(status.cleared.map(|cleared| cleared.freed), Some(64));
         assert_eq!(status.usage.map(|usage| usage.logs), Some(0));

@@ -812,20 +812,6 @@ fn threads(fixture: &Fixture) -> Vec<ReviewThread> {
         new_line: Some(line),
         range: None,
     };
-    let thread = |id: &str,
-                  anchor: Option<ThreadAnchor>,
-                  status: ThreadStatus,
-                  comments: Vec<ThreadComment>| ReviewThread {
-        id: id.to_owned(),
-        status,
-        anchor,
-        is_outdated: false,
-        origin: None,
-        is_system: false,
-        can_reply: true,
-        can_resolve: true,
-        comments,
-    };
     let long = "Should the compensation also run when the invoice service answers with 409 Conflict? Today we retry three times, then give up silently, which leaves the order without an invoice and nobody notices until month end. A dead-letter queue with an alert would make this visible: https://learn.microsoft.com/en-us/azure/service-bus-messaging/service-bus-dead-letter-queues";
     let outdated = ReviewThread {
         is_outdated: true,
@@ -838,10 +824,10 @@ fn threads(fixture: &Fixture) -> Vec<ReviewThread> {
                 "https://dev.azure.com/{ORGANIZATION}/_git/repository/pullrequest/{NUMBER}?discussionId=9"
             )),
         }),
-        ..thread(
+        ..samples::thread(
             "9",
-            Some(ThreadAnchor { new_line: None, ..anchor(41) }),
             ThreadStatus::Active,
+            Some(ThreadAnchor { new_line: None, ..anchor(41) }),
             vec![comment(
                 "c9",
                 "Anastasia Konstantinopoulou",
@@ -851,10 +837,10 @@ fn threads(fixture: &Fixture) -> Vec<ReviewThread> {
         )
     };
     vec![
-        thread(
+        samples::thread(
             "1",
-            Some(anchor(5)),
             ThreadStatus::Active,
+            Some(anchor(5)),
             vec![
                 comment("c1", "Bartholomew Fitzgerald-Okonkwo", long, 3),
                 comment(
@@ -865,10 +851,10 @@ fn threads(fixture: &Fixture) -> Vec<ReviewThread> {
                 ),
             ],
         ),
-        thread(
+        samples::thread(
             "2",
-            Some(anchor(58)),
             ThreadStatus::Resolved,
+            Some(anchor(58)),
             vec![comment(
                 "c3",
                 "Jean-Baptiste Emmanuel Zorg",
@@ -877,10 +863,10 @@ fn threads(fixture: &Fixture) -> Vec<ReviewThread> {
             )],
         ),
         outdated,
-        thread(
+        samples::thread(
             "3",
-            None,
             ThreadStatus::Active,
+            None,
             vec![comment(
                 "c4",
                 "Wolfeschlegelsteinhausenbergerdorff Hubert",
@@ -892,10 +878,10 @@ fn threads(fixture: &Fixture) -> Vec<ReviewThread> {
             is_system: true,
             can_reply: false,
             can_resolve: false,
-            ..thread(
+            ..samples::thread(
                 "4",
-                None,
                 ThreadStatus::Active,
+                None,
                 vec![comment(
                     "c5",
                     "Maximiliane Theodora von Hohenzollern-Sigmaringen",

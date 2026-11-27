@@ -81,17 +81,7 @@ pub fn thread(
     anchor: Option<ThreadAnchor>,
     comments: Vec<ThreadComment>,
 ) -> ReviewThread {
-    ReviewThread {
-        id: id.into(),
-        status,
-        anchor,
-        is_outdated: false,
-        origin: None,
-        is_system: false,
-        can_reply: true,
-        can_resolve: true,
-        comments,
-    }
+    cv_testkit::samples::thread(id, status, anchor, comments)
 }
 
 /// The conversation of the mockups: a question, an answer with a suggested change, a reply.

@@ -466,17 +466,7 @@ mod tests {
     struct PullRequestWithThread;
 
     fn thread() -> ReviewThread {
-        ReviewThread {
-            id: "t1".to_owned(),
-            status: ThreadStatus::Active,
-            anchor: None,
-            is_outdated: false,
-            origin: None,
-            is_system: false,
-            can_reply: true,
-            can_resolve: true,
-            comments: Vec::new(),
-        }
+        samples::thread("t1", ThreadStatus::Active, None, Vec::new())
     }
 
     #[async_trait::async_trait]

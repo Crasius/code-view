@@ -132,7 +132,7 @@ fn with_writable(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{TestDir, wait_for};
+    use crate::test_support::{TestDir, wait_until};
 
     #[test]
     fn moved_items_leave_their_place_at_once_and_purge_later() {
@@ -175,6 +175,6 @@ mod tests {
         // A new app run: a fresh `Trash` on the same folder.
         let trash = Trash::new(trash_dir);
         trash.purge_in_background();
-        assert!(wait_for(|| trash.is_empty()), "the leftovers are deleted");
+        wait_until("the leftovers are deleted", || trash.is_empty());
     }
 }
