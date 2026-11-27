@@ -72,6 +72,7 @@ pub const OVERVIEW_WIDTH: f32 = 14.0;
 /// Opens a comment on the selected lines.
 pub const COMMENT_SHORTCUT: &str = shortcut!(alt "C");
 
+#[derive(Debug)]
 pub enum DiffEvent {
     Thread(ThreadEvent),
     /// Post the new thread drafted under `key`.

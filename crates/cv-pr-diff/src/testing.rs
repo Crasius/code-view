@@ -14,7 +14,7 @@ use cv_syntax::grammar;
 use cv_syntax::highlight::{self, LineSpans};
 use egui_kittest::Harness;
 use review_core::{
-    DiffSide, NewThread, ProviderKind, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus,
+    DiffSide, ProviderKind, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus,
 };
 use review_git::FileDiff;
 use review_store::{PaneSizes, ThemePreference};
@@ -148,9 +148,8 @@ pub struct Fixture {
     pub threads_ui: ThreadsUi,
     /// The old side's share of a side-by-side diff.
     pub split: f32,
-    pub events: Vec<&'static str>,
-    /// Comments the view asked to create.
-    pub created: Vec<NewThread>,
+    /// What the view asked for, in order.
+    pub events: Vec<DiffEvent>,
     /// GitHub takes comments only on lines of the diff's hunks.
     pub can_comment_outside_hunks: bool,
     /// Long lines wrap at the pane's width.
@@ -240,7 +239,6 @@ pub fn fixture_of(layout: Layout, old: Option<&str>, new: Option<&str>) -> Fixtu
         threads_ui: ThreadsUi::for_tests(ProviderKind::GitHub),
         split: PaneSizes::DEFAULT.diff_split,
         events: Vec::new(),
-        created: Vec::new(),
         can_comment_outside_hunks: true,
         wrap: false,
         font_size: 13.0,
@@ -286,18 +284,7 @@ pub fn harness_sized(fixture: Fixture, size: [f32; 2]) -> Harness<'static, Fixtu
 /// Shows the fixture's diff the way the files tab does and records what the view asks for.
 pub fn show_diff(ui: &mut egui::Ui, state: &mut Fixture) {
     if let Some(event) = state.show(ui) {
-        state.events.push(match event {
-            DiffEvent::Thread(_) => "thread",
-            DiffEvent::Create { thread, .. } => {
-                state.created.push(thread);
-                "create"
-            }
-            DiffEvent::ColorAnyway => "color anyway",
-            DiffEvent::RetryContents => "retry",
-            DiffEvent::SwitchLayout(Layout::Inline) => "show inline",
-            DiffEvent::SwitchLayout(_) => "switch layout",
-            DiffEvent::SplitResized => "split resized",
-        });
+        state.events.push(event);
     }
 }
 

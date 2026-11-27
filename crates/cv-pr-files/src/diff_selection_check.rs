@@ -5,7 +5,9 @@ use cv_testkit::{Clicks, ScratchDir};
 use egui::{Event, Key, Modifiers, PointerButton, Pos2, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use review_core::{DiffSide, FileCategory, LineRange, ReviewThread, ThreadAnchor, ThreadStatus};
+use review_core::{
+    DiffSide, FileCategory, LineRange, NewThread, ReviewThread, ThreadAnchor, ThreadStatus,
+};
 use review_git::{ChangeKind, ChangedFile, LineKind};
 use review_store::DiffLayout;
 
@@ -13,7 +15,7 @@ use crate::tests::services_in;
 use cv_base::theme;
 use cv_code::diff_rows::{Layout, RangeRows};
 use cv_code::line_source::Pane;
-use cv_pr_diff::diff_view::{COMMENT_SHORTCUT, TextArea};
+use cv_pr_diff::diff_view::{COMMENT_SHORTCUT, DiffEvent, TextArea};
 use cv_pr_diff::testing::{
     self as check, Fixture, NEW, OLD, PATH, fixture, harness, line_of, settle, side,
 };
@@ -25,6 +27,14 @@ use cv_widgets::text_selection;
 
 fn button(pos: Pos2, button: PointerButton, pressed: bool, modifiers: Modifiers) -> Event {
     Event::PointerButton { pos, button, pressed, modifiers }
+}
+
+/// The comments the view asked to create, in order.
+fn new_threads(events: &[DiffEvent]) -> impl Iterator<Item = &NewThread> {
+    events.iter().filter_map(|event| match event {
+        DiffEvent::Create { thread, .. } => Some(thread),
+        _ => None,
+    })
 }
 
 /// Moves to `pos` and clicks there while holding `modifiers`.
@@ -279,8 +289,9 @@ fn line_numbers_pick_lines_to_comment_on() {
     );
 
     post_comment(&mut harness, "Both paths could share one helper.");
-    let created = &harness.state().created;
-    assert_eq!(created.len(), 1, "{:?}", harness.state().events);
+    let events = &harness.state().events;
+    let created: Vec<&NewThread> = new_threads(events).collect();
+    assert_eq!(created.len(), 1, "{events:?}");
     let anchor = created[0].anchor.as_ref().expect("an inline comment");
     assert_eq!(
         (anchor.old_line, anchor.new_line),
@@ -508,7 +519,8 @@ fn added_files_show_their_new_content_whole() {
     harness.click_at(harness.get_by_label("Comment on lines 3–6").rect());
     settle(&mut harness);
     post_comment(&mut harness, "Should the doc comment mention the currency?");
-    let anchor = harness.state().fixture.created[0].anchor.clone().expect("an inline comment");
+    let created = new_threads(&harness.state().fixture.events).next().expect("a new comment");
+    let anchor = created.anchor.clone().expect("an inline comment");
     assert_eq!((anchor.old_line, anchor.new_line), (None, Some(6)));
     let range = anchor.range.expect("a range");
     assert_eq!(
@@ -542,7 +554,8 @@ fn deleted_files_show_their_old_content_whole() {
     settle(&mut harness);
     assert!(harness.query_by_label("Comment on lines 5–8").is_some());
     post_comment(&mut harness, "Is anything still using the cart?");
-    let anchor = harness.state().fixture.created[0].anchor.clone().expect("an inline comment");
+    let created = new_threads(&harness.state().fixture.events).next().expect("a new comment");
+    let anchor = created.anchor.clone().expect("an inline comment");
     assert_eq!(
         (anchor.old_line, anchor.new_line),
         (Some(8), None),

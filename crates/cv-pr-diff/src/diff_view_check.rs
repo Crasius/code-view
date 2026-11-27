@@ -12,6 +12,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{DiffSide, ReviewThread, ThreadStatus};
 
+use crate::diff_view::DiffEvent;
 use crate::testing::{
     Fixture, NEW, OLD, PATH, fixture, fixture_of, harness, harness_sized, line_of, settle,
     thread_on_old_line, whole_file_fixture,
@@ -157,7 +158,8 @@ fn new_only_offers_another_layout_for_an_emptied_file() {
     assert!(harness.query_by_label("The new version is empty").is_some());
     harness.click_at(harness.get_by_label_contains("Show inline").rect());
     settle(&mut harness);
-    assert_eq!(harness.state().events, ["show inline"]);
+    let events = &harness.state().events;
+    assert!(matches!(events[..], [DiffEvent::SwitchLayout(Layout::Inline)]), "{events:?}");
 }
 
 /// An added or a deleted file shows its one version whole: a row for each of its lines, in order.
