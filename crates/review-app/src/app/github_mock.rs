@@ -513,22 +513,13 @@ impl GitHubHost {
         self.matching(verb, request_path).count()
     }
 
-    /// The API writes received so far, as `review_core::http` tells them: every request but a GET
-    /// and a GraphQL query (a GraphQL body naming a mutation or a subscription is a write). git's
+    /// The API writes received so far, as [`review_core::http::is_write`] tells them. git's
     /// fetches post too, but outside `review_core::http`.
     pub fn writes(&self) -> usize {
-        let is_query = |request: &Request| {
-            let query = request.body_json::<Value>().ok();
-            query.as_ref().and_then(|body| body["query"].as_str()).is_some_and(|query| {
-                !query
-                    .split(|c: char| !c.is_alphanumeric() && c != '_')
-                    .any(|word| word == "mutation" || word == "subscription")
-            })
-        };
         self.requests()
             .iter()
             .filter(|request| request.url.path().starts_with("/api/"))
-            .filter(|request| request.method.as_str() != "GET" && !is_query(request))
+            .filter(|request| review_core::http::is_write(&request.method, Some(&request.body)))
             .count()
     }
 

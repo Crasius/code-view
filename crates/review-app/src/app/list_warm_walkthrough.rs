@@ -179,12 +179,10 @@ fn a_click_while_the_detail_is_read_ahead_joins_its_request() {
     harness.step();
     assert!(matches!(harness.state().route, Route::PullRequest(_)), "the click opened the page");
     assert!(harness.query_by_label("Updating…").is_some(), "which waits for the detail");
-    window.close(host.writes()).assert_count(
-        detail_requests(&host, NUMBER),
-        1,
-        2,
-        "on the request the list sent",
-    );
+    // Counted before the window closes: a write that finishes after the count cannot have added
+    // a request to it.
+    let sent = detail_requests(&host, NUMBER);
+    window.close(host.writes()).assert_count(sent, 1, 2, "on the request the list sent");
 }
 
 #[test]

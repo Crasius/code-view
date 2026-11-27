@@ -66,22 +66,24 @@ pub async fn send(request: RequestBuilder) -> Result<Response> {
 /// Made only for a write: a guard made and dropped at once would end the sharing of the GETs in
 /// flight as a finished write does.
 fn write_guard(request: &Request) -> Option<cache::Write> {
-    is_write(request).then(|| cache::Cache::shared().write())
+    let body = request.body().and_then(reqwest::Body::as_bytes);
+    is_write(request.method(), body).then(|| cache::Cache::shared().write())
 }
 
-/// Whether `request` may change what the host answers: anything but a GET and a GraphQL query.
-/// A GraphQL body that cannot be read counts as a write; at worst a GET then asks again.
-fn is_write(request: &Request) -> bool {
+/// Whether a request with `method` and `body` may change what the host answers: anything but a
+/// GET and a GraphQL query. A GraphQL body that cannot be read counts as a write; at worst a GET
+/// then asks again. Public so that a walkthrough's mock host counts the writes it received by
+/// this one definition.
+pub fn is_write(method: &Method, body: Option<&[u8]>) -> bool {
     /// The part of a GraphQL request body that names its operations.
     #[derive(Deserialize)]
     struct Operation<'a> {
         #[serde(borrow)]
         query: std::borrow::Cow<'a, str>,
     }
-    if request.method() == Method::GET {
+    if method == Method::GET {
         return false;
     }
-    let body = request.body().and_then(reqwest::Body::as_bytes);
     let Some(operation) = body.and_then(|body| serde_json::from_slice::<Operation>(body).ok())
     else {
         return true;
@@ -238,6 +240,9 @@ mod tests {
         let client = reqwest::Client::new();
         let post = |body| {
             client.request(Method::POST, "http://127.0.0.1/graphql").json(&body).build().unwrap()
+        };
+        let is_write = |request: &reqwest::Request| {
+            is_write(request.method(), request.body().and_then(reqwest::Body::as_bytes))
         };
         let query = json!({ "query": "query Mine { search(type: ISSUE) { nodes { id } } }" });
         assert!(!is_write(&post(query)), "a GraphQL query shares nothing it should not");

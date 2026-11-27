@@ -16,6 +16,7 @@
 //! [`app_with`] on providers of the test's own.
 
 use std::cell::Cell;
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -500,22 +501,26 @@ impl SharingWindow {
 pub(super) struct NeighbourWrites(u64);
 
 impl NeighbourWrites {
-    /// Asserts a count of `joined` requests when every GET joined, of which `may_join` GETs joined
-    /// one request in flight under one key. Without a neighbour's write the count is exact. With
-    /// one, each GET that did not join started a request of its own, which the later ones join
-    /// unless another write finished: so every extra request takes a write of its own, and the
-    /// count lies between `joined` and `joined` plus the fewer of the writes and `may_join`.
-    pub(super) fn assert_count(&self, counted: usize, joined: usize, may_join: usize, what: &str) {
-        if self.0 == 0 {
-            assert_eq!(counted, joined, "{what}");
-            return;
-        }
+    /// The request counts that hold when `joined` requests go out while every GET joins, of which
+    /// `may_join` GETs join one request in flight under one key. Without a neighbour's write the
+    /// count is exact. With one, each GET that did not join started a request of its own, which
+    /// the later ones join unless another write finished: so every extra request takes a write of
+    /// its own, and the count lies between `joined` and `joined` plus the fewer of the writes and
+    /// `may_join`.
+    fn allowed(&self, joined: usize, may_join: usize) -> RangeInclusive<usize> {
         let extra = usize::try_from(self.0).map_or(may_join, |writes| writes.min(may_join));
+        joined..=joined + extra
+    }
+
+    /// Asserts that `counted` requests went out; `joined` and `may_join` as in [`Self::allowed`].
+    pub(super) fn assert_count(&self, counted: usize, joined: usize, may_join: usize, what: &str) {
+        let allowed = self.allowed(joined, may_join);
         assert!(
-            (joined..=joined + extra).contains(&counted),
-            "{what}: {counted} requests, {joined} to {} expected, since {} writes of other tests \
-             ended the sharing inside the window",
-            joined + extra,
+            allowed.contains(&counted),
+            "{what}: {counted} requests, {} to {} expected; other tests finished {} writes inside \
+             the window",
+            allowed.start(),
+            allowed.end(),
             self.0
         );
     }
@@ -531,27 +536,23 @@ pub(super) fn has_cached_diff(harness: &Harness<'_, ReviewApp>, path: &str) -> b
     harness.state().pull_requests.iter().any(|(_, page)| page.has_cached_diff(path))
 }
 
+#[cfg(test)]
 mod tests {
-    use super::NeighbourWrites;
-
-    /// The counts of 0 to 4 requests that pass, for 1 request when all 2 GETs joined.
-    fn passing_counts(writes: u64) -> Vec<usize> {
-        (0..5)
-            .filter(|counted| {
-                std::panic::catch_unwind(|| {
-                    NeighbourWrites(writes).assert_count(*counted, 1, 2, "the detail");
-                })
-                .is_ok()
-            })
-            .collect()
-    }
+    use super::{NeighbourWrites, SharingWindow};
 
     /// Without a neighbour's write the count is exact; each write lets one more GET miss its join,
     /// up to the GETs that join, and never fewer requests are sent.
     #[test]
     fn a_neighbours_write_allows_one_request_more_each_up_to_the_joins() {
-        assert_eq!(passing_counts(0), [1]);
-        assert_eq!(passing_counts(1), [1, 2]);
-        assert_eq!(passing_counts(5), [1, 2, 3]);
+        assert_eq!(NeighbourWrites(0).allowed(1, 2), 1..=1);
+        assert_eq!(NeighbourWrites(1).allowed(1, 2), 1..=2);
+        assert_eq!(NeighbourWrites(5).allowed(1, 2), 1..=3);
+    }
+
+    /// A write of the test's own app is never taken for a neighbour's.
+    #[test]
+    #[should_panic(expected = "the app wrote to its host inside the window")]
+    fn a_write_to_the_own_host_inside_the_window_fails() {
+        SharingWindow::open(0).close(1);
     }
 }
