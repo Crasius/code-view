@@ -20,7 +20,7 @@ use review_store::checkouts::CheckoutRecord;
 use cv_runtime::background::{Background, TASK_LOST, Task, TaskPoll};
 use cv_runtime::route::PullRequestKey;
 use cv_widgets::numbers::counted;
-use cv_widgets::progress_log::{ProgressLog, timestamp};
+use cv_widgets::progress_log::{ProgressLog, redact, timestamp};
 
 /// How a checkout stands against the pull request's head the page last saw.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -238,7 +238,10 @@ impl Upkeep {
                 Change::Updated { key, head: result.head, log }
             }
             UpdateOutcome::Blocked(blocked) => {
-                log.push(format!("{now}  Not updated: {}", reason(&blocked, result.behind)));
+                log.push(redact(&format!(
+                    "{now}  Not updated: {}",
+                    reason(&blocked, result.behind)
+                )));
                 let status =
                     Status { behind: result.behind, blocked: Some(blocked), is_updating: false };
                 self.statuses.insert(key.clone(), status);

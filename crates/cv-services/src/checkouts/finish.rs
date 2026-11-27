@@ -22,7 +22,7 @@ use review_store::checkouts::{CheckoutKind, CheckoutRecord, WhenFinished};
 use cv_runtime::background::{Background, TASK_LOST, Task, TaskPoll};
 use cv_runtime::route::PullRequestKey;
 use cv_widgets::numbers::counted;
-use cv_widgets::progress_log::timestamp;
+use cv_widgets::progress_log::{redact, timestamp};
 
 /// What a finished pull request's checkout gets.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,7 +195,7 @@ impl Finish {
                 Err(error) => format!("git refused: {error}"),
             };
             let now = timestamp(time::OffsetDateTime::now_utc());
-            let line = format!("{now}  Pull request done; worktree kept: {reason}");
+            let line = redact(&format!("{now}  Pull request done; worktree kept: {reason}"));
             self.offers.insert(key.clone(), Offer { kept: Some(reason) });
             changes.push(Change::Kept { key, line });
         }
@@ -222,9 +222,13 @@ fn kept_reason(keep: &Keep) -> String {
 mod tests {
     use std::path::PathBuf;
 
+    use review_git::checkout::CheckoutError;
     use review_store::checkouts::{CheckoutKind, CheckoutRecord, OpenWith, WhenFinished};
 
-    use super::{Decision, decide};
+    use super::{Change, Decision, Finish, decide};
+    use cv_runtime::background::Background;
+    use cv_runtime::route::PullRequestKey;
+    use cv_testkit::poll_until;
 
     fn record(kind: CheckoutKind, merged_here: bool) -> CheckoutRecord {
         CheckoutRecord {
@@ -264,5 +268,31 @@ mod tests {
             assert_eq!(decide(WhenFinished::Ask, &clone), Decision::Forget);
             assert_eq!(decide(WhenFinished::Keep, &clone), Decision::Keep);
         }
+    }
+
+    /// Regression: the `Kept` line went to the log as git wrote it, so "Copy log" carried a token
+    /// in a remote URL that the screen hid.
+    #[test]
+    fn a_kept_line_is_stored_redacted() {
+        let background = Background::new(egui::Context::default());
+        let key = PullRequestKey {
+            connection_id: "gh".into(),
+            repository_key: "acme/app".into(),
+            number: 7,
+        };
+        let refused = "fatal: unable to access https://ci:ghp_secret123@github.com/acme/app";
+        let error = CheckoutError::Git(refused.into());
+        let mut finish = Finish::default();
+        finish.removals.insert(key.clone(), background.spawn(async move { Err(error) }));
+        let mut changes = Vec::new();
+        poll_until("the removal's end", || {
+            changes.extend(finish.poll());
+            !changes.is_empty()
+        });
+        let [Change::Kept { line, .. }] = changes.as_slice() else {
+            panic!("the worktree stays when git refuses");
+        };
+        assert!(line.contains("worktree kept: git refused"), "{line}");
+        assert!(!line.contains("ghp_secret123"), "{line}");
     }
 }
