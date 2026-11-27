@@ -26,6 +26,8 @@ mod run_header;
 mod run_view;
 #[cfg(test)]
 mod run_view_check;
+#[cfg(test)]
+mod runs_share_check;
 pub mod stage_bars;
 #[cfg(test)]
 mod stage_pan_check;
@@ -143,7 +145,7 @@ impl PipelinesTab {
     /// The breadcrumb levels below the pull request, each with its link's tooltip: "Pipelines",
     /// the run, the open job.
     pub fn trail(&self, session: &PullRequestSession) -> Vec<(String, &'static str)> {
-        let Some(run) = self.selected(session) else {
+        let Some(run) = session.runs.ready().and_then(|runs| self.selected(runs)) else {
             return Vec::new();
         };
         let pipelines = ("Pipelines".to_owned(), "Back to the checks");
@@ -169,25 +171,25 @@ impl PipelinesTab {
         }
     }
 
-    fn selected<'a>(&self, session: &'a PullRequestSession) -> Option<&'a PipelineRun> {
-        let id = self.selected_run.as_deref()?;
-        session.runs.ready()?.iter().find(|run| run.id == id)
+    /// The selected run among `runs`, unless the checks table shows.
+    fn selected<'a>(&self, runs: &'a [PipelineRun]) -> Option<&'a PipelineRun> {
+        let id = self.selected_run.as_deref().filter(|_| self.page != Page::Checks)?;
+        runs.iter().find(|run| run.id == id)
     }
 
     pub fn show(&mut self, ui: &mut Ui, session: &mut PullRequestSession, services: &mut Services) {
         self.log.release_unless(self.page == Page::Log, services);
         self.reruns.poll(session, services);
         follow_running(ui.ctx(), session, services);
-        // What the page asks of the session goes first, so the runs and stages read below stay
-        // borrowed from it for the rest of the frame.
-        let shown_run = self.selected(session).filter(|_| self.page != Page::Checks).cloned();
-        match &shown_run {
+        let ready = session.runs.ready().cloned();
+        let shown_run = ready.as_deref().and_then(|runs| self.selected(runs));
+        match shown_run {
             Some(run) => session.want_stages(run, services),
             // Jobs are rows too: the table waits for the head runs' jobs, so rows never shift in
             // later. An older run's jobs load when it is opened and are rows from then on.
             None => session.want_head_stages(services),
         }
-        let runs = match (session.runs.ready(), session.runs.error()) {
+        let runs = match (ready.as_deref(), session.runs.error()) {
             (Some(runs), _) => runs,
             (None, Some(message)) => {
                 let message = message.to_owned();
@@ -231,7 +233,7 @@ impl PipelinesTab {
             self.checks_page(ui, runs, session, services);
             return;
         };
-        match self.show_run(ui, &run, runs, session, services) {
+        match self.show_run(ui, run, runs, session, services) {
             Some(SessionAsk::ReloadStages) => session.reload_stages(&run.id, services),
             Some(SessionAsk::Attempt(target)) => session.want_attempt(&run.id, &target, services),
             None => {}
@@ -670,7 +672,7 @@ pub fn follow_running(ctx: &egui::Context, session: &mut PullRequestSession, ser
 /// Every run and its jobs as far as their stages are known, in the table's order.
 fn all_checks<'a>(runs: &'a [PipelineRun], session: &'a PullRequestSession) -> Vec<Check<'a>> {
     let mut checks =
-        checks::list(runs, |run| session.stages(&run.id).and_then(Live::ready).map(Vec::as_slice));
+        checks::list(runs, |run| session.stages(&run.id).and_then(Live::ready).map(AsRef::as_ref));
     checks::sort(&mut checks);
     checks
 }

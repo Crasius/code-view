@@ -18,7 +18,7 @@
 //! polling is the only way to follow a run live.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use cv_base::platform::is_window_active;
@@ -215,7 +215,7 @@ pub fn pipeline_poll_due(
     ctx: &egui::Context,
     scheduler: &RefreshScheduler,
     key: &str,
-    runs: &Live<Vec<PipelineRun>>,
+    runs: &Live<Arc<[PipelineRun]>>,
     has_token: bool,
 ) -> bool {
     let is_running =
