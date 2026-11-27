@@ -30,8 +30,8 @@ use std::sync::Arc;
 
 use review_store::{PullRequestStart, PullRequestTab as Tab};
 
-pub use self::checkout::reveal as reveal_checkout;
 use self::checkout::CheckoutButton;
+pub use self::checkout::reveal as reveal_checkout;
 use self::header_reveal::HeaderReveal;
 use self::live::{Activity, Drafts, LiveAction, LiveUpdates};
 use self::merge_button::MergeButton;

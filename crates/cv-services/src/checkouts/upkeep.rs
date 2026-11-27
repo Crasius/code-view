@@ -147,8 +147,9 @@ impl Upkeep {
         let own = record.is_own_branch.then(|| (record.branch.clone(), record.head.clone()));
         self.removal_states.insert(key.clone(), RemovalState::Removing);
         let task = background.spawn(async move {
-            let own_branch =
-                own.as_ref().map(|(name, tip)| OwnBranch { name: name.as_str(), tip: tip.as_str() });
+            let own_branch = own
+                .as_ref()
+                .map(|(name, tip)| OwnBranch { name: name.as_str(), tip: tip.as_str() });
             checkout::remove_worktree(&clone, &path, changes, own_branch).await
         });
         self.removals.insert(key.clone(), task);
