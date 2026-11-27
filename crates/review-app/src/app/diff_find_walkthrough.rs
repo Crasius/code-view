@@ -155,7 +155,7 @@ fn the_find_widget_searches_the_focused_pane() {
 }
 
 /// Match case by its toggle and by Alt+C over the right pane, which finds 3 "needle" (see
-/// [`code_file`].
+/// [`code_file`]).
 fn switch_options(harness: &mut Harness<'_, ReviewApp>, right: Pos2) {
     let three = |count: &str| count.ends_with(" of 3") || count == "3 matches";
     open_find(harness, right);

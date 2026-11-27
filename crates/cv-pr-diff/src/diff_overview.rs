@@ -92,7 +92,7 @@ pub fn build(diff: &FileDiff, rows: &[Row], layout: Layout) -> Overview {
 }
 
 /// What the user did on the strip this frame.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub struct StripPick {
     /// The scroll offset picked: clicked or dragged to (within the rows), or wheeled to with the
     /// pointer over the strip (into the room past the end too).
