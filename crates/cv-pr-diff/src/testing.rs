@@ -14,7 +14,8 @@ use cv_syntax::grammar;
 use cv_syntax::highlight::{self, LineSpans};
 use egui_kittest::Harness;
 use review_core::{
-    NewThread, ProviderKind, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus, UserIdentity,
+    DiffSide, NewThread, ProviderKind, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus,
+    UserIdentity,
 };
 use review_git::FileDiff;
 use review_store::{PaneSizes, ThemePreference};
@@ -132,10 +133,16 @@ impl fmt::Display for Cart {
 }
 "#;
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent inputs of the diff view a test sets one by one (contents arrived, wrap, comments outside hunks, show comments), no state machine"
+)]
 pub struct Fixture {
     pub view: DiffView,
     pub diff: Arc<FileDiff>,
     pub contents: FileContents,
+    /// The file's contents arrived. Without them the view shows the diff's own lines.
+    pub has_contents: bool,
     pub threads: Vec<ReviewThread>,
     pub layout: Layout,
     pub theme: ThemePreference,
@@ -157,18 +164,77 @@ pub struct Fixture {
     pub find: FindInputs,
 }
 
+impl Fixture {
+    /// Shows the diff the way the Files tab does and answers what the view asks for.
+    pub fn show(&mut self, ui: &mut egui::Ui) -> Option<DiffEvent> {
+        let Self {
+            view,
+            diff,
+            contents,
+            has_contents,
+            threads,
+            layout,
+            threads_ui,
+            split,
+            can_comment_outside_hunks,
+            wrap,
+            font_size,
+            show_threads,
+            find,
+            ..
+        } = self;
+        let threads: Vec<&ReviewThread> = threads.iter().collect();
+        let inputs = DiffInputs {
+            diff,
+            contents: has_contents.then_some(&*contents),
+            threads: &threads,
+            layout: *layout,
+            font_size: *font_size,
+            wrap: *wrap,
+            can_comment: true,
+            can_comment_outside_hunks: *can_comment_outside_hunks,
+            path: PATH,
+            old_path: None,
+            line_spans: None,
+            show_threads: *show_threads,
+            find: *find,
+        };
+        view.show(ui, &inputs, split, threads_ui)
+    }
+}
+
 pub fn fixture(layout: Layout) -> Fixture {
+    fixture_of(layout, Some(OLD), Some(NEW))
+}
+
+/// The unified diff of two texts as the app parses it, with 3 lines of context.
+pub fn diff_of(old: &str, new: &str) -> Arc<FileDiff> {
     let unified =
-        similar::TextDiff::from_lines(OLD, NEW).unified_diff().context_radius(3).to_string();
+        similar::TextDiff::from_lines(old, new).unified_diff().context_radius(3).to_string();
+    Arc::new(FileDiff::parse_unified(unified.as_bytes()))
+}
+
+/// The whole file as one side, as the Files tab shows an added or deleted file.
+pub fn whole_file_fixture(side: DiffSide) -> Fixture {
+    let layout = Layout::WholeFile(side);
+    match side {
+        DiffSide::Old => fixture_of(layout, Some(OLD), None),
+        DiffSide::New => fixture_of(layout, None, Some(NEW)),
+    }
+}
+
+/// [`fixture`] for other texts: `None` is a side the file does not have.
+pub fn fixture_of(layout: Layout, old: Option<&str>, new: Option<&str>) -> Fixture {
     Fixture {
         view: DiffView::default(),
-        diff: Arc::new(FileDiff::parse_unified(unified.as_bytes())),
+        diff: diff_of(old.unwrap_or_default(), new.unwrap_or_default()),
         contents: FileContents {
-            old: Some(side(OLD)),
-            new: Some(side(NEW)),
+            old: old.map(side),
+            new: new.map(side),
             coloring: Coloring::Done,
             error: None,
         },
+        has_contents: true,
         threads: Vec::new(),
         layout,
         theme: ThemePreference::Light,
@@ -198,8 +264,13 @@ pub fn side(source: &str) -> SideContents {
 }
 
 pub fn harness(fixture: Fixture) -> Harness<'static, Fixture> {
+    harness_sized(fixture, [1180.0, 760.0])
+}
+
+/// [`harness`] with a window of another `size`.
+pub fn harness_sized(fixture: Fixture, size: [f32; 2]) -> Harness<'static, Fixture> {
     Harness::builder()
-        .with_size([1180.0, 760.0])
+        .with_size(size)
         .with_context_setup(|ctx| {
             theme::fonts::install(ctx);
             theme::motion::set_reduced(ctx, false);
@@ -215,23 +286,7 @@ pub fn harness(fixture: Fixture) -> Harness<'static, Fixture> {
 
 /// Shows the fixture's diff the way the files tab does and records what the view asks for.
 pub fn show_diff(ui: &mut egui::Ui, state: &mut Fixture) {
-    let threads: Vec<&ReviewThread> = state.threads.iter().collect();
-    let inputs = DiffInputs {
-        diff: &state.diff,
-        contents: Some(&state.contents),
-        threads: &threads,
-        layout: state.layout,
-        font_size: state.font_size,
-        wrap: state.wrap,
-        can_comment: true,
-        can_comment_outside_hunks: state.can_comment_outside_hunks,
-        path: PATH,
-        old_path: None,
-        line_spans: None,
-        show_threads: state.show_threads,
-        find: state.find,
-    };
-    if let Some(event) = state.view.show(ui, &inputs, &mut state.split, &mut state.threads_ui) {
+    if let Some(event) = state.show(ui) {
         state.events.push(match event {
             DiffEvent::Thread(_) => "thread",
             DiffEvent::Create { thread, .. } => {

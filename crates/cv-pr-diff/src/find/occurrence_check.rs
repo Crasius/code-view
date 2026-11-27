@@ -3,17 +3,15 @@
 //! collapsed unchanged lines; blanks, several lines and the setting turned off mark none. A query
 //! in the find widget leaves them be: its hits show beside them in another colour.
 
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use egui::{Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
-use review_git::FileDiff;
 use review_store::ThemePreference;
 
 use crate::find::bar::last_bar;
 use crate::find::text::OccurrenceRows;
-use crate::testing::{Fixture, fixture, harness, settle, side};
+use crate::testing::{Fixture, fixture_of, harness, settle};
 use cv_base::theme;
 use cv_code::diff_rows::Layout;
 use cv_code::find_paint::{self as paint, MarkLook, last_marks};
@@ -41,13 +39,7 @@ fn text(changed: &str) -> String {
 
 fn occurrence_fixture() -> Fixture {
     let (old, new) = (text("    let total = count + 1;"), text("    let total = count * 2;"));
-    let unified =
-        similar::TextDiff::from_lines(&old, &new).unified_diff().context_radius(3).to_string();
-    let mut fixture = fixture(Layout::SideBySide);
-    fixture.diff = Arc::new(FileDiff::parse_unified(unified.as_bytes()));
-    fixture.contents.old = Some(side(&old));
-    fixture.contents.new = Some(side(&new));
-    fixture
+    fixture_of(Layout::SideBySide, Some(&old), Some(&new))
 }
 
 fn button(pos: Pos2, pressed: bool) -> Event {
@@ -180,13 +172,7 @@ fn contract_fixture() -> Fixture {
             .collect()
     };
     let (old, new) = (text("1"), text("2"));
-    let unified =
-        similar::TextDiff::from_lines(&old, &new).unified_diff().context_radius(3).to_string();
-    let mut fixture = fixture(Layout::SideBySide);
-    fixture.diff = Arc::new(FileDiff::parse_unified(unified.as_bytes()));
-    fixture.contents.old = Some(side(&old));
-    fixture.contents.new = Some(side(&new));
-    fixture
+    fixture_of(Layout::SideBySide, Some(&old), Some(&new))
 }
 
 /// The owner's gesture: with a find query showing its hits, drag over an identifier in a context
