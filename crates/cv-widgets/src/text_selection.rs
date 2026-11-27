@@ -204,14 +204,14 @@ impl<P: Copy + Eq> Selection<P> {
 }
 
 /// Characters `from..to` of `text` (clamped).
-pub fn char_slice(text: &str, from: usize, to: usize) -> &str {
+pub(crate) fn char_slice(text: &str, from: usize, to: usize) -> &str {
     let byte = |column: usize| text.char_indices().nth(column).map_or(text.len(), |(byte, _)| byte);
     let (start, end) = (byte(from), byte(to.max(from)));
     &text[start..end]
 }
 
 /// The word (letters, digits, `_`), run of spaces or single other character at `column`.
-pub fn word_at(text: &str, column: usize) -> Range<usize> {
+pub(crate) fn word_at(text: &str, column: usize) -> Range<usize> {
     let characters: Vec<char> = text.chars().collect();
     if characters.is_empty() {
         return 0..0;
@@ -279,7 +279,7 @@ pub enum LineGrid<'a> {
 
 impl<'a> LineGrid<'a> {
     /// The grid of `galley` as painted: stamped galleys (no glyphs) on columns `char_width` apart.
-    pub fn of_galley(galley: &'a Galley, char_width: f32) -> Self {
+    pub(crate) fn of_galley(galley: &'a Galley, char_width: f32) -> Self {
         if galley.rows.iter().all(|placed| placed.row.glyphs.is_empty()) {
             Self::Mono { advance: char_width, columns: usize::MAX, per_row: None }
         } else {

@@ -54,7 +54,7 @@ pub fn fill(palette: &Palette, is_current: bool) -> Color32 {
 }
 
 /// The hits `marks` of `text`, under its characters: a band per visual row they cover.
-pub fn paint_marks(
+pub(crate) fn paint_marks(
     painter: &Painter,
     grid: &Grid,
     text: &str,
@@ -115,7 +115,10 @@ pub fn reveal_offset(columns: Range<usize>, advance: f32, width: f32, offset: f3
 }
 
 /// The changed-word bands `words` without the hits' bytes, so the hits show over them.
-pub fn words_outside<'a>(words: &'a [Range<usize>], marks: &[FindMark]) -> Cow<'a, [Range<usize>]> {
+pub(crate) fn words_outside<'a>(
+    words: &'a [Range<usize>],
+    marks: &[FindMark],
+) -> Cow<'a, [Range<usize>]> {
     if marks.is_empty() || words.is_empty() {
         return Cow::Borrowed(words);
     }

@@ -171,7 +171,11 @@ fn load_variable_ui(fonts: &mut FontDefinitions, variable: &VariableUiFont) -> b
 }
 
 /// Registers the first of `faces` that can be read as the font `name`; returns the name.
-pub fn load_first(fonts: &mut FontDefinitions, name: &str, faces: &[FontFace]) -> Option<String> {
+pub(crate) fn load_first(
+    fonts: &mut FontDefinitions,
+    name: &str,
+    faces: &[FontFace],
+) -> Option<String> {
     let (bytes, index) = faces
         .iter()
         .find_map(|face| std::fs::read(&face.path).ok().map(|bytes| (bytes, face.index)))?;

@@ -31,17 +31,17 @@ const TOOLTIP_DELAY: f64 = 0.5;
 
 /// Which caption button the pointer is over and which one it holds down.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ButtonPointer {
+pub(crate) struct ButtonPointer {
     pub hovered: Option<CaptionButton>,
     pub pressed: Option<CaptionButton>,
 }
 
 impl ButtonPointer {
-    pub const NONE: ButtonPointer = ButtonPointer { hovered: None, pressed: None };
+    pub(crate) const NONE: ButtonPointer = ButtonPointer { hovered: None, pressed: None };
 }
 
 /// Adds the system's caption glyph font as its own family, when one is installed.
-pub fn register_glyph_font(fonts: &mut FontDefinitions) {
+pub(crate) fn register_glyph_font(fonts: &mut FontDefinitions) {
     let faces = GLYPH_FONT_FILES.map(super::system_font);
     if let Some(name) = fonts::load_first(fonts, GLYPH_FAMILY, &faces) {
         fonts.families.insert(FontFamily::Name(GLYPH_FAMILY.into()), vec![name]);
@@ -58,7 +58,7 @@ fn glyph_font(size: f32) -> Option<FontId> {
 
 /// Paints the three buttons at the right end of `bar`; returns their rects (minimize, maximize,
 /// close) for the hit test.
-pub fn show(ui: &mut Ui, bar: Rect) -> [Rect; 3] {
+pub(crate) fn show(ui: &mut Ui, bar: Rect) -> [Rect; 3] {
     let ctx = ui.ctx().clone();
     let (is_maximized, is_active) = ctx.input(|input| {
         let viewport = input.viewport();

@@ -56,7 +56,7 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use review_store::{AppPaths, TokenVault};
 
 /// How long one test may keep its services in real time; `REVIEW_TEST_WATCHDOG_SECS` overrides it.
-/// The slowest walkthrough (the clipping audit) takes about a minute in a debug build.
+/// The slowest walkthrough (`layout_audit_walkthrough`) takes about a minute in a debug build.
 const WATCHDOG_LIMIT: Duration = Duration::from_secs(300);
 
 /// How many tests may build fixture repositories and run the app's services at once; our own
@@ -230,9 +230,9 @@ impl Watchdog {
 }
 
 /// Lets threads outside the test thread (the background runtime, a mock server, a renderer)
-/// make progress in real time. Polling loops call it between checks. Some walkthroughs also call
-/// it for a fixed time with nothing to poll (an idle window, a frame interval); those are open
-/// deviations from RS-TEST-06 (inject the clock), not covered by this helper.
+/// make progress in real time. Polling loops call it between checks. A walkthrough that calls it
+/// for a fixed time with nothing to poll (an idle window, a frame interval) deviates from
+/// RS-TEST-06; an injected clock would remove that wait.
 #[expect(
     clippy::disallowed_methods,
     reason = "the walkthroughs drive real background threads and mock servers, which progress only in real time"

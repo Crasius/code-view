@@ -8,7 +8,7 @@ pub fn relative(moment: OffsetDateTime) -> String {
     relative_to(moment, OffsetDateTime::now_utc())
 }
 
-pub fn relative_to(moment: OffsetDateTime, now: OffsetDateTime) -> String {
+pub(crate) fn relative_to(moment: OffsetDateTime, now: OffsetDateTime) -> String {
     let seconds = (now - moment).whole_seconds();
     match seconds {
         ..60 => "just now".into(),
@@ -29,7 +29,7 @@ pub fn exact(moment: OffsetDateTime) -> String {
         .expect("formatting a UTC OffsetDateTime with a static description cannot fail")
 }
 
-/// "1h 4m", "14m 25s", "12s": short enough for table columns, the same everywhere.
+/// "1h 4m", "14m 25s", "12s": short enough for table columns.
 pub fn duration(start: OffsetDateTime, end: OffsetDateTime) -> String {
     let seconds = (end - start).whole_seconds().max(0);
     match seconds {

@@ -437,7 +437,7 @@ fn paint_code(
 }
 
 /// Where the columns of a line sit: `per_row` columns per visual row when it wraps.
-pub struct Grid {
+pub(crate) struct Grid {
     pub origin: Pos2,
     pub advance: f32,
     pub line_height: f32,
@@ -446,7 +446,7 @@ pub struct Grid {
 
 impl Grid {
     /// Top-left of `column` (tabs expanded).
-    pub fn cell(&self, column: usize) -> Pos2 {
+    pub(crate) fn cell(&self, column: usize) -> Pos2 {
         let (row, column) = match self.per_row {
             Some(per_row) => (column / per_row, column % per_row),
             None => (0, column),

@@ -9,7 +9,7 @@ use review_git::{FileDiff, LineKind};
 pub const SUMMARY_CONTEXT: u32 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CompactRow {
+pub(crate) enum CompactRow {
     /// A diff line, by its index in [`FileDiff::lines`].
     Line(u32),
     /// Unchanged lines left out between two shown runs.
@@ -17,7 +17,7 @@ pub enum CompactRow {
 }
 
 /// The rows of `diff` in inline order with `context` unchanged lines around each change.
-pub fn compact(diff: &FileDiff, context: u32) -> Vec<CompactRow> {
+pub(crate) fn compact(diff: &FileDiff, context: u32) -> Vec<CompactRow> {
     let lines = diff.lines();
     let is_change = |kind: LineKind| matches!(kind, LineKind::Added | LineKind::Deleted);
     // Unchanged lines since the last change of the same hunk, and until the next one.

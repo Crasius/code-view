@@ -12,7 +12,7 @@ pub const FAST: f32 = 0.12;
 /// Selection changes, sliding indicators.
 pub const MEDIUM: f32 = 0.2;
 /// Content fading in after it loaded.
-pub const REVEAL: f32 = 0.22;
+pub(crate) const REVEAL: f32 = 0.22;
 
 const REDUCED_ID: &str = "review.motion.reduced";
 

@@ -20,7 +20,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 /// How the launcher asked the first window to show (`STARTUPINFO.wShowWindow`), `None` when it
 /// left the choice to the app.
-pub fn launch_show_command() -> Option<SHOW_WINDOW_CMD> {
+pub(crate) fn launch_show_command() -> Option<SHOW_WINDOW_CMD> {
     let mut info = STARTUPINFOW { cb: size_of::<STARTUPINFOW>() as u32, ..Default::default() };
     // SAFETY: fills the local struct, which carries its size and lives for the call.
     unsafe { GetStartupInfoW(&raw mut info) };
@@ -30,7 +30,7 @@ pub fn launch_show_command() -> Option<SHOW_WINDOW_CMD> {
 /// Whether the launcher wants the window active: as for a plain start (Explorer, a shortcut,
 /// `Start-Process`) unless it named a show command that leaves the window inactive (a start in
 /// the background, `scripts/start-background.ps1`).
-pub fn launch_activates(show: Option<SHOW_WINDOW_CMD>) -> bool {
+pub(crate) fn launch_activates(show: Option<SHOW_WINDOW_CMD>) -> bool {
     !matches!(
         show,
         Some(SW_HIDE | SW_SHOWNOACTIVATE | SW_MINIMIZE | SW_SHOWMINNOACTIVE | SW_SHOWNA)

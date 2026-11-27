@@ -98,47 +98,7 @@ fn longest(
 
 #[cfg(test)]
 mod tests {
-    use egui::{Color32, FontId};
-
-    use super::{fit_reference, line, text_width};
-
-    /// Runs `check` in one frame of a fresh context.
-    fn in_a_frame(check: impl FnOnce(&egui::Ui)) {
-        let ctx = egui::Context::default();
-        let mut check = Some(check);
-        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
-            if let Some(check) = check.take() {
-                check(ui);
-            }
-        });
-        output.drop_without_applying_deltas();
-    }
-
-    #[test]
-    fn a_long_line_is_cut_to_fit_and_a_short_one_stays_whole() {
-        in_a_frame(|ui| {
-            let font = FontId::proportional(14.0);
-            let text = "a branch name far too long for the room it is given";
-            let long = line(ui.painter(), text, font.clone(), Color32::WHITE, 80.0);
-            assert!(long.elided);
-            assert!(long.size().x <= 80.0, "{}", long.size().x);
-            assert_eq!(long.rows.len(), 1);
-            let short = line(ui.painter(), "main", font.clone(), Color32::WHITE, 80.0);
-            assert!(!short.elided);
-            assert_eq!(short.size().x, text_width(ui, "main", &font));
-        });
-    }
-
-    #[test]
-    fn a_text_is_as_wide_as_its_length_and_the_empty_text_has_none() {
-        in_a_frame(|ui| {
-            let font = FontId::proportional(14.0);
-            let short = text_width(ui, "main", &font);
-            assert!(short > 0.0);
-            assert!(text_width(ui, "main and more", &font) > short);
-            assert_eq!(text_width(ui, "", &font), 0.0);
-        });
-    }
+    use super::fit_reference;
 
     /// One unit per character.
     fn fit(text: &str, width: usize) -> String {

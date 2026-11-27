@@ -111,7 +111,7 @@ pub enum Weight {
 
 impl Weight {
     /// The font family that draws this weight (registered by [`super::fonts::install`]).
-    pub fn family(self) -> FontFamily {
+    pub(crate) fn family(self) -> FontFamily {
         FontFamily::Name(
             match self {
                 Weight::Regular => "icon-regular",
@@ -128,7 +128,7 @@ const BOLD_BELOW: f32 = 18.0;
 
 /// Weight for an icon of `size` in the current theme: Fill when it marks the selected or
 /// switched-on item, else the resting weight of the module docs' table.
-pub fn weight(palette: &Palette, size: f32, is_active: bool) -> Weight {
+pub(crate) fn weight(palette: &Palette, size: f32, is_active: bool) -> Weight {
     if is_active {
         Weight::Fill
     } else if palette.is_dark || size < BOLD_BELOW {

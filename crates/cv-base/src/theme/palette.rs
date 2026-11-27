@@ -93,10 +93,10 @@ pub enum FileHue {
 }
 
 impl FileHue {
-    pub const COUNT: usize = 11;
+    pub(crate) const COUNT: usize = 11;
     /// For the contrast check of every hue.
-    #[cfg(any(test, feature = "test-support"))]
-    pub const ALL: [FileHue; FileHue::COUNT] = [
+    #[cfg(test)]
+    pub(crate) const ALL: [FileHue; FileHue::COUNT] = [
         FileHue::Red,
         FileHue::Orange,
         FileHue::Amber,

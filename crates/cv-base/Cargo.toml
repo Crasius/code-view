@@ -15,7 +15,8 @@ doctest = false
 
 [features]
 # Test probes other crates' tests read (the Windows caption's hit-test regions, the long press,
-# every file hue). Enabled only from [dev-dependencies] and from the test-support features above.
+# the contrast helpers, the frame probes). Enabled only from [dev-dependencies] and from the
+# test-support features above.
 test-support = []
 # Only the frame pacing probe's wgpu mode (examples/frame_pacing.rs).
 wgpu = ["eframe/wgpu"]

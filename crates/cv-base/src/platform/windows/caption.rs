@@ -170,7 +170,7 @@ pub fn integrate(creation: &eframe::CreationContext<'_>) -> bool {
 }
 
 /// Which caption button the pointer is over or holds down.
-pub fn pointer() -> ButtonPointer {
+pub(crate) fn pointer() -> ButtonPointer {
     POINTER.get()
 }
 
