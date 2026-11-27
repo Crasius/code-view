@@ -124,7 +124,7 @@ mod tests {
         assert_eq!(input.events.len(), 2, "only the plain N was taken");
     }
 
-    /// Windows labels stay exactly what they were before the labels became per system.
+    /// Windows and Linux spell a shortcut as modifier names joined with `+`.
     #[cfg(not(target_os = "macos"))]
     #[test]
     fn labels_read_as_on_windows() {

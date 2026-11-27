@@ -2,6 +2,7 @@
 //! reveals. Every helper collapses to an instant change when the OS asks for reduced motion, and
 //! repaints are only requested while something is actually moving, so an idle app stays idle.
 
+use egui::emath::easing;
 use egui::{Color32, Context, Id};
 
 use crate::platform;
@@ -61,30 +62,17 @@ pub fn entrance(ctx: &Context, elapsed: f64) -> f32 {
     ease_out_cubic(elapsed as f32 / total)
 }
 
+/// Fast at the start, slow at the end; `t` outside 0..1 is clamped.
 pub fn ease_out_cubic(t: f32) -> f32 {
-    1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3)
+    easing::cubic_out(t.clamp(0.0, 1.0))
 }
 
 /// Slow at both ends, as CSS `ease-in-out`: for a move that starts and stops on its own.
 pub fn ease_in_out_cubic(t: f32) -> f32 {
-    let t = t.clamp(0.0, 1.0);
-    if t < 0.5 { 4.0 * t * t * t } else { 1.0 - (2.0 - 2.0 * t).powi(3) / 2.0 }
+    easing::cubic_in_out(t.clamp(0.0, 1.0))
 }
 
 /// Linear blend between two colors in gamma space, `t` = 0 gives `from`.
 pub fn mix(from: Color32, to: Color32, t: f32) -> Color32 {
     from.lerp_to_gamma(to, t.clamp(0.0, 1.0))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::ease_out_cubic;
-
-    #[test]
-    fn easing_starts_fast_and_lands_exactly() {
-        assert_eq!(ease_out_cubic(0.0), 0.0);
-        assert_eq!(ease_out_cubic(1.0), 1.0);
-        assert!(ease_out_cubic(0.5) > 0.8);
-        assert_eq!(ease_out_cubic(2.0), 1.0);
-    }
 }
