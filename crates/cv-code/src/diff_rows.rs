@@ -595,7 +595,11 @@ pub fn range_anchor(
 /// Where a code row's line sits in both files; a line missing from one file counts the line it
 /// comes before there (the hunk header gives the count at a hunk's top). `prefer_right` picks the
 /// line of a side-by-side row as for comments.
-pub fn file_positions(diff: &FileDiff, row: &Row, prefer_right: bool) -> Option<FilePositions> {
+pub(crate) fn file_positions(
+    diff: &FileDiff,
+    row: &Row,
+    prefer_right: bool,
+) -> Option<FilePositions> {
     match row.kind {
         RowKind::Expanded => Some(FilePositions { old: row.left?, new: row.right? }),
         RowKind::Line => {

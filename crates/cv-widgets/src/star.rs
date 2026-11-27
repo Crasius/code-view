@@ -53,11 +53,7 @@ pub fn button_at(ui: &mut Ui, rect: Rect, id: Id, is_on: bool, repository_key: &
         egui::WidgetInfo::selected(egui::Role::Button, true, is_on, name(repository_key))
     });
     let hover = row::hover_amount(ui, &response);
-    let fill = if response.is_pointer_button_down_on() {
-        palette.pressed
-    } else {
-        palette.hover.gamma_multiply(hover)
-    };
+    let fill = row::state_fill(ui, &response, egui::Color32::TRANSPARENT);
     ui.painter().rect_filled(rect, style::RADIUS_CONTROL, fill);
     paint(ui.painter(), &palette, rect.center(), icons::SIZE, is_on, hover);
     focus::ring(ui, &response, rect);

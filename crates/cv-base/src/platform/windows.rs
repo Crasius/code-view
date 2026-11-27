@@ -42,7 +42,7 @@ pub const TERMINALS: &[(TerminalChoice, &str)] = &[
 const TEXT_OPTICAL_SIZE: f32 = 10.5;
 
 /// The environment as started: GUI apps see the user's full `PATH` here.
-pub fn prepare_environment() {}
+pub(crate) fn prepare_environment() {}
 
 /// The window keeps its native frame; [`integrate_title_bar`] takes the caption off once it exists.
 /// It opens without taking the foreground when the launcher asked for that ([`startup`]).
@@ -97,7 +97,7 @@ pub fn open_terminal(dir: &Path, program: &str, args: &[String]) -> std::io::Res
 
 /// Segoe UI Variable (static Segoe UI on Windows 10), Cascadia Mono (Consolas before Windows 11),
 /// Segoe UI Emoji and Segoe UI Symbol.
-pub fn font_sources() -> FontSources {
+pub(crate) fn font_sources() -> FontSources {
     let faces = |files: &[&str]| files.iter().map(|file| system_font(file)).collect::<Vec<_>>();
     FontSources {
         variable_ui: Some(VariableUiFont {
@@ -113,7 +113,7 @@ pub fn font_sources() -> FontSources {
 }
 
 /// The caption buttons' glyph font.
-pub fn register_chrome_fonts(fonts: &mut FontDefinitions) {
+pub(crate) fn register_chrome_fonts(fonts: &mut FontDefinitions) {
     caption_buttons::register_glyph_font(fonts);
 }
 
@@ -126,7 +126,7 @@ fn system_font(file: &str) -> FontFace {
 
 /// "Animate controls and elements inside windows" is off (Settings → Accessibility → Visual
 /// effects → Animation effects).
-pub fn prefers_reduced_motion() -> bool {
+pub(crate) fn prefers_reduced_motion() -> bool {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW,
     };

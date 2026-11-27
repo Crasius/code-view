@@ -23,7 +23,7 @@ use crate::grammar::{self, Classifier, Grammar, WorkingSet};
 use crate::pool::{Pool, Priority};
 
 /// Longer lines (minified code, data blobs) stay plain: regex grammars can take seconds on them.
-pub const MAX_LINE_BYTES: usize = 5_000;
+pub(crate) const MAX_LINE_BYTES: usize = 5_000;
 /// Lines per delivered chunk: small enough that the top of a file colors at once and a file the
 /// user left stops coloring quickly.
 const CHUNK_LINES: usize = 250;

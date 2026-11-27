@@ -1410,6 +1410,7 @@ version = "0.1.2"
 dependencies = [
  "cv-base",
  "cv-runtime",
+ "cv-testkit",
  "egui",
  "review-grammars",
  "syntect",

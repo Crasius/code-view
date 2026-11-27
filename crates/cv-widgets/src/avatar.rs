@@ -25,14 +25,14 @@ pub const fn badge_reach(size: f32) -> f32 {
 /// How a vote marks an avatar: a ring and a badge in `color`, the badge with `icon`, filled or
 /// (approved with suggestions) outlined, so shape and icon tell the votes apart, not color alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct VoteMark {
+pub(crate) struct VoteMark {
     pub icon: &'static str,
     pub color: Color32,
     pub is_filled: bool,
 }
 
 /// The mark of `vote`; none for a reviewer who has not voted.
-pub fn vote_mark(vote: ReviewVote, palette: &Palette) -> Option<VoteMark> {
+pub(crate) fn vote_mark(vote: ReviewVote, palette: &Palette) -> Option<VoteMark> {
     let (icon, color, is_filled) = match vote {
         ReviewVote::None => return None,
         ReviewVote::Approved => (icons::CHECK, palette.success, true),
@@ -50,8 +50,8 @@ pub fn avatar(ui: &mut Ui, identity: &UserIdentity, size: f32) -> Response {
     response.on_hover_text(&identity.display_name)
 }
 
-/// [`avatar`] with its vote's ring and badge over `fill`, the surface it sits on; the ring reaches
-/// [`RING_REACH`] past the allocated square into the item spacing.
+/// [`avatar`] with its vote's ring and badge, cut out of `palette.surface` (the card or row it sits
+/// on); the ring reaches [`RING_REACH`] past the allocated square into the item spacing.
 pub fn voted(ui: &mut Ui, identity: &UserIdentity, size: f32, vote: ReviewVote) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
     let palette = cv_base::theme::palette(ui.ctx());
@@ -115,7 +115,7 @@ pub fn paint(painter: &Painter, center: Pos2, size: f32, identity: &UserIdentity
 /// The first letters of the first and last word. Directory names carry notes in brackets
 /// (`Weber, Jonas (Contractor)`, `[Web]\Contributors`); those are left out, and a word's letter is
 /// its first letter or digit, never the punctuation around it.
-pub fn initials(name: &str) -> String {
+pub(crate) fn initials(name: &str) -> String {
     let mut depth = 0_usize;
     let unbracketed: String = name
         .chars()

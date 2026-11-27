@@ -128,7 +128,7 @@ pub fn compiled(grammar: Grammar) -> Arc<WorkingSet> {
 }
 
 /// Claims the warm-up of `grammar`'s compiled set; false when it ran or runs already.
-pub fn begin_warm_up(grammar: Grammar) -> bool {
+pub(crate) fn begin_warm_up(grammar: Grammar) -> bool {
     let mut sets = compiled_sets();
     let Some(entry) = sets.iter_mut().find(|entry| entry.is_for(grammar)) else {
         return true;
@@ -142,7 +142,7 @@ pub fn begin_warm_up(grammar: Grammar) -> bool {
 
 /// The warm-up of `working`, the compiled set of `grammar`, left `compiled_bytes` on the heap.
 /// Counted, not timed: a busy machine compiles slower, not more.
-pub fn finish_warm_up(grammar: Grammar, working: &WorkingSet, compiled_bytes: usize) {
+pub(crate) fn finish_warm_up(grammar: Grammar, working: &WorkingSet, compiled_bytes: usize) {
     working.warm_up_bytes.store(SET_BYTES + compiled_bytes, AtomicOrdering::Relaxed);
     let mut sets = compiled_sets();
     if let Some(entry) = sets.iter_mut().find(|entry| entry.is_for(grammar)) {
@@ -459,7 +459,7 @@ fn parse_rules() -> Vec<(ScopeSelectors, TokenKind)> {
 /// Turns a scope stack into a [`TokenKind`] the way a VS Code theme picks a color: the rule whose
 /// selector matches the stack most specifically wins, the later rule on a tie. A file repeats a
 /// few thousand distinct stacks over and over, so each is matched against the rules only once.
-pub struct Classifier {
+pub(crate) struct Classifier {
     rules: &'static [(ScopeSelectors, TokenKind)],
     cache: HashMap<Vec<Scope>, TokenKind>,
 }
@@ -471,7 +471,7 @@ impl Default for Classifier {
 }
 
 impl Classifier {
-    pub fn kind(&mut self, stack: &[Scope]) -> TokenKind {
+    pub(crate) fn kind(&mut self, stack: &[Scope]) -> TokenKind {
         if let Some(kind) = self.cache.get(stack) {
             return *kind;
         }

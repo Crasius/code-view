@@ -21,7 +21,7 @@ const ARTWORKS: [(u32, &[u8]); 4] = [
 /// Paints the mark into `rect` (its shorter side, centred), snapped to whole physical pixels.
 /// Decorative: the text beside it (the window title, the breadcrumbs) names the app.
 /// `tint` multiplies it: white as drawn, translucent white to dim it (an inactive window).
-pub fn paint(ui: &Ui, rect: Rect, tint: Color32) {
+pub(crate) fn paint(ui: &Ui, rect: Rect, tint: Color32) {
     let pixels_per_point = ui.ctx().pixels_per_point();
     let pixels = (rect.width().min(rect.height()) * pixels_per_point).round().max(1.0) as u32;
     let side = pixels as f32 / pixels_per_point;

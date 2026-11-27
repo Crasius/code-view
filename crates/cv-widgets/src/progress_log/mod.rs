@@ -21,7 +21,7 @@ use crate::numbers::group_digits;
 use crate::{buttons, copy_chip};
 
 /// Older lines fall out of the log once it holds this many.
-pub const MAX_LINES: usize = 500;
+pub(crate) const MAX_LINES: usize = 500;
 const LOG_FONT_SIZE: f32 = 12.0;
 /// Extra space between log rows on top of the font's row height.
 const LOG_LEADING: f32 = 5.0;

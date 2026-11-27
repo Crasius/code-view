@@ -43,7 +43,7 @@ pub fn zeroed(value: u64) -> String {
 }
 
 /// `one` for a count of 1, else `many`.
-pub fn noun<'a>(count: usize, one: &'a str, many: &'a str) -> &'a str {
+pub(crate) fn noun<'a>(count: usize, one: &'a str, many: &'a str) -> &'a str {
     if count == 1 { one } else { many }
 }
 
@@ -85,7 +85,7 @@ pub fn number_prefix(kind: ProviderKind) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{compact_count, counted, digit_template, format_bytes, group_digits, noun, zeroed};
+    use super::{compact_count, digit_template, format_bytes, group_digits, zeroed};
 
     #[test]
     fn counts_stay_narrow() {
@@ -96,19 +96,6 @@ mod tests {
         assert_eq!(digit_template('−', 42), "−00");
         assert_eq!(zeroed(12_345), "00,000", "not capped");
         assert_eq!(zeroed(7), "0");
-    }
-
-    #[test]
-    fn counts_take_the_noun_of_their_number() {
-        for (count, file, files, search) in [
-            (0, "files", "0 files", "0 searches"),
-            (1, "file", "1 file", "1 search"),
-            (2, "files", "2 files", "2 searches"),
-        ] {
-            assert_eq!(noun(count, "file", "files"), file);
-            assert_eq!(counted(count, "file", "files"), files);
-            assert_eq!(counted(count, "search", "searches"), search);
-        }
     }
 
     #[test]

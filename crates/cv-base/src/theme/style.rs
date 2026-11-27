@@ -34,7 +34,7 @@ pub const ROW_COMPACT: f32 = 38.0;
 
 /// Full width of a scroll bar while hovered or dragged; at rest it is half as wide. Bars float
 /// over the content at the area's outer edge.
-pub const SCROLL_BAR_WIDTH: f32 = 8.0;
+pub(crate) const SCROLL_BAR_WIDTH: f32 = 8.0;
 /// Room padded pages keep free on the right for the floating scroll bar, whether it shows or not
 /// (CSS `scrollbar-gutter: stable`): the bar never touches a card, the gap between card and bar
 /// matches the left padding, and nothing moves when the content starts to overflow.
@@ -86,7 +86,7 @@ pub fn card_frame(palette: &Palette) -> egui::Frame {
 
 /// Applies the palette to egui's widget visuals: Fluent-like web controls, hairline borders,
 /// soft elevation, short eased transitions.
-pub fn apply(ctx: &egui::Context, palette: &Palette) {
+pub(crate) fn apply(ctx: &egui::Context, palette: &Palette) {
     let mut visuals = if palette.is_dark { Visuals::dark() } else { Visuals::light() };
     visuals.override_text_color = Some(palette.text);
     visuals.weak_text_color = Some(palette.text_secondary);

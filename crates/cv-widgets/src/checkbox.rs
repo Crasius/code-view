@@ -13,7 +13,7 @@ use crate::focus;
 
 /// Glyph size of a checkbox beside body text. Phosphor draws the box at about four fifths of the
 /// glyph, so the box shows about 19 px, the size of a web form checkbox.
-pub const SIZE: f32 = icons::SIZE_LARGE + style::SPACE_XS;
+pub(crate) const SIZE: f32 = icons::SIZE_LARGE + style::SPACE_XS;
 
 /// What a checkbox shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

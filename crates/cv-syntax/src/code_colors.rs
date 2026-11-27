@@ -121,15 +121,18 @@ pub fn computed_count(language: &str, code: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
+
+    use cv_testkit::WAIT_LIMIT;
 
     use super::*;
     use crate::color_worker::observe_repaints;
 
-    /// Asks for the colors again each time the coloring thread wakes `ctx`, for at most a minute.
+    /// Asks for the colors again each time the coloring thread wakes `ctx`, until it finished them;
+    /// fails after [`cv_testkit::WAIT_LIMIT`].
     fn wait_for(ctx: &egui::Context, language: &str, code: &str) -> Option<Arc<CodeColors>> {
         let repaints = observe_repaints(ctx);
-        let deadline = Instant::now() + Duration::from_secs(60);
+        let deadline = Instant::now() + WAIT_LIMIT;
         loop {
             if let Some(colors) = colors(ctx, language, code) {
                 return Some(colors);
@@ -137,10 +140,12 @@ mod tests {
             if computed_count(language, code) > 0 {
                 return colors(ctx, language, code);
             }
-            let left = deadline.checked_duration_since(Instant::now())?;
-            if repaints.recv_timeout(left).is_err() {
-                return colors(ctx, language, code);
-            }
+            let left = deadline.checked_duration_since(Instant::now()).unwrap_or_default();
+            assert!(
+                repaints.recv_timeout(left).is_ok(),
+                "the coloring thread did not answer for {language} within {} s",
+                WAIT_LIMIT.as_secs()
+            );
         }
     }
 
