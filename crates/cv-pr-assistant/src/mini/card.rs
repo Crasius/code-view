@@ -11,12 +11,12 @@ use cv_base::theme::{self, icons, motion, style};
 use cv_widgets::states::{self, Action as StateAction};
 use cv_widgets::{buttons, elide, row};
 use egui::{
-    Align, Align2, CursorIcon, FontId, Id, Key, Layout, Rect, RichText, Sense, TextEdit, Ui,
-    UiBuilder, Vec2, vec2,
+    Align, Align2, CursorIcon, FontId, Id, Key, Layout, Rect, Response, RichText, Sense, TextEdit,
+    Ui, UiBuilder, Vec2, vec2,
 };
 
-use super::super::chip::{self, Line};
-use super::Reference;
+use super::super::chip;
+use super::super::citations::CitedLines;
 use super::answer::{self, Pieces};
 
 /// The card's name in the accessibility tree.
@@ -65,7 +65,7 @@ pub struct Card<'a> {
     pub question: &'a str,
     pub answer: &'a str,
     pub is_linked: bool,
-    pub references: &'a [Reference],
+    pub references: &'a [CitedLines],
     pub current: Option<usize>,
     /// The fill's strength on the current reference.
     pub fill: f32,
@@ -89,14 +89,15 @@ pub fn count_label(current: Option<usize>, count: usize) -> String {
     }
 }
 
-/// The card laid out in `content` (its full size in its place), shown within `frame`.
+/// The card laid out in `content` (its full size in its place), shown within `frame`; what the
+/// user did, and the chip, whose menu [`super`] opens.
 pub fn card(
     ui: &mut Ui,
     content: Rect,
     view: &Card<'_>,
     pieces: &mut Pieces,
     composer: &mut String,
-) -> Option<Event> {
+) -> (Option<Event>, Response) {
     let inner = content.shrink(PADDING);
     let mut event = None;
     let header = Rect::from_min_size(inner.min, vec2(inner.width(), SLOT));
@@ -106,19 +107,21 @@ pub fn card(
     // Not selectable: a press on the title drags the card.
     let name = RichText::new("Assistant").font(theme::fonts::semibold_font(style::SECTION_SIZE));
     title.add(egui::Label::new(name).selectable(false));
-    title.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        ui.spacing_mut().item_spacing.x = style::SPACE_XS;
-        for (icon, label, picked) in [
-            (icons::X, CLOSE, Event::Close),
-            (icons::ARROWS_OUT_SIMPLE, FULL, Event::Full),
-            (icons::MINUS, SHRINK, Event::Shrink),
-        ] {
-            if icon_slot(ui, icon, label, true) {
-                event = Some(picked);
+    let chip = title
+        .with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = style::SPACE_XS;
+            for (icon, label, picked) in [
+                (icons::X, CLOSE, Event::Close),
+                (icons::ARROWS_OUT_SIMPLE, FULL, Event::Full),
+                (icons::MINUS, SHRINK, Event::Shrink),
+            ] {
+                if icon_slot(ui, icon, label, true) {
+                    event = Some(picked);
+                }
             }
-        }
-        chip::in_title(ui, view.chip, Line::Mini);
-    });
+            chip::in_title(ui, view.chip)
+        })
+        .inner;
 
     let below = Rect::from_min_max(egui::pos2(inner.left(), header.bottom()), inner.max);
     let mut footer =
@@ -142,7 +145,7 @@ pub fn card(
             let fill = current.map(|reference| (reference, view.fill));
             answer::show(ui, pieces, view.answer, view.is_linked, view.turn, fill);
         });
-    event
+    (event, chip)
 }
 
 /// From the bottom up: the follow-up, the activity, the reference bar and the notice above it.

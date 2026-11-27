@@ -7,8 +7,7 @@ use cv_base::theme;
 use cv_markdown::{self as markdown, Marks, RenderOptions, Units};
 use egui::{Color32, Ui};
 
-use super::super::citations;
-use super::Reference;
+use super::super::citations::{self, CitedLines};
 
 /// The pieces of the last answer laid out, and the Markdown source of each, kept for the text
 /// they were parsed from.
@@ -53,7 +52,7 @@ pub fn show(
     text: &str,
     linked: bool,
     turn: usize,
-    current: Option<(&Reference, f32)>,
+    current: Option<(&CitedLines, f32)>,
 ) {
     if !linked {
         markdown::render(ui, ("assistant_mini_answer", turn), text, RenderOptions::default());
@@ -77,7 +76,7 @@ pub fn show(
 
 /// Where the links to `reference` read in `plain`, the text a piece shows, found from `source`,
 /// the Markdown it was made from: each link's text in order, after the one before it.
-fn ranges_of(source: &str, plain: &str, reference: &Reference) -> Vec<std::ops::Range<usize>> {
+fn ranges_of(source: &str, plain: &str, reference: &CitedLines) -> Vec<std::ops::Range<usize>> {
     let mut ranges = Vec::new();
     let mut from = 0;
     for link in citations::linked(source) {
@@ -86,7 +85,7 @@ fn ranges_of(source: &str, plain: &str, reference: &Reference) -> Vec<std::ops::
         };
         let start = from + at;
         from = start + link.shown.len();
-        if reference.is(&link) {
+        if link.lines == *reference {
             ranges.push(start..from);
         }
     }
@@ -103,9 +102,9 @@ mod tests {
                       [src/a.rs:3](<codeview-cite:src/a.rs#3-3>), not \
                       [src/b.rs:3](<codeview-cite:src/b.rs#3-3>).";
         let plain = "Here src/a.rs:3 and again src/a.rs:3, not src/b.rs:3.";
-        let reference = Reference { path: "src/a.rs".into(), start: 3, end: 3 };
+        let reference = CitedLines { path: "src/a.rs".into(), first: 3, last: 3 };
         assert_eq!(ranges_of(source, plain, &reference), [5..15, 26..36]);
-        let other = Reference { path: "src/b.rs".into(), start: 3, end: 3 };
+        let other = CitedLines { path: "src/b.rs".into(), first: 3, last: 3 };
         let found = ranges_of(source, plain, &other);
         assert_eq!((found.len(), found.first().cloned()), (1, Some(42..52)));
     }

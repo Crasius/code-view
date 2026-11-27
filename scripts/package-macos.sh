@@ -19,9 +19,9 @@ if [[ "$(uname -s)" != Darwin ]]; then
   echo "This packaging command must run on macOS." >&2
   exit 1
 fi
-for tool in cargo rustc cargo-bundle codesign hdiutil ditto; do
+for tool in cargo rustc codesign hdiutil ditto; do
   if ! command -v "$tool" >/dev/null; then
-    echo "Missing $tool. Install Rust and Xcode command-line tools; install cargo-bundle with: cargo install cargo-bundle --version 0.12.0 --locked" >&2
+    echo "Missing $tool. Install Rust and the Xcode command-line tools." >&2
     exit 1
   fi
 done
@@ -35,7 +35,8 @@ case "$host" in
   x86_64-apple-darwin) arch=x86_64 ;;
   *) echo "Unsupported Rust host: $host" >&2; exit 1 ;;
 esac
-export MACOSX_DEPLOYMENT_TARGET=12.0
+MACOSX_DEPLOYMENT_TARGET="$(sh "$root/scripts/bundle-macos.sh" --deployment-target)"
+export MACOSX_DEPLOYMENT_TARGET
 cd "$root"
 if "$universal"; then
   if ! command -v rustup >/dev/null; then
@@ -49,12 +50,11 @@ if "$universal"; then
   arch=universal
 fi
 
-cd "$root/crates/review-app"
 cargo build --locked --release -p review-app --bin CodeView --target "$host"
-# cargo-bundle 0.12 can fail resetting colors in a dumb terminal (CI/logs).
-env -u TERM cargo bundle --release --format osx --target "$host" \
-  --binary-path "$CARGO_TARGET_DIR/$host/release/CodeView"
-app="$CARGO_TARGET_DIR/$host/release/bundle/osx/Code View.app"
+version="$(cargo pkgid -p review-app | sed 's/.*[#@]//')"
+bundle="$CARGO_TARGET_DIR/$host/release/bundle"
+sh "$root/scripts/bundle-macos.sh" "$bundle" "$CARGO_TARGET_DIR/$host/release/CodeView" "$version"
+app="$bundle/Code View.app"
 test -x "$app/Contents/MacOS/CodeView"
 /usr/bin/plutil -lint "$app/Contents/Info.plist"
 icon="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$app/Contents/Info.plist")"

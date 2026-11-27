@@ -10,7 +10,7 @@ use cv_services::Services;
 use review_core::short_sha;
 use review_store::{Chat, ChatQuote, TurnEnd, TurnKind};
 
-use super::{Action, Assistant, brief, checkout, links, sign_in_command, transcript};
+use super::{Action, Assistant, brief, checkout, links, transcript};
 
 /// Asks `question`, with the attached lines when `with_quote` (the mini chat's follow-up leaves
 /// them for the card); the prompt goes once checkout and session are there. Returns whether the
@@ -65,7 +65,7 @@ pub fn act(
         Action::ContinueInTerminal => continue_in_terminal(assistant, services),
         Action::SignIn => {
             let dir = terminal_dir(assistant, services);
-            let (program, args) = sign_in_command(assistant.chat.agent);
+            let (program, args) = review_agent::sign_in_command(assistant.chat.agent);
             open_terminal(services, &dir, &program, &args);
         }
         Action::CheckAgain => {

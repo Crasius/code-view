@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 
 use review_core::{AgentKind, ModelChoice};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::{AppPaths, atomic_file, stable_hash};
 
@@ -70,6 +70,7 @@ pub struct Chat {
     pub session_id: Option<String>,
     /// The head commit the agent's checkout is at.
     pub head: Option<String>,
+    #[serde(deserialize_with = "without_old_drafts")]
     pub turns: Vec<ChatTurn>,
 }
 
@@ -79,11 +80,19 @@ pub enum TurnKind {
     /// The user's question.
     #[default]
     Question,
-    /// A comment draft, which earlier versions asked for; kept so their saved conversations load,
-    /// and dropped there ([`AssistantChats::load`]).
-    Draft,
     /// The checkout moved to new commits and the agent was told.
     Update,
+}
+
+/// The stored turns without the comment drafts of earlier versions.
+fn without_old_drafts<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<ChatTurn>, D::Error> {
+    Vec::<serde_json::Value>::deserialize(deserializer)?
+        .into_iter()
+        .filter(|turn| turn.get("kind").and_then(serde_json::Value::as_str) != Some("Draft"))
+        .map(|turn| ChatTurn::deserialize(turn).map_err(de::Error::custom))
+        .collect()
 }
 
 /// One question and its answer.
@@ -93,7 +102,7 @@ pub struct ChatTurn {
     pub kind: TurnKind,
     /// What the user asked, as shown.
     pub question: String,
-    /// What was sent: the question with its quoted lines, or the draft and update requests.
+    /// What was sent: the question with its quoted lines, or the update request.
     pub prompt: String,
     /// Diff lines the question is about.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -127,10 +136,13 @@ pub struct ChatStep {
     /// The tool's name as the CLI reports it; empty for thinking.
     pub tool: String,
     pub detail: String,
-    /// `thinking`, or the tool's kind as `review-agent` names it (`read`, `search`, `run`,
-    /// `edit`, `other`); empty in chats saved before kinds.
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub kind: String,
+    /// `None` in chats saved before kinds, and for a kind this version does not know.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::settings::or_default"
+    )]
+    pub kind: Option<ChatStepKind>,
     /// The CLI's id of the call, which its end names; only while the turn runs.
     #[serde(skip)]
     pub id: String,
@@ -146,6 +158,18 @@ pub struct ChatStep {
     /// What the model wrote while thinking; only while the turn runs.
     #[serde(skip)]
     pub thinking: String,
+}
+
+/// What a step was, under the names the chat files store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ChatStepKind {
+    Thinking,
+    Read,
+    Search,
+    Run,
+    Edit,
+    Other,
 }
 
 #[expect(
@@ -179,14 +203,11 @@ pub enum TurnEnd {
 }
 
 impl AssistantChats {
-    /// The conversations of `pull_request_key` (`connection|repository|number`), without old
-    /// comment drafts; a missing file means none.
+    /// The conversations of `pull_request_key` (`connection|repository|number`); a missing file
+    /// means none.
     pub fn load(dir: &Path, pull_request_key: &str) -> io::Result<Self> {
         let file = dir.join(format!("{}.json", stable_hash(pull_request_key)));
-        let mut stored: StoredChats = atomic_file::read_json(&file)?.unwrap_or_default();
-        for chat in &mut stored.chats {
-            chat.turns.retain(|turn| turn.kind != TurnKind::Draft);
-        }
+        let stored: StoredChats = atomic_file::read_json(&file)?.unwrap_or_default();
         Ok(Self { file: Some(file), stored })
     }
 
@@ -275,7 +296,7 @@ What changed?"
                 steps: vec![ChatStep {
                     tool: "Read".into(),
                     detail: "src/a.rs".into(),
-                    kind: "read".into(),
+                    kind: Some(ChatStepKind::Read),
                     duration_ms: Some(1_250),
                     is_failed: true,
                     ..ChatStep::default()
@@ -324,13 +345,60 @@ What changed?"
         assert_eq!(chat.turns[0].steps, [step], "a step without kind, duration or outcome");
 
         let thought = ChatStep {
-            kind: "thinking".into(),
+            kind: Some(ChatStepKind::Thinking),
             duration_ms: Some(6_000),
             thinking: "The parser branches on the first byte.".into(),
             ..ChatStep::default()
         };
         let saved = serde_json::to_string(&thought).unwrap();
         assert_eq!(saved, r#"{"tool":"","detail":"","kind":"thinking","duration_ms":6000}"#);
+    }
+
+    /// Every kind name a chat file holds loads, and a save writes it back unchanged; an empty, an
+    /// unknown or a missing kind loads as none and is left out of the file.
+    #[test]
+    fn step_kinds_load_and_save_under_their_stored_names() {
+        use ChatStepKind::{Edit, Other, Read, Run, Search, Thinking};
+        let temp = TestDir::new("assistant-chats-kinds");
+        let key = "gh|acme/widgets|7";
+        let file = temp.path().join(format!("{}.json", stable_hash(key)));
+        let named = ["thinking", "read", "search", "run", "edit", "other"];
+        let steps: Vec<String> = named
+            .iter()
+            .map(|name| format!(r#"{{"tool":"","detail":"","kind":"{name}"}}"#))
+            .chain([
+                r#"{"tool":"","detail":"","kind":""}"#.to_owned(),
+                r#"{"tool":"","detail":"","kind":"teleport"}"#.to_owned(),
+                r#"{"tool":"","detail":""}"#.to_owned(),
+            ])
+            .collect();
+        let json = format!(
+            r#"{{"chats":[{{"agent":"Claude","turns":[{{"steps":[{}]}}]}}]}}"#,
+            steps.join(",")
+        );
+        std::fs::write(&file, json).unwrap();
+
+        let loaded = AssistantChats::load(temp.path(), key).unwrap();
+        let kinds: Vec<Option<ChatStepKind>> = loaded.chat(AgentKind::Claude).unwrap().turns[0]
+            .steps
+            .iter()
+            .map(|step| step.kind)
+            .collect();
+        let known = [Thinking, Read, Search, Run, Edit, Other].map(Some);
+        assert_eq!(kinds, [known.as_slice(), &[None, None, None]].concat());
+
+        loaded.snapshot().write().unwrap();
+        let saved: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        let written: Vec<Option<&str>> = saved["chats"][0]["turns"][0]["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|step| step.get("kind").map(|kind| kind.as_str().unwrap()))
+            .collect();
+        let expected: Vec<Option<&str>> =
+            named.iter().copied().map(Some).chain([None, None, None]).collect();
+        assert_eq!(written, expected);
     }
 
     /// Comment drafts of earlier versions neither show nor stay in the file.

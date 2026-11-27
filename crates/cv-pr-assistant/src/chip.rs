@@ -2,16 +2,12 @@
 //! the choices, with the switch of the [`super::mini`] chat. It sits in the title line of the card,
 //! the panel and the mini chat, left of their buttons. It shows its label when the label fits the
 //! room the title leaves, else only its icon, with the label as its tooltip.
-//!
-//! A title line is drawn before the conversation and cannot reach the assistant's choices, so it
-//! draws only the button and leaves its response for this pass ([`in_title`]); the conversation's
-//! head, or the mini chat, opens the menu from it ([`title_menu`]).
 
 use cv_base::theme::{self, icons, style};
 use cv_services::Services;
 use cv_services::agents::Detection;
 use cv_widgets::buttons;
-use egui::{Context, Id, Response, RichText, Ui};
+use egui::{Response, RichText, Ui};
 use review_agent::{AgentKind, ModelChoice};
 
 use super::{Action, Assistant};
@@ -20,20 +16,6 @@ use super::{Action, Assistant};
 pub const MINI_CHAT_TOGGLE: &str = "Keep the answer beside the code";
 /// The chip's tooltip after its label.
 const HINT: &str = "Agent and model of this conversation";
-
-/// Where a title line's chip leaves its response: the card's or the panel's (never both in one
-/// pass), or the mini chat's.
-#[derive(Clone, Copy, Hash, Debug)]
-pub enum Line {
-    Conversation,
-    Mini,
-}
-
-impl Line {
-    fn id(self) -> Id {
-        Id::unique(("review.assistant.chip", self))
-    }
-}
 
 /// The chip's label: agent and model, with the model "Fastest" or the CLI default stands for once
 /// it is known.
@@ -54,39 +36,19 @@ pub fn label(assistant: &Assistant, services: &mut Services) -> String {
 }
 
 /// The chip in a right-to-left title line, left of the buttons already there: its label when it
-/// fits the room left, else its icon. Leaves the response for [`title_menu`] this pass.
-pub fn in_title(ui: &mut Ui, label: &str, line: Line) {
+/// fits the room left, else its icon. Its response opens the [`menu`].
+pub fn in_title(ui: &mut Ui, label: &str) -> Response {
     ui.add_space(style::SPACE_M);
     let fits = buttons::icon_button_width(ui, label) <= ui.available_width();
-    let response = if fits {
+    if fits {
         buttons::subtle(ui, icons::ROBOT, label).on_hover_text(HINT)
     } else {
         buttons::icon(ui, icons::ROBOT, &format!("{label}. {HINT}"))
-    };
-    let pass = ui.ctx().cumulative_pass_nr();
-    ui.ctx().data_mut(|data| data.insert_temp(line.id(), (pass, response)));
-}
-
-/// The menu of the chip `line` drew this pass, if it did.
-pub fn title_menu(
-    ctx: &Context,
-    line: Line,
-    assistant: &Assistant,
-    services: &mut Services,
-) -> Option<Action> {
-    let pass = ctx.cumulative_pass_nr();
-    let (drawn, response) = ctx.data_mut(|data| {
-        let left = data.get_temp::<(u64, Response)>(line.id());
-        data.remove::<(u64, Response)>(line.id());
-        left
-    })?;
-    if drawn != pass {
-        return None;
     }
-    menu(&response, assistant, services)
 }
 
-fn menu(response: &Response, assistant: &Assistant, services: &mut Services) -> Option<Action> {
+/// The choices of the chip drawn as `response`, while its menu is open.
+pub fn menu(response: &Response, assistant: &Assistant, services: &mut Services) -> Option<Action> {
     let mut action = None;
     egui::Popup::menu(response).show(|ui| {
         ui.set_min_width(260.0);

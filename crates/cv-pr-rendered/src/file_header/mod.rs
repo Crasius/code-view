@@ -12,6 +12,8 @@
 //! under the change arrows ([`edge_hint`]), over the diff, so it moves nothing either.
 
 mod controls;
+#[cfg(test)]
+mod header_check;
 
 use egui::text::{LayoutJob, TextFormat};
 use egui::{
