@@ -18,7 +18,8 @@
 # CARGO_BUILD_JOBS limits cargo's jobs; the script passes no -j. CHECK_BUILD_SECONDS=<file>
 # receives the seconds the clippy step took (ci/target-stamp.sh).
 # --changed is what .agents/hooks/rust-stop-gate.sh (the Stop hook) and a lane's turn end run:
-# exit 0 = clean, 2 = findings on stderr, 1 = clippy did not run (stderr says why).
+# exit 0 = clean (one line on stdout names what it checked), 2 = findings on stderr, 1 = clippy did
+# not run (stderr says why).
 # Why sh and not cargo aliases or an xtask crate: an alias is one cargo command, and a crate takes
 # the build directory lock and must compile before the format check can start.
 # POSIX sh; macOS, Linux and Windows (Git Bash).
@@ -236,7 +237,10 @@ changed() {
     case /$f in */vendor/*) continue ;; esac
     [ -f "$f" ] && printf '%s\n' "$f"
   done)
-  [ -n "$files" ] || exit 0
+  if [ -z "$files" ]; then
+    echo 'check --changed: clean, no changed .rs file'
+    exit 0
+  fi
 
   # The package name of the nearest Cargo.toml above each file; the virtual root has none.
   crates=$(printf '%s\n' "$files" | while IFS= read -r f; do
@@ -305,6 +309,8 @@ $relevant
     printf 'check --changed: %s\n' "$skipped" >&2
     exit 1
   fi
+  printf 'check --changed: clean, rustfmt on %s changed file(s), clippy on: %s\n' \
+    "$(printf '%s\n' "$files" | wc -l | tr -d ' ')" "$(printf '%s' "${crates:-no crate}" | tr '\n' ' ')"
   exit 0
 }
 
