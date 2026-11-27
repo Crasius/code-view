@@ -3,7 +3,7 @@
 pub mod fonts;
 pub mod icons;
 pub mod motion;
-mod palette;
+pub mod palette;
 pub mod style;
 pub mod syntax;
 

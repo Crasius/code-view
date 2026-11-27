@@ -10,12 +10,18 @@ pub const BODY_SIZE: f32 = 14.0;
 pub const SMALL_SIZE: f32 = 12.0;
 pub const TITLE_SIZE: f32 = 20.0;
 pub const SECTION_SIZE: f32 = 16.0;
+/// Badge and marker text, below [`SMALL_SIZE`].
+pub const TINY_SIZE: f32 = 11.0;
 
 /// Spacing scale: every gap and padding is one of these.
 pub const SPACE_XS: f32 = 4.0;
 pub const SPACE_S: f32 = 8.0;
 pub const SPACE_M: f32 = 12.0;
 pub const SPACE_L: f32 = 16.0;
+/// Gaps between the sections of a page.
+pub const SPACE_XL: f32 = 20.0;
+/// The side gutter of a page. `i8` because egui's `Margin` takes `i8`.
+pub const PAGE_MARGIN_X: i8 = 24;
 /// Side padding of rows inside cards and tables (pipelines, merge status).
 pub const SPACE_ROW_X: f32 = 14.0;
 /// Gap between a row's name and the sub line below it.
@@ -40,6 +46,8 @@ pub const RADIUS_CONTROL: u8 = 4;
 pub const RADIUS_CARD: u8 = 6;
 /// Menus, popups and dialogs.
 pub const RADIUS_POPUP: u8 = 8;
+/// Count and filter chips.
+pub const RADIUS_CHIP: u8 = 10;
 /// Height of buttons and single-line inputs.
 pub const CONTROL_HEIGHT: f32 = 32.0;
 /// How strongly a row with a write of the user's on its way paints its content: clearly quieter
