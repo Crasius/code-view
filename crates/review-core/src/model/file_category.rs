@@ -217,7 +217,7 @@ impl FileCategory {
     }
 }
 
-fn split_extension(file_name: &str) -> (&str, &str) {
+pub(super) fn split_extension(file_name: &str) -> (&str, &str) {
     match file_name.rsplit_once('.') {
         Some((stem, extension)) if !stem.is_empty() => (stem, extension),
         _ => (file_name, ""),
@@ -318,6 +318,12 @@ mod tests {
         assert_category("src/__tests__/a.js", Tests);
         assert_category("src/main/java/com/acme/OrderServiceTest.java", Tests);
         assert_category("src/Orders/OrderRouterTests.cs", Tests);
+        assert_category("tests/integration.rs", Tests);
+        assert_category("spec/models/user_spec.rb", Tests);
+        assert_category("app/models/user_spec.rb", Tests);
+        assert_category("e2e/login.ts", Tests);
+        assert_category("pkg/testdata/input.txt", Tests);
+        assert_category("web/fixtures/payload.json", Tests);
     }
 
     #[test]
@@ -326,6 +332,12 @@ mod tests {
         assert_category("docs/architecture/overview.md", Docs);
         assert_category("LICENSE", Docs);
         assert_category("docs/diagram.puml", Docs);
+        assert_category("guide/intro.mdx", Docs);
+        assert_category("manual/index.rst", Docs);
+        assert_category("manual/setup.adoc", Docs);
+        assert_category("notes.txt", Docs);
+        assert_category("doc/diagram.puml", Docs);
+        assert_category("CHANGELOG", Docs);
     }
 
     #[test]

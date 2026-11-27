@@ -59,7 +59,8 @@ impl MergePolicy {
         }
     }
 
-    /// The platform did not report its settings: everything its API accepts (`capable`), no default.
+    /// The platform did not report its settings: everything its API accepts (`capable`); a default
+    /// only when that is a single strategy.
     pub fn not_reported(capable: &[MergeStrategy], reason: Unreported) -> Self {
         Self {
             allowed: capable.to_vec(),
@@ -105,12 +106,14 @@ mod tests {
     }
 
     #[test]
-    fn unreported_has_no_default() {
+    fn unreported_has_a_default_only_for_a_single_strategy() {
         let policy = MergePolicy::not_reported(
             &[MergeStrategy::Merge, MergeStrategy::Squash],
             Unreported::NoPermission,
         );
         assert!(!policy.is_reported());
         assert_eq!(policy.default, None);
+        let policy = MergePolicy::not_reported(&[MergeStrategy::Squash], Unreported::Unsupported);
+        assert_eq!(policy.default, Some(MergeStrategy::Squash));
     }
 }
