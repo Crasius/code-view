@@ -3,32 +3,14 @@
 //! (learn.microsoft.com/rest/api/azure/devops/git/pull-requests/get-pull-requests-by-project),
 //! never one per project or repository. `.expect(n)` is verified when the server drops.
 
-use provider_azure::AzureDevOpsProvider;
-use review_core::{
-    Connection, Provider, ProviderKind, PullRequestQuery, PullRequestScope, StateFilter, http,
-};
+use review_core::{Provider, PullRequestQuery, PullRequestScope, StateFilter};
 use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
 use wiremock::{Mock, MockBuilder, MockServer, ResponseTemplate};
 
-/// `base64(":dummy-pat")`.
-const AUTHORIZATION: &str = "Basic OmR1bW15LXBhdA==";
-const ME: &str = "me-id";
+use crate::support::{AUTHORIZATION, TOKEN, provider};
 
-fn provider(server: &MockServer, organizations: &[&str]) -> AzureDevOpsProvider {
-    let connection = Connection {
-        id: "overview".to_owned(),
-        name: "Mock Azure DevOps Server".to_owned(),
-        kind: ProviderKind::AzureDevOps,
-        base_url: server.uri(),
-        organizations: organizations
-            .iter()
-            .map(|organization| (*organization).to_owned())
-            .collect(),
-        token: Some("dummy-pat".to_owned()),
-    };
-    AzureDevOpsProvider::new(connection, http::build_client())
-}
+const ME: &str = "me-id";
 
 fn query(scope: PullRequestScope) -> PullRequestQuery {
     PullRequestQuery { scope, state: StateFilter::Open, repository_key: None, top: 100 }
@@ -76,7 +58,7 @@ async fn everything_is_one_listing_per_organization() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["north", "south"]);
+    let provider = provider(&server, &["north", "south"], Some(TOKEN));
 
     let rows =
         provider.list_pull_requests(&query(PullRequestScope::Visible)).await.expect("overview");
@@ -118,7 +100,7 @@ async fn created_by_me_and_assigned_to_me_filter_by_the_cached_user() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["north"]);
+    let provider = provider(&server, &["north"], Some(TOKEN));
 
     let mine = provider
         .list_pull_requests(&query(PullRequestScope::CreatedByMe))
@@ -164,7 +146,7 @@ async fn the_users_part_of_one_repository_is_that_repositorys_listing() {
         .mount(&server)
         .await;
     listing("north").respond_with(page(&[])).expect(0).mount(&server).await;
-    let provider = provider(&server, &["north"]);
+    let provider = provider(&server, &["north"], Some(TOKEN));
 
     for (role, number) in
         [(PullRequestScope::CreatedByMe, 5), (PullRequestScope::ReviewRequested, 6)]
@@ -208,8 +190,49 @@ async fn diff_stats_count_the_latest_iterations_changed_files() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["north"]);
+    let provider = provider(&server, &["north"], Some(TOKEN));
 
     let stats = provider.diff_stats("north/Web/site", &[11]).await.expect("diff stats");
     assert_eq!(stats, [(11, review_core::DiffStat { lines: None, files: Some(4) })]);
+}
+
+/// The policy evaluations name a pull request by its project's GUID: one repository lookup per
+/// project finds it, shared by row requests at the same time and kept for later ones.
+#[tokio::test]
+async fn row_statuses_look_up_the_project_once() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/north/Web/_apis/git/repositories/site"))
+        .and(header("authorization", AUTHORIZATION))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({ "id": "repo-guid", "name": "site", "project": { "id": "web-guid", "name": "Web" } }),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    for number in [11, 12, 13] {
+        Mock::given(method("GET"))
+            .and(path("/north/Web/_apis/policy/evaluations"))
+            .and(query_param(
+                "artifactId",
+                format!("vstfs:///CodeReview/CodeReviewId/web-guid/{number}"),
+            ))
+            .respond_with(page(&[]))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    let provider = provider(&server, &["north"], Some(TOKEN));
+
+    let (first, second) = tokio::join!(
+        provider.row_statuses("north/Web/site", &[11]),
+        provider.row_statuses("north/Web/site", &[12]),
+    );
+    let later = provider.row_statuses("north/Web/site", &[13]).await;
+
+    for (statuses, number) in [(first, 11), (second, 12), (later, 13)] {
+        let numbers: Vec<u64> =
+            statuses.expect("row statuses").iter().map(|(number, _)| *number).collect();
+        assert_eq!(numbers, [number]);
+    }
 }

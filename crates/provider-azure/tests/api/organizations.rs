@@ -5,12 +5,11 @@
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use provider_azure::AzureDevOpsProvider;
-use review_core::{
-    Connection, Provider, ProviderKind, PullRequestQuery, PullRequestScope, StateFilter, http,
-};
+use review_core::{Provider, PullRequestQuery, PullRequestScope, StateFilter};
 use serde_json::{Value, json};
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
+
+use crate::support::{TOKEN, provider};
 
 /// Each listing answers this long after it arrived; listings one after another could not arrive
 /// closer together than that.
@@ -70,18 +69,6 @@ fn pull_request(id: u64) -> Value {
     })
 }
 
-fn provider(server: &MockServer) -> AzureDevOpsProvider {
-    let connection = Connection {
-        id: "azure-organizations".to_owned(),
-        name: "mock".to_owned(),
-        kind: ProviderKind::AzureDevOps,
-        base_url: server.uri(),
-        organizations: vec!["north".to_owned(), "south".to_owned()],
-        token: Some("dummy-pat".to_owned()),
-    };
-    AzureDevOpsProvider::new(connection, http::build_client())
-}
-
 fn query(scope: PullRequestScope) -> PullRequestQuery {
     PullRequestQuery { scope, state: StateFilter::Open, repository_key: None, top: 50 }
 }
@@ -98,7 +85,7 @@ async fn organizations_are_listed_at_the_same_time() {
         .respond_with(Listings { arrived: Arc::clone(&arrived) })
         .mount(&server)
         .await;
-    let provider = provider(&server);
+    let provider = provider(&server, &["north", "south"], Some(TOKEN));
 
     let listed = provider
         .list_pull_requests(&query(PullRequestScope::Visible))
@@ -129,7 +116,7 @@ async fn current_users_of_organizations_are_read_at_the_same_time() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "count": 0, "value": [] })))
         .mount(&server)
         .await;
-    let provider = provider(&server);
+    let provider = provider(&server, &["north", "south"], Some(TOKEN));
 
     provider
         .list_pull_requests(&query(PullRequestScope::CreatedByMe))
@@ -149,16 +136,17 @@ async fn current_users_of_organizations_are_read_at_the_same_time() {
 #[tokio::test]
 async fn callers_at_the_same_time_share_one_user_lookup() {
     let server = MockServer::start().await;
-    let users = Arrivals::default();
     Mock::given(wiremock::matchers::path("/north/_apis/connectionData"))
-        .respond_with(ConnectionDatas { arrived: Arc::clone(&users) })
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "authenticatedUser": { "id": "me-north", "providerDisplayName": "Grace" }
+        })))
+        .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server);
+    let provider = provider(&server, &["north", "south"], Some(TOKEN));
 
     let (first, second) = tokio::join!(provider.current_user(), provider.current_user());
 
     assert_eq!(first.expect("the user answers").id, "me-north");
     assert_eq!(second.expect("the shared answer").id, "me-north");
-    assert_eq!(arrivals(&users).len(), 1, "both callers shared one connectionData request");
 }

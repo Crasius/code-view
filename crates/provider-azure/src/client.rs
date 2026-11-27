@@ -3,15 +3,19 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use reqwest::{Method, RequestBuilder, Response};
-use review_core::{Connection, ProviderError, Result, http};
+use review_core::{Connection, ProviderError, ProviderKind, Result, http};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 const API_VERSION: &str = "7.1";
 /// `connectionData` only exists as a preview resource.
 pub(crate) const API_VERSION_PREVIEW: &str = "7.1-preview";
-const SERVICES_HOST: &str = "https://dev.azure.com";
 const SERVICES_IDENTITY_HOST: &str = "https://vssps.dev.azure.com";
+
+/// Azure DevOps Services (dev.azure.com) as opposed to an on-premises Azure DevOps Server.
+pub(crate) fn is_services_host(base: &str) -> bool {
+    base.trim_end_matches('/').eq_ignore_ascii_case(ProviderKind::AzureDevOps.default_base_url())
+}
 
 /// A parsed repository key `organization/project/repository` (raw names, not encoded).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,9 +94,8 @@ impl Client {
         self.connection.base_url()
     }
 
-    /// Azure DevOps Services (dev.azure.com) as opposed to an on-premises Azure DevOps Server.
     pub fn is_services(&self) -> bool {
-        self.connection.base_url().eq_ignore_ascii_case(SERVICES_HOST)
+        is_services_host(self.connection.base_url())
     }
 
     /// `{base}/{org}` — the organization (Services) or collection (Server) web root.
@@ -161,6 +164,11 @@ impl Client {
 
     pub fn pull_request_web_url(&self, repo: RepoKey<'_>, number: u64) -> String {
         format!("{}/pullrequest/{number}", self.clone_url(repo))
+    }
+
+    /// The results page of build `build_id`.
+    pub fn build_web_url(&self, repo: RepoKey<'_>, build_id: u64) -> String {
+        format!("{}/_build/results?buildId={build_id}", self.project_root(repo))
     }
 
     pub fn request(&self, method: Method, url: &str) -> RequestBuilder {
@@ -262,8 +270,6 @@ fn is_sign_in_page(url: &reqwest::Url) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use review_core::ProviderKind;
-
     use super::*;
 
     fn client(base: &str, token: Option<&str>) -> Client {

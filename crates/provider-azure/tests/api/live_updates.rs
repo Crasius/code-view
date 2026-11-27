@@ -3,26 +3,14 @@
 //! (learn.microsoft.com/rest/api/azure/devops/git/pull-request-threads/list). `.expect(n)` is
 //! verified when the server drops.
 
-use provider_azure::AzureDevOpsProvider;
-use review_core::{Connection, Provider, ProviderKind, http};
+use review_core::Provider;
 use serde_json::{Value, json};
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const REPO: &str = "coll/My Project/web";
-const PULL: &str = "/coll/My%20Project/_apis/git/repositories/web/pullrequests/7";
+use crate::support::{COLLECTION, REPO, TOKEN, provider};
 
-fn provider(server: &MockServer) -> AzureDevOpsProvider {
-    let connection = Connection {
-        id: "live".to_owned(),
-        name: "live".to_owned(),
-        kind: ProviderKind::AzureDevOps,
-        base_url: server.uri(),
-        organizations: vec!["coll".to_owned()],
-        token: Some("dummy-pat".to_owned()),
-    };
-    AzureDevOpsProvider::new(connection, http::build_client())
-}
+const PULL: &str = "/coll/My%20Project/_apis/git/repositories/web/pullrequests/7";
 
 fn pull_request(source: &str, vote: i32) -> Value {
     json!({
@@ -73,7 +61,7 @@ async fn replies_votes_and_pushes_change_the_revision() {
         threads("2026-01-02T09:00:00Z"),
     ];
     mount_sequence(&server, &format!("{PULL}/threads"), &replies).await;
-    let provider = provider(&server);
+    let provider = provider(&server, &[COLLECTION], Some(TOKEN));
 
     let opened = provider.revision(REPO, 7).await.expect("probe");
     assert_eq!(opened.head_sha, "head1");

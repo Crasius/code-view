@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use review_core::ThreadAnchor;
 use serde::Deserialize;
 
+use super::CommitRef;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Iteration {
@@ -16,15 +18,16 @@ pub(crate) struct Iteration {
     pub common_ref_commit: Option<CommitRef>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct CommitRef {
-    pub commit_id: String,
+/// The two commits of one iteration.
+#[derive(Debug)]
+struct IterationShas {
+    source: Option<String>,
+    common: Option<String>,
 }
 
 /// The commits of each iteration, by iteration id.
 #[derive(Debug, Default)]
-pub(crate) struct IterationCommits(HashMap<u32, (Option<String>, Option<String>)>);
+pub(crate) struct IterationCommits(HashMap<u32, IterationShas>);
 
 impl IterationCommits {
     pub fn new(iterations: &[Iteration]) -> Self {
@@ -34,10 +37,11 @@ impl IterationCommits {
             iterations
                 .iter()
                 .map(|iteration| {
-                    (
-                        iteration.id,
-                        (sha(&iteration.source_ref_commit), sha(&iteration.common_ref_commit)),
-                    )
+                    let shas = IterationShas {
+                        source: sha(&iteration.source_ref_commit),
+                        common: sha(&iteration.common_ref_commit),
+                    };
+                    (iteration.id, shas)
                 })
                 .collect(),
         )
@@ -46,9 +50,10 @@ impl IterationCommits {
     /// The (left, right) commits of the diff of iteration `first` against iteration `second`.
     /// Equal iterations compare the common commit with that iteration's source commit.
     pub fn compared(&self, first: u32, second: u32) -> Option<(String, String)> {
-        let (head, common) = self.0.get(&second)?;
-        let base = if first == second { common.clone() } else { self.0.get(&first)?.0.clone() };
-        Some((base?, head.clone()?))
+        let head = self.0.get(&second)?;
+        let base =
+            if first == second { head.common.clone() } else { self.0.get(&first)?.source.clone() };
+        Some((base?, head.source.clone()?))
     }
 }
 

@@ -1,25 +1,14 @@
 //! Work items and pull requests by id against a mock Azure DevOps REST API (api-version 7.1):
 //! the pull request's `workitems` list, one `workitemsbatch` POST, and `git/pullrequests/{id}`.
 
-use provider_azure::AzureDevOpsProvider;
-use review_core::{Connection, ItemKind, ItemRef, LinkedState, Provider, ProviderKind};
+use review_core::{ItemKind, ItemRef, LinkedState, Provider};
 use serde_json::json;
 use wiremock::matchers::{body_partial_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const ORG: &str = "coll";
+use crate::support::{TOKEN, provider};
 
-fn provider(server: &MockServer) -> AzureDevOpsProvider {
-    let connection = Connection {
-        id: "azure-linked".to_owned(),
-        name: "mock".to_owned(),
-        kind: ProviderKind::AzureDevOps,
-        base_url: server.uri(),
-        organizations: vec![ORG.to_owned()],
-        token: Some("dummy-pat".to_owned()),
-    };
-    AzureDevOpsProvider::new(connection, review_core::http::build_client())
-}
+const ORG: &str = "coll";
 
 #[tokio::test]
 async fn lists_the_pull_requests_work_items() {
@@ -33,7 +22,7 @@ async fn lists_the_pull_requests_work_items() {
         .expect(1)
         .mount(&server)
         .await;
-    let references = provider(&server)
+    let references = provider(&server, &[ORG], Some(TOKEN))
         .linked_references(&format!("{ORG}/Web/site"), 7)
         .await
         .expect("work items");
@@ -84,7 +73,8 @@ async fn reads_work_items_in_one_batch_and_pull_requests_by_id() {
             number: 40,
         },
     ];
-    let items = provider(&server).linked_items(&asked).await.expect("linked items");
+    let items =
+        provider(&server, &[ORG], Some(TOKEN)).linked_items(&asked).await.expect("linked items");
     assert_eq!(items.len(), 2, "{items:?}");
     let bug = &items[0];
     assert_eq!(
@@ -121,7 +111,8 @@ async fn one_work_item_named_twice_answers_both_references() {
         ItemRef { kind: ItemKind::WorkItem, repository_key: format!("{ORG}/Web"), number: 31 },
         ItemRef { kind: ItemKind::WorkItem, repository_key: format!("{ORG}/Other"), number: 31 },
     ];
-    let items = provider(&server).linked_items(&asked).await.expect("linked items");
+    let items =
+        provider(&server, &[ORG], Some(TOKEN)).linked_items(&asked).await.expect("linked items");
     let answered: Vec<&ItemRef> = items.iter().map(|item| &item.reference).collect();
     assert_eq!(answered, [&asked[0], &asked[1]]);
     assert!(items.iter().all(|item| item.title == "Login bug"));

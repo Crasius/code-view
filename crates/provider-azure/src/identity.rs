@@ -33,10 +33,7 @@ impl CurrentUsers {
         );
         let user = cell
             .get_or_try_init(|| async {
-                let url = client.organization_api(organization, "connectionData");
-                let data: ConnectionData = client
-                    .json(client.request_versioned(Method::GET, &url, API_VERSION_PREVIEW))
-                    .await?;
+                let data = connection_data(client, organization).await?;
                 Ok::<_, ProviderError>(data.authenticated_user.to_user())
             })
             .await?;
@@ -48,6 +45,12 @@ impl CurrentUsers {
         let cache = self.by_organization.lock().unwrap_or_else(PoisonError::into_inner);
         cache.get(organization).and_then(|cell| cell.get().cloned())
     }
+}
+
+/// `connectionData` of `organization`: the user the token signs in as.
+pub(crate) async fn connection_data(client: &Client, organization: &str) -> Result<ConnectionData> {
+    let url = client.organization_api(organization, "connectionData");
+    client.json(client.request_versioned(Method::GET, &url, API_VERSION_PREVIEW)).await
 }
 
 /// Resolves what the user typed (e-mail, account name or display name) to an identity id.
