@@ -15,7 +15,7 @@ repository = "https://github.com/Crasius/code-view"
 publish = false
 
 # The lint contract (.agents/rules/rust.md, Lints). Every crate sets `lints.workspace = true`.
-# Levels stay at warn; `-D warnings` on the command line (CI, Stop hook, ship) makes them errors.
+# Levels stay at warn; `-D warnings` on the command line (CI, ship) makes them errors.
 # Suppress only with #[expect(<lint>, reason = "...")] on the narrowest item (RS-LINT-04).
 [workspace.lints.rust]
 # RS-DONT-03: unsafe only in platform/ modules, each with #![expect(unsafe_code, reason)].
