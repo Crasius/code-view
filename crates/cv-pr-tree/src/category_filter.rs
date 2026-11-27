@@ -18,13 +18,15 @@ use review_git::ChangedFile;
 use super::FileFilter;
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, icons, motion, style};
-use cv_widgets::numbers::group_digits;
-use cv_widgets::{buttons, checkbox, focus, row};
+use cv_widgets::numbers::{group_digits, zeroed};
+use cv_widgets::{buttons, checkbox, elide, focus, row};
 
 /// Rows of the dropdown list.
 const ROW_HEIGHT: f32 = 30.0;
 const PADDING_X: f32 = 10.0;
 const GAP: f32 = 8.0;
+/// Space between the last category row and the hint under the list.
+const HINT_GAP: f32 = 6.0;
 /// Space between the dropdown and the hide-viewed toggle.
 const TOGGLE_GAP: f32 = 4.0;
 /// The dropdown never gets narrower than this, even in a very narrow side panel.
@@ -293,7 +295,7 @@ fn menu(
     }
 
     let line_y = ui.cursor().top() + 3.5;
-    ui.add_space(8.0);
+    ui.add_space(style::SPACE_S);
     ui.painter().hline(ui.max_rect().x_range(), line_y, Stroke::new(1.0, palette.border));
 
     for category in &categories {
@@ -317,7 +319,7 @@ fn menu(
         }
     }
 
-    ui.add_space(6.0);
+    ui.add_space(HINT_GAP);
     let hint =
         egui::RichText::new(concat!(shortcut!(command click), " or Only shows one category"))
             .size(style::SMALL_SIZE)
@@ -326,7 +328,7 @@ fn menu(
         ui.add_space(PADDING_X);
         ui.add(egui::Label::new(hint).wrap());
     });
-    ui.add_space(4.0);
+    ui.add_space(style::SPACE_XS);
     changed
 }
 
@@ -342,12 +344,7 @@ fn toggle(filter: &mut FileFilter, categories: &[FileCategory], category: FileCa
 
 /// Room for the widest count, so every row's counts line up and never shift.
 fn count_column_width(ui: &Ui, total: usize) -> f32 {
-    let template: String =
-        group_digits(total).chars().map(|c| if c.is_ascii_digit() { '0' } else { c }).collect();
-    ui.painter()
-        .layout_no_wrap(template, FontId::proportional(style::SMALL_SIZE), Color32::WHITE)
-        .size()
-        .x
+    elide::text_width(ui, &zeroed(total as u64), &FontId::proportional(style::SMALL_SIZE))
 }
 
 struct ListRow<'a> {

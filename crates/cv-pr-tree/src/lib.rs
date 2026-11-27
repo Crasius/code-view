@@ -466,17 +466,13 @@ mod tests {
         category: FileCategory,
     ) -> ChangedFile {
         ChangedFile {
-            path: path.to_owned(),
             old_path: matches!(kind, ChangeKind::Renamed | ChangeKind::Copied)
                 .then(|| format!("legacy/{path}")),
-            kind,
-            old_oid: "1".repeat(40),
-            new_oid: "2".repeat(40),
             additions: counts.map(|(added, _)| added),
             deletions: counts.map(|(_, deleted)| deleted),
             is_binary: counts.is_none(),
             category,
-            whitespace_only: false,
+            ..ChangedFile::sample(path, kind)
         }
     }
 

@@ -36,6 +36,8 @@ const CHECK_LEFT: f32 = LEAD_WIDTH + 4.0;
 /// Folder or file-type glyph in a fixed slot, followed by the name.
 const ICON_LEFT: f32 = CHECK_LEFT + LEAD_WIDTH + 4.0;
 const ICON_WIDTH: f32 = 18.0;
+/// The folder caret's glyph, smaller than the folder icon beside it.
+const CARET_SIZE: f32 = 12.0;
 /// The change dot on a file glyph's lower right, and the ring of row color that cuts it out.
 const MARK_OFFSET: Vec2 = vec2(5.5, 5.0);
 const MARK_RADIUS: f32 = 3.5;
@@ -276,7 +278,7 @@ fn paint_folder(
         caret_rect.center(),
         Align2::CENTER_CENTER,
         caret,
-        FontId::proportional(12.0),
+        FontId::proportional(CARET_SIZE),
         caret_color,
     );
     let glyph = if folder.is_collapsed { icons::FOLDER } else { icons::FOLDER_OPEN };
@@ -285,7 +287,7 @@ fn paint_folder(
         icon_center,
         Align2::CENTER_CENTER,
         glyph,
-        FontId::proportional(16.0),
+        FontId::proportional(icons::SIZE),
         style::folder_icon(&palette),
     );
 

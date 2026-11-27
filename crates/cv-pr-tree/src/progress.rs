@@ -12,7 +12,7 @@ use super::ReviewStep;
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, icons, motion, style};
 use cv_widgets::numbers::group_digits;
-use cv_widgets::{change_breakdown, focus, row};
+use cv_widgets::{change_breakdown, elide, focus, row, states};
 
 /// Height of the progress strip; the bar itself is a 2 px hairline centred in it.
 pub(crate) const PROGRESS_HEIGHT: f32 = 4.0;
@@ -78,13 +78,19 @@ fn line(ui: &mut Ui, progress: &Progress, breakdown: &ChangeBreakdown) -> Option
     let totals = if is_counting_lines {
         let counted = lines.files.saturating_sub(lines.uncounted) as usize;
         let text = format!("{} of {}", group_digits(counted), group_digits(lines.files as usize));
-        Totals::Counting(galley(ui, &text, &font, palette.text_secondary, width))
+        Totals::Counting(elide::line(
+            ui.painter(),
+            &text,
+            font.clone(),
+            palette.text_secondary,
+            width,
+        ))
     } else if lines.files > lines.uncounted {
         let added = format!("+{}", group_digits(lines.added as usize));
         let deleted = format!("−{}", group_digits(lines.deleted as usize));
         Totals::Counted(
-            galley(ui, &added, &font, palette.success, width),
-            galley(ui, &deleted, &font, palette.error, width),
+            elide::line(ui.painter(), &added, font.clone(), palette.success, width),
+            elide::line(ui.painter(), &deleted, font.clone(), palette.error, width),
         )
     } else {
         Totals::None
@@ -98,7 +104,8 @@ fn line(ui: &mut Ui, progress: &Progress, breakdown: &ChangeBreakdown) -> Option
         if totals_width > 0.0 { (width - TOTALS_GAP - totals_width).max(0.0) } else { width };
     let viewed_text = format!("{} of {} viewed", group_digits(viewed), group_digits(total));
     // A link takes its color when painted, so it can ease to the accent on hover.
-    let viewed_galley = galley(ui, &viewed_text, &font, Color32::PLACEHOLDER, viewed_width);
+    let viewed_galley =
+        elide::line(ui.painter(), &viewed_text, font, Color32::PLACEHOLDER, viewed_width);
     let (line, response) = ui.allocate_exact_size(vec2(width, line_height), Sense::hover());
 
     let viewed_rect = Rect::from_min_size(line.min, viewed_galley.size());
@@ -141,13 +148,15 @@ fn done_line(ui: &mut Ui, progress: &Progress, breakdown: &ChangeBreakdown) -> O
     let (line, response) = ui.allocate_exact_size(vec2(width, line_height), Sense::hover());
 
     // Links take their color when painted, so they can ease to the accent on hover.
-    let overview = galley(ui, "Overview", &font, Color32::PLACEHOLDER, width);
+    let overview = elide::line(ui.painter(), "Overview", font.clone(), Color32::PLACEHOLDER, width);
     let vote = match progress.vote {
         VoteOffer::Approve { .. } => Some("Approve"),
         VoteOffer::Voted(label) => Some(label),
         VoteOffer::None => None,
     }
-    .map(|label| (galley(ui, label, &font, Color32::PLACEHOLDER, width), progress.vote));
+    .map(|label| {
+        (elide::line(ui.painter(), label, font.clone(), Color32::PLACEHOLDER, width), progress.vote)
+    });
     let vote_width = vote.as_ref().map_or(0.0, |(galley, _)| galley.size().x + LINK_GAP);
     let links_width = overview.size().x + vote_width;
 
@@ -197,11 +206,11 @@ fn done_line(ui: &mut Ui, progress: &Progress, breakdown: &ChangeBreakdown) -> O
 
     // The check, then the text in what the links leave.
     let icon_font = icons::state_font(&palette, style::SMALL_SIZE, true);
-    let icon = galley(ui, icons::CHECK_CIRCLE, &icon_font, palette.success, width);
+    let icon = elide::line(ui.painter(), icons::CHECK_CIRCLE, icon_font, palette.success, width);
     let text_left = line.left() + icon.size().x + style::SPACE_XS;
     let text_room = (line.right() - links_width - TOTALS_GAP - text_left).max(0.0);
     let text = format!("All {} files viewed", group_digits(progress.total));
-    let text_galley = galley(ui, &text, &font, palette.text, text_room);
+    let text_galley = elide::line(ui.painter(), &text, font, palette.text, text_room);
     let text_rect = Rect::from_min_size(
         line.min,
         vec2(text_left - line.left() + text_galley.size().x, line_height),
@@ -297,10 +306,7 @@ fn paint_counting(
     spinner.widget_info(|| {
         egui::WidgetInfo::labeled(egui::Role::ProgressIndicator, true, "Counting lines")
     });
-    egui::Spinner::new()
-        .size(line_height - 4.0)
-        .color(palette.text_secondary)
-        .paint_at(ui, spinner_rect);
+    states::spinner(ui, spinner_rect, palette.text_secondary);
     spinner.on_hover_text("Counting lines and detecting renames");
     let counted_rect =
         Rect::from_min_size(pos2(spinner_rect.right() + COUNT_GAP, at.y), counted.size());
@@ -329,11 +335,4 @@ fn progress_bar(ui: &mut Ui, width: f32, viewed: usize, total: usize) {
         let filled = Rect::from_min_size(track.min, vec2(track.width() * share, track.height()));
         ui.painter().rect_filled(filled, BAR_HEIGHT / 2.0, palette.success);
     }
-}
-
-/// One line of text, cut with "…" at `max_width`.
-fn galley(ui: &Ui, text: &str, font: &FontId, color: Color32, max_width: f32) -> Arc<Galley> {
-    let mut job = egui::text::LayoutJob::simple_singleline(text.to_owned(), font.clone(), color);
-    job.wrap = egui::text::TextWrapping::truncate_at_width(max_width);
-    ui.painter().layout_job(job)
 }

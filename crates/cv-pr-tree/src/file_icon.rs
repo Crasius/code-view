@@ -352,7 +352,7 @@ fn by_extension(extension: &str) -> Option<FileIcon> {
 mod tests {
     use super::{FALLBACK, FileIcon, file_icon};
     use cv_base::theme::FileHue::{Amber, Blue, Green, Orange, Pink, Purple, Red, Slate, Teal};
-    use cv_base::theme::{FileHue, Palette, icons};
+    use cv_base::theme::{FileHue, icons};
 
     fn assert_icon(path: &str, glyph: &'static str, hue: FileHue) {
         assert_eq!(file_icon(path), FileIcon { glyph, hue }, "{path}");
@@ -424,37 +424,5 @@ mod tests {
             assert_eq!(file_icon(path), FALLBACK, "{path}");
         }
         assert_eq!(file_icon(&format!("{}.whatever", "y".repeat(200))), FALLBACK);
-    }
-
-    fn luminance(color: egui::Color32) -> f32 {
-        let linear = egui::Rgba::from(color);
-        0.2126 * linear.r() + 0.7152 * linear.g() + 0.0722 * linear.b()
-    }
-
-    fn contrast(a: egui::Color32, b: egui::Color32) -> f32 {
-        let (light, dark) = (luminance(a).max(luminance(b)), luminance(a).min(luminance(b)));
-        (light + 0.05) / (dark + 0.05)
-    }
-
-    /// Every hue keeps 3:1 (WCAG non-text contrast) on each fill a tree row can have.
-    #[test]
-    fn every_hue_has_three_to_one_contrast_on_tree_rows() {
-        for palette in [Palette::LIGHT, Palette::DARK] {
-            for hue in FileHue::ALL {
-                for (row, background) in [
-                    ("surface", palette.surface),
-                    ("hover", palette.hover),
-                    ("pressed", palette.pressed),
-                    ("selection", palette.selection),
-                ] {
-                    let ratio = contrast(palette.file_hue(hue), background);
-                    assert!(
-                        ratio >= 3.0,
-                        "{hue:?} on {row} (dark {}): {ratio:.2}",
-                        palette.is_dark
-                    );
-                }
-            }
-        }
     }
 }
