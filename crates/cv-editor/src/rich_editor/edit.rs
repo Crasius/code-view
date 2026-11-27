@@ -2,8 +2,8 @@
 //! fragments. Pure functions of the document and a selection that return the new selection;
 //! structural edits (lists, quotes, block kinds) are in `structure`.
 
-pub mod rules;
-pub mod structure;
+pub(crate) mod rules;
+pub(crate) mod structure;
 
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use super::model::{
 };
 
 /// Removes the text between `from` and `to` (in document order); returns where the caret goes.
-pub fn delete_range(doc: &mut Document, from: Pos, to: Pos) -> Pos {
+pub(crate) fn delete_range(doc: &mut Document, from: Pos, to: Pos) -> Pos {
     let (from, to) = (doc.clamp(from), doc.clamp(to));
     if from >= to {
         return from;
@@ -49,7 +49,12 @@ fn append_content(block: &mut Block, content: Inline, source: &Kind) {
 }
 
 /// Replaces the selection with `text` in `marks`; returns the caret after it.
-pub fn insert_text(doc: &mut Document, selection: Selection, text: &str, marks: &Marks) -> Pos {
+pub(crate) fn insert_text(
+    doc: &mut Document,
+    selection: Selection,
+    text: &str,
+    marks: &Marks,
+) -> Pos {
     let (from, to) = selection.ordered();
     let at = delete_range(doc, from, to);
     let at = leave_rule(doc, at);
@@ -67,7 +72,12 @@ pub fn insert_text(doc: &mut Document, selection: Selection, text: &str, marks: 
 }
 
 /// Inserts an atom (a mention) at the caret.
-pub fn insert_atom(doc: &mut Document, selection: Selection, atom: Atom, marks: &Marks) -> Pos {
+pub(crate) fn insert_atom(
+    doc: &mut Document,
+    selection: Selection,
+    atom: Atom,
+    marks: &Marks,
+) -> Pos {
     let (from, to) = selection.ordered();
     let deleted = delete_range(doc, from, to);
     let at = leave_rule(doc, deleted);
@@ -91,7 +101,7 @@ fn leave_rule(doc: &mut Document, at: Pos) -> Pos {
 }
 
 /// The nesting of a block that continues `nesting`'s containers (no new item).
-pub fn continuation(nesting: &[Container]) -> Vec<Container> {
+pub(crate) fn continuation(nesting: &[Container]) -> Vec<Container> {
     nesting
         .iter()
         .map(|container| match *container {
@@ -103,7 +113,7 @@ pub fn continuation(nesting: &[Container]) -> Vec<Container> {
 
 /// Enter: a new line in source blocks (three Enters at the end leave a code block), out of an
 /// empty item or quote, else a new block (a new item inside a list).
-pub fn enter(doc: &mut Document, selection: Selection) -> Pos {
+pub(crate) fn enter(doc: &mut Document, selection: Selection) -> Pos {
     let (from, to) = selection.ordered();
     let at = delete_range(doc, from, to);
     let block = doc.block(at.block);
@@ -127,7 +137,7 @@ pub fn enter(doc: &mut Document, selection: Selection) -> Pos {
 }
 
 /// Shift+Enter: a hard line break (a newline in source blocks).
-pub fn line_break(doc: &mut Document, selection: Selection) -> Pos {
+pub(crate) fn line_break(doc: &mut Document, selection: Selection) -> Pos {
     let (from, to) = selection.ordered();
     let at = delete_range(doc, from, to);
     let marks = doc.block(at.block).content.marks_at(at.offset);
@@ -137,7 +147,7 @@ pub fn line_break(doc: &mut Document, selection: Selection) -> Pos {
 
 /// Splits the block at `at`; the part after it becomes the next block (the next item in a
 /// list, a paragraph after a heading's end).
-pub fn split_block(doc: &mut Document, at: Pos) -> Pos {
+pub(crate) fn split_block(doc: &mut Document, at: Pos) -> Pos {
     let at = doc.clamp(at);
     let block = doc.block_mut(at.block);
     if block.kind == Kind::Rule {
@@ -164,7 +174,7 @@ pub fn split_block(doc: &mut Document, at: Pos) -> Pos {
 /// Backspace: the selection, the char before the caret, or at a block's start: lift the block
 /// out of its innermost container, turn a heading or an empty code block into a paragraph, or
 /// join the block to the one before.
-pub fn backspace(doc: &mut Document, selection: Selection) -> Pos {
+pub(crate) fn backspace(doc: &mut Document, selection: Selection) -> Pos {
     let (from, to) = selection.ordered();
     if from != to {
         return delete_range(doc, from, to);
@@ -211,7 +221,7 @@ fn join_backward(doc: &mut Document, index: usize) -> Pos {
 }
 
 /// Delete: the selection, the char after the caret, or at a block's end the next block joined in.
-pub fn delete_forward(doc: &mut Document, selection: Selection) -> Pos {
+pub(crate) fn delete_forward(doc: &mut Document, selection: Selection) -> Pos {
     let (from, to) = selection.ordered();
     if from != to {
         return delete_range(doc, from, to);
@@ -233,7 +243,10 @@ pub fn delete_forward(doc: &mut Document, selection: Selection) -> Pos {
 }
 
 /// The char ranges of each text block the selection covers, as (block, start..end).
-pub fn text_ranges(doc: &Document, selection: Selection) -> Vec<(usize, std::ops::Range<usize>)> {
+pub(crate) fn text_ranges(
+    doc: &Document,
+    selection: Selection,
+) -> Vec<(usize, std::ops::Range<usize>)> {
     let (from, to) = selection.ordered();
     let (from, to) = (doc.clamp(from), doc.clamp(to));
     (from.block..=to.block)
@@ -248,7 +261,7 @@ pub fn text_ranges(doc: &Document, selection: Selection) -> Vec<(usize, std::ops
 }
 
 /// Whether every selected char carries `mark`.
-pub fn has_mark(doc: &Document, selection: Selection, mark: Mark) -> bool {
+pub(crate) fn has_mark(doc: &Document, selection: Selection, mark: Mark) -> bool {
     let ranges = text_ranges(doc, selection);
     !ranges.is_empty()
         && ranges.iter().all(|(index, range)| {
@@ -258,7 +271,7 @@ pub fn has_mark(doc: &Document, selection: Selection, mark: Mark) -> bool {
 
 /// Adds `mark` to the selection, or removes it where all of the selection has it (see
 /// [`Marks::switch`]). Returns whether anything changed.
-pub fn toggle_mark(doc: &mut Document, selection: Selection, mark: Mark) -> bool {
+pub(crate) fn toggle_mark(doc: &mut Document, selection: Selection, mark: Mark) -> bool {
     let ranges = text_ranges(doc, selection);
     if ranges.is_empty() {
         return false;
@@ -271,7 +284,7 @@ pub fn toggle_mark(doc: &mut Document, selection: Selection, mark: Mark) -> bool
 }
 
 /// Stored marks after a toggle at a bare caret.
-pub fn toggled(marks: &Marks, mark: Mark) -> Marks {
+pub(crate) fn toggled(marks: &Marks, mark: Mark) -> Marks {
     let is_on = !marks.has(mark);
     let mut marks = marks.clone();
     marks.switch(mark, is_on);
@@ -279,7 +292,7 @@ pub fn toggled(marks: &Marks, mark: Mark) -> Marks {
 }
 
 /// Links the selection to `link`, or unlinks it with `None`.
-pub fn set_link(doc: &mut Document, selection: Selection, link: Option<Link>) {
+pub(crate) fn set_link(doc: &mut Document, selection: Selection, link: Option<Link>) {
     let link = link.map(Arc::new);
     for (index, range) in text_ranges(doc, selection) {
         doc.block_mut(index).content.map_marks(range, |marks| marks.link.clone_from(&link));
@@ -287,7 +300,7 @@ pub fn set_link(doc: &mut Document, selection: Selection, link: Option<Link>) {
 }
 
 /// Inserts `text` linked to `link` at the caret (Ctrl+K without a selection).
-pub fn insert_link(doc: &mut Document, selection: Selection, text: &str, link: Link) -> Pos {
+pub(crate) fn insert_link(doc: &mut Document, selection: Selection, text: &str, link: Link) -> Pos {
     let (from, to) = selection.ordered();
     let at = delete_range(doc, from, to);
     let mut marks = doc.block(at.block).content.marks_at(at.offset);
@@ -296,7 +309,7 @@ pub fn insert_link(doc: &mut Document, selection: Selection, text: &str, link: L
 }
 
 /// The selected part of the document as a document of its own (for copy).
-pub fn fragment(doc: &Document, selection: Selection) -> Document {
+pub(crate) fn fragment(doc: &Document, selection: Selection) -> Document {
     let (from, to) = selection.ordered();
     let (from, to) = (doc.clamp(from), doc.clamp(to));
     let mut blocks = Vec::new();
@@ -316,7 +329,11 @@ pub fn fragment(doc: &Document, selection: Selection) -> Document {
 /// Replaces the selection with `fragment` (a paste). One plain paragraph goes into the text at
 /// the caret; more blocks split the block at the caret and go between its halves, inside its
 /// containers. Returns the caret after the pasted content.
-pub fn insert_fragment(doc: &mut Document, selection: Selection, fragment: &Document) -> Pos {
+pub(crate) fn insert_fragment(
+    doc: &mut Document,
+    selection: Selection,
+    fragment: &Document,
+) -> Pos {
     let (from, to) = selection.ordered();
     let deleted = delete_range(doc, from, to);
     let at = leave_rule(doc, deleted);

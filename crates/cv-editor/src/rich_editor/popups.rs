@@ -17,7 +17,7 @@ const LINK_FIELD_WIDTH: f32 = 280.0;
 const MAX_QUERY: usize = 40;
 
 /// Shows the open popup; returns a command it asks for.
-pub fn show(
+pub(crate) fn show(
     ui: &Ui,
     id: Id,
     state: &mut State,

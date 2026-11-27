@@ -30,7 +30,7 @@ pub struct RateLimited {
 
 /// Requests per minute (and totals per endpoint) for every connection in `connections` that sent
 /// any.
-pub fn request_rates(connections: &ConnectionStore) -> Vec<ConnectionRate> {
+pub(crate) fn request_rates(connections: &ConnectionStore) -> Vec<ConnectionRate> {
     connections
         .all()
         .iter()
@@ -48,7 +48,7 @@ pub fn request_rates(connections: &ConnectionStore) -> Vec<ConnectionRate> {
 }
 
 /// Connections in `connections` that are paused by a rate limit right now, soonest resume first.
-pub fn rate_limited(connections: &ConnectionStore) -> Vec<RateLimited> {
+pub(crate) fn rate_limited(connections: &ConnectionStore) -> Vec<RateLimited> {
     http::rate_limits()
         .into_iter()
         .flat_map(|RateLimitNotice { origin, api, connection_ids, resumes_in }| {

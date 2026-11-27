@@ -35,7 +35,7 @@ impl Chunk {
 
 /// The chunks of the text last passed to [`Chunks::update`], and their merged model.
 #[derive(Clone, Default)]
-pub struct Chunks {
+pub(crate) struct Chunks {
     text: Option<Arc<str>>,
     /// Counts the texts parsed, so a galley is known to be for the current text.
     pub version: u64,
@@ -45,7 +45,7 @@ pub struct Chunks {
 
 impl Chunks {
     /// Parses what changed since the last text; a no-op while `text` stays the same.
-    pub fn update(&mut self, text: &str) {
+    pub(crate) fn update(&mut self, text: &str) {
         if self.text.as_deref() == Some(text) {
             return;
         }

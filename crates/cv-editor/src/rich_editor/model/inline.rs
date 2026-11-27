@@ -6,7 +6,7 @@ use std::sync::Arc;
 use super::{ATOM_CHAR, Atom, Link, Marks};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Run {
+pub(crate) struct Run {
     /// For an atom, one `ATOM_CHAR`.
     pub text: String,
     pub marks: Marks,
@@ -21,22 +21,22 @@ impl Run {
 
 /// The inline content of a block.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
-pub struct Inline {
+pub(crate) struct Inline {
     runs: Vec<Run>,
 }
 
 impl Inline {
-    pub fn plain(text: &str) -> Self {
+    pub(crate) fn plain(text: &str) -> Self {
         let mut inline = Self::default();
         inline.push_text(text, &Marks::default());
         inline
     }
 
-    pub fn runs(&self) -> &[Run] {
+    pub(crate) fn runs(&self) -> &[Run] {
         &self.runs
     }
 
-    pub fn push_text(&mut self, text: &str, marks: &Marks) {
+    pub(crate) fn push_text(&mut self, text: &str, marks: &Marks) {
         if text.is_empty() {
             return;
         }
@@ -50,7 +50,7 @@ impl Inline {
         self.runs.push(Run { text: text.to_owned(), marks: marks.clone(), atom: None });
     }
 
-    pub fn push_atom(&mut self, atom: Atom, marks: &Marks) {
+    pub(crate) fn push_atom(&mut self, atom: Atom, marks: &Marks) {
         self.runs.push(Run { text: ATOM_CHAR.to_string(), marks: marks.clone(), atom: Some(atom) });
     }
 
@@ -62,21 +62,21 @@ impl Inline {
     }
 
     /// Length in chars.
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.runs.iter().map(Run::chars).sum()
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.runs.is_empty()
     }
 
     /// The text, atoms as `ATOM_CHAR`.
-    pub fn text(&self) -> String {
+    pub(crate) fn text(&self) -> String {
         self.runs.iter().map(|run| run.text.as_str()).collect()
     }
 
     /// Appends `other`, merging the runs where they meet.
-    pub fn append(&mut self, other: Inline) {
+    pub(crate) fn append(&mut self, other: Inline) {
         for run in other.runs {
             self.push_run(run);
         }
@@ -85,7 +85,7 @@ impl Inline {
     /// The content without its marks, for a block whose kind changes between text and source:
     /// atoms stay atoms (a mention moved into a code block is still written as its source, never
     /// as the placeholder char) and each text run passes through `text`.
-    pub fn unmarked(&self, text: impl Fn(&str) -> String) -> Inline {
+    pub(crate) fn unmarked(&self, text: impl Fn(&str) -> String) -> Inline {
         let mut out = Inline::default();
         for run in &self.runs {
             match &run.atom {
@@ -97,7 +97,7 @@ impl Inline {
     }
 
     /// The part `range` (chars) as its own inline.
-    pub fn slice(&self, range: Range<usize>) -> Inline {
+    pub(crate) fn slice(&self, range: Range<usize>) -> Inline {
         let mut out = Inline::default();
         let mut start = 0;
         for run in &self.runs {
@@ -120,7 +120,7 @@ impl Inline {
     }
 
     /// Cuts the inline at `at` (chars); returns the part after it.
-    pub fn split_off(&mut self, at: usize) -> Inline {
+    pub(crate) fn split_off(&mut self, at: usize) -> Inline {
         let len = self.len();
         let tail = self.slice(at.min(len)..len);
         *self = self.slice(0..at.min(len));
@@ -128,7 +128,7 @@ impl Inline {
     }
 
     /// Removes the chars in `range`.
-    pub fn remove(&mut self, range: Range<usize>) {
+    pub(crate) fn remove(&mut self, range: Range<usize>) {
         let len = self.len();
         let mut kept = self.slice(0..range.start.min(len));
         kept.append(self.slice(range.end.min(len)..len));
@@ -136,7 +136,7 @@ impl Inline {
     }
 
     /// Inserts `other` at char `at`.
-    pub fn insert(&mut self, at: usize, other: Inline) {
+    pub(crate) fn insert(&mut self, at: usize, other: Inline) {
         let tail = self.split_off(at);
         self.append(other);
         self.append(tail);
@@ -144,7 +144,7 @@ impl Inline {
 
     /// The marks text typed at `offset` takes: those of the char before it (the first char at
     /// the start). A link does not grow at its end, as in the web editors.
-    pub fn marks_at(&self, offset: usize) -> Marks {
+    pub(crate) fn marks_at(&self, offset: usize) -> Marks {
         let before = offset.checked_sub(1).and_then(|index| self.run_index(index));
         let Some((index, _)) = before.or_else(|| self.run_index(offset)) else {
             return Marks::default();
@@ -161,7 +161,7 @@ impl Inline {
     }
 
     /// The run holding char `index` and the char offset that run starts at.
-    pub fn run_index(&self, index: usize) -> Option<(usize, usize)> {
+    pub(crate) fn run_index(&self, index: usize) -> Option<(usize, usize)> {
         let mut start = 0;
         for (position, run) in self.runs.iter().enumerate() {
             let end = start + run.chars();
@@ -174,7 +174,7 @@ impl Inline {
     }
 
     /// Changes the marks of every char in `range`.
-    pub fn map_marks(&mut self, range: Range<usize>, change: impl Fn(&mut Marks)) {
+    pub(crate) fn map_marks(&mut self, range: Range<usize>, change: impl Fn(&mut Marks)) {
         let len = self.len();
         let (start, end) = (range.start.min(len), range.end.min(len));
         let mut middle = self.slice(start..end);
@@ -188,13 +188,13 @@ impl Inline {
     }
 
     /// Whether `range` holds chars and every one of them passes `test`.
-    pub fn all_marked(&self, range: Range<usize>, test: impl Fn(&Marks) -> bool) -> bool {
+    pub(crate) fn all_marked(&self, range: Range<usize>, test: impl Fn(&Marks) -> bool) -> bool {
         let slice = self.slice(range);
         !slice.runs.is_empty() && slice.runs.iter().all(|run| test(&run.marks))
     }
 
     /// The char range of the link around char `index`, as far as the same link reaches.
-    pub fn link_range(&self, index: usize) -> Option<(Range<usize>, Arc<Link>)> {
+    pub(crate) fn link_range(&self, index: usize) -> Option<(Range<usize>, Arc<Link>)> {
         let (position, run_start) = self.run_index(index)?;
         let link = self.runs[position].marks.link.clone()?;
         let is_same = |run: &Run| run.marks.link.as_deref() == Some(&*link);

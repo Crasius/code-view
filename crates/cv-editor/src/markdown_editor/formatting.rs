@@ -6,7 +6,7 @@ use std::ops::Range;
 use super::structure::InlineKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Format {
+pub(crate) enum Format {
     Bold,
     Italic,
     Strikethrough,
@@ -22,7 +22,7 @@ pub enum Format {
 
 impl Format {
     /// The span this format writes, `None` for the line and block formats.
-    pub fn inline_kind(self) -> Option<InlineKind> {
+    pub(crate) fn inline_kind(self) -> Option<InlineKind> {
         match self {
             Self::Bold => Some(InlineKind::Bold),
             Self::Italic => Some(InlineKind::Italic),
@@ -41,30 +41,30 @@ impl Format {
 
 /// Which way Tab moves list items: one level in, or (Shift+Tab) one level out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Indent {
+pub(crate) enum Indent {
     In,
     Out,
 }
 
 /// Selection in character offsets, `start <= end`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Selection {
+pub(crate) struct Selection {
     pub start: usize,
     pub end: usize,
 }
 
 impl Selection {
-    pub fn caret(at: usize) -> Self {
+    pub(crate) fn caret(at: usize) -> Self {
         Self { start: at, end: at }
     }
 
-    pub fn is_empty(self) -> bool {
+    pub(crate) fn is_empty(self) -> bool {
         self.start == self.end
     }
 }
 
 /// Applies `format` and returns the new selection.
-pub fn apply(text: &mut String, selection: Selection, format: Format) -> Selection {
+pub(crate) fn apply(text: &mut String, selection: Selection, format: Format) -> Selection {
     match format {
         Format::Bold => wrap(text, selection, "**", "**", "bold text"),
         Format::Italic => wrap(text, selection, "_", "_", "italic text"),
@@ -86,7 +86,7 @@ pub fn apply(text: &mut String, selection: Selection, format: Format) -> Selecti
     }
 }
 
-pub fn byte_offset(text: &str, char_offset: usize) -> usize {
+pub(crate) fn byte_offset(text: &str, char_offset: usize) -> usize {
     // Most comments are ASCII; skip the char walk over long ones.
     if text.is_ascii() {
         return char_offset.min(text.len());
@@ -94,7 +94,7 @@ pub fn byte_offset(text: &str, char_offset: usize) -> usize {
     text.char_indices().nth(char_offset).map_or(text.len(), |(byte, _)| byte)
 }
 
-pub fn char_offset(text: &str, byte_offset: usize) -> usize {
+pub(crate) fn char_offset(text: &str, byte_offset: usize) -> usize {
     text[..byte_offset.min(text.len())].chars().count()
 }
 
@@ -132,7 +132,7 @@ fn wrap(
 
 /// Removes the `marker` bytes at both ends of `span` (a byte range), keeping the caret on the
 /// same character of the content.
-pub fn unwrap_span(
+pub(crate) fn unwrap_span(
     text: &mut String,
     span: Range<usize>,
     marker: usize,
@@ -150,7 +150,7 @@ pub fn unwrap_span(
 }
 
 /// Turns a link back into its label (`[label](url)` → `label`).
-pub fn unlink(text: &mut String, span: Range<usize>, selection: Selection) -> Selection {
+pub(crate) fn unlink(text: &mut String, span: Range<usize>, selection: Selection) -> Selection {
     let source = &text[span.clone()];
     let label = source
         .strip_prefix('[')
@@ -173,7 +173,7 @@ fn link(text: &mut String, selection: Selection) -> Selection {
 }
 
 /// `[selection](url)`, for pasting a URL over selected text. The caret lands after the link.
-pub fn link_to(text: &mut String, selection: Selection, url: &str) -> Selection {
+pub(crate) fn link_to(text: &mut String, selection: Selection, url: &str) -> Selection {
     let Range { start, end } = byte_range(text, selection);
     let replacement = format!("[{}]({url})", &text[start..end]);
     text.replace_range(start..end, &replacement);
@@ -181,7 +181,7 @@ pub fn link_to(text: &mut String, selection: Selection, url: &str) -> Selection 
 }
 
 /// Replaces the selection with `insert` and puts the caret after it.
-pub fn insert(text: &mut String, selection: Selection, insert: &str) -> Selection {
+pub(crate) fn insert(text: &mut String, selection: Selection, insert: &str) -> Selection {
     let range = byte_range(text, selection);
     text.replace_range(range, insert);
     Selection::caret(selection.start + char_len(insert))
@@ -223,7 +223,7 @@ fn code_block(text: &mut String, selection: Selection) -> Selection {
 }
 
 /// Pasted code: a fence with the file's language; the caret lands after the block.
-pub fn fenced_paste(
+pub(crate) fn fenced_paste(
     text: &mut String,
     selection: Selection,
     code: &str,
@@ -235,7 +235,7 @@ pub fn fenced_paste(
 
 /// A ```` ```suggestion ```` block holding `lines`, with the caret on its first line so the reviewer
 /// can start editing the proposed code right away.
-pub fn suggestion(text: &mut String, selection: Selection, lines: &str) -> Selection {
+pub(crate) fn suggestion(text: &mut String, selection: Selection, lines: &str) -> Selection {
     let (_, body) = fence(text, selection, "suggestion", lines.trim_end_matches(['\n', '\r']));
     Selection { start: body.start, end: body.end }
 }
@@ -330,7 +330,7 @@ fn strip_list_prefix(line: &str) -> &str {
 
 /// The list or quote syntax at the start of a line.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LinePrefix {
+pub(crate) struct LinePrefix {
     /// Leading spaces before the marker.
     pub indent: usize,
     /// `> ` quote markers before the list marker.
@@ -341,14 +341,14 @@ pub struct LinePrefix {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ListMarker {
+pub(crate) enum ListMarker {
     Bullet(char),
     Numbered { number: u64, delimiter: char },
     Task { bullet: char, is_checked: bool },
 }
 
 impl LinePrefix {
-    pub fn parse(line: &str) -> Self {
+    pub(crate) fn parse(line: &str) -> Self {
         let mut position = 0;
         let mut quote = String::new();
         loop {
@@ -404,7 +404,7 @@ impl LinePrefix {
         Self { indent: if list.is_some() { indent } else { 0 }, quote, list, len }
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.quote.is_empty() && self.list.is_none()
     }
 
@@ -445,7 +445,7 @@ fn lines_around(text: &str, bytes: Range<usize>) -> Range<usize> {
 
 /// Enter inside a list or quote: continues it on the next line, or ends it when the current item
 /// is empty. `None` when the caret is not in a list or quote (a plain newline then).
-pub fn continue_block(text: &mut String, selection: Selection) -> Option<Selection> {
+pub(crate) fn continue_block(text: &mut String, selection: Selection) -> Option<Selection> {
     let Range { start, end } = byte_range(text, selection);
     let line = line_bounds(text, start);
     let prefix = LinePrefix::parse(&text[line.clone()]);
@@ -466,7 +466,7 @@ pub fn continue_block(text: &mut String, selection: Selection) -> Option<Selecti
 }
 
 /// Enter inside a code block keeps the current line's indentation.
-pub fn newline_with_indent(text: &mut String, selection: Selection) -> Selection {
+pub(crate) fn newline_with_indent(text: &mut String, selection: Selection) -> Selection {
     let Range { start, end } = byte_range(text, selection);
     let line = line_bounds(text, start);
     let indent: String = text[line.start..start]
@@ -480,7 +480,7 @@ pub fn newline_with_indent(text: &mut String, selection: Selection) -> Selection
 
 /// Tab / Shift+Tab on list items: nests the selected items one level under the item above, or
 /// moves them one level out. `None` when no selected line is a list item.
-pub fn indent_items(
+pub(crate) fn indent_items(
     text: &mut String,
     selection: Selection,
     direction: Indent,
@@ -541,12 +541,12 @@ pub fn indent_items(
 }
 
 /// The list kind of the line holding `byte`, for the toolbar's active state.
-pub fn list_at(text: &str, byte: usize) -> Option<ListMarker> {
+pub(crate) fn list_at(text: &str, byte: usize) -> Option<ListMarker> {
     let line = line_bounds(text, byte.min(text.len()));
     LinePrefix::parse(&text[line]).list
 }
 
-pub fn is_quote_at(text: &str, byte: usize) -> bool {
+pub(crate) fn is_quote_at(text: &str, byte: usize) -> bool {
     let line = line_bounds(text, byte.min(text.len()));
     !LinePrefix::parse(&text[line]).quote.is_empty()
 }

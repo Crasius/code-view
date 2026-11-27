@@ -24,7 +24,7 @@ pub const PAUSE: Duration = Duration::from_secs(60);
 /// A glance at another window and back costs nothing; a minimize or anything longer finds the page
 /// refreshed, since the host may have changed it meanwhile (an approval, a merge, a draft made
 /// ready).
-pub const AWAY: Duration = Duration::from_secs(3);
+pub(crate) const AWAY: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cue {

@@ -9,34 +9,34 @@ use std::path::PathBuf;
 
 use review_store::AppPaths;
 
-pub type Stream = UnixStream;
+pub(crate) type Stream = UnixStream;
 
-pub struct Endpoint {
+pub(crate) struct Endpoint {
     socket: PathBuf,
 }
 
 impl Endpoint {
-    pub fn of(paths: &AppPaths) -> Self {
+    pub(crate) fn of(paths: &AppPaths) -> Self {
         Self { socket: paths.ipc_socket() }
     }
 }
 
-pub fn connect(endpoint: &Endpoint) -> io::Result<Stream> {
+pub(crate) fn connect(endpoint: &Endpoint) -> io::Result<Stream> {
     UnixStream::connect(&endpoint.socket)
 }
 
 /// No socket, or one a crashed instance left that nobody answers on.
-pub fn is_absent(error: &io::Error) -> bool {
+pub(crate) fn is_absent(error: &io::Error) -> bool {
     matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused)
 }
 
 /// The window manager decides on its own; there is no right to hand over.
-pub fn allow_foreground(_process_id: u32) {}
+pub(crate) fn allow_foreground(_process_id: u32) {}
 
-pub struct Listener(UnixListener);
+pub(crate) struct Listener(UnixListener);
 
 impl Listener {
-    pub fn bind(endpoint: &Endpoint) -> io::Result<Self> {
+    pub(crate) fn bind(endpoint: &Endpoint) -> io::Result<Self> {
         let folder = endpoint
             .socket
             .parent()
@@ -53,7 +53,7 @@ impl Listener {
         UnixListener::bind(&endpoint.socket).map(Self)
     }
 
-    pub fn accept(&mut self) -> io::Result<Stream> {
+    pub(crate) fn accept(&mut self) -> io::Result<Stream> {
         self.0.accept().map(|(stream, _)| stream)
     }
 }

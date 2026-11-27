@@ -16,7 +16,7 @@ use super::story::{self, Caption, Scene};
 const HEIGHT: f32 = 172.0;
 const CAPTION_HEIGHT: f32 = 20.0;
 /// The miniature with its caption, as [`show`] lays them out.
-pub const HEIGHT_WITH_CAPTION: f32 = HEIGHT + style::SPACE_S + CAPTION_HEIGHT;
+pub(crate) const HEIGHT_WITH_CAPTION: f32 = HEIGHT + style::SPACE_S + CAPTION_HEIGHT;
 const APP_BAR: f32 = 12.0;
 /// The header's height: how far it slides.
 pub(super) const HEADER: f32 = 34.0;
@@ -36,7 +36,7 @@ const THUMB_HEIGHT: f32 = 48.0;
 
 /// What the miniature shows.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Phase {
+pub(crate) enum Phase {
     /// The mode's still frame, inviting to watch it.
     Still,
     /// Watched under reduced motion: the still frame with the main caption.
@@ -47,7 +47,7 @@ pub enum Phase {
 
 /// The miniature of the card for tab `tab` (its place in the tab bar, 0 for the first) named
 /// `name`, showing `mode` as `phase` says, with its caption.
-pub fn show(ui: &mut Ui, tab: usize, name: &str, mode: HeaderMode, phase: Phase) {
+pub(crate) fn show(ui: &mut Ui, tab: usize, name: &str, mode: HeaderMode, phase: Phase) {
     let palette = theme::palette(ui.ctx());
     let width = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(vec2(width, HEIGHT), Sense::hover());

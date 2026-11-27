@@ -46,7 +46,7 @@ pub fn unconnected_cloud_link(url: &str) -> Option<AddRequest> {
 }
 
 /// The connection and item a pull request, issue or work item URL names, like [`resolve`].
-pub fn resolve_item(url: &str, connections: &[Connection]) -> Option<(String, ItemRef)> {
+pub(crate) fn resolve_item(url: &str, connections: &[Connection]) -> Option<(String, ItemRef)> {
     let address = address(url);
     candidates(connections).into_iter().find_map(|connection| {
         let path = web_path(address, connection)?;

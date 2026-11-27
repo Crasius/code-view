@@ -6,8 +6,8 @@
 use review_agent::AgentKind;
 
 /// Install guides, linked where a CLI is missing.
-pub const CLAUDE_INSTALL_URL: &str = "https://docs.anthropic.com/en/docs/claude-code/setup";
-pub const CODEX_INSTALL_URL: &str = "https://github.com/openai/codex";
+pub(crate) const CLAUDE_INSTALL_URL: &str = "https://docs.anthropic.com/en/docs/claude-code/setup";
+pub(crate) const CODEX_INSTALL_URL: &str = "https://github.com/openai/codex";
 
 /// The product name of `kind`'s CLI.
 pub fn cli_name(kind: AgentKind) -> &'static str {

@@ -31,10 +31,10 @@ pub use self::worker::serve_if_asked;
 use crate::image_state::bump_image_generation;
 
 /// How long one diagram may take in the renderer before it is stopped.
-pub const RENDER_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const RENDER_TIMEOUT: Duration = Duration::from_secs(5);
 /// Texture memory kept for diagrams drawn recently: our budget, a page of ordinary diagrams (a
 /// flowchart at 2x is a few MB). The one diagram drawn right now stays even when it is larger.
-pub const MEMORY_LIMIT: usize = 48 * 1024 * 1024;
+pub(crate) const MEMORY_LIMIT: usize = 48 * 1024 * 1024;
 /// Diagrams kept at most (their SVG, size or failure).
 const MAX_ENTRIES: usize = 512;
 /// A diagram's texture is never larger than this, edge and area.

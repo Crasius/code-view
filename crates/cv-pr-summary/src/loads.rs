@@ -19,9 +19,9 @@ use cv_syntax::highlight::LineSpans;
 
 /// Loads running at once: enough to fill a screen quickly, few enough to leave git and the
 /// coloring thread to the file the user opens next.
-pub const MAX_RUNNING: usize = 4;
+pub(crate) const MAX_RUNNING: usize = 4;
 /// Cards looked at for loading per frame, nearest first; fewer than the body cache keeps.
-pub const MAX_WANTED: usize = 96;
+pub(crate) const MAX_WANTED: usize = 96;
 /// Faster than this (points per second, about eight screens) the view is flying by (a fling, a
 /// dragged scroll bar, a jump): nothing new starts loading. A steady wheel glide stays below it.
 const FLING_SPEED: f32 = 8_000.0;
@@ -38,7 +38,7 @@ struct Running {
 
 type SpansMessage = (u64, String, LineSpans);
 
-pub struct Loads {
+pub(crate) struct Loads {
     /// Slots on screen and one screen around it, nearest first, as of the last frame.
     wanted: Vec<usize>,
     running: Vec<Running>,
@@ -72,24 +72,29 @@ impl Default for Loads {
 impl Loads {
     /// A new comparison: the running loads, the failures and the colors still on their way belong
     /// to the old one.
-    pub fn start_over(&mut self) {
+    pub(crate) fn start_over(&mut self) {
         self.generation += 1;
         self.running.clear();
         self.failed.clear();
     }
 
-    pub fn wanted(&self) -> &[usize] {
+    pub(crate) fn wanted(&self) -> &[usize] {
         &self.wanted
     }
 
     /// The cards were rebuilt: the slots planned for are gone.
-    pub fn clear_wanted(&mut self) {
+    pub(crate) fn clear_wanted(&mut self) {
         self.wanted.clear();
     }
 
     /// The expanded cards on screen and one screen around it, those on screen first, then by
     /// distance; a few dozen at most however small the cards are.
-    pub fn plan(&mut self, index: &CardIndex, viewport: Rect, is_expanded: impl Fn(usize) -> bool) {
+    pub(crate) fn plan(
+        &mut self,
+        index: &CardIndex,
+        viewport: Rect,
+        is_expanded: impl Fn(usize) -> bool,
+    ) {
         self.wanted.clear();
         let height = viewport.height().max(1.0);
         let (top, bottom) = (viewport.top(), viewport.bottom());
@@ -114,7 +119,7 @@ impl Loads {
 
     /// The diffs that arrived since the last frame, as (path, file index, diff); the failures are
     /// kept for their cards.
-    pub fn finish(&mut self) -> Vec<(String, usize, Arc<FileDiff>)> {
+    pub(crate) fn finish(&mut self) -> Vec<(String, usize, Arc<FileDiff>)> {
         let mut finished = Vec::new();
         let failed = &mut self.failed;
         self.running.retain_mut(|running| {
@@ -136,11 +141,11 @@ impl Loads {
     }
 
     /// Another load may start: fewer than [`MAX_RUNNING`] are on their way.
-    pub fn has_room(&self) -> bool {
+    pub(crate) fn has_room(&self) -> bool {
         self.running.len() < MAX_RUNNING
     }
 
-    pub fn push(&mut self, path: String, file: usize, load: Load<Arc<FileDiff>>) {
+    pub(crate) fn push(&mut self, path: String, file: usize, load: Load<Arc<FileDiff>>) {
         self.running.push(Running { path, file, load });
     }
 
@@ -151,21 +156,21 @@ impl Loads {
     }
 
     /// `path`'s diff is on its way or failed: nothing to start for it.
-    pub fn is_tried(&self, path: &str) -> bool {
+    pub(crate) fn is_tried(&self, path: &str) -> bool {
         self.failed.contains_key(path) || self.running.iter().any(|running| running.path == path)
     }
 
-    pub fn failure(&self, path: &str) -> Option<&str> {
+    pub(crate) fn failure(&self, path: &str) -> Option<&str> {
         self.failed.get(path).map(String::as_str)
     }
 
     /// The card's Retry: its diff loads again once it is wanted.
-    pub fn retry(&mut self, path: &str) {
+    pub(crate) fn retry(&mut self, path: &str) {
         self.failed.remove(path);
     }
 
     /// Takes in the colors worked out for the current comparison.
-    pub fn receive_spans(&self, bodies: &mut BodyCache) {
+    pub(crate) fn receive_spans(&self, bodies: &mut BodyCache) {
         while let Ok((generation, path, spans)) = self.spans_receiver.try_recv() {
             if generation == self.generation {
                 bodies.set_spans(&path, spans);
@@ -174,7 +179,7 @@ impl Loads {
     }
 
     /// Queues the syntax colors of a loaded card that has none yet.
-    pub fn color(&self, ctx: &egui::Context, path: &str, body: &mut CardBody) {
+    pub(crate) fn color(&self, ctx: &egui::Context, path: &str, body: &mut CardBody) {
         if body.spans.is_some() || body.coloring.is_some() || body.placeholder.is_some() {
             return;
         }
@@ -191,12 +196,12 @@ impl Loads {
     }
 
     /// The view slowed down long enough ago for loads to start.
-    pub fn is_settled(&self, now: f64) -> bool {
+    pub(crate) fn is_settled(&self, now: f64) -> bool {
         now >= self.settles_at
     }
 
     /// Notes how fast the view moves; while it flies by, loads wait until it settles.
-    pub fn track_motion(&mut self, ctx: &egui::Context, now: f64, offset: f32) {
+    pub(crate) fn track_motion(&mut self, ctx: &egui::Context, now: f64, offset: f32) {
         if let Some((time, previous)) = self.last_motion {
             let elapsed = (now - time).max(1.0 / 1000.0) as f32;
             let speed = (offset - previous).abs() / elapsed;
@@ -211,7 +216,7 @@ impl Loads {
     }
 
     /// The view did not show (another folder, a file open): the next frame's offset is no motion.
-    pub fn forget_motion(&mut self) {
+    pub(crate) fn forget_motion(&mut self) {
         self.last_motion = None;
     }
 }

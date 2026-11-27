@@ -57,7 +57,7 @@ impl ColdTier {
     /// it never started. Writes run in order on one thread, so a marker write behind them is
     /// handled last.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn flush(&self) {
+    pub(crate) fn flush(&self) {
         let (done, handled) = mpsc::channel::<()>();
         let marker = move |_: &ColdCache| {
             let _waiter_gone = done.send(());
@@ -75,7 +75,12 @@ impl ColdTier {
 
     /// The payloads of `kind` at `version` with their keys, the most recently used first, up to
     /// `max_bytes`. Reads the disk: once at start.
-    pub fn read_all(&self, kind: &str, version: u32, max_bytes: u64) -> Vec<(String, Vec<u8>)> {
+    pub(crate) fn read_all(
+        &self,
+        kind: &str,
+        version: u32,
+        max_bytes: u64,
+    ) -> Vec<(String, Vec<u8>)> {
         self.cache.read_all(kind, version, max_bytes)
     }
 }

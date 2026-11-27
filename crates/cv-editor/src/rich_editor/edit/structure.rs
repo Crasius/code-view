@@ -11,7 +11,7 @@ use crate::rich_editor::model::{
 
 /// The list a toolbar button or shortcut makes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ListStyle {
+pub(crate) enum ListStyle {
     Bullet,
     Ordered,
     Task,
@@ -82,7 +82,7 @@ fn item_end(doc: &Document, head: usize, depth: usize) -> usize {
 /// Takes block `index` (with its item, if its innermost container is one) out of its innermost
 /// container: a nested item becomes an item of the parent list, a top-level item a paragraph, a
 /// quoted block an unquoted one.
-pub fn lift(doc: &mut Document, index: usize) {
+pub(crate) fn lift(doc: &mut Document, index: usize) {
     match doc.block(index).nesting.last() {
         Some(Container::Quote(_)) => {
             doc.block_mut(index).nesting.pop();
@@ -96,7 +96,7 @@ pub fn lift(doc: &mut Document, index: usize) {
 }
 
 /// Shift+Tab: the items of `first..=last` move one level out. Returns whether anything moved.
-pub fn outdent(doc: &mut Document, first: usize, last: usize) -> bool {
+pub(crate) fn outdent(doc: &mut Document, first: usize, last: usize) -> bool {
     let Some(depth) = item_depth(doc, first) else { return false };
     let head = item_head(doc, first, depth);
     let last_head =
@@ -116,7 +116,7 @@ pub fn outdent(doc: &mut Document, first: usize, last: usize) -> bool {
 
 /// Tab: the items of `first..=last` become children of the item before the first. Nothing
 /// happens for the first item of a list (it has no item to go into).
-pub fn indent(doc: &mut Document, first: usize, last: usize) -> bool {
+pub(crate) fn indent(doc: &mut Document, first: usize, last: usize) -> bool {
     let Some(depth) = item_depth(doc, first) else { return false };
     let head = item_head(doc, first, depth);
     let Some(previous) = head.checked_sub(1).map(|before| &doc.block(before).nesting) else {
@@ -149,7 +149,7 @@ pub fn indent(doc: &mut Document, first: usize, last: usize) -> bool {
 
 /// Turns `first..=last` into a list of `style`, changes the list they are in to it, or, when
 /// they all are one already, takes them out of it.
-pub fn toggle_list(doc: &mut Document, first: usize, last: usize, style: ListStyle) {
+pub(crate) fn toggle_list(doc: &mut Document, first: usize, last: usize, style: ListStyle) {
     let targets: Vec<usize> =
         (first..=last).filter(|&index| doc.block(index).kind != Kind::Rule).collect();
     let all_match = !targets.is_empty()
@@ -199,7 +199,7 @@ fn restyle_list(doc: &mut Document, index: usize, depth: usize, style: ListStyle
 }
 
 /// Quotes `first..=last`, or unquotes them when they all are quoted.
-pub fn toggle_quote(doc: &mut Document, first: usize, last: usize) {
+pub(crate) fn toggle_quote(doc: &mut Document, first: usize, last: usize) {
     let all_quoted = (first..=last).all(|index| {
         doc.block(index).nesting.iter().any(|container| matches!(container, Container::Quote(_)))
     });
@@ -219,14 +219,14 @@ pub fn toggle_quote(doc: &mut Document, first: usize, last: usize) {
 }
 
 /// Makes `first..=last` headings of `level`, or paragraphs when they all are already.
-pub fn toggle_heading(doc: &mut Document, first: usize, last: usize, level: u8) {
+pub(crate) fn toggle_heading(doc: &mut Document, first: usize, last: usize, level: u8) {
     let all_match = (first..=last).all(|index| doc.block(index).kind == Kind::Heading(level));
     let kind = if all_match { Kind::Paragraph } else { Kind::Heading(level) };
     set_kind(doc, first, last, &kind);
 }
 
 /// Gives `first..=last` the text kind `kind` (paragraph or heading); rules stay.
-pub fn set_kind(doc: &mut Document, first: usize, last: usize, kind: &Kind) {
+pub(crate) fn set_kind(doc: &mut Document, first: usize, last: usize, kind: &Kind) {
     for index in first..=last {
         if doc.block(index).kind == Kind::Rule {
             continue;
@@ -242,7 +242,7 @@ pub fn set_kind(doc: &mut Document, first: usize, last: usize, kind: &Kind) {
 
 /// Makes `first..=last` one code block, or turns code blocks back into paragraphs. Returns the
 /// caret.
-pub fn toggle_code_block(doc: &mut Document, first: usize, last: usize) -> Pos {
+pub(crate) fn toggle_code_block(doc: &mut Document, first: usize, last: usize) -> Pos {
     let all_code = (first..=last).all(|index| matches!(doc.block(index).kind, Kind::Code(_)));
     if all_code {
         set_kind(doc, first, last, &Kind::Paragraph);
@@ -259,7 +259,7 @@ pub fn toggle_code_block(doc: &mut Document, first: usize, last: usize) -> Pos {
 }
 
 /// The content of `blocks` unmarked for a source block, each block on a line of its own.
-pub fn source_lines<'a>(blocks: impl IntoIterator<Item = &'a Block>) -> Inline {
+pub(crate) fn source_lines<'a>(blocks: impl IntoIterator<Item = &'a Block>) -> Inline {
     let mut lines = Inline::default();
     for (index, block) in blocks.into_iter().enumerate() {
         if index > 0 {
@@ -271,7 +271,7 @@ pub fn source_lines<'a>(blocks: impl IntoIterator<Item = &'a Block>) -> Inline {
 }
 
 /// Inserts a horizontal rule at the caret and puts the caret in the paragraph after it.
-pub fn insert_rule(doc: &mut Document, at: Pos) -> Pos {
+pub(crate) fn insert_rule(doc: &mut Document, at: Pos) -> Pos {
     let at = doc.clamp(at);
     let block = doc.block(at.block);
     let is_empty_paragraph = block.content.is_empty() && block.kind == Kind::Paragraph;
@@ -308,7 +308,7 @@ pub fn insert_rule(doc: &mut Document, at: Pos) -> Pos {
 }
 
 /// Checks or clears the task box of the item block `index` is in. Returns whether it had one.
-pub fn toggle_task(doc: &mut Document, index: usize) -> bool {
+pub(crate) fn toggle_task(doc: &mut Document, index: usize) -> bool {
     let Some((depth, Container::Item { task: Some(checked), .. })) = doc.block(index).item() else {
         return false;
     };

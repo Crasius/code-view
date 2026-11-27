@@ -33,7 +33,7 @@ use review_core::ProviderKind;
 mod inline;
 mod prepare;
 
-pub use self::inline::run_source;
+pub(crate) use self::inline::run_source;
 use self::inline::{Context, inline_markdown};
 use super::model::{Alert, Block, Container, Document, Inline, Kind, ListKind};
 
@@ -41,17 +41,21 @@ use super::model::{Alert, Block, Container, Document, Inline, Kind, ListKind};
 /// block, so the pointer is never reused while cached). Entries of blocks that left the
 /// document drop at the next serialization.
 #[derive(Clone, Default)]
-pub struct InlineCache {
+pub(crate) struct InlineCache {
     entries: HashMap<usize, (Arc<Block>, Arc<str>)>,
 }
 
 /// `doc` as Markdown for `platform`.
-pub fn serialize(doc: &Document, platform: ProviderKind) -> String {
+pub(crate) fn serialize(doc: &Document, platform: ProviderKind) -> String {
     serialize_with(doc, platform, &mut InlineCache::default())
 }
 
 /// [`serialize`], reusing the inline output of blocks `cache` saw before.
-pub fn serialize_with(doc: &Document, platform: ProviderKind, cache: &mut InlineCache) -> String {
+pub(crate) fn serialize_with(
+    doc: &Document,
+    platform: ProviderKind,
+    cache: &mut InlineCache,
+) -> String {
     let mut entries = HashMap::with_capacity(doc.blocks.len());
     let mut writer = BlockWriter::default();
     let mut previous: Option<&Block> = None;
@@ -268,7 +272,7 @@ fn alert_name(alert: Alert) -> &'static str {
 }
 
 /// A table as canonical GFM source.
-pub fn table_source(
+pub(crate) fn table_source(
     alignments: &[Alignment],
     header: &[Inline],
     rows: &[Vec<Inline>],

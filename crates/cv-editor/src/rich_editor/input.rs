@@ -7,9 +7,9 @@ mod keys;
 
 use egui::{Pos2, Ui};
 
-pub use self::clipboard::is_url;
+pub(crate) use self::clipboard::is_url;
 use self::clipboard::{copy, paste};
-pub use self::keys::take_commands;
+pub(crate) use self::keys::take_commands;
 use super::caret::{self, Direction};
 use super::edit::rules;
 use super::edit::structure::{self, ListStyle};
@@ -20,7 +20,7 @@ use super::{Popup, State};
 
 /// A caret move.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Motion {
+pub(crate) enum Motion {
     Left,
     Right,
     Up,
@@ -37,7 +37,7 @@ pub enum Motion {
 
 /// What the editor does: from a key, a toolbar button, a menu entry or a click.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Command {
+pub(crate) enum Command {
     Insert(String),
     Enter,
     LineBreak,
@@ -75,14 +75,14 @@ pub enum Command {
 
 /// How the commands of one frame ran.
 #[derive(Default)]
-pub struct Ran {
+pub(crate) struct Ran {
     pub is_changed: bool,
     pub copied: Option<String>,
 }
 
 /// What a command runs with: the `Ui` for caret moves through the layout, the content's origin
 /// and page height, the clock for undo grouping.
-pub struct CommandContext<'a> {
+pub(crate) struct CommandContext<'a> {
     pub ui: &'a Ui,
     /// The content's top-left (screen coordinates).
     pub origin: Pos2,
@@ -91,7 +91,7 @@ pub struct CommandContext<'a> {
 }
 
 /// Runs `commands` on the editor.
-pub fn run(state: &mut State, context: &CommandContext<'_>, commands: Vec<Command>) -> Ran {
+pub(crate) fn run(state: &mut State, context: &CommandContext<'_>, commands: Vec<Command>) -> Ran {
     let mut ran = Ran::default();
     for command in commands {
         let version = state.version;
@@ -219,7 +219,7 @@ fn run_one(state: &mut State, context: &CommandContext<'_>, command: Command, ra
 
 /// What typing left: the caret, the marks for the text typed next, and the document and
 /// selection an input rule rewrote, when one fired.
-pub struct Typed {
+pub(crate) struct Typed {
     pub caret: Pos,
     pub stored: Option<Marks>,
     pub before_rule: Option<(Document, Selection)>,
@@ -227,7 +227,7 @@ pub struct Typed {
 
 /// Types `text` over `selection` with the `stored` marks (or the marks at the selection's start),
 /// then runs the input rule the text completes.
-pub fn type_into(
+pub(crate) fn type_into(
     doc: &mut Document,
     selection: Selection,
     stored: Option<Marks>,
@@ -356,7 +356,7 @@ fn toggle_mark(state: &mut State, context: &CommandContext<'_>, mark: Mark) {
 }
 
 /// The link at the caret: its range in the caret's block and the link.
-pub fn link_at(doc: &Document, caret: Pos) -> Option<(std::ops::Range<usize>, Link)> {
+pub(crate) fn link_at(doc: &Document, caret: Pos) -> Option<(std::ops::Range<usize>, Link)> {
     let content = &doc.block(caret.block).content;
     let found = content
         .link_range(caret.offset)
@@ -442,7 +442,12 @@ fn move_caret(state: &mut State, context: &CommandContext<'_>, motion: Motion, e
 }
 
 /// The person chosen in the mention list replaces `@query`.
-pub fn choose_mention(state: &mut State, context: &CommandContext<'_>, start: Pos, key: String) {
+pub(crate) fn choose_mention(
+    state: &mut State,
+    context: &CommandContext<'_>,
+    start: Pos,
+    key: String,
+) {
     let caret = state.selection.head;
     if caret.block != start.block || caret.offset <= start.offset {
         return;

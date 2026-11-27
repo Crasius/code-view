@@ -17,7 +17,7 @@ use super::shortcuts;
 /// rows has its own enum, so its control matches every one of them and a new row cannot fall
 /// through to another section's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RowId {
+pub(crate) enum RowId {
     ConnectionList,
     Appearance(AppearanceRow),
     Merging(MergingRow),
@@ -33,7 +33,7 @@ pub enum RowId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AppearanceRow {
+pub(crate) enum AppearanceRow {
     Theme,
     DiffLayout,
     CodeFontSize,
@@ -57,13 +57,13 @@ pub enum AppearanceRow {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MergingRow {
+pub(crate) enum MergingRow {
     Favourites,
     Remembered,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AssistantRow {
+pub(crate) enum AssistantRow {
     Shown,
     Agent,
     ClaudeModel,
@@ -72,7 +72,7 @@ pub enum AssistantRow {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CheckoutRow {
+pub(crate) enum CheckoutRow {
     Clones,
     Search,
     Pattern,
@@ -84,7 +84,7 @@ pub enum CheckoutRow {
 
 /// Where a row's control sits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Placement {
+pub(crate) enum Placement {
     /// Right of the label, for switches and buttons.
     Trailing,
     /// Under the label, for segmented controls and sliders.
@@ -97,13 +97,13 @@ pub enum Placement {
 
 impl Placement {
     /// The row is a block of its own, not a row in a shared card.
-    pub fn is_block(self) -> bool {
+    pub(crate) fn is_block(self) -> bool {
         matches!(self, Self::Block | Self::TitledBlock)
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Row {
+pub(crate) struct Row {
     pub id: RowId,
     pub category: Category,
     pub label: &'static str,
@@ -125,8 +125,8 @@ const fn row(
 }
 
 /// The pull request header row's label and description; its block shows them as its heading.
-pub const HEADER_TITLE: &str = "Pull request header";
-pub const HEADER_HELP: &str = "The title and review actions above the tabs. Pick per tab how they behave; each card plays what you picked.";
+pub(crate) const HEADER_TITLE: &str = "Pull request header";
+pub(crate) const HEADER_HELP: &str = "The title and review actions above the tabs. Pick per tab how they behave; each card plays what you picked.";
 
 const ROWS: &[Row] = &[
     row(
@@ -471,18 +471,18 @@ const ROWS: &[Row] = &[
 ];
 
 /// Every row, in section order.
-pub fn all() -> impl Iterator<Item = Row> {
+pub(crate) fn all() -> impl Iterator<Item = Row> {
     ROWS.iter().copied().chain(shortcuts::rows())
 }
 
 /// The rows of one section.
-pub fn of(category: Category) -> impl Iterator<Item = Row> {
+pub(crate) fn of(category: Category) -> impl Iterator<Item = Row> {
     all().filter(move |row| row.category == category)
 }
 
 /// Whether every word of `query` occurs in the row's label, description, keywords or section,
 /// ignoring case. An empty query matches nothing: there is nothing to look for.
-pub fn matches(row: &Row, query: &str) -> bool {
+pub(crate) fn matches(row: &Row, query: &str) -> bool {
     let mut words = query.split_whitespace().peekable();
     if words.peek().is_none() {
         return false;
@@ -492,7 +492,7 @@ pub fn matches(row: &Row, query: &str) -> bool {
 }
 
 /// Byte ranges of `text` where a word of `query` occurs, ignoring ASCII case, sorted and merged.
-pub fn highlights(text: &str, query: &str) -> Vec<Range<usize>> {
+pub(crate) fn highlights(text: &str, query: &str) -> Vec<Range<usize>> {
     let mut ranges: Vec<Range<usize>> =
         query.split_whitespace().flat_map(|word| find(text, word)).collect();
     ranges.sort_by_key(|range| range.start);
@@ -522,7 +522,13 @@ fn find(text: &str, word: &str) -> Vec<Range<usize>> {
 }
 
 /// `text` in `font` and `color`, the parts matching `query` on the search highlight.
-pub fn highlighted(ui: &Ui, text: &str, query: &str, font: FontId, color: Color32) -> LayoutJob {
+pub(crate) fn highlighted(
+    ui: &Ui,
+    text: &str,
+    query: &str,
+    font: FontId,
+    color: Color32,
+) -> LayoutJob {
     let palette = theme::palette(ui.ctx());
     let plain = TextFormat::simple(font, color);
     let marked =
@@ -539,7 +545,7 @@ pub fn highlighted(ui: &Ui, text: &str, query: &str, font: FontId, color: Color3
 }
 
 /// The row's label and description, the search matches marked.
-pub fn header(ui: &mut Ui, row: &Row, query: &str) {
+pub(crate) fn header(ui: &mut Ui, row: &Row, query: &str) {
     let palette = theme::palette(ui.ctx());
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = style::SPACE_LINE;
@@ -565,7 +571,7 @@ pub fn header(ui: &mut Ui, row: &Row, query: &str) {
 }
 
 /// One row of a card: the header and the control, placed as the row says.
-pub fn show(ui: &mut Ui, row: &Row, query: &str, control: impl FnOnce(&mut Ui)) {
+pub(crate) fn show(ui: &mut Ui, row: &Row, query: &str, control: impl FnOnce(&mut Ui)) {
     egui::Frame::new()
         .inner_margin(egui::Margin::symmetric(style::SPACE_L as i8, style::SPACE_M as i8))
         .show(ui, |ui| {
@@ -585,7 +591,7 @@ pub fn show(ui: &mut Ui, row: &Row, query: &str, control: impl FnOnce(&mut Ui)) 
 }
 
 /// A card holding rows: surface fill, a border, dividers between the rows `add` draws.
-pub fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+pub(crate) fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     let palette = theme::palette(ui.ctx());
     egui::Frame::new()
         .fill(palette.surface)
@@ -600,7 +606,7 @@ pub fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 }
 
 /// An on/off setting as a checkbox named by its row's label; the row's header shows the label.
-pub fn switch(ui: &mut Ui, value: &mut bool, row: &Row) -> bool {
+pub(crate) fn switch(ui: &mut Ui, value: &mut bool, row: &Row) -> bool {
     let response = cv_widgets::checkbox::checkbox(ui, value, "");
     response
         .widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, *value, row.label));

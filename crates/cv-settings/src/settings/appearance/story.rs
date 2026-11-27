@@ -82,7 +82,7 @@ enum Spot {
 }
 
 /// The page's state in one frame of a story.
-pub struct Scene {
+pub(crate) struct Scene {
     /// Points of the header slid up out of view.
     pub header_hidden: f32,
     /// Points the content scrolled down.
@@ -96,13 +96,13 @@ pub struct Scene {
 }
 
 /// A line under the miniature: an arrow saying which way things move, and what happens.
-pub struct Caption {
+pub(crate) struct Caption {
     pub icon: Option<&'static str>,
     pub text: String,
 }
 
 /// The story's share of its loop `seconds` after it started.
-pub fn share(mode: HeaderMode, seconds: f64) -> f32 {
+pub(crate) fn share(mode: HeaderMode, seconds: f64) -> f32 {
     let period = match mode {
         HeaderMode::StartMinimized => MINIMIZED_SECONDS,
         HeaderMode::AlwaysShown | HeaderMode::HideOnScroll => SLIDE_SECONDS,
@@ -111,13 +111,13 @@ pub fn share(mode: HeaderMode, seconds: f64) -> f32 {
 }
 
 /// The frame shown while nobody watches: the page at rest, a Start minimized header tucked away.
-pub fn still(mode: HeaderMode) -> Scene {
+pub(crate) fn still(mode: HeaderMode) -> Scene {
     let header_hidden = if mode == HeaderMode::StartMinimized { HEADER } else { 0.0 };
     Scene { header_hidden, lines: 0.0, thumb: 0.0, underline: 1.0, pointer: None }
 }
 
 /// The frame at `share` of the story of `mode`, on a miniature `width` wide for tab `tab`.
-pub fn scene_at(mode: HeaderMode, tab: usize, width: f32, share: f32) -> Scene {
+pub(crate) fn scene_at(mode: HeaderMode, tab: usize, width: f32, share: f32) -> Scene {
     let eased = |stops: &Stops| sample(stops, share, motion::ease_in_out_cubic);
     match mode {
         HeaderMode::AlwaysShown => Scene {
@@ -179,17 +179,17 @@ fn linear(progress: f32) -> f32 {
     progress
 }
 
-pub fn idle_caption() -> Caption {
+pub(crate) fn idle_caption() -> Caption {
     Caption { icon: None, text: "Hover a choice to watch it".to_owned() }
 }
 
 /// What the story of `mode` is about, shown when it cannot play: its first move.
-pub fn main_caption(mode: HeaderMode, name: &str) -> Caption {
+pub(crate) fn main_caption(mode: HeaderMode, name: &str) -> Caption {
     story(mode, name).into_iter().nth(1).unwrap_or_else(idle_caption)
 }
 
 /// The story's captions with their opacity at `share` of the loop; the hidden ones are left out.
-pub fn captions(mode: HeaderMode, name: &str, share: f32) -> Vec<(Caption, f32)> {
+pub(crate) fn captions(mode: HeaderMode, name: &str, share: f32) -> Vec<(Caption, f32)> {
     let stops: &[&Stops] = match mode {
         HeaderMode::StartMinimized => &MINIMIZED_CAPTIONS,
         HeaderMode::AlwaysShown | HeaderMode::HideOnScroll => &SLIDE_CAPTIONS,
@@ -203,7 +203,7 @@ pub fn captions(mode: HeaderMode, name: &str, share: f32) -> Vec<(Caption, f32)>
 }
 
 /// The caption most visible of `captions`: the one screen readers and tests read.
-pub fn shown(captions: &[(Caption, f32)]) -> Option<&Caption> {
+pub(crate) fn shown(captions: &[(Caption, f32)]) -> Option<&Caption> {
     captions.iter().max_by(|a, b| a.1.total_cmp(&b.1)).map(|(caption, _)| caption)
 }
 

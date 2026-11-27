@@ -13,9 +13,9 @@ use super::{Fetch, ImageStore, MAX_BYTES, Phase, Target};
 
 /// How long a body read ahead waits for a load to take it: our own number, the minutes to short
 /// hours a list stays the way into the pull requests it shows.
-pub const AHEAD_SECONDS: f64 = 30.0 * 60.0;
+pub(crate) const AHEAD_SECONDS: f64 = 30.0 * 60.0;
 /// Memory for bodies read ahead: our own budget, a few dozen screenshots; the oldest go first.
-pub const AHEAD_BYTES: usize = 32 * 1024 * 1024;
+pub(crate) const AHEAD_BYTES: usize = 32 * 1024 * 1024;
 
 /// A body read ahead, and the input time it was asked for.
 pub(super) struct Ahead {

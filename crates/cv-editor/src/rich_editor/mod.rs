@@ -61,7 +61,7 @@ use crate::markdown_editor::PullRequestContext;
 use crate::markdown_editor::toolbar_layout::{MAX_HEIGHT, ROW_HEIGHT, TEXT_MARGIN};
 
 /// How one rich editor looks and behaves.
-pub struct RichOptions<'a> {
+pub(crate) struct RichOptions<'a> {
     /// Decides the mention syntax and which HTML tags carry underline, sub, sup and kbd.
     pub platform: ProviderKind,
     /// The text area's accessible name, e.g. "Comment".
@@ -87,19 +87,19 @@ impl Default for RichOptions<'_> {
 }
 
 /// What one frame of the editor did.
-pub struct RichOutput {
+pub(crate) struct RichOutput {
     /// The Markdown changed this frame.
     pub is_changed: bool,
     pub has_focus: bool,
 }
 
 /// The text area's id, for focus.
-pub fn text_id(id: Id) -> Id {
+pub(crate) fn text_id(id: Id) -> Id {
     id.with("rich_text")
 }
 
 /// Reads the text again at the next show, dropping the undo history.
-pub fn reload(ctx: &Context, id: Id) {
+pub(crate) fn reload(ctx: &Context, id: Id) {
     if let Some(handle) = ctx.data(|data| data.get_temp::<Handle>(id.with("rich_state"))) {
         handle.lock().synced = None;
     }
@@ -107,7 +107,7 @@ pub fn reload(ctx: &Context, id: Id) {
 
 /// Shows the editor for the Markdown in `text`, with `leading` drawn at the start of the toolbar
 /// row (the composer's mode switch).
-pub fn show_with(
+pub(crate) fn show_with(
     ui: &mut Ui,
     id: Id,
     text: &mut String,

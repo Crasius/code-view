@@ -31,7 +31,7 @@ use cv_services::Services;
 use super::link_access::{self, AccessCheck, Denial, Target, Verdict};
 
 /// Longer texts are no link someone copied to open; they are not looked at.
-pub const MAX_TEXT: usize = 2048;
+pub(crate) const MAX_TEXT: usize = 2048;
 
 const REQUEST_ID: &str = "review.clipboard_links.request";
 
@@ -51,7 +51,7 @@ impl ClipboardSource for SystemClipboard {
 
 /// What one copied URL names. Anything else (several words, texts over [`MAX_TEXT`]) is
 /// [`Target::NotAPullRequest`].
-pub fn classify(text: &str, connections: &[Connection]) -> Target {
+pub(crate) fn classify(text: &str, connections: &[Connection]) -> Target {
     let url = text.trim();
     let is_one_url = (url.starts_with("https://") || url.starts_with("http://"))
         && !url.contains(char::is_whitespace);
@@ -62,7 +62,7 @@ pub fn classify(text: &str, connections: &[Connection]) -> Target {
 }
 
 /// The host a setup for `request` connects to, for the toast: `github.com`, `dev.azure.com/contoso`.
-pub fn host_label(request: &AddRequest) -> String {
+pub(crate) fn host_label(request: &AddRequest) -> String {
     let base = request.kind.default_base_url();
     let host = base.split_once("://").map_or(base, |(_, host)| host);
     match (&request.organization, request.kind) {
@@ -81,7 +81,7 @@ pub enum Request {
 }
 
 /// Leaves `request` for the app, which takes it before the next page runs.
-pub fn request(ctx: &egui::Context, request: Request) {
+pub(crate) fn request(ctx: &egui::Context, request: Request) {
     mailbox::post(ctx, Id::unique(REQUEST_ID), request);
 }
 

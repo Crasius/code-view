@@ -44,7 +44,7 @@ use crate::{Services, self_review};
 /// How long an effect is applied to answers that do not show it yet: our number. GitHub's search
 /// listing has been seen to trail a merge by tens of seconds; two minutes covers that with room,
 /// and is short enough that a change made on the platform meanwhile shows soon after.
-pub const SETTLE_WINDOW: Duration = Duration::from_secs(120);
+pub(crate) const SETTLE_WINDOW: Duration = Duration::from_secs(120);
 
 /// What a write changes, as the caller knows it when it starts.
 #[derive(Debug, Clone, PartialEq)]

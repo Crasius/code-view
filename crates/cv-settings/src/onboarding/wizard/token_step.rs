@@ -17,7 +17,7 @@ const SETTING_INDENT: i8 = 22;
 /// Between the parts of a token recipe: its summary, its button, its checklist.
 const RECIPE_GAP: f32 = 6.0;
 
-pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
+pub(crate) fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
     let Ok(host) = wizard.resolved() else {
         wizard.step = Step::Host;
         return;

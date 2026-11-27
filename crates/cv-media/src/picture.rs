@@ -29,7 +29,7 @@ pub(crate) const DECODER_BEHIND: Duration = Duration::from_millis(16);
 
 /// The frames of a long animation, each with its delay in seconds, as a decoder delivers them,
 /// looping.
-pub type Frames = Receiver<(ColorImage, f64)>;
+pub(crate) type Frames = Receiver<(ColorImage, f64)>;
 
 #[derive(Clone)]
 pub struct Picture {
@@ -57,7 +57,7 @@ impl Picture {
     }
 
     /// An animation of `frames`, each shown for its delay in seconds.
-    pub fn animation(frames: Vec<(TextureHandle, f64)>) -> Self {
+    pub(crate) fn animation(frames: Vec<(TextureHandle, f64)>) -> Self {
         let mut end = 0.0;
         let ends = frames
             .iter()
@@ -72,7 +72,11 @@ impl Picture {
 
     /// A long animation: `texture` holds its first frame, and `frames` delivers every frame from
     /// the first on, looping; each replaces the texture's pixels (with `options`) when it is due.
-    pub fn streamed(texture: TextureHandle, frames: Frames, options: TextureOptions) -> Self {
+    pub(crate) fn streamed(
+        texture: TextureHandle,
+        frames: Frames,
+        options: TextureOptions,
+    ) -> Self {
         let feed = Feed { frames, options, shown_until: 0.0, drawn: None, skipped: 0.0 };
         Self {
             frames: Arc::new([texture]),
@@ -93,7 +97,7 @@ impl Picture {
         self.original.as_ref()
     }
 
-    pub fn textures(&self) -> &[TextureHandle] {
+    pub(crate) fn textures(&self) -> &[TextureHandle] {
         &self.frames
     }
 

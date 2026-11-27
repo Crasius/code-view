@@ -33,7 +33,7 @@ impl PullRequestContext {
         ctx.data_mut(|data| data.insert_temp(Id::unique(PULL_REQUEST_ID), (pass, self)));
     }
 
-    pub fn current(ctx: &Context) -> Option<Self> {
+    pub(crate) fn current(ctx: &Context) -> Option<Self> {
         let pass = ctx.cumulative_pass_nr();
         ctx.data(|data| data.get_temp::<(u64, Self)>(Id::unique(PULL_REQUEST_ID)))
             .filter(|(published, _)| *published == pass)
@@ -42,7 +42,7 @@ impl PullRequestContext {
 
     /// The Markdown that mentions `person` on this platform: `@login` on GitHub and GitLab,
     /// `@<id>` on Azure DevOps (its documented identity syntax).
-    pub fn mention(&self, person: &Person) -> Option<String> {
+    pub(crate) fn mention(&self, person: &Person) -> Option<String> {
         match self.kind {
             ProviderKind::AzureDevOps => {
                 (!person.id.is_empty()).then(|| format!("@<{}>", person.id))
@@ -54,7 +54,7 @@ impl PullRequestContext {
     }
 
     /// People whose name or login contains `query` (case-insensitive), best matches first.
-    pub fn matching(&self, query: &str) -> Vec<&Person> {
+    pub(crate) fn matching(&self, query: &str) -> Vec<&Person> {
         let query = query.to_lowercase();
         let mut matches: Vec<(usize, &Person)> = self
             .people
@@ -114,7 +114,7 @@ impl FileContext {
     }
 
     /// True when `pasted` is one or more whole lines of this diff (copied from the diff view).
-    pub fn contains_code(&self, pasted: &str) -> bool {
+    pub(crate) fn contains_code(&self, pasted: &str) -> bool {
         let wanted: Vec<&str> =
             pasted.trim_end_matches(['\n', '\r']).lines().map(str::trim_end).collect();
         if wanted.iter().all(|line| line.trim().is_empty()) {

@@ -44,7 +44,7 @@ use crate::writes::Answer;
 
 /// Azure DevOps pull requests with at most this many changed files have their lines counted on
 /// their own: their blobs download quickly, and their page reuses them.
-pub const AUTO_COUNT_FILES: u64 = 20;
+pub(crate) const AUTO_COUNT_FILES: u64 = 20;
 /// Automatic counts in flight at once; further rows wait their turn.
 const MAX_RUNNING: usize = 4;
 /// Of those, at most this many for favorites: the rows of the other cards always have the rest.

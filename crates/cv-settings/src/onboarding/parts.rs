@@ -11,7 +11,7 @@ const ROW_HEIGHT: f32 = 56.0;
 const CALLOUT_PADDING: Margin = Margin::symmetric(14, 12);
 const SHEET_PADDING: Margin = Margin::symmetric(32, 28);
 
-pub fn headline(ui: &mut Ui, title: &str, detail: &str) {
+pub(crate) fn headline(ui: &mut Ui, title: &str, detail: &str) {
     let palette = theme::palette(ui.ctx());
     ui.label(RichText::new(title).font(theme::fonts::semibold_font(HEADLINE_SIZE)));
     if !detail.is_empty() {
@@ -21,25 +21,25 @@ pub fn headline(ui: &mut Ui, title: &str, detail: &str) {
     ui.add_space(theme::style::SPACE_XL);
 }
 
-pub fn section(ui: &mut Ui, title: &str) {
+pub(crate) fn section(ui: &mut Ui, title: &str) {
     ui.add_space(theme::style::SPACE_S);
     ui.label(RichText::new(title).font(theme::fonts::semibold_font(theme::style::SECTION_SIZE)));
     ui.add_space(theme::style::SPACE_XS);
 }
 
-pub fn small(ui: &mut Ui, text: &str) -> Response {
+pub(crate) fn small(ui: &mut Ui, text: &str) -> Response {
     let palette = theme::palette(ui.ctx());
     ui.label(RichText::new(text).size(theme::style::SMALL_SIZE).color(palette.text_secondary))
 }
 
 /// A note in small print after an info icon.
-pub fn small_note(ui: &mut Ui, note: &str) {
+pub(crate) fn small_note(ui: &mut Ui, note: &str) {
     let label = small(ui, &format!("{}  {note}", icons::INFO));
     glyph::speak_as(&label, note);
 }
 
 /// Numbered steps joined by a line; finished steps show a check and can be clicked to go back.
-pub fn stepper(ui: &mut Ui, labels: &[&str], current: usize) -> Option<usize> {
+pub(crate) fn stepper(ui: &mut Ui, labels: &[&str], current: usize) -> Option<usize> {
     let palette = theme::palette(ui.ctx());
     let mut clicked = None;
     ui.horizontal(|ui| {
@@ -115,7 +115,7 @@ pub fn stepper(ui: &mut Ui, labels: &[&str], current: usize) -> Option<usize> {
 
 /// What a choice row shows at its right end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mark {
+pub(crate) enum Mark {
     /// A radio mark: the row is one of several choices.
     Radio,
     /// A chevron: the row leads on to the next step.
@@ -123,7 +123,7 @@ pub enum Mark {
 }
 
 /// A full-width list row: icon, title, detail, and its `mark`.
-pub fn choice_row(
+pub(crate) fn choice_row(
     ui: &mut Ui,
     icon: &str,
     title: &str,
@@ -201,7 +201,7 @@ pub fn choice_row(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tone {
+pub(crate) enum Tone {
     Info,
     Success,
     Warning,
@@ -220,12 +220,18 @@ impl Tone {
 }
 
 /// A tinted message with its actions right below the text, so no message is a dead end.
-pub fn callout(ui: &mut Ui, tone: Tone, title: &str, body: &str, actions: impl FnOnce(&mut Ui)) {
+pub(crate) fn callout(
+    ui: &mut Ui,
+    tone: Tone,
+    title: &str,
+    body: &str,
+    actions: impl FnOnce(&mut Ui),
+) {
     tinted(ui, tone, title, body, Some(Box::new(actions)));
 }
 
 /// A tinted message that needs no action (a confirmation).
-pub fn notice(ui: &mut Ui, tone: Tone, title: &str, body: &str) {
+pub(crate) fn notice(ui: &mut Ui, tone: Tone, title: &str, body: &str) {
     tinted(ui, tone, title, body, None);
 }
 
@@ -263,7 +269,7 @@ fn tinted(ui: &mut Ui, tone: Tone, title: &str, body: &str, actions: Option<Acti
 }
 
 /// A button that opens `url` in the browser; the arrow says it leaves the app.
-pub fn open_button(ui: &mut Ui, is_primary: bool, text: &str, url: &str) -> Response {
+pub(crate) fn open_button(ui: &mut Ui, is_primary: bool, text: &str, url: &str) -> Response {
     let label = format!("{text}  {}", icons::ARROW_SQUARE_OUT);
     let response =
         if is_primary { buttons::primary(ui, &label) } else { buttons::secondary(ui, label) };
@@ -287,7 +293,7 @@ fn access_icon(access: Access, palette: &Palette) -> (&'static str, Color32, &'s
 }
 
 /// One feature of the access checklist; missing and partial features carry their fix link.
-pub fn access_row(ui: &mut Ui, check: &FeatureCheck, fix_url: &str, host_label: &str) {
+pub(crate) fn access_row(ui: &mut Ui, check: &FeatureCheck, fix_url: &str, host_label: &str) {
     let palette = theme::palette(ui.ctx());
     let (icon, color, state) = access_icon(check.access, &palette);
     ui.horizontal(|ui| {
@@ -316,14 +322,14 @@ pub fn access_row(ui: &mut Ui, check: &FeatureCheck, fix_url: &str, host_label: 
 }
 
 /// Thin divider between rows of a list.
-pub fn divider(ui: &mut Ui) {
+pub(crate) fn divider(ui: &mut Ui) {
     let palette = theme::palette(ui.ctx());
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
     ui.painter().hline(rect.x_range(), rect.center().y, Stroke::new(1.0, palette.border));
 }
 
 /// A sheet in the surface colour with a hairline border, the frame every step is drawn in.
-pub fn sheet<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
+pub(crate) fn sheet<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
     let palette = theme::palette(ui.ctx());
     Frame::new()
         .fill(palette.surface)

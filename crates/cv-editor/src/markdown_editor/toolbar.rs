@@ -14,7 +14,7 @@ use super::toolbar_layout::{self, BUTTON_SIZE, item};
 type Item = toolbar_layout::Item<Action>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Action {
+pub(crate) enum Action {
     Format(Format),
     Suggestion,
     Mention,
@@ -69,23 +69,23 @@ const SUGGESTION: &[Item] =
     &[item(Action::Suggestion, icons::PLUS_MINUS, "Insert suggestion", shortcut!(command "G"))];
 
 /// What the toolbar offers in this editor.
-pub struct Features {
+pub(crate) struct Features {
     pub can_mention: bool,
     pub can_suggest: bool,
 }
 
 /// Formats the caret is inside, shown as pressed buttons.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct ActiveFormats(Vec<Format>);
+pub(crate) struct ActiveFormats(Vec<Format>);
 
 impl ActiveFormats {
-    pub fn insert(&mut self, format: Format) {
+    pub(crate) fn insert(&mut self, format: Format) {
         if !self.0.contains(&format) {
             self.0.push(format);
         }
     }
 
-    pub fn contains(&self, format: Format) -> bool {
+    pub(crate) fn contains(&self, format: Format) -> bool {
         self.0.contains(&format)
     }
 
@@ -109,7 +109,7 @@ fn groups(features: &Features) -> Vec<Vec<&'static Item>> {
 }
 
 /// Draws the formatting buttons right-aligned into the rest of the row; returns the clicked action.
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     active: &ActiveFormats,
     features: &Features,
@@ -120,7 +120,7 @@ pub fn show(
 
 /// What the composer's body shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
+pub(crate) enum Mode {
     /// The rich editor: the comment as it will look.
     Rich,
     /// The Markdown source as typed.
@@ -133,7 +133,7 @@ const MODES: [(Mode, &str); 3] =
 
 /// Compact mode switch: a sunken track with the selected segment raised above it. Each segment
 /// is a tab, focusable and switched with Enter or Space. Rich text shows only where `has_rich`.
-pub fn mode_switch(ui: &mut Ui, id: egui::Id, mode: &mut Mode, has_rich: bool) {
+pub(crate) fn mode_switch(ui: &mut Ui, id: egui::Id, mode: &mut Mode, has_rich: bool) {
     let palette = theme::palette(ui.ctx());
     let options: Vec<(Mode, &str)> =
         MODES.into_iter().filter(|(option, _)| has_rich || *option != Mode::Rich).collect();

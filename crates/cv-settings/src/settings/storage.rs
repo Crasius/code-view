@@ -28,7 +28,7 @@ const FOOTER_HEIGHT: f32 = 44.0;
 const SWATCH: f32 = 10.0;
 
 #[derive(Default)]
-pub struct StorageSection {
+pub(crate) struct StorageSection {
     is_confirming: bool,
     measured_at: Option<f64>,
 }
@@ -54,7 +54,7 @@ impl StorageSection {
     }
 
     /// The total, the stacked bar and a row per category.
-    pub fn usage(&mut self, ui: &mut Ui, services: &Services) {
+    pub(crate) fn usage(&mut self, ui: &mut Ui, services: &Services) {
         let status = self.status(services);
         let categories = categories(status.usage);
         total(ui, status.usage);
@@ -72,7 +72,7 @@ impl StorageSection {
     }
 
     /// The folder, "Open folder" and "Clear cache", which asks first.
-    pub fn clear(&mut self, ui: &mut Ui, services: &mut Services) {
+    pub(crate) fn clear(&mut self, ui: &mut Ui, services: &mut Services) {
         let status = self.status(services);
         rows::card(ui, |ui| self.footer(ui, services, &status));
     }

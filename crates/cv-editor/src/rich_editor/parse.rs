@@ -26,7 +26,7 @@ use super::model::{
 use super::serialize;
 
 /// The document `text` describes, read in `platform`'s dialect (its mention syntax).
-pub fn parse(text: &str, platform: ProviderKind) -> Document {
+pub(crate) fn parse(text: &str, platform: ProviderKind) -> Document {
     let source = text.replace("\r\n", "\n").replace('\r', "\n");
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH

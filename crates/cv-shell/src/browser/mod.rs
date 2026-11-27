@@ -6,9 +6,9 @@
 //! (`cv-settings`, `settings/browser_extension/`).
 
 pub mod extension_files;
-pub mod framing;
+pub(crate) mod framing;
 pub mod host;
-pub mod link_check;
+pub(crate) mod link_check;
 pub mod passes;
 mod platform;
 pub mod registration;
@@ -19,13 +19,13 @@ use cv_services::connection::providers::ProviderFactory;
 use review_store::AppPaths;
 
 /// The host's name, as the extension and the browsers' registrations call it.
-pub const HOST_NAME: &str = "de.crasius.codeview";
+pub(crate) const HOST_NAME: &str = "de.crasius.codeview";
 /// The extension's id, fixed by the public key in `browser-extension/manifest.json`.
-pub const EXTENSION_ID: &str = "bjnmgiogdmaelabjgocfnplmmlbpfpog";
+pub(crate) const EXTENSION_ID: &str = "bjnmgiogdmaelabjgocfnplmmlbpfpog";
 const _: () = assert!(EXTENSION_ID.len() == 32);
 
 /// The origin the browser passes the host, the one `allowed_origins` lets in.
-pub fn extension_origin() -> String {
+pub(crate) fn extension_origin() -> String {
     format!("chrome-extension://{EXTENSION_ID}/")
 }
 

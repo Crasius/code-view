@@ -121,7 +121,7 @@ fn start_app(url: &str) -> io::Result<()> {
 
 /// Answers requests from `origin` on `input` until it closes. Only the pinned extension's origin
 /// is served; any other gets one `error` answer.
-pub fn serve(
+pub(crate) fn serve(
     origin: &str,
     input: &mut impl Read,
     output: &mut impl Write,

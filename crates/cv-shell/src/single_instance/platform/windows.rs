@@ -30,7 +30,7 @@ use windows_sys::Win32::System::Pipes::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow;
 
-pub type Stream = File;
+pub(crate) type Stream = File;
 
 /// Full access for the pipe's owner, nothing for anyone else; `P` keeps inherited entries out.
 const OWNER_ONLY: &str = "D:P(A;;GA;;;OW)";
@@ -39,18 +39,18 @@ const BUFFER: u32 = 4096;
 const BUSY_WAIT: Duration = Duration::from_secs(2);
 const BUSY_PAUSE: Duration = Duration::from_millis(20);
 
-pub struct Endpoint {
+pub(crate) struct Endpoint {
     name: String,
 }
 
 impl Endpoint {
-    pub fn of(paths: &AppPaths) -> Self {
+    pub(crate) fn of(paths: &AppPaths) -> Self {
         let folder = paths.config_dir().to_string_lossy();
         Self { name: format!(r"\\.\pipe\CodeView-{}", stable_hash(&folder)) }
     }
 }
 
-pub fn connect(endpoint: &Endpoint) -> io::Result<Stream> {
+pub(crate) fn connect(endpoint: &Endpoint) -> io::Result<Stream> {
     let deadline = Instant::now() + BUSY_WAIT;
     loop {
         let opened = OpenOptions::new()
@@ -78,32 +78,32 @@ fn pause() {
 }
 
 /// No pipe of that name: no instance runs.
-pub fn is_absent(error: &io::Error) -> bool {
+pub(crate) fn is_absent(error: &io::Error) -> bool {
     error.kind() == io::ErrorKind::NotFound
 }
 
 /// Lets the running instance take the foreground: the user started this process, so it may, and
 /// Windows passes the right on only when asked.
-pub fn allow_foreground(process_id: u32) {
+pub(crate) fn allow_foreground(process_id: u32) {
     // Refused when this process may not take the foreground itself; the window then flashes in
     // the taskbar instead of coming up, which is all Windows allows.
     // SAFETY: takes a plain process id; an id that is no process makes it fail, nothing else.
     let _flashes_instead = unsafe { AllowSetForegroundWindow(process_id) };
 }
 
-pub struct Listener {
+pub(crate) struct Listener {
     name: Vec<u16>,
     waiting: OwnedHandle,
 }
 
 impl Listener {
-    pub fn bind(endpoint: &Endpoint) -> io::Result<Self> {
+    pub(crate) fn bind(endpoint: &Endpoint) -> io::Result<Self> {
         let name: Vec<u16> = endpoint.name.encode_utf16().chain(Some(0)).collect();
         let waiting = create_instance(&name, true)?;
         Ok(Self { name, waiting })
     }
 
-    pub fn accept(&mut self) -> io::Result<Stream> {
+    pub(crate) fn accept(&mut self) -> io::Result<Stream> {
         // SAFETY: `waiting` is a pipe handle this listener owns; without an OVERLAPPED the call
         // blocks until a client connects.
         let is_connected =

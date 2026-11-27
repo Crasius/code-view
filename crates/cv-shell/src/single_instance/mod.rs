@@ -24,7 +24,7 @@ use egui::{Id, ViewportCommand};
 use review_store::AppPaths;
 
 pub use self::forwarded::{Forwarded, ForwardedLinks};
-pub use self::platform::{Endpoint, is_absent};
+pub(crate) use self::platform::{Endpoint, is_absent};
 use self::platform::{Listener as SystemListener, Stream};
 
 /// The longest link line either side reads; a pull request URL is far shorter (our own limit).
@@ -65,7 +65,7 @@ pub fn claim(paths: &AppPaths, link: Option<&str>) -> Claim {
 
 /// Hands `link` to the instance listening on `endpoint`. An error that
 /// [`platform::is_absent`] accepts means none listens.
-pub fn send(endpoint: &Endpoint, link: &str) -> io::Result<()> {
+pub(crate) fn send(endpoint: &Endpoint, link: &str) -> io::Result<()> {
     if link.len() > MAX_LINE || link.contains(['\n', '\r']) {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "not a single-line link"));
     }

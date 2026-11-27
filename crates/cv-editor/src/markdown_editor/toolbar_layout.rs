@@ -8,26 +8,26 @@ use cv_widgets::{focus, glyph, row};
 use egui::{Align2, Color32, Margin, Sense, Stroke, Ui, vec2};
 
 /// The square icon buttons, also the mode switch's height.
-pub const BUTTON_SIZE: f32 = 28.0;
-pub const BUTTON_GAP: f32 = 2.0;
+pub(crate) const BUTTON_SIZE: f32 = 28.0;
+pub(crate) const BUTTON_GAP: f32 = 2.0;
 /// A divider's slot, its gaps to the buttons around it included.
-pub const DIVIDER_WIDTH: f32 = 13.0;
+pub(crate) const DIVIDER_WIDTH: f32 = 13.0;
 /// The text area grows with its content up to this height, then scrolls.
-pub const MAX_HEIGHT: f32 = 360.0;
+pub(crate) const MAX_HEIGHT: f32 = 360.0;
 /// One row of body text in the text area.
-pub const ROW_HEIGHT: f32 = 22.0;
+pub(crate) const ROW_HEIGHT: f32 = 22.0;
 /// The inset of the text inside the text area's frame.
-pub const TEXT_MARGIN: Margin = Margin::symmetric(12, 10);
+pub(crate) const TEXT_MARGIN: Margin = Margin::symmetric(12, 10);
 
 /// One toolbar button: what it does, how it looks and the shortcut its tooltip names.
-pub struct Item<A> {
+pub(crate) struct Item<A> {
     pub action: A,
     pub icon: &'static str,
     pub label: &'static str,
     pub shortcut: &'static str,
 }
 
-pub const fn item<A>(
+pub(crate) const fn item<A>(
     action: A,
     icon: &'static str,
     label: &'static str,
@@ -37,7 +37,7 @@ pub const fn item<A>(
 }
 
 /// Draws the groups right-aligned into the rest of the row; returns the clicked button's action.
-pub fn show<A: Copy>(
+pub(crate) fn show<A: Copy>(
     ui: &mut Ui,
     groups: &[Vec<&'static Item<A>>],
     is_active: impl Fn(A) -> bool,

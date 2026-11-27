@@ -8,7 +8,7 @@ use crate::rich_editor::model::{ATOM_CHAR, Atom, HARD_BREAK, Inline, Mark, Marks
 use crate::rich_editor::parse;
 
 /// Whether `written` parses back to `runs`.
-pub fn reads_back(written: &str, runs: &[Run], platform: ProviderKind) -> bool {
+pub(crate) fn reads_back(written: &str, runs: &[Run], platform: ProviderKind) -> bool {
     let parsed = parse::parse(written, platform);
     let Some(block) = parsed.blocks.first().filter(|_| parsed.blocks.len() == 1) else {
         return runs.is_empty();
@@ -28,7 +28,7 @@ fn flatten(runs: &[Run], platform: ProviderKind) -> Vec<(char, Marks)> {
 /// Runs ready to write: line breaks a heading or cell cannot hold become spaces, whitespace at
 /// line edges goes (Markdown drops it), emphasis leaves the whitespace at its edges (a delimiter
 /// next to a space does not open or close), and a key becomes code where `<kbd>` is stripped.
-pub fn prepared(inline: &Inline, platform: ProviderKind, context: Context) -> Vec<Run> {
+pub(crate) fn prepared(inline: &Inline, platform: ProviderKind, context: Context) -> Vec<Run> {
     let mut units: Vec<(char, Marks, Option<Atom>)> = Vec::with_capacity(inline.len());
     for run in inline.runs() {
         let mut marks = run.marks.clone();

@@ -15,13 +15,13 @@ use cv_widgets::scroll_keys::ScrollKey;
 const ARROW_ROWS: f32 = 3.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Step {
+pub(crate) enum Step {
     Next,
     Previous,
 }
 
 /// The summary's keys pressed this frame.
-pub struct Pressed {
+pub(crate) struct Pressed {
     pub scroll: Option<ScrollKey>,
     pub step: Option<Step>,
     pub open: bool,
@@ -29,7 +29,7 @@ pub struct Pressed {
 
 /// Consumes the summary's keys. Scrolling and Enter only while no widget has the keyboard, and
 /// nothing while a text field has it. Shift+↑/↓ extend a selection in a card instead.
-pub fn read(ui: &Ui) -> Option<Pressed> {
+pub(crate) fn read(ui: &Ui) -> Option<Pressed> {
     let ctx = ui.ctx();
     if ctx.text_edit_focused() {
         return None;
@@ -50,7 +50,11 @@ pub fn read(ui: &Ui) -> Option<Pressed> {
 
 /// Carries out the summary's keys on `summary`: scrolls, moves the current card or opens it. Only
 /// while no field or button has the keyboard (see [`read`]).
-pub fn apply(summary: &mut FolderSummary, ui: &Ui, geometry: &Geometry) -> Option<SummaryEvent> {
+pub(crate) fn apply(
+    summary: &mut FolderSummary,
+    ui: &Ui,
+    geometry: &Geometry,
+) -> Option<SummaryEvent> {
     let pressed = read(ui)?;
     let ctx = ui.ctx();
     let viewport = summary.viewport;
@@ -82,7 +86,7 @@ pub fn apply(summary: &mut FolderSummary, ui: &Ui, geometry: &Geometry) -> Optio
 
 /// Where n/p lead among `count` cards: from the current card, or, with none, from the card at
 /// the top of the view (`shown`, whose top `starts_in_view` or lies above the view).
-pub fn step_target(
+pub(crate) fn step_target(
     step: Step,
     current: Option<usize>,
     shown: usize,

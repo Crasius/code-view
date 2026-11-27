@@ -14,7 +14,7 @@ use review_core::{MergePolicy, MergeStrategy, Provider, ProviderError, Unreporte
 use cv_runtime::background::{Background, TASK_LOST, Task, TaskPoll};
 
 /// Branch policies and merge settings change rarely.
-pub const FRESH_FOR: f64 = 30.0 * 60.0;
+pub(crate) const FRESH_FOR: f64 = 30.0 * 60.0;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PolicyKey {

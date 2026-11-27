@@ -448,7 +448,7 @@ impl FolderSummary {
 
     /// Builds the cards again in the next pass. Keeps the folder: only the shapes are rebuilt, and
     /// the anchor keeps the view in place.
-    pub fn rebuild(&mut self) {
+    pub(crate) fn rebuild(&mut self) {
         if let Some((version, _)) = &mut self.built {
             *version = None;
         }

@@ -19,7 +19,7 @@ use std::time::Duration;
 use egui::ColorImage;
 
 /// Videos larger than this are not downloaded: our budget.
-pub const MAX_BYTES: u64 = 100 * 1024 * 1024;
+pub(crate) const MAX_BYTES: u64 = 100 * 1024 * 1024;
 /// Longest edge of the frames ffmpeg delivers: our budget for the pipe (about 110 MB/s of RGBA at
 /// 1280 × 720 and 30 frames a second) and the texture.
 const PLAY_EDGE: u32 = 1280;
@@ -46,7 +46,7 @@ pub fn install_command() -> &'static str {
 
 /// Where ffmpeg and ffprobe are.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Tools {
+pub(crate) struct Tools {
     ffmpeg: PathBuf,
     ffprobe: PathBuf,
 }
@@ -54,7 +54,7 @@ pub struct Tools {
 impl Tools {
     /// Beside the app's own executable first, then on `PATH` as a shell opened now finds it (an
     /// install while the app runs counts at once).
-    pub fn locate() -> Option<Self> {
+    pub(crate) fn locate() -> Option<Self> {
         let beside = std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_owned));
         let find = |name: &str| {
             beside
@@ -130,7 +130,7 @@ struct Probe {
 }
 
 /// Probes the video in `file` and draws its first frame: the clip and its poster.
-pub async fn prepare(tools: &Tools, file: &Path) -> Result<(Arc<Clip>, ColorImage), String> {
+pub(crate) async fn prepare(tools: &Tools, file: &Path) -> Result<(Arc<Clip>, ColorImage), String> {
     let mut probe = std::process::Command::new(&tools.ffprobe);
     probe.args(["-v", "error", "-protocol_whitelist", "file", "-format_whitelist", FORMATS]);
     probe.args(["-select_streams", "v:0", "-of", "json", "-show_entries"]);

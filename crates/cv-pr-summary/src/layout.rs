@@ -9,7 +9,7 @@ use review_git::{ChangeKind, ChangedFile};
 
 /// Changes larger than this show a placeholder with the choice to load them anyway: a card that
 /// tall is more scrolling than reading, and its file view has the tools for it.
-pub const INLINE_MAX_CHANGED_LINES: u32 = 25_000;
+pub(crate) const INLINE_MAX_CHANGED_LINES: u32 = 25_000;
 /// Rows a card is estimated at while its line counts are not known yet.
 const UNKNOWN_ROWS: u32 = 12;
 /// Asset extensions git diffs as text: their cards show code like any other file.
@@ -18,11 +18,11 @@ const TEXT_ASSET_EXTENSIONS: &[&str] = &["svg"];
 const LINES_PER_HUNK: u32 = 12;
 const MAX_ESTIMATED_HUNKS: u32 = 400;
 /// Height changes up to this are rounding, not a new layout.
-pub const HEIGHT_EPSILON: f32 = 0.5;
+pub(crate) const HEIGHT_EPSILON: f32 = 0.5;
 
 /// Keeps `height` as the body height of the card of `path`; true when it is new or changed by more
 /// than [`HEIGHT_EPSILON`], so the index needs a rebuild.
-pub fn note_height(heights: &mut HashMap<String, f32>, path: &str, height: f32) -> bool {
+pub(crate) fn note_height(heights: &mut HashMap<String, f32>, path: &str, height: f32) -> bool {
     heights
         .insert(path.to_owned(), height)
         .is_none_or(|previous| (previous - height).abs() > HEIGHT_EPSILON)
@@ -30,7 +30,7 @@ pub fn note_height(heights: &mut HashMap<String, f32>, path: &str, height: f32) 
 
 /// The fixed sizes of a card, from the code font's line height.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Geometry {
+pub(crate) struct Geometry {
     pub header: f32,
     pub line: f32,
     pub separator: f32,
@@ -40,7 +40,7 @@ pub struct Geometry {
 }
 
 impl Geometry {
-    pub fn new(line_height: f32) -> Self {
+    pub(crate) fn new(line_height: f32) -> Self {
         Self {
             header: 44.0,
             line: line_height,
@@ -51,7 +51,7 @@ impl Geometry {
     }
 
     /// The height of the body below the header.
-    pub fn body(&self, shape: Shape) -> f32 {
+    pub(crate) fn body(&self, shape: Shape) -> f32 {
         match shape {
             Shape::Rows { lines, separators } => {
                 lines as f32 * self.line + separators as f32 * self.separator
@@ -61,7 +61,7 @@ impl Geometry {
     }
 
     /// A card's slot: header, body unless collapsed, and the gap after it.
-    pub fn slot(&self, shape: Shape, is_collapsed: bool) -> f32 {
+    pub(crate) fn slot(&self, shape: Shape, is_collapsed: bool) -> f32 {
         let body = if is_collapsed { 0.0 } else { self.body(shape) };
         self.header + body + self.gap
     }
@@ -69,7 +69,7 @@ impl Geometry {
 
 /// What a card's body holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Shape {
+pub(crate) enum Shape {
     Rows {
         lines: u32,
         separators: u32,
@@ -84,7 +84,7 @@ pub enum Shape {
 /// share a row, so the changed lines take the larger of the two counts. Before the counts arrive,
 /// a file whose name says binary (an image, a font, an archive) is estimated at the placeholder
 /// it will get, so its card does not shrink once the counts mark it binary.
-pub fn estimate(file: &ChangedFile, context: u32, split: bool) -> Shape {
+pub(crate) fn estimate(file: &ChangedFile, context: u32, split: bool) -> Shape {
     if file.is_binary || is_too_large(file) {
         return Shape::Placeholder;
     }
@@ -110,13 +110,13 @@ pub fn estimate(file: &ChangedFile, context: u32, split: bool) -> Shape {
 
 /// A card's exact shapes once its diff is known: inline and side by side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Shapes {
+pub(crate) struct Shapes {
     pub inline: Shape,
     pub split: Shape,
 }
 
 impl Shapes {
-    pub fn pick(self, split: bool) -> Shape {
+    pub(crate) fn pick(self, split: bool) -> Shape {
         if split { self.split } else { self.inline }
     }
 }
@@ -132,13 +132,13 @@ fn is_binary_by_name(path: &str) -> bool {
 }
 
 /// More changed lines than a card shows inline.
-pub fn is_too_large(file: &ChangedFile) -> bool {
+pub(crate) fn is_too_large(file: &ChangedFile) -> bool {
     file.additions.unwrap_or(0).saturating_add(file.deletions.unwrap_or(0))
         > INLINE_MAX_CHANGED_LINES
 }
 
 /// A pure rename, copy or mode change: line counts say nothing changed inside.
-pub fn is_unchanged(file: &ChangedFile) -> bool {
+pub(crate) fn is_unchanged(file: &ChangedFile) -> bool {
     file.kind != ChangeKind::Added
         && file.kind != ChangeKind::Deleted
         && file.additions == Some(0)
@@ -147,7 +147,7 @@ pub fn is_unchanged(file: &ChangedFile) -> bool {
 
 /// A card's shape for the layout: the exact one once its diff loaded, all its changed lines when
 /// the user asked to see a large change here, else the estimate.
-pub fn shape_of(
+pub(crate) fn shape_of(
     shapes: &HashMap<String, Shapes>,
     file: &ChangedFile,
     context: u32,
@@ -165,7 +165,7 @@ pub fn shape_of(
 
 /// A large change the user asked to see in its card: all its changed lines, as counted or as
 /// `measured` from its diff when that loaded before the lines were counted.
-pub fn shown_here(file: &ChangedFile, measured: Option<u32>) -> Shape {
+pub(crate) fn shown_here(file: &ChangedFile, measured: Option<u32>) -> Shape {
     let counted = file.additions.unwrap_or(0) + file.deletions.unwrap_or(0);
     Shape::Rows { lines: measured.unwrap_or(counted), separators: 0 }
 }
@@ -173,12 +173,12 @@ pub fn shown_here(file: &ChangedFile, measured: Option<u32>) -> Shape {
 /// Running totals of the slot heights: `offsets[i]` is the top of card `i`, the last entry the
 /// height of all cards.
 #[derive(Debug, Default, Clone)]
-pub struct CardIndex {
+pub(crate) struct CardIndex {
     offsets: Vec<f32>,
 }
 
 impl CardIndex {
-    pub fn rebuild(&mut self, heights: impl Iterator<Item = f32>) {
+    pub(crate) fn rebuild(&mut self, heights: impl Iterator<Item = f32>) {
         self.offsets.clear();
         let mut top = 0.0;
         self.offsets.push(top);
@@ -188,15 +188,15 @@ impl CardIndex {
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.offsets.len().saturating_sub(1)
     }
 
-    pub fn total(&self) -> f32 {
+    pub(crate) fn total(&self) -> f32 {
         self.offsets.last().copied().unwrap_or(0.0)
     }
 
-    pub fn top(&self, card: usize) -> f32 {
+    pub(crate) fn top(&self, card: usize) -> f32 {
         self.offsets.get(card).copied().unwrap_or_else(|| self.total())
     }
 
@@ -205,7 +205,7 @@ impl CardIndex {
     }
 
     /// The card at content height `y` (the last one below the end).
-    pub fn at(&self, y: f32) -> Option<usize> {
+    pub(crate) fn at(&self, y: f32) -> Option<usize> {
         let count = self.len();
         if count == 0 {
             return None;
@@ -214,7 +214,7 @@ impl CardIndex {
     }
 
     /// The cards that overlap `top..bottom`.
-    pub fn overlapping(&self, top: f32, bottom: f32) -> std::ops::Range<usize> {
+    pub(crate) fn overlapping(&self, top: f32, bottom: f32) -> std::ops::Range<usize> {
         let Some(first) = self.at(top) else {
             return 0..0;
         };

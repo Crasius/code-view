@@ -16,13 +16,13 @@ use serde_json::{Value, json};
 use super::{HOST_NAME, extension_origin};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Browser {
+pub(crate) enum Browser {
     Chrome,
     Edge,
 }
 
 impl Browser {
-    pub const ALL: [Self; 2] = [Self::Chrome, Self::Edge];
+    pub(crate) const ALL: [Self; 2] = [Self::Chrome, Self::Edge];
 
     /// The key under `HKEY_CURRENT_USER` whose default value names the manifest (Windows).
     fn key(self) -> String {

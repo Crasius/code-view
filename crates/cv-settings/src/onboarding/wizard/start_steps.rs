@@ -16,7 +16,7 @@ const PLATFORMS: [(ProviderKind, &str); 3] = [
     (ProviderKind::GitLab, "GitLab.com or self-managed GitLab"),
 ];
 
-pub fn platform(wizard: &mut Wizard, ui: &mut Ui) {
+pub(crate) fn platform(wizard: &mut Wizard, ui: &mut Ui) {
     parts::headline(
         ui,
         "Where do your pull requests live?",
@@ -40,7 +40,7 @@ pub fn platform(wizard: &mut Wizard, ui: &mut Ui) {
     }
 }
 
-pub fn host(wizard: &mut Wizard, ui: &mut Ui) {
+pub(crate) fn host(wizard: &mut Wizard, ui: &mut Ui) {
     let kind = wizard.kind;
     parts::headline(ui, &format!("Which {}?", kind.label()), "");
     for (hosting, title, detail) in [

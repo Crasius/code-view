@@ -18,10 +18,10 @@ use pulldown_cmark::{Alignment, BlockQuoteKind, Options, Parser};
 use review_core::ProviderKind;
 
 use self::builder::Builder;
-pub use self::html::{HtmlMark, HtmlMarks};
+pub(crate) use self::html::{HtmlMark, HtmlMarks};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Block {
+pub(crate) enum Block {
     Paragraph(Inline),
     Heading(u8, Inline),
     List {
@@ -46,7 +46,7 @@ pub enum Block {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Item {
+pub(crate) struct Item {
     pub task: Option<bool>,
     pub blocks: Vec<Block>,
 }
@@ -55,7 +55,7 @@ impl Block {
     /// The block's text in reading order, the way the renderer walks it: sibling blocks, list
     /// items and table cells are separated by one `\n`. Word-level change marks are byte ranges
     /// of this text.
-    pub fn plain_text(&self, out: &mut String) {
+    pub(crate) fn plain_text(&self, out: &mut String) {
         match self {
             Block::Paragraph(inline) | Block::Heading(_, inline) => inline.plain_text(out),
             Block::List { items, .. } => {
@@ -83,7 +83,7 @@ impl Block {
 
 impl Item {
     /// Its blocks' text separated by `\n`, as [`Block::plain_text`].
-    pub fn plain_text(&self, out: &mut String) {
+    pub(crate) fn plain_text(&self, out: &mut String) {
         plain_blocks(&self.blocks, out);
     }
 }
@@ -99,27 +99,27 @@ fn plain_blocks(blocks: &[Block], out: &mut String) {
 
 /// Where a top-level block is in the source, in bytes; for a list, each item too.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct BlockSource {
+pub(crate) struct BlockSource {
     pub bytes: Range<usize>,
     pub items: Vec<Range<usize>>,
 }
 
 /// Top-level blocks with where each came from.
 #[derive(Debug, Clone, Default)]
-pub struct Parsed {
+pub(crate) struct Parsed {
     pub blocks: Vec<Block>,
     /// One per block of `blocks`.
     pub sources: Vec<BlockSource>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Inline {
+pub(crate) struct Inline {
     pub runs: Vec<Run>,
 }
 
 impl Inline {
     /// Its runs' text, without the glyphs the renderer puts before some links.
-    pub fn plain_text(&self, out: &mut String) {
+    pub(crate) fn plain_text(&self, out: &mut String) {
         for run in &self.runs {
             out.push_str(&run.text);
         }
@@ -130,7 +130,7 @@ impl Inline {
     }
 
     /// Whether any run is an image: such inlines flow text and images instead of being one galley.
-    pub fn has_images(&self) -> bool {
+    pub(crate) fn has_images(&self) -> bool {
         self.runs.iter().any(|run| run.style.image.is_some())
     }
 
@@ -164,7 +164,7 @@ impl Inline {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Run {
+pub(crate) struct Run {
     pub text: String,
     pub style: Style,
 }
@@ -174,7 +174,7 @@ pub struct Run {
     clippy::struct_excessive_bools,
     reason = "strong, emphasis, strike and code are independent inline marks that combine freely"
 )]
-pub struct Style {
+pub(crate) struct Style {
     pub strong: bool,
     pub emphasis: bool,
     pub strike: bool,
@@ -188,7 +188,7 @@ pub struct Style {
 
 /// One image as written: `![alt](src "title")` or an HTML `<img>`; or a video ([`video`]).
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct ImageSpec {
+pub(crate) struct ImageSpec {
     pub src: String,
     pub alt: String,
     pub title: String,
@@ -201,14 +201,14 @@ pub struct ImageSpec {
 
 impl ImageSpec {
     /// Whether it plays: written as a video, or its address names a video file.
-    pub fn is_video(&self) -> bool {
+    pub(crate) fn is_video(&self) -> bool {
         self.video || video::names_video(&self.src)
     }
 }
 
 /// An HTML length: CSS pixels (points here) or a share of the text width.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Length {
+pub(crate) enum Length {
     Points(f32),
     Percent(f32),
 }
@@ -236,12 +236,12 @@ impl Length {
 
 /// Blocks of `text`; with a `platform`, its shorthand references (`#12`, `!12`) become links whose
 /// target is the reference text itself.
-pub fn parse(text: &str, platform: Option<ProviderKind>) -> Vec<Block> {
+pub(crate) fn parse(text: &str, platform: Option<ProviderKind>) -> Vec<Block> {
     parse_with_sources(text, platform).blocks
 }
 
 /// [`parse`], keeping where each top-level block (and each item of a top-level list) is in `text`.
-pub fn parse_with_sources(text: &str, platform: Option<ProviderKind>) -> Parsed {
+pub(crate) fn parse_with_sources(text: &str, platform: Option<ProviderKind>) -> Parsed {
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS
@@ -257,21 +257,21 @@ pub fn parse_with_sources(text: &str, platform: Option<ProviderKind>) -> Parsed 
 
 /// Every link target in `blocks`, in reading order: URLs and shorthand references (a linked image's
 /// link too), not image sources.
-pub fn link_targets(blocks: &[Block], targets: &mut Vec<String>) {
+pub(crate) fn link_targets(blocks: &[Block], targets: &mut Vec<String>) {
     for_each_inline(blocks, &mut |inline| {
         targets.extend(inline.runs.iter().filter_map(|run| run.style.link.clone()));
     });
 }
 
 /// Every image source in `blocks`, in reading order.
-pub fn image_sources<'a>(blocks: &'a [Block], sources: &mut Vec<&'a str>) {
+pub(crate) fn image_sources<'a>(blocks: &'a [Block], sources: &mut Vec<&'a str>) {
     let mut specs = Vec::new();
     image_specs(blocks, &mut specs);
     sources.extend(specs.into_iter().map(|image| image.src.as_str()));
 }
 
 /// Every image (and video) of `blocks` as written, in reading order.
-pub fn image_specs<'a>(blocks: &'a [Block], specs: &mut Vec<&'a ImageSpec>) {
+pub(crate) fn image_specs<'a>(blocks: &'a [Block], specs: &mut Vec<&'a ImageSpec>) {
     for_each_inline(blocks, &mut |inline| {
         specs.extend(inline.runs.iter().filter_map(|run| run.style.image.as_deref()));
     });
@@ -298,7 +298,7 @@ fn for_each_inline<'a>(blocks: &'a [Block], f: &mut impl FnMut(&'a Inline)) {
 }
 
 /// URLs and references in plain text (commit subjects, titles), in order.
-pub fn plain_targets(text: &str, platform: ProviderKind) -> Vec<&str> {
+pub(crate) fn plain_targets(text: &str, platform: ProviderKind) -> Vec<&str> {
     plain_pieces(text, Some(platform)).into_iter().filter_map(|(_, link)| link).collect()
 }
 

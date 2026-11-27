@@ -18,13 +18,13 @@ use super::rows::{self, AssistantRow, Row, RowId};
 
 /// Whether row `id` can be used: every Assistant row but the switch waits for the assistant to be
 /// on; rows of other sections always can.
-pub fn is_active(id: RowId, services: &Services) -> bool {
+pub(crate) fn is_active(id: RowId, services: &Services) -> bool {
     !matches!(id, RowId::Assistant(row) if row != AssistantRow::Shown)
         || services.settings.assistant.enabled
 }
 
 /// The control of Assistant row `id`; a switch takes its name from `row`.
-pub fn control(ui: &mut Ui, id: AssistantRow, row: &Row, services: &mut Services) {
+pub(crate) fn control(ui: &mut Ui, id: AssistantRow, row: &Row, services: &mut Services) {
     let changed = match id {
         AssistantRow::Shown => rows::switch(ui, &mut services.settings.assistant.enabled, row),
         AssistantRow::Agent => agent(ui, services),

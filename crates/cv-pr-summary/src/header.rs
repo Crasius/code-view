@@ -30,14 +30,14 @@ const PADDING_Y: f32 = 10.0;
 const ITEM_GAP: f32 = 6.0;
 
 /// What the user did in the header.
-pub enum HeaderAction {
+pub(crate) enum HeaderAction {
     Event(SummaryEvent),
     /// Collapse every card, or expand them all when every one is collapsed.
     ToggleCollapseAll,
 }
 
 /// What the header counts: the cards and their files and lines by kind of file.
-pub struct Counts<'a> {
+pub(crate) struct Counts<'a> {
     pub cards: usize,
     pub breakdown: &'a ChangeBreakdown,
     /// Every card is collapsed, so the button expands them.
@@ -47,7 +47,11 @@ pub struct Counts<'a> {
 }
 
 /// "3 changed files", the line totals and the folder as a trail of links, over the cards.
-pub fn show(ui: &mut Ui, inputs: &SummaryInputs<'_>, counts: &Counts<'_>) -> Option<HeaderAction> {
+pub(crate) fn show(
+    ui: &mut Ui,
+    inputs: &SummaryInputs<'_>,
+    counts: &Counts<'_>,
+) -> Option<HeaderAction> {
     let palette = theme::palette(ui.ctx());
     let mut action = None;
     egui::Frame::new()
@@ -305,7 +309,7 @@ fn hidden_levels(
 }
 
 /// Nothing to summarize: no changed files, or none the filters let through.
-pub fn empty_state(ui: &mut Ui, inputs: &SummaryInputs<'_>) -> Option<SummaryEvent> {
+pub(crate) fn empty_state(ui: &mut Ui, inputs: &SummaryInputs<'_>) -> Option<SummaryEvent> {
     let palette = theme::palette(ui.ctx());
     if inputs.is_filtered {
         let actions = [Action::secondary(icons::X, "Clear filters")];

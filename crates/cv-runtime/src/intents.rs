@@ -39,7 +39,7 @@ pub struct AddRequest {
 
 /// Asks the app to open the setup wizard for a new connection to `request`'s cloud host, at the
 /// sign-in step. Takes effect after the current frame; the app switches to Settings.
-pub fn request_add(ctx: &egui::Context, request: AddRequest) {
+pub(crate) fn request_add(ctx: &egui::Context, request: AddRequest) {
     mailbox::post(ctx, Id::unique(ADD_REQUEST_ID), request);
 }
 

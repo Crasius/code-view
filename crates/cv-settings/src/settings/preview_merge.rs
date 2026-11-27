@@ -18,7 +18,7 @@ const MENU_WIDTH: f32 = 360.0;
 const TARGET: &str = "main";
 
 /// `previewed` is the platform last worked on in the section; the preview's own switch changes it.
-pub fn show(ui: &mut Ui, services: &Services, previewed: &mut Option<ProviderKind>) {
+pub(crate) fn show(ui: &mut Ui, services: &Services, previewed: &mut Option<ProviderKind>) {
     let palette = theme::palette(ui.ctx());
     let kinds = merging::connected_kinds(services);
     let Some(first) = kinds.first().copied() else {

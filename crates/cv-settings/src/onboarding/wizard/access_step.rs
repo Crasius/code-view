@@ -13,7 +13,7 @@ use crate::onboarding::parts::{self, Tone};
 /// Above each note under the checklist.
 const NOTE_GAP: f32 = 6.0;
 
-pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
+pub(crate) fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
     let Ok(host) = wizard.resolved() else {
         wizard.step = Step::Host;
         return;

@@ -21,7 +21,7 @@ const HEADING_SHORTCUTS: [&str; 3] = ["Ctrl+Alt+1", "Ctrl+Alt+2", "Ctrl+Alt+3"];
 const HEADING_SHORTCUTS: [&str; 3] = ["⌥⌘1", "⌥⌘2", "⌥⌘3"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Action {
+pub(crate) enum Action {
     Mark(Mark),
     Link,
     Heading(u8),
@@ -33,7 +33,7 @@ pub enum Action {
 }
 
 impl Action {
-    pub fn command(self) -> Command {
+    pub(crate) fn command(self) -> Command {
         match self {
             Action::Mark(mark) => Command::Mark(mark),
             Action::Link => Command::EditLink,
@@ -101,7 +101,7 @@ const SCRIPTS: &[Item] = &[
 
 /// Which formats are on at the caret or across the selection.
 #[derive(Debug, Default)]
-pub struct Active {
+pub(crate) struct Active {
     marks: Vec<Mark>,
     has_link: bool,
     heading: Option<u8>,
@@ -111,7 +111,7 @@ pub struct Active {
 }
 
 impl Active {
-    pub fn of(state: &State) -> Self {
+    pub(crate) fn of(state: &State) -> Self {
         let caret = state.doc.clamp(state.selection.head);
         let block = state.doc.block(caret.block);
         let marks = if state.selection.is_empty() {
@@ -174,7 +174,12 @@ fn groups(can_mention: bool) -> Vec<Vec<&'static Item>> {
 }
 
 /// Draws the buttons right-aligned into the rest of the row; returns the clicked button's command.
-pub fn show(ui: &mut Ui, active: &Active, can_mention: bool, is_enabled: bool) -> Option<Command> {
+pub(crate) fn show(
+    ui: &mut Ui,
+    active: &Active,
+    can_mention: bool,
+    is_enabled: bool,
+) -> Option<Command> {
     toolbar_layout::show(ui, &groups(can_mention), |action| active.is_active(action), is_enabled)
         .map(Action::command)
 }

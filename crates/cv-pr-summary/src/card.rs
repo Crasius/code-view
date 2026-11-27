@@ -28,7 +28,7 @@ const VIEW_HEIGHT: f32 = 28.0;
 const NAME_SIZE: f32 = style::BODY_SIZE;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CardAction {
+pub(crate) enum CardAction {
     Toggle,
     View,
     Retry,
@@ -37,7 +37,7 @@ pub enum CardAction {
 }
 
 /// What the body of a card shows this frame.
-pub enum Body<'a> {
+pub(crate) enum Body<'a> {
     Loaded(&'a mut CardBody),
     /// A Markdown file's rendered diff, its versions loaded.
     Rendered(&'a mut RenderedCard),
@@ -51,7 +51,7 @@ pub enum Body<'a> {
 }
 
 /// The body of a card without a loaded diff.
-pub fn placeholder_body<'a>(
+pub(crate) fn placeholder_body<'a>(
     file: &ChangedFile,
     is_forced: bool,
     failure: Option<&'a str>,
@@ -67,7 +67,7 @@ pub fn placeholder_body<'a>(
     }
 }
 
-pub struct CardView<'a> {
+pub(crate) struct CardView<'a> {
     pub file: &'a ChangedFile,
     /// The card without the gap below it.
     pub rect: Rect,
@@ -80,16 +80,16 @@ pub struct CardView<'a> {
 }
 
 /// What a loaded card's body shows.
-pub enum Content<'a> {
+pub(crate) enum Content<'a> {
     Code(&'a mut CardBody),
     Rendered(&'a mut RenderedCard),
 }
 
 /// Paints a loaded card's code or rendered diff in the body rect, clipped to the second rect.
-pub type CodeRows<'a> = dyn FnMut(&mut Ui, Rect, Rect, Content<'_>) + 'a;
+pub(crate) type CodeRows<'a> = dyn FnMut(&mut Ui, Rect, Rect, Content<'_>) + 'a;
 
 /// Paints the card and returns what the user did with it; `code` paints a loaded card's rows.
-pub fn show(ui: &mut Ui, view: CardView<'_>, code: &mut CodeRows<'_>) -> Option<CardAction> {
+pub(crate) fn show(ui: &mut Ui, view: CardView<'_>, code: &mut CodeRows<'_>) -> Option<CardAction> {
     let palette = theme::palette(ui.ctx());
     let rect = view.rect;
     let header = Rect::from_min_size(rect.min, vec2(rect.width(), view.geometry.header));

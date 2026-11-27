@@ -148,7 +148,7 @@ impl WaysOut {
     }
 
     /// The ways out in `actions`, `None` when there is none.
-    pub fn from_vec(actions: Vec<ToastAction>) -> Option<Self> {
+    pub(crate) fn from_vec(actions: Vec<ToastAction>) -> Option<Self> {
         (!actions.is_empty()).then_some(Self(actions))
     }
 

@@ -63,7 +63,7 @@ impl Flights {
 
     /// The writes that succeeded since the last call, in the order they started; failed ones leave
     /// the log quietly (their page's toast says why). Refreshes what [`Self::pending_on`] reads.
-    pub fn take_landed(&mut self) -> Vec<(PullRequestKey, Effect)> {
+    pub(crate) fn take_landed(&mut self) -> Vec<(PullRequestKey, Effect)> {
         let mut board = self.shared.lock().unwrap_or_else(PoisonError::into_inner);
         let (landed, on_the_way): (Vec<Flight>, Vec<Flight>) = std::mem::take(&mut board.flights)
             .into_iter()

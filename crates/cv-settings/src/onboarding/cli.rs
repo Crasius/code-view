@@ -25,12 +25,12 @@ pub struct CliTools {
 }
 
 impl CliTools {
-    pub fn detect() -> Self {
+    pub(crate) fn detect() -> Self {
         Self { github: on_path(&["gh.exe", "gh"]), azure: on_path(&[platform::AZURE_CLI]) }
     }
 
     /// The sign-in this platform and host can use, if its tool is installed.
-    pub fn login_for(
+    pub(crate) fn login_for(
         self,
         kind: ProviderKind,
         host_name: &str,
@@ -71,13 +71,13 @@ fn is_host_name(host: &str) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CliLogin {
+pub(crate) enum CliLogin {
     GitHub { host: String },
     Azure,
 }
 
 impl CliLogin {
-    pub fn tool_name(&self) -> &'static str {
+    pub(crate) fn tool_name(&self) -> &'static str {
         match self {
             CliLogin::GitHub { .. } => "GitHub CLI",
             CliLogin::Azure => "Azure CLI",
@@ -85,14 +85,14 @@ impl CliLogin {
     }
 
     /// The command that signs in, for the user to run in a terminal when the tool has no sign-in yet.
-    pub fn sign_in_command(&self) -> String {
+    pub(crate) fn sign_in_command(&self) -> String {
         match self {
             CliLogin::GitHub { host } => format!("gh auth login --hostname {host}"),
             CliLogin::Azure => "az login".to_owned(),
         }
     }
 
-    pub fn explanation(&self) -> &'static str {
+    pub(crate) fn explanation(&self) -> &'static str {
         match self {
             CliLogin::GitHub { .. } => {
                 "Code View asks gh for the token you already use in the terminal. Nothing to create or copy."
@@ -126,7 +126,7 @@ impl CliLogin {
     }
 
     /// Runs the tool and returns the token from its stdout.
-    pub async fn fetch_token(self) -> Result<String, String> {
+    pub(crate) async fn fetch_token(self) -> Result<String, String> {
         let (program, arguments) = self.program_and_arguments();
         let mut command = tokio::process::Command::new(program);
         command

@@ -38,19 +38,20 @@ use crate::image_state::{ImageFailure, ImageState, Remedy, bump_image_generation
 use crate::picture::Picture;
 use crate::video::Clip;
 
-pub use decode::{Decoded, decode, full_pixels, svg_options};
+pub(crate) use decode::full_pixels;
+pub use decode::{Decoded, decode, svg_options};
 
 use self::ahead::{AHEAD_SECONDS, Ahead};
 
 /// Images larger than this are not downloaded or decoded.
-pub const MAX_BYTES: u64 = 20 * 1024 * 1024;
+pub(crate) const MAX_BYTES: u64 = 20 * 1024 * 1024;
 /// Longest texture edge; larger images are scaled down before upload (as file previews are).
 pub const MAX_TEXTURE_EDGE: u32 = 2048;
 /// Image loads running at once.
-pub const MAX_IN_FLIGHT: usize = 4;
+pub(crate) const MAX_IN_FLIGHT: usize = 4;
 /// Texture memory kept for images drawn recently: our budget, about three of the largest textures
 /// ([`MAX_TEXTURE_EDGE`] square, 21 MB with mipmaps) or a dozen full-window screenshots.
-pub const MEMORY_LIMIT: usize = 64 * 1024 * 1024;
+pub(crate) const MEMORY_LIMIT: usize = 64 * 1024 * 1024;
 /// Entries kept at most (sizes and failures of images not on screen).
 const MAX_ENTRIES: usize = 4096;
 
