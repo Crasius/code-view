@@ -19,8 +19,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{
     AutoComplete, Capabilities, Connection, MergeOptions, MergePolicy, MergeStatus, MergeStrategy,
-    ProviderError, ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestState,
-    PullRequestSummary, Result, ReviewVote, UserIdentity,
+    ProviderError, ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestSummary, Result,
+    ReviewVote, UserIdentity,
 };
 
 use super::ReviewApp;
@@ -290,24 +290,12 @@ fn change(number: u64) -> (&'static str, &'static str, MergeStatus) {
 fn summary(number: u64) -> PullRequestSummary {
     let (title, source, _) = change(number);
     PullRequestSummary {
-        repository_key: REPOSITORY.to_owned(),
-        repository_name: "site".to_owned(),
-        number,
         title: title.to_owned(),
         author: person("1", "Ada Lovelace"),
-        state: PullRequestState::Open,
-        is_draft: false,
         source_branch: source.to_owned(),
-        target_branch: "main".to_owned(),
-        created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
         updated_at: Some(time::macros::datetime!(2026-10-18 15:00 UTC)),
         web_url: web_url(number),
-        labels: Vec::new(),
-        reviewers: Vec::new(),
-        checks: None,
-        diff_stat: review_core::DiffStat::default(),
-        head_sha: None,
-        target_sha: None,
+        ..samples::summary(REPOSITORY, number)
     }
 }
 
