@@ -18,13 +18,12 @@ use review_agent::{
     AgentEvent, AgentKind, FakeAgent, ModelChoice, ModelInfo, SessionConfig, StepKind, ToolStep,
     Usage,
 };
-use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
-use super::action_e2e::{
-    app, open_diff, open_pull_request, press, shows_file_view, type_into, wait_for, wait_until,
+use super::github_mock::{FILE, GitHubHost, TITLE, open_diff, open_pull_request};
+use super::walkthrough::{
+    app, click_now, press, saved_settings, shows_file_view, type_into, wait_for, wait_until, wheel,
 };
-use super::github_mock::{FILE, GitHubHost, TITLE};
 use cv_pr_assistant::CARD_LABEL;
 use cv_pr_assistant::mini::{self, ANSWERING, FOLLOW_UP};
 use cv_runtime::route::Route;
@@ -102,7 +101,7 @@ fn assistant_answers_a_typed_question_and_a_citation_opens_the_line() {
         &mut harness,
         "the cited file",
         |harness| shows_file_view(harness, FILE).then_some(()),
-        |harness| primary_click(harness, center),
+        |harness| click_now(harness, center),
     );
 }
 
@@ -151,7 +150,7 @@ fn assistant_alt_a_quotes_the_selected_lines() {
     let diff = open_diff(&mut harness);
 
     // The first line number of the right (head) pane picks line 1.
-    primary_click(&mut harness, pos2(diff.center().x + 12.0, diff.top() + 4.0));
+    click_now(&mut harness, pos2(diff.center().x + 12.0, diff.top() + 4.0));
     harness.key_press_modifiers(Modifiers::ALT, Key::A);
     harness.step();
     let attached = format!("{FILE}, line 1 attached");
@@ -174,7 +173,7 @@ fn assistant_alt_a_quotes_the_selected_lines() {
         .rect();
     row::assert_centered_in(composer, input);
     let ask = harness.get_by_role_and_label(Role::Button, "Ask").rect().center();
-    primary_click(&mut harness, ask);
+    click_now(&mut harness, ask);
 
     let (_, mut agent) = wait_for_session(&mut harness);
     let prompts = wait_for_prompts(&mut harness, &mut agent);
@@ -228,9 +227,7 @@ fn assistant_default_model_from_settings_starts_the_next_conversation() {
     press(&mut harness, "Sonnet");
     let expected = ModelChoice::Named("claude-sonnet".to_owned());
     assert_eq!(harness.state().services.settings.assistant.claude_model, expected);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    let saved = AppSettings::load(&paths.settings_file()).expect("settings file");
-    assert_eq!(saved.assistant.claude_model, expected, "saved");
+    assert_eq!(saved_settings(&harness).assistant.claude_model, expected, "saved");
 
     harness.state_mut().navigator.go(Route::MyPullRequests);
     open_pull_request(&mut harness);
@@ -361,13 +358,7 @@ fn assistant_panel_keeps_the_side_column_and_the_composer_at_the_bottom() {
         let over = harness.get_by_label_contains("Point 60").rect().center();
         harness.hover_at(over);
         for _ in 0..4 {
-            harness.event(egui::Event::MouseWheel {
-                unit: egui::MouseWheelUnit::Point,
-                delta: egui::vec2(0.0, 400.0),
-                phase: egui::TouchPhase::Move,
-                modifiers: Modifiers::NONE,
-                source: egui::MouseWheelSource::Wheel,
-            });
+            harness.event(wheel(400.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
             harness.step();
         }
         press(&mut harness, "Jump to latest");
@@ -380,10 +371,7 @@ fn assistant_panel_keeps_the_side_column_and_the_composer_at_the_bottom() {
         let wider = panel(&harness).width();
         assert!((wider - before - 100.0).abs() < 1.0, "{before} became {wider}");
         assert_same_gap(&harness, gap, "after widening");
-        let saved = AppSettings::load(&harness.state().services.paths.settings_file())
-            .expect("settings")
-            .panes
-            .overview_side;
+        let saved = saved_settings(&harness).panes.overview_side;
         assert!((saved - wider).abs() < 1.0, "saved {saved}");
 
         press(&mut harness, "Collapse (Esc)");
@@ -451,8 +439,7 @@ fn assistant_card_fills_the_side_column_until_dragged() {
         let taller = stored_height(&harness).expect("a drag keeps the height");
         assert!((taller - (fill + 200.0)).abs() < 1.0, "{taller}, not 200 above the start {fill}");
         assert_eq!(shown_height(&harness), taller, "the card shows the height it was dragged to");
-        let settings = AppSettings::load(&harness.state().services.paths.settings_file());
-        assert_eq!(settings.expect("settings").assistant.card_height, Some(taller), "saved");
+        assert_eq!(saved_settings(&harness).assistant.card_height, Some(taller), "saved");
         // The bar is below the window now, out of the pointer's reach; the keys take it on.
         harness.get_by_label(CARD_SPLITTER).focus();
         harness.step();
@@ -466,8 +453,7 @@ fn assistant_card_fills_the_side_column_until_dragged() {
         harness.key_press(Key::ArrowDown);
         harness.step();
         assert_eq!(stored_height(&harness), Some(268.0), "↓ steps by 8 points");
-        let settings = AppSettings::load(&harness.state().services.paths.settings_file());
-        assert_eq!(settings.expect("settings").assistant.card_height, Some(268.0), "saved");
+        assert_eq!(saved_settings(&harness).assistant.card_height, Some(268.0), "saved");
     }
 
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -483,8 +469,7 @@ fn assistant_card_fills_the_side_column_until_dragged() {
     harness.run_steps(4);
     assert_eq!(stored_height(&harness), None, "the reset forgets the height");
     assert_card_fills(&harness, 1_200.0);
-    let settings = AppSettings::load(&harness.state().services.paths.settings_file());
-    assert_eq!(settings.expect("settings").assistant.card_height, None, "saved");
+    assert_eq!(saved_settings(&harness).assistant.card_height, None, "saved");
 }
 
 const CARD_SPLITTER: &str = "Resize assistant conversation";
@@ -598,11 +583,6 @@ fn wait_for_prompts(
     wait_for(harness, "the prompt", take, |_| {})
 }
 
-fn primary_click(harness: &mut Harness<'_, ReviewApp>, position: Pos2) {
-    harness.click_point(position, PointerButton::Primary);
-    harness.step();
-}
-
 /// Over the un-armed card the wheel scrolls the page and leaves the conversation where it is; a
 /// click into the card arms it and the wheel scrolls the conversation; a click outside gives the
 /// wheel back to the page.
@@ -636,7 +616,7 @@ fn assistant_card_takes_the_wheel_only_after_a_click_into_it() {
     assert!(back.conversation.abs() < 1.0, "the conversation stays: {back:?}");
 
     let inside = conversation_point(&harness);
-    primary_click(&mut harness, inside);
+    click_now(&mut harness, inside);
     assert!(is_armed(&harness), "a click into the card arms it");
     let armed = wheel_over_conversation(&mut harness, 100.0);
     assert!(armed.conversation > 10.0, "the conversation scrolls: {armed:?}");
@@ -662,8 +642,7 @@ fn assistant_turned_off_in_settings_leaves_the_page_and_starts_nothing() {
     press(&mut harness, "Assistant");
     switch_assistant(&mut harness);
     assert!(!harness.state().services.settings.assistant.enabled);
-    let saved = AppSettings::load(&harness.state().services.paths.settings_file());
-    assert!(!saved.expect("settings").assistant.enabled, "saved");
+    assert!(!saved_settings(&harness).assistant.enabled, "saved");
     let model = harness.query_all_by_role(Role::ComboBox).next().expect("the Claude Code model");
     assert!(model.accesskit_node().is_disabled(), "the model rows read as inactive");
     // Settings looked for the CLIs while the assistant was on; from here on nothing may.
@@ -712,7 +691,7 @@ fn is_armed(harness: &Harness<'_, ReviewApp>) -> bool {
 /// Clicks the Description card's title in the main column.
 fn click_outside(harness: &mut Harness<'_, ReviewApp>) {
     let title = harness.query_all_by_label("Description").next().expect("the title").rect();
-    primary_click(harness, title.center());
+    click_now(harness, title.center());
     harness.run_steps(4);
 }
 
@@ -757,13 +736,7 @@ fn wheel_over_conversation(harness: &mut Harness<'_, ReviewApp>, delta: f32) -> 
     let (page, conversation) = places(harness);
     harness.hover_at(at);
     harness.step();
-    harness.event(egui::Event::MouseWheel {
-        unit: egui::MouseWheelUnit::Point,
-        delta: egui::vec2(0.0, delta),
-        phase: egui::TouchPhase::Move,
-        modifiers: Modifiers::NONE,
-        source: egui::MouseWheelSource::Wheel,
-    });
+    harness.event(wheel(delta, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
     harness.run_steps(30);
     let (page_now, conversation_now) = places(harness);
     Moved { page: page_now - page, conversation: conversation_now - conversation }
@@ -907,7 +880,7 @@ fn assistant_mini_chat_on_an_earlier_answer_waits_for_the_running_one() {
         &mut harness,
         "the mini chat on the first answer",
         |harness| harness.query_by(|node| node.placeholder() == Some(ANSWERING)).map(|_| ()),
-        |harness| primary_click(harness, center),
+        |harness| click_now(harness, center),
     );
     assert!(harness.query_by_label(QUESTION).is_some(), "it shows the first answer");
     assert!(harness.query_by_role_and_label(Role::Button, "Stop").is_some(), "Stop, not Send");
@@ -979,7 +952,7 @@ fn assistant_draft_survives_switching_over_kept_conversations() {
     assert_eq!(composer_text(&harness), DRAFT, "after switching back to Codex");
 
     let input = question_input(&harness).rect().center();
-    primary_click(&mut harness, input);
+    click_now(&mut harness, input);
     harness.key_press(Key::Enter);
     harness.step();
     let (_, mut codex) = wait_for_session(&mut harness);
@@ -1020,7 +993,7 @@ fn assistant_mini_chat_follow_up_survives_switching_the_agent() {
         &mut harness,
         "the mini chat",
         |harness| harness.query_by(|node| node.placeholder() == Some(FOLLOW_UP)).map(|_| ()),
-        |harness| primary_click(harness, center),
+        |harness| click_now(harness, center),
     );
     type_into(&mut harness, FOLLOW_UP, DRAFT);
     pick_in_chip(&mut harness, "Claude · ", "Codex");
@@ -1046,7 +1019,7 @@ fn codex_models() -> Vec<ModelInfo> {
 /// Clicks into the question composer and types `text` key by key, as a keyboard does.
 fn type_by_keys(harness: &mut Harness<'_, ReviewApp>, text: &str) {
     let input = question_input(harness).rect().center();
-    primary_click(harness, input);
+    click_now(harness, input);
     for word in text.split_inclusive(' ') {
         harness.event(egui::Event::Text(word.to_owned()));
         harness.step();
@@ -1074,7 +1047,7 @@ fn composer_text(harness: &Harness<'_, ReviewApp>) -> String {
 /// Opens the chip whose label starts with `chip` and picks `item` in its menu, with the pointer.
 fn pick_in_chip(harness: &mut Harness<'_, ReviewApp>, chip: &str, item: &str) {
     let at = harness.get_by_label_contains(chip).rect().center();
-    primary_click(harness, at);
+    click_now(harness, at);
     // The menu opens before the model list arrives, which moves its items, and an agent's item is
     // disabled until its CLI was found, in the background; the item is what gets clicked, once it
     // is enabled and stayed in place for a frame.
@@ -1089,7 +1062,7 @@ fn pick_in_chip(harness: &mut Harness<'_, ReviewApp>, chip: &str, item: &str) {
             && last.replace(now) == now
     });
     let at = harness.get_by_role_and_label(Role::MenuItem, item).rect().center();
-    primary_click(harness, at);
+    click_now(harness, at);
     harness.run_steps(4);
 }
 
@@ -1130,17 +1103,11 @@ fn assistant_card_keeps_its_height_while_the_header_slides_away() {
     let over = harness.query_all_by_label("Description").next().expect("the title").rect().center();
     harness.hover_at(over);
     harness.step();
-    let wheel = |delta: f32, phase: egui::TouchPhase| egui::Event::MouseWheel {
-        unit: egui::MouseWheelUnit::Point,
-        delta: egui::vec2(0.0, delta),
-        phase,
-        modifiers: Modifiers::NONE,
-        source: egui::MouseWheelSource::Trackpad,
-    };
-    harness.event(wheel(0.0, egui::TouchPhase::Start));
-    harness.event(wheel(-400.0, egui::TouchPhase::Move));
+    let trackpad = |delta: f32, phase| wheel(delta, phase, egui::MouseWheelSource::Trackpad);
+    harness.event(trackpad(0.0, egui::TouchPhase::Start));
+    harness.event(trackpad(-400.0, egui::TouchPhase::Move));
     harness.step();
-    harness.event(wheel(0.0, egui::TouchPhase::End));
+    harness.event(trackpad(0.0, egui::TouchPhase::End));
     harness.run_steps(10);
     let moved = tabs - harness.get_by_role_and_label(Role::Tab, "Overview").rect().top();
     assert!(moved > 40.0, "the header slid away: the tab bar moved up by {moved}");

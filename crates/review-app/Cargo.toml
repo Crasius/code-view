@@ -54,6 +54,8 @@ review-core.workspace = true
 review-store.workspace = true
 eframe.workspace = true
 egui.workspace = true
+# The client the provider factory of `ReviewApp::new` is handed.
+reqwest.workspace = true
 
 [dev-dependencies]
 # The walkthroughs run the whole app on the libraries' test fakes (agents, clipboard, dialogs) and
@@ -85,7 +87,6 @@ provider-gitlab.workspace = true
 async-trait.workspace = true
 # Also the icon renderer (examples/render_icon.rs).
 image.workspace = true
-reqwest.workspace = true
 # The icon renderer draws the SVG masters (examples/render_icon.rs).
 resvg.workspace = true
 serde_json.workspace = true

@@ -13,8 +13,10 @@ use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
-use super::github_mock::{ExtraFile, FILE, GitHubHost, NUMBER, REPOSITORY};
+use super::github_mock::{ExtraFile, FILE, GitHubHost, NUMBER, REPOSITORY, open_pull_request};
+use super::walkthrough::{
+    app, files_tab, open_in_tree, shows_file_view, wait_for_diff, wait_until,
+};
 use cv_runtime::route::PullRequestTab;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -41,14 +43,7 @@ fn ux_files_nav_steps_through_the_review_to_the_vote() {
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     assert!(harness.state().services.settings.open_next_unviewed, "on by default");
     open_pull_request(&mut harness);
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(&mut harness);
     open_in_tree(&mut harness, A);
     wait_for_diff(&mut harness, A);
 
@@ -124,18 +119,4 @@ fn ux_files_nav_steps_through_the_review_to_the_vote() {
 /// The file tree's filter field.
 fn filter<'a>(harness: &'a Harness<'_, ReviewApp>) -> egui_kittest::Node<'a> {
     harness.get_by(|node| node.placeholder().is_some_and(|hint| hint.ends_with("Filter files")))
-}
-
-fn open_in_tree(harness: &mut Harness<'_, ReviewApp>, path: &str) {
-    wait_until(harness, "the file's row in the tree", |harness| {
-        harness.query_by_role_and_label(Role::TreeItem, path).is_some()
-    });
-    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
-    harness.step();
-}
-
-fn wait_for_diff(harness: &mut Harness<'_, ReviewApp>, path: &str) {
-    wait_until(harness, &format!("the file view of {path}"), |harness| {
-        shows_file_view(harness, path)
-    });
 }

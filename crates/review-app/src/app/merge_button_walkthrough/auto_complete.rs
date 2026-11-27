@@ -12,10 +12,9 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_core::{MergeStrategy, ProviderKind};
 
-use super::{
-    Calls, POLICIES, ReviewApp, button, has, open, opened_urls, press, start_on, wait_for,
-};
-use cv_testkit::Clicks;
+use super::super::walkthrough::{has, opened_urls, press, wait_until};
+use super::{Calls, POLICIES, ReviewApp, button, open, start_on};
+use cv_testkit::{Clicks, ScratchDir};
 
 /// (set, armed set, state line, cancel, armed cancel) as the platform words them.
 struct Words {
@@ -52,12 +51,14 @@ const GITLAB: Words = Words {
 
 #[test]
 fn merge_button_sets_and_cancels_auto_complete_on_azure_devops() {
-    round_trip("auto-ado", ProviderKind::AzureDevOps, &AZURE);
+    let scratch = ScratchDir::new("merge-button-auto-ado");
+    round_trip(&scratch, "auto-ado", ProviderKind::AzureDevOps, &AZURE);
 }
 
 #[test]
 fn merge_button_enables_and_disables_auto_merge_on_github() {
-    let (mut harness, _) = round_trip("auto-github", ProviderKind::GitHub, &GITHUB);
+    let scratch = ScratchDir::new("merge-button-auto-github");
+    let (mut harness, _) = round_trip(&scratch, "auto-github", ProviderKind::GitHub, &GITHUB);
     press(&mut harness, super::OPTIONS);
     assert!(
         harness.query_by_label("Delete feature/blocked after merging").is_none(),
@@ -68,19 +69,21 @@ fn merge_button_enables_and_disables_auto_merge_on_github() {
 
 #[test]
 fn merge_button_sets_and_cancels_auto_merge_on_gitlab() {
-    round_trip("auto-gitlab", ProviderKind::GitLab, &GITLAB);
+    let scratch = ScratchDir::new("merge-button-auto-gitlab");
+    round_trip(&scratch, "auto-gitlab", ProviderKind::GitLab, &GITLAB);
 }
 
 /// A platform that refuses auto-merge (a GitHub repository without it) leads to its settings.
 #[test]
 fn a_refused_auto_merge_offers_the_merge_settings() {
     let refusing = Calls { refuses_auto_complete: true, ..Calls::default() };
-    let (mut harness, _, calls) = start_on("auto-refused", ProviderKind::GitHub, refusing);
+    let scratch = ScratchDir::new("merge-button-auto-refused");
+    let (mut harness, calls) = start_on(&scratch, "auto-refused", ProviderKind::GitHub, refusing);
     open(&mut harness, "auto-refused", 3);
-    wait_for(&mut harness, "auto-merge offered", |harness| button(harness, GITHUB.set));
+    wait_until(&mut harness, "auto-merge offered", |harness| button(harness, GITHUB.set));
     press(&mut harness, GITHUB.set);
     press(&mut harness, GITHUB.confirm_set);
-    wait_for(&mut harness, "the refusal", |harness| {
+    wait_until(&mut harness, "the refusal", |harness| {
         has(harness, "Enable auto-merge failed: Auto-merge is turned off for contoso/site.")
     });
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Repository settings").rect());
@@ -92,26 +95,27 @@ fn a_refused_auto_merge_offers_the_merge_settings() {
 /// On `kind`: the mergeable pull request keeps the plain merge; the blocked one sets auto-complete
 /// with the preselected squash, shows who set it, and cancels it again.
 fn round_trip(
+    scratch: &ScratchDir,
     name: &str,
     kind: ProviderKind,
     words: &Words,
 ) -> (Harness<'static, ReviewApp>, Arc<Calls>) {
-    let (mut harness, _, calls) = start_on(name, kind, Calls::default());
+    let (mut harness, calls) = start_on(scratch, name, kind, Calls::default());
     open(&mut harness, name, 1);
-    wait_for(&mut harness, "the mergeable pull request", |harness| {
+    wait_until(&mut harness, "the mergeable pull request", |harness| {
         button(harness, squash_label(kind)) && has(harness, "Speed up login")
     });
     assert!(!button(&harness, words.set), "a completable pull request merges now");
 
     open(&mut harness, name, 3);
-    wait_for(&mut harness, "auto-complete offered", |harness| {
+    wait_until(&mut harness, "auto-complete offered", |harness| {
         button(harness, words.set) && has(harness, "Blocked change")
     });
     press(&mut harness, words.set);
     assert!(button(&harness, words.confirm_set), "armed in place");
     assert!(calls.auto_completes.lock().unwrap().is_empty(), "one click sets nothing");
     press(&mut harness, words.confirm_set);
-    wait_for(&mut harness, "auto-complete set", |_| {
+    wait_until(&mut harness, "auto-complete set", |_| {
         !calls.auto_completes.lock().unwrap().is_empty()
     });
     let set = calls.auto_completes.lock().unwrap()[0].clone().expect("a set, not a cancel");
@@ -119,12 +123,12 @@ fn round_trip(
     assert_eq!(set.head_sha, "a".repeat(40), "guarded by the reviewed head");
     assert!(calls.merges.lock().unwrap().is_empty(), "nothing merged now");
 
-    wait_for(&mut harness, "the state and the cancel", |harness| {
+    wait_until(&mut harness, "the state and the cancel", |harness| {
         button(harness, words.cancel) && has(harness, words.state)
     });
     press(&mut harness, words.cancel);
     press(&mut harness, words.confirm_cancel);
-    wait_for(&mut harness, "auto-complete cancelled", |harness| {
+    wait_until(&mut harness, "auto-complete cancelled", |harness| {
         calls.auto_completes.lock().unwrap().len() == 2 && button(harness, words.set)
     });
     assert_eq!(calls.auto_completes.lock().unwrap()[1], None, "the second call cancels");

@@ -33,17 +33,18 @@ use egui_kittest::{Harness, TestRenderer};
 use review_agent::{AgentEvent, Usage};
 use review_agent::{AgentKind, ModelInfo};
 use review_core::{Connection, ProviderKind};
-use review_store::{AppPaths, ConnectionStore};
+use review_store::AppPaths;
 use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
-use super::request_budget::{
-    Text, diff_stats_summaries, harness_builder, harness_from, has, loading_harness_from, pump,
-    user, wait_idle, wait_until,
-};
 #[cfg(feature = "measurements")]
-use super::request_budget::{click_first, scroll_list};
+use super::request_budget::scroll_list;
+use super::request_budget::{Text, diff_stats_summaries, harness_builder, user};
+use super::startup;
+#[cfg(feature = "measurements")]
+use super::walkthrough::click_first;
+use super::walkthrough::{self, has, pump, saved_paths, wait_idle, wait_until_unsettled};
 use cv_base::platform::heap::live_bytes;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::agents::FakeCli;
@@ -51,8 +52,7 @@ use cv_services::agents::FakeCli;
 use cv_syntax::code_colors;
 #[cfg(any(windows, feature = "measurements"))]
 use cv_syntax::{grammar, highlight};
-use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, git_in};
+use cv_testkit::{Clicks, ScratchDir, git_in, samples};
 
 const PROJECT: &str = "group/app";
 const PROJECT_ID: u64 = 42;
@@ -90,7 +90,9 @@ fn memory_returns_after_the_merge_requests_are_left() {
     let textures = GpuTextures::default();
     let mut harness = fixture.harness(&textures);
     let mut curve = Curve { textures, points: Vec::new() };
-    wait_until(&mut harness, "the merge request list", |harness| has(harness, "Change 30"));
+    wait_until_unsettled(&mut harness, "the merge request list", |harness| {
+        has(harness, "Change 30")
+    });
     curve.measure(&mut harness, "start: the list");
     for iid in 1..=MERGE_REQUESTS {
         review(&mut harness, &fixture, iid, &mut curve);
@@ -122,7 +124,7 @@ fn memory_returns_after_the_merge_requests_are_left() {
     assert!(curve.peak_textures() <= 16 * MB, "the textures stay small: {curve}");
     // The last merge request shows again where it was left, its open file's diff loaded anew.
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(MERGE_REQUESTS)));
-    wait_until(&mut harness, "the open file's diff", |_| {
+    wait_until_unsettled(&mut harness, "the open file's diff", |_| {
         cv_runtime::cache::memory::holders()
             .iter()
             .any(|(name, bytes)| *name == "diffs" && *bytes > 0)
@@ -161,10 +163,14 @@ fn memory_stays_flat_while_the_overview_idles() {
     // The card lists the pipelines with their stage bars, so the stages poll too.
     harness.state_mut().services.settings.pipelines.is_overview_expanded = true;
     let mut curve = Curve { textures, points: Vec::new() };
-    wait_until(&mut harness, "the merge request list", |harness| has(harness, "Change 30"));
+    wait_until_unsettled(&mut harness, "the merge request list", |harness| {
+        has(harness, "Change 30")
+    });
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(IDLE_MERGE_REQUEST)));
-    wait_until(&mut harness, "the overview", |harness| has(harness, &title(IDLE_MERGE_REQUEST)));
-    wait_until(&mut harness, "the picture", |harness| has(harness, "The upload"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| {
+        has(harness, &title(IDLE_MERGE_REQUEST))
+    });
+    wait_until_unsettled(&mut harness, "the picture", |harness| has(harness, "The upload"));
     fixture.forget_requests();
     curve.measure(&mut harness, "overview loaded");
     let mut causes = std::collections::BTreeSet::new();
@@ -175,7 +181,7 @@ fn memory_stays_flat_while_the_overview_idles() {
             harness.input_mut().time = Some(time);
             harness.step();
             causes.extend(harness.ctx.repaint_causes().iter().map(|cause| cause.file.to_owned()));
-            test_support::let_threads_run(Duration::from_millis(3));
+            cv_testkit::let_threads_run(Duration::from_millis(3));
         }
         fixture.forget_requests();
         curve.measure(&mut harness, &format!("idle {} min", round * IDLE_FRAMES / 120));
@@ -216,9 +222,11 @@ fn a_closed_app_frees_its_context() {
     }
     let fixture = Fixture::new("closed");
     let mut harness = fixture.harness(&GpuTextures::default());
-    wait_until(&mut harness, "the merge request list", |harness| has(harness, "Change 30"));
+    wait_until_unsettled(&mut harness, "the merge request list", |harness| {
+        has(harness, "Change 30")
+    });
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(IDLE_MERGE_REQUEST)));
-    wait_until(&mut harness, "the picture", |harness| has(harness, "The upload"));
+    wait_until_unsettled(&mut harness, "the picture", |harness| has(harness, "The upload"));
     wait_idle(&mut harness);
     let is_dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
     // The context owns its repaint callback: the marker goes when the context goes.
@@ -233,7 +241,7 @@ fn a_closed_app_frees_its_context() {
             started.elapsed() < Duration::from_secs(10),
             "the closed app's context stays alive"
         );
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 
@@ -288,7 +296,7 @@ fn memory_owner_session() {
             for cause in harness.ctx.repaint_causes() {
                 *causes.entry(format!("{}:{}", cause.file, cause.line)).or_default() += 1;
             }
-            test_support::let_threads_run(Duration::from_millis(3));
+            cv_testkit::let_threads_run(Duration::from_millis(3));
         }
         fixture.forget_requests();
         curve.measure(&mut harness, &format!("round {round}: {simulated:.0} s idle"));
@@ -308,10 +316,10 @@ fn owner_overview(
     fixture: &Fixture,
     is_on: &dyn Fn(&str) -> bool,
 ) -> (Harness<'static, ReviewApp>, Curve) {
-    let projects = fixture.root.join("RiderProjects");
+    let projects = fixture.scratch.path().join("RiderProjects");
     std::fs::create_dir_all(&projects).expect("projects folder");
     if is_on("settings") {
-        let folders = [fixture.root.clone(), projects.clone()];
+        let folders = [fixture.scratch.path().to_path_buf(), projects.clone()];
         owner_settings(&folders).save(&fixture.paths.settings_file()).expect("settings");
     }
     if is_on("record") {
@@ -322,19 +330,23 @@ fn owner_overview(
     let builder = harness_builder().with_size([1499.0, 1413.0]).renderer(textures.clone());
     let mut harness = fixture.harness_from(builder);
     let mut curve = Curve { textures, points: Vec::new() };
-    wait_until(&mut harness, "the merge request list", |harness| has(harness, "Change 30"));
+    wait_until_unsettled(&mut harness, "the merge request list", |harness| {
+        has(harness, "Change 30")
+    });
     let key = fixture.key(OWNER_MERGE_REQUEST);
     harness.state_mut().navigator.go(Route::PullRequest(key.clone()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, &title(OWNER_MERGE_REQUEST)));
+    wait_until_unsettled(&mut harness, "the overview", |harness| {
+        has(harness, &title(OWNER_MERGE_REQUEST))
+    });
     if is_on("record") {
-        wait_until(&mut harness, "the blocked update", |harness| {
+        wait_until_unsettled(&mut harness, "the blocked update", |harness| {
             let checkouts = &harness.state().services.checkouts;
             checkouts.status(&key).is_some_and(|status| status.blocked.is_some())
         });
     }
     if is_on("menu") {
         let label = if is_on("record") { "Checkout options" } else { "Check out" };
-        wait_until(&mut harness, "the checkout button", |harness| has(harness, label));
+        wait_until_unsettled(&mut harness, "the checkout button", |harness| has(harness, label));
         harness.click_at(harness.get_by_label(label).rect());
         pump(&mut harness, 2.0);
         if is_on("record") && has(&harness, "Show log") {
@@ -391,7 +403,7 @@ const OWNER_SETTINGS: &str = r#"{
 /// an adopted checkout of merge request `iid` with an empty head (as "Open it" records one).
 fn adopted_checkout(fixture: &Fixture, projects: &Path, iid: u64) {
     let clone = projects.join("app");
-    let remote = fixture.root.join("remote.git");
+    let remote = fixture.scratch.path().join("remote.git");
     git_in(None, &["clone", "-q", &remote.display().to_string(), &clone.display().to_string()]);
     let mut stream = Vec::new();
     for index in 0..LOCAL_COMMITS {
@@ -425,7 +437,7 @@ fn adopted_checkout(fixture: &Fixture, projects: &Path, iid: u64) {
     drop(child.stdin.take());
     assert!(child.wait().expect("fast-import exit").success(), "fast-import failed");
     let worktree = projects.join("app-invoicing");
-    test_support::git(
+    cv_testkit::git(
         &clone,
         &["worktree", "add", "-q", &worktree.display().to_string(), "feat/invoicing"],
     );
@@ -447,16 +459,18 @@ fn saved_pages_show_at_once_after_a_restart() {
     let fixture = Fixture::new("restart");
     {
         let mut harness = fixture.harness(&GpuTextures::default());
-        wait_until(&mut harness, "the merge request list", |harness| has(harness, "Change 30"));
+        wait_until_unsettled(&mut harness, "the merge request list", |harness| {
+            has(harness, "Change 30")
+        });
         harness.state_mut().navigator.go(Route::PullRequest(fixture.key(1)));
-        wait_until(&mut harness, "the overview", |harness| has(harness, &title(1)));
+        wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, &title(1)));
         wait_idle(&mut harness);
         let saved = fixture.paths.cold_cache_dir().join("page");
         let started = Instant::now();
         // The list, the overview and its threads, written on the cold tier's own thread.
         while std::fs::read_dir(&saved).map_or(0, Iterator::count) < 3 {
             assert!(started.elapsed() < Duration::from_secs(30), "the pages reach the disk tier");
-            test_support::let_threads_run(Duration::from_millis(20));
+            cv_testkit::let_threads_run(Duration::from_millis(20));
         }
     }
     // Every answer of the restarted app's host comes this long after its request, and no request
@@ -473,14 +487,14 @@ fn saved_pages_show_at_once_after_a_restart() {
                 "the saved page shows before the host can answer"
             );
             harness.step();
-            test_support::let_threads_run(Duration::from_millis(10));
+            cv_testkit::let_threads_run(Duration::from_millis(10));
         }
     };
     shows(&mut harness, &|harness| has(harness, "Change 30") && has(harness, "Updating…"));
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(1)));
     shows(&mut harness, &|harness| has(harness, &title(1)) && has(harness, "Updating…"));
     harness.state_mut().navigator.go(Route::MyPullRequests);
-    wait_until(&mut harness, "the list's answer", |harness| {
+    wait_until_unsettled(&mut harness, "the list's answer", |harness| {
         has(harness, "Change 30") && !has(harness, "Updating…")
     });
 }
@@ -490,16 +504,18 @@ fn saved_pages_show_at_once_after_a_restart() {
 #[cfg(feature = "measurements")]
 fn review(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture, iid: u64, curve: &mut Curve) {
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(iid)));
-    wait_until(harness, "the overview", |harness| has(harness, &title(iid)));
+    wait_until_unsettled(harness, "the overview", |harness| has(harness, &title(iid)));
     wait_idle(harness);
     curve.measure(harness, &format!("MR {iid}: overview"));
     let files_label = format!("Files ({})", RUST_FILES + 3);
-    wait_until(harness, "the file list", |harness| harness.query_by_label(&files_label).is_some());
+    wait_until_unsettled(harness, "the file list", |harness| {
+        harness.query_by_label(&files_label).is_some()
+    });
     harness.click_at(harness.get_by_label(&files_label).rect());
-    wait_until(harness, "the first file", |harness| {
+    wait_until_unsettled(harness, "the first file", |harness| {
         current_file(harness).as_deref() == Some("docs/README.md")
     });
-    wait_until(harness, "the README's image", |harness| has(harness, "The screen"));
+    wait_until_unsettled(harness, "the README's image", |harness| has(harness, "The screen"));
     for _ in 0..RUST_FILES + 3 {
         harness.key_press(egui::Key::J);
         pump(harness, 0.5);
@@ -515,24 +531,24 @@ fn review(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture, iid: u64, cur
 #[cfg(feature = "measurements")]
 fn pipelines_and_log(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(harness, "the jobs", |harness| has(harness, "test-3-1"));
+    wait_until_unsettled(harness, "the jobs", |harness| has(harness, "test-3-1"));
     harness.get_by_label("Filter checks").focus();
     harness.step();
     harness.get_by_label("Filter checks").type_text("test-3-2");
     harness.step();
     click_first(harness, "test-3-2 in");
     let lines = format!("{} lines", cv_widgets::numbers::group_digits(LOG_LINES));
-    wait_until(harness, "the job log", |harness| has(harness, &lines));
+    wait_until_unsettled(harness, "the job log", |harness| has(harness, &lines));
     curve.measure(harness, "MR 1: pipelines and a long log");
 }
 
 #[cfg(feature = "measurements")]
 fn assistant(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
     harness.click_at(harness.get_by_label("Overview").rect());
-    wait_until(harness, "the assistant's card", |harness| {
+    wait_until_unsettled(harness, "the assistant's card", |harness| {
         harness.query_by_label("Ask about this PR").is_some()
     });
-    super::action_e2e::type_into(harness, "Ask anything about this pull request", "Explain it.");
+    super::walkthrough::type_into(harness, "Ask anything about this pull request", "Explain it.");
     harness.key_press(egui::Key::Enter);
     harness.step();
     let started = Instant::now();
@@ -542,7 +558,7 @@ fn assistant(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
         }
         assert!(started.elapsed() < Duration::from_secs(60), "no assistant session");
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(10));
+        cv_testkit::let_threads_run(Duration::from_millis(10));
     };
     agent.emit(AgentEvent::Started { session_id: "s-1".into(), model: "claude-haiku".into() });
     let answer: String = (0..400).fold(String::new(), |mut answer, line| {
@@ -553,7 +569,9 @@ fn assistant(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
     agent.emit(AgentEvent::Text(answer));
     let usage = Usage { input: 1_200, output: 340, cache_read: 12_000, cache_write: 0 };
     agent.emit(AgentEvent::TurnDone(usage));
-    wait_until(harness, "the answer", |harness| has(harness, "Line 399 of a long answer"));
+    wait_until_unsettled(harness, "the answer", |harness| {
+        has(harness, "Line 399 of a long answer")
+    });
     curve.measure(harness, "MR 1: assistant answered");
 }
 
@@ -586,7 +604,7 @@ fn release_grammars(harness: &mut Harness<'_, ReviewApp>) {
         }
         assert!(started.elapsed() < Duration::from_secs(120), "a coloring never ended");
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(100));
+        cv_testkit::let_threads_run(Duration::from_millis(100));
     }
 }
 
@@ -724,7 +742,7 @@ fn settled_bytes(harness: &mut Harness<'_, ReviewApp>) -> usize {
     let mut samples: Vec<usize> = Vec::new();
     loop {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(100));
+        cv_testkit::let_threads_run(Duration::from_millis(100));
         samples.push(live_bytes());
         let recent = &samples[samples.len().saturating_sub(10)..];
         let spread = recent.iter().max().unwrap_or(&0) - recent.iter().min().unwrap_or(&0);
@@ -771,9 +789,9 @@ struct Fixture {
     gitlab: MockGitLab,
     paths: AppPaths,
     connection_id: String,
-    root: PathBuf,
     /// The mock host's answer delay in milliseconds ([`MockGitLab::delay`]).
     delay: Arc<AtomicU64>,
+    scratch: ScratchDir,
 }
 
 impl Fixture {
@@ -788,11 +806,8 @@ impl Fixture {
     }
 
     fn build(name: &str, heavy: bool) -> Self {
-        let root =
-            std::env::temp_dir().join(format!("review-memory-{name}-{}", std::process::id()));
-        test_support::remove_dir(&root);
-        std::fs::create_dir_all(&root).expect("fixture folder");
-        let repository = root.join("remote.git");
+        let scratch = ScratchDir::new(&format!("memory-{name}"));
+        let repository = scratch.path().join("remote.git");
         let (base, heads) = build_repository(&repository);
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -818,20 +833,15 @@ impl Fixture {
                 .respond_with(gitlab.clone())
                 .mount(&server),
         );
-        let paths = AppPaths::new(root.join("config"), root.join("cache"));
         let connection_id = format!("memory-{name}");
-        let mut store = ConnectionStore::open(&paths).expect("empty store");
-        store
-            .upsert(Connection {
-                id: connection_id.clone(),
-                name: "Mock GitLab".to_owned(),
-                kind: ProviderKind::GitLab,
-                base_url: server.uri(),
-                organizations: vec!["group".to_owned()],
-                token: Some("glpat-mock-only".to_owned()),
-            })
-            .expect("store the connection");
-        Self { runtime, server, gitlab, paths, connection_id, root, delay }
+        let connection = Connection {
+            name: "Mock GitLab".to_owned(),
+            organizations: vec!["group".to_owned()],
+            token: Some("glpat-mock-only".to_owned()),
+            ..samples::connection(&connection_id, ProviderKind::GitLab, &server.uri())
+        };
+        let paths = saved_paths(&scratch, &[connection]);
+        Self { runtime, server, gitlab, paths, connection_id, delay, scratch }
     }
 
     /// Mounts the mock afresh: wiremock keeps every request its mock matched (with the body that
@@ -854,7 +864,10 @@ impl Fixture {
     /// The app in its first frames after a restart, the refresh of the list still running.
     fn restarted(&self) -> Harness<'static, ReviewApp> {
         let builder = harness_builder().renderer(GpuTextures::default());
-        Self::prepared(loading_harness_from(builder, self.paths.clone()))
+        let paths = self.paths.clone();
+        Self::prepared(startup::first_frames(builder, |creation| {
+            ReviewApp::new(creation, paths, cv_providers::create_provider)
+        }))
     }
 
     /// The app from `builder`, once its start settled.
@@ -862,7 +875,9 @@ impl Fixture {
         &self,
         builder: egui_kittest::HarnessBuilder<ReviewApp>,
     ) -> Harness<'static, ReviewApp> {
-        Self::prepared(harness_from(builder, self.paths.clone()))
+        let harness =
+            walkthrough::app_with(builder, self.paths.clone(), cv_providers::create_provider);
+        Self::prepared(harness)
     }
 
     /// `harness` with the first file opening and a signed-in coding agent.
@@ -886,12 +901,6 @@ impl Fixture {
             repository_key: PROJECT.to_owned(),
             number: iid,
         }
-    }
-}
-
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        test_support::remove_dir(&self.root);
     }
 }
 
@@ -1349,7 +1358,7 @@ fn memory_of_eight_languages_grammars_stays_small() {
         std::thread::spawn(move || {
             while !is_done.load(Ordering::Relaxed) {
                 peak.fetch_max(live_bytes(), Ordering::Relaxed);
-                test_support::let_threads_run(Duration::from_millis(1));
+                cv_testkit::let_threads_run(Duration::from_millis(1));
             }
         })
     };
@@ -1365,7 +1374,7 @@ fn memory_of_eight_languages_grammars_stays_small() {
         code_colors::colors(&ctx, language, text);
         while code_colors::computed_count(language, text) == 0 {
             assert!(started.elapsed() < Duration::from_secs(120), "{language} never colored");
-            test_support::let_threads_run(Duration::from_millis(5));
+            cv_testkit::let_threads_run(Duration::from_millis(5));
         }
     }
     let colored = live_bytes();
@@ -1401,12 +1410,14 @@ const UNFOCUSED_FRAMES: usize = 60;
 fn an_unfocused_overview_holds_its_skeletons_still() {
     let fixture = Fixture::new("unfocused");
     let mut harness = fixture.harness(&GpuTextures::default());
-    wait_until(&mut harness, "the merge request list", |harness| has(harness, "Change 30"));
-    if let Some(viewport) = harness.input_mut().viewports.get_mut(&egui::ViewportId::ROOT) {
-        viewport.focused = Some(false);
-    }
+    wait_until_unsettled(&mut harness, "the merge request list", |harness| {
+        has(harness, "Change 30")
+    });
+    walkthrough::set_focus(&mut harness, false);
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key(IDLE_MERGE_REQUEST)));
-    wait_until(&mut harness, "the overview", |harness| has(harness, &title(IDLE_MERGE_REQUEST)));
+    wait_until_unsettled(&mut harness, "the overview", |harness| {
+        has(harness, &title(IDLE_MERGE_REQUEST))
+    });
     let mut causes = std::collections::BTreeSet::new();
     let mut time = harness.ctx.input(|input| input.time);
     for _ in 0..UNFOCUSED_FRAMES {
@@ -1414,7 +1425,7 @@ fn an_unfocused_overview_holds_its_skeletons_still() {
         harness.input_mut().time = Some(time);
         harness.step();
         causes.extend(harness.ctx.repaint_causes().iter().map(|cause| cause.file.to_owned()));
-        test_support::let_threads_run(Duration::from_millis(3));
+        cv_testkit::let_threads_run(Duration::from_millis(3));
     }
     let sweeps: Vec<_> = causes
         .iter()
@@ -1518,7 +1529,7 @@ fn churn(with_diffs: bool) {
             }
         }
         grammar::release_unused();
-        test_support::let_threads_run(Duration::from_millis(50));
+        cv_testkit::let_threads_run(Duration::from_millis(50));
         let (live, private) =
             (live_bytes(), private_bytes().expect("the process's memory counters read"));
         println!(

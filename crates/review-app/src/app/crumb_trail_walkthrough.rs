@@ -21,13 +21,12 @@ use review_core::{
     ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestState, PullRequestSummary,
     RepositoryInfo, Result, ReviewThread, ReviewVote, ThreadComment, ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::walkthrough::{app_with, has, saved_paths, settle_background, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_testkit::Clicks;
-use cv_testkit::ScratchDir;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const CONNECTION_ID: &str = "crumb-trail";
 const CONNECTION_NAME: &str = "Contoso";
@@ -45,9 +44,10 @@ fn crumb_trail_follows_the_way_the_user_came() {
     assert_trail(&harness, &[(review_core::APP_NAME, list()), (LIST, list())]);
 
     // (a) A row of My pull requests opens below the list; its crumb leads back there.
-    wait_for(&mut harness, "the list", |harness| has(harness, "12 Twelfth change"));
+    wait_until(&mut harness, "the list", |harness| has(harness, "12 Twelfth change"));
+    settle_background(&mut harness);
     harness.click_at(harness.get_by_label("12 Twelfth change").rect());
-    wait_for(&mut harness, "pull request 12", |harness| is_on(harness, 12));
+    wait_until(&mut harness, "pull request 12", |harness| is_on(harness, 12));
     let from_list = [(review_core::APP_NAME, list()), (LIST, list()), (PR_12, pull_request(12))];
     assert_trail(&harness, &from_list);
     assert!(has(&harness, "Back to My pull requests"), "the back arrow names the list");
@@ -99,14 +99,14 @@ fn entries_without_a_way(harness: &mut Harness<'_, ReviewApp>) {
     harness.event(egui::Event::Text("Thirteenth".to_owned()));
     harness.run_steps(3);
     harness.key_press(Key::Enter);
-    wait_for(harness, "the searched pull request", |harness| is_on(harness, 13));
+    wait_until(harness, "the searched pull request", |harness| is_on(harness, 13));
     assert_trail(harness, &structure(13));
 
     // From a page with a way of its own, a pasted link starts over too.
     open_linked(harness, "#12 Twelfth change (Open)", 12);
     assert_eq!(trail(harness).len(), 5, "pull request 12 follows 13's structure");
     harness.event(egui::Event::Paste(format!("https://github.com/{REPOSITORY}/pull/13")));
-    wait_for(harness, "the pasted pull request", |harness| is_on(harness, 13));
+    wait_until(harness, "the pasted pull request", |harness| is_on(harness, 13));
     assert_trail(harness, &structure(13));
 
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Repositories").rect());
@@ -119,21 +119,24 @@ fn entries_without_a_way(harness: &mut Harness<'_, ReviewApp>) {
 
 /// (b) The repositories page leads down the structure: connection, repository, pull request.
 fn repositories_down_to_a_pull_request(harness: &mut Harness<'_, ReviewApp>) {
-    wait_for(harness, "the repository row", |harness| repository_row(harness).is_some());
+    wait_until(harness, "the repository row", |harness| repository_row(harness).is_some());
+    settle_background(harness);
     harness.click_at(repository_row(harness).expect("the repository row").rect());
-    wait_for(harness, "the repository's list", |harness| has(harness, "12 Twelfth change"));
+    wait_until(harness, "the repository's list", |harness| has(harness, "12 Twelfth change"));
+    settle_background(harness);
     let repository_list = &structure(12)[..3];
     assert_trail(harness, repository_list);
     harness.click_at(harness.get_by_label("12 Twelfth change").rect());
-    wait_for(harness, "pull request 12", |harness| is_on(harness, 12));
+    wait_until(harness, "pull request 12", |harness| is_on(harness, 12));
     assert_trail(harness, &structure(12));
 
     // Up to the connection and down again: the same structure.
     click_crumb(harness, CONNECTION_NAME);
     assert_trail(harness, &structure(12)[..2]);
-    wait_for(harness, "the repository row", |harness| repository_row(harness).is_some());
+    wait_until(harness, "the repository row", |harness| repository_row(harness).is_some());
+    settle_background(harness);
     harness.click_at(repository_row(harness).expect("the repository row").rect());
-    wait_for(harness, "the repository's list", |harness| has(harness, "12 Twelfth change"));
+    wait_until(harness, "the repository's list", |harness| has(harness, "12 Twelfth change"));
     assert_trail(harness, repository_list);
 }
 
@@ -214,49 +217,32 @@ fn repository_row<'a>(harness: &'a Harness<'_, ReviewApp>) -> Option<egui_kittes
 
 /// Clicks the Linked card's row of a pull request and waits for its page.
 fn open_linked(harness: &mut Harness<'_, ReviewApp>, row: &str, number: u64) {
-    wait_for(harness, row, |harness| harness.query_by_label(row).is_some());
+    wait_until(harness, row, |harness| harness.query_by_label(row).is_some());
+    settle_background(harness);
     harness.click_at(harness.get_by_label(row).rect());
-    wait_for(harness, "the linked pull request", |harness| is_on(harness, number));
+    wait_until(harness, "the linked pull request", |harness| is_on(harness, number));
 }
 
 fn is_on(harness: &Harness<'_, ReviewApp>, number: u64) -> bool {
     harness.state().route == pull_request(number)
 }
 
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
-}
-
 fn start(scratch: &ScratchDir) -> Harness<'static, ReviewApp> {
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: CONNECTION_ID.to_owned(),
-            name: CONNECTION_NAME.to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: ProviderKind::GitHub.default_base_url().to_owned(),
-            organizations: vec!["contoso".to_owned()],
-            token: None,
-        })
-        .expect("store the connection");
+    let connection = Connection {
+        name: CONNECTION_NAME.to_owned(),
+        organizations: vec!["contoso".to_owned()],
+        ..samples::connection(
+            CONNECTION_ID,
+            ProviderKind::GitHub,
+            ProviderKind::GitHub.default_base_url(),
+        )
+    };
     let builder = Harness::builder().with_size([1280.0, 860.0]).with_step_dt(1.0 / 30.0);
-    super::startup::start(builder, move |creation| {
-        ReviewApp::new(creation, paths, scripted_provider)
-    })
+    app_with(builder, saved_paths(scratch, &[connection]), scripted_provider)
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {
     harness.run_steps(20);
-}
-
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
-    settle(harness);
 }
 
 fn scripted_provider(_connection: Connection, _http: reqwest::Client) -> Arc<dyn Provider> {

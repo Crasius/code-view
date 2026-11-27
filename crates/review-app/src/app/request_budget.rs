@@ -17,18 +17,20 @@ use egui_kittest::{Harness, HarnessBuilder};
 use review_core::{Connection, ProviderKind};
 use review_store::{AppPaths, AppSettings, ConnectionStore};
 use serde_json::{Value, json};
-use wiremock::{MockServer, Request, Respond, ResponseTemplate};
+use wiremock::{Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
-use super::action_e2e::LIMIT;
+use super::mock_host::MockHost;
 use super::startup;
+use super::walkthrough::{
+    self, LIMIT, click_first, has, pump, saved_paths, set_focus, wait_idle, wait_until_unsettled,
+    wheel,
+};
 use cv_lists::pull_request_list::LIST_INTERVAL;
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_settings::onboarding::CliTools;
 use cv_shell::attention::{Attention, PAUSE};
-use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, git_in};
+use cv_testkit::{Clicks, ScratchDir, git_in, samples};
 
 const MOCK_TOKEN: &str = "glpat-mock-only";
 const PROJECT: &str = "group/app";
@@ -57,10 +59,10 @@ fn request_budget_files_tab_opening_on_the_first_file() {
     let mut harness = fixture.harness();
     harness.state_mut().services.settings.files_start = review_store::FilesStart::FirstFile;
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     wait_idle(&mut harness);
     let files_label = format!("Files ({})", cv_widgets::numbers::group_digits(300));
-    wait_until(&mut harness, "the file list", |harness| {
+    wait_until_unsettled(&mut harness, "the file list", |harness| {
         harness.query_by_label(&files_label).is_some()
     });
     wait_idle(&mut harness);
@@ -68,10 +70,10 @@ fn request_budget_files_tab_opening_on_the_first_file() {
     // The probe goes out 30 s after the last one, so a window that opens right after a probe holds
     // exactly the next one, wherever the page load left the schedule.
     fixture.recorder.enter("Until a probe");
-    wait_until(&mut harness, "a live-update probe", |_| {
+    wait_until_unsettled(&mut harness, "a live-update probe", |_| {
         fixture.recorder.endpoints("Until a probe").contains_key(PROBE_APPROVALS)
     });
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     fixture.recorder.enter("Files, first file (30 s)");
     let started = harness_time(&harness);
     harness.click_at(harness.get_by_label(&files_label).rect());
@@ -82,7 +84,7 @@ fn request_budget_files_tab_opening_on_the_first_file() {
     let shown_after = harness_time(&harness) - started;
     assert!(shown_after < 30.0, "the first file's diff took {shown_after} s of the 30 s window");
     pump(&mut harness, 30.0 - shown_after);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let hits = fixture.recorder.endpoints("Files, first file (30 s)");
     assert_eq!(
         hits.get(PROBE_APPROVALS).copied(),
@@ -114,13 +116,13 @@ fn request_budget_unfocused_window_is_silent_and_catches_up_once() {
     set_focus(&mut harness, false);
     fixture.recorder.enter("unfocused");
     pump_live(&mut harness, 300.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     assert_eq!(fixture.recorder.count("unfocused"), 0, "an unfocused window sends nothing");
 
     fixture.recorder.enter("refocused");
     set_focus(&mut harness, true);
     pump(&mut harness, 2.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let hits = fixture.recorder.endpoints("refocused");
     let pipelines = "GET /api/v4/projects/:project/merge_requests/:id/pipelines".to_owned();
     let jobs = "GET /api/v4/projects/:id/pipelines/:id/jobs".to_owned();
@@ -146,7 +148,7 @@ fn request_budget_unfocused_window_is_silent_and_catches_up_once() {
     harness.step();
     set_focus(&mut harness, false);
     pump(&mut harness, 1.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let hits = fixture.recorder.endpoints("user refresh");
     assert_eq!(hits.get("GET /api/v4/groups/group/merge_requests").copied(), Some(1), "{hits:?}");
 }
@@ -159,18 +161,20 @@ fn request_budget_a_return_after_a_pause_refreshes_ahead() {
     let fixture = Fixture::new("return", 30);
     let mut harness = fixture.harness();
     harness.state_mut().attention = Attention::default();
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     wait_idle(&mut harness);
     // No input for longer than a pause; the probe goes on meanwhile, the list asks nothing.
     pump(&mut harness, PAUSE.as_secs_f64() + 5.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     fixture.recorder.enter("returned");
     harness.input_mut().events.push(egui::Event::PointerMoved(egui::pos2(400.0, 300.0)));
     pump(&mut harness, 1.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let hits = fixture.recorder.endpoints("returned");
     assert_eq!(hits.get(PROBE_APPROVALS).copied(), Some(1), "the probe at once: {hits:?}");
     assert_eq!(hits.get(listing).copied(), Some(1), "the overview ahead: {hits:?}");
@@ -178,7 +182,7 @@ fn request_budget_a_return_after_a_pause_refreshes_ahead() {
     fixture.recorder.enter("back to the list");
     harness.state_mut().navigator.go(Route::MyPullRequests);
     pump(&mut harness, 1.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let hits = fixture.recorder.endpoints("back to the list");
     assert_eq!(hits.get(listing), None, "the warmed rows are current: {hits:?}");
 }
@@ -190,14 +194,16 @@ fn request_budget_rate_limit_banner_retries_now() {
     fixture.limit_once("/api/v4/groups/group/merge_requests", 120);
     fixture.recorder.enter("limited");
     let mut harness = fixture.harness();
-    wait_until(&mut harness, "the rate-limit banner", |harness| {
+    wait_until_unsettled(&mut harness, "the rate-limit banner", |harness| {
         has(harness, "GitLab is rate-limiting this connection — retrying in")
     });
     assert!(has(&harness, "Open GitLab rate limit docs"));
     assert!(!has(&harness, "Change 27"), "the list waits for the host");
 
     harness.click_at(harness.get_by_label("Retry now").rect());
-    wait_until(&mut harness, "the list after Retry now", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the list after Retry now", |harness| {
+        has(harness, "Change 27")
+    });
     pump(&mut harness, 1.0);
     assert!(!has(&harness, "is rate-limiting"), "the banner is gone once the host answers");
     let limited = fixture.recorder.endpoints("limited");
@@ -234,12 +240,12 @@ fn request_budget_graphql_limit_does_not_hold_back_the_pipelines() {
     fixture.limit_once("/api/graphql", 2391);
     let mut harness = fixture.harness();
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the jobs despite the GraphQL limit", |harness| {
+    wait_until_unsettled(&mut harness, "the jobs despite the GraphQL limit", |harness| {
         has(harness, "test-3-1")
     });
-    wait_until(&mut harness, "the GraphQL rate-limit banner", |harness| {
+    wait_until_unsettled(&mut harness, "the GraphQL rate-limit banner", |harness| {
         has(
             harness,
             "GitLab is rate-limiting this connection's GraphQL requests — retrying in 40 min",
@@ -248,7 +254,7 @@ fn request_budget_graphql_limit_does_not_hold_back_the_pipelines() {
     assert!(has(&harness, "everything else loads as usual"));
     assert!(has(&harness, "Add a token"), "an anonymous connection is offered a token");
     harness.click_at(harness.get_by_label("Retry now").rect());
-    wait_until(&mut harness, "the banner gone after Retry now", |harness| {
+    wait_until_unsettled(&mut harness, "the banner gone after Retry now", |harness| {
         !has(harness, "is rate-limiting")
     });
     assert!(has(&harness, "test-3-1"), "the jobs stay on screen");
@@ -264,10 +270,12 @@ fn request_budget_rows_held_by_a_rate_limit_let_the_app_rest() {
     let fixture = Fixture::new("held-rows", 30);
     fixture.limit_row_statuses_once(2391);
     let mut harness = fixture.loading_harness();
-    wait_until(&mut harness, "the GraphQL rate-limit banner", |harness| {
+    wait_until_unsettled(&mut harness, "the GraphQL rate-limit banner", |harness| {
         has(harness, "rate-limiting this connection's GraphQL requests — retrying in 40 min")
     });
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     // The banner and the rows fade in; then nothing changes until the countdown's next minute.
     pump(&mut harness, 5.0);
     let mut soon = Vec::new();
@@ -290,7 +298,7 @@ fn request_budget_rows_held_by_a_rate_limit_let_the_app_rest() {
     assert!(!has(&harness, "Updating the checks and approvals"), "nothing is under way");
 
     harness.click_at(harness.get_by_label("Retry now").rect());
-    wait_until(&mut harness, "the banner gone and the rows' checks in", |harness| {
+    wait_until_unsettled(&mut harness, "the banner gone and the rows' checks in", |harness| {
         !has(harness, "is rate-limiting")
             && !has(harness, held)
             && !has(harness, "Updating the checks and approvals")
@@ -316,7 +324,7 @@ fn request_budget_a_click_held_while_the_banner_opens_still_counts() {
     fixture.limit_once_after("/api/graphql", 2391, Duration::from_secs(2));
     let mut harness = fixture.harness();
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     assert!(!has(&harness, "is rate-limiting"), "the limit is still on its way");
     // egui's clock stands still while the button is down, so the press stays a click.
     let time = harness_time(&harness);
@@ -333,13 +341,13 @@ fn request_budget_a_click_held_while_the_banner_opens_still_counts() {
         assert!(started.elapsed() < LIMIT, "the banner never opened");
         harness.input_mut().time = Some(time);
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(10));
+        cv_testkit::let_threads_run(Duration::from_millis(10));
     }
     harness.event(button(false));
     harness.input_mut().time = Some(time);
     harness.step();
     harness.input_mut().time = None;
-    wait_until(&mut harness, "the Pipelines tab opened by the click", |harness| {
+    wait_until_unsettled(&mut harness, "the Pipelines tab opened by the click", |harness| {
         let pipelines = harness.get_by_role_and_label(egui::Role::Tab, "Pipelines");
         pipelines.accesskit_node().toggled() == Some(egui::accesskit::Toggled::True)
     });
@@ -355,15 +363,19 @@ fn request_budget_rate_limited_jobs_show_a_waiting_state_with_ways_out() {
         .limit_once(&format!("/api/v4/projects/{PROJECT_ID}/pipelines/{PIPELINE_ID}/jobs"), 2391);
     let mut harness = fixture.harness();
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the waiting state", |harness| has(harness, "Waiting for GitLab"));
+    wait_until_unsettled(&mut harness, "the waiting state", |harness| {
+        has(harness, "Waiting for GitLab")
+    });
     assert!(has(&harness, "The pipelines load on their own in 40 min; a token raises the limit."));
     assert!(has(&harness, "Add a token") && has(&harness, "Open on GitLab"), "the ways forward");
     assert!(!has(&harness, "test-3-1"));
     // The banner above offers Retry now as well; either ends the pause.
     harness.click_at(harness.query_all_by_label("Retry now").next().expect("Retry now").rect());
-    wait_until(&mut harness, "the jobs after Retry now", |harness| has(harness, "test-3-1"));
+    wait_until_unsettled(&mut harness, "the jobs after Retry now", |harness| {
+        has(harness, "test-3-1")
+    });
     assert!(!has(&harness, "Waiting for GitLab"));
 }
 
@@ -378,9 +390,9 @@ fn request_budget_pipelines_tab_loads_jobs_of_the_head_run_only() {
     let mut harness = fixture.harness();
     fixture.recorder.enter("open the tab");
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the head run's jobs", |harness| has(harness, "test-3-1"));
+    wait_until_unsettled(&mut harness, "the head run's jobs", |harness| has(harness, "test-3-1"));
     // Less than the live refresh's first 15 s, so the running head run is asked for once.
     pump(&mut harness, 2.0);
     // The pipelines whose jobs were asked for, and how many GraphQL requests (the jobs' needs) went out.
@@ -422,7 +434,7 @@ fn request_budget_pipelines_tab_loads_jobs_of_the_head_run_only() {
 
     fixture.recorder.enter("open an older run");
     harness.click_at(harness.get_by_label(older).rect());
-    wait_until(&mut harness, "the older run's stages", |harness| {
+    wait_until_unsettled(&mut harness, "the older run's stages", |harness| {
         harness.query_by_label("Stage check").is_some()
     });
     let (pipelines, needs) = job_requests("open an older run");
@@ -436,18 +448,18 @@ fn request_budget_pipelines_tab_loads_jobs_of_the_head_run_only() {
 
     fixture.recorder.enter("back and again");
     harness.click_at(harness.get_by_role_and_label(egui::Role::Link, "Pipelines").rect());
-    wait_until(&mut harness, "the checks table", |harness| {
+    wait_until_unsettled(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     filter_checks(&mut harness, "old-check");
     assert!(has(&harness, "old-check-1 in Merge request pipeline"), "its jobs are rows now");
     filter_checks(&mut harness, &format!("#{OLDER_PIPELINE_ID} ·"));
     harness.click_at(harness.get_by_label(older).rect());
-    wait_until(&mut harness, "the older run again", |harness| {
+    wait_until_unsettled(&mut harness, "the older run again", |harness| {
         harness.query_by_label("Stage check").is_some()
     });
     harness.click_at(harness.get_by_role_and_label(egui::Role::Link, "Pipelines").rect());
-    wait_until(&mut harness, "the checks table again", |harness| {
+    wait_until_unsettled(&mut harness, "the checks table again", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     let (pipelines, _) = job_requests("back and again");
@@ -472,14 +484,16 @@ fn request_budget_favorites_load_only_while_open_and_focused() {
 
     fixture.recorder.enter("collapsed");
     let mut harness = fixture.harness();
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     pump(&mut harness, 30.0);
     assert!(has(&harness, "Favorites (1 repository), collapsed"));
     assert_eq!(hits("collapsed"), 0, "a collapsed card asks nothing");
 
     fixture.recorder.enter("expanded");
     harness.click_at(harness.get_by_label("Favorites (1 repository), collapsed").rect());
-    wait_until(&mut harness, "the favorite's rows", |harness| {
+    wait_until_unsettled(&mut harness, "the favorite's rows", |harness| {
         has(harness, "Favorites (1 repository), 30 pull requests, expanded")
     });
     pump(&mut harness, 60.0);
@@ -536,38 +550,40 @@ fn request_budget_the_overview_asks_only_for_cards_on_screen() {
 
     fixture.recorder.enter("opened");
     let mut harness = fixture.harness();
-    wait_until(&mut harness, "the Favorites card", |harness| {
+    wait_until_unsettled(&mut harness, "the Favorites card", |harness| {
         has(harness, "Favorites (1 repository), 30 pull requests, expanded")
     });
     wait_idle(&mut harness);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     fixture.recorder.enter("refresh");
     harness.click_at(harness.get_by_label("Refresh (F5)").rect());
     pump(&mut harness, 2.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     harness.state_mut().navigator.go(Route::Settings);
     pump(&mut harness, REVISIT_FRESH.as_secs_f64() + 5.0);
     fixture.recorder.enter("revisit");
     harness.state_mut().navigator.go(Route::MyPullRequests);
     pump(&mut harness, 5.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     fixture.recorder.enter("periodic");
     pump(&mut harness, LIST_INTERVAL.as_secs_f64());
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     // A return on a merge request page warms the overview ahead.
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the merge request", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the merge request", |harness| {
+        has(harness, "Budget scenario")
+    });
     harness.state_mut().attention = Attention::default();
     pump(&mut harness, PAUSE.as_secs_f64() + 5.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     fixture.recorder.enter("warm");
     harness.input_mut().events.push(egui::Event::PointerMoved(egui::pos2(400.0, 300.0)));
     pump(&mut harness, 2.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     harness.state_mut().attention = Attention::without_pauses();
 
     harness.state_mut().navigator.go(Route::MyPullRequests);
@@ -575,12 +591,12 @@ fn request_budget_the_overview_asks_only_for_cards_on_screen() {
     fixture.recorder.enter("scrolled");
     scroll_list(&mut harness, 20_000.0);
     pump(&mut harness, 2.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     fixture.recorder.enter("refresh below");
     harness.click_at(harness.get_by_label("Refresh (F5)").rect());
     pump(&mut harness, 2.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     let phases = ["opened", "refresh", "revisit", "periodic", "warm", "scrolled", "refresh below"];
     let mut report = String::from("\n=== Overview listings (starred project, connections) ===\n");
@@ -613,9 +629,11 @@ fn request_budget_the_overview_asks_only_for_cards_on_screen() {
 fn request_budget_an_answer_that_lands_on_another_page_ages_from_its_arrival() {
     let fixture = Fixture::new("hidden-answer", 30);
     let mut harness = fixture.harness();
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     wait_idle(&mut harness);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
 
     // Long enough for the three frames below on a busy machine.
     fixture.delay_listing(Duration::from_secs(2));
@@ -626,7 +644,7 @@ fn request_budget_an_answer_that_lands_on_another_page_ages_from_its_arrival() {
     harness.step();
     assert!(harness.state().services.background.running() > 0, "Refresh's answer is on its way");
     // It arrives while Settings shows, between two frames.
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let refresh = fixture.recorder.endpoints("refresh");
     assert_eq!(refresh.get(GROUP_LISTING).copied(), Some(1), "Refresh asked: {refresh:?}");
     fixture.delay_listing(Duration::ZERO);
@@ -635,7 +653,7 @@ fn request_budget_an_answer_that_lands_on_another_page_ages_from_its_arrival() {
     fixture.recorder.enter("revisit");
     harness.state_mut().navigator.go(Route::MyPullRequests);
     pump(&mut harness, 5.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let revisit = fixture.recorder.endpoints("revisit");
     assert_eq!(revisit.get(GROUP_LISTING).copied(), Some(1), "the revisit asks again: {revisit:?}");
 }
@@ -647,9 +665,11 @@ fn request_budget_an_answer_that_lands_on_another_page_ages_from_its_arrival() {
 fn request_budget_a_return_to_the_window_refreshes_the_overview() {
     let fixture = Fixture::new("overview-return", 30);
     let mut harness = fixture.harness();
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     wait_idle(&mut harness);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     harness.state_mut().attention = Attention::default();
     pump(&mut harness, 5.0);
     set_focus(&mut harness, false);
@@ -659,9 +679,9 @@ fn request_budget_a_return_to_the_window_refreshes_the_overview() {
     set_focus(&mut harness, true);
     harness.input_mut().time = None;
     pump(&mut harness, 2.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     pump(&mut harness, 1.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let hits = fixture.recorder.endpoints("restored");
     assert_eq!(hits.get(GROUP_LISTING).copied(), Some(1), "the listing at once: {hits:?}");
     assert_eq!(hits.get(STATUSES).copied(), Some(1), "the rows' checks and votes: {hits:?}");
@@ -684,7 +704,9 @@ fn request_budget_line_counts_are_one_graphql_request_per_project() {
     fixture.recorder.enter("unfocused");
     let mut harness = fixture.harness();
     set_focus(&mut harness, false);
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     fixture.delay_listing(Duration::ZERO);
     pump(&mut harness, 60.0);
     assert_eq!(graphql("unfocused"), 0, "an inactive window counts nothing");
@@ -693,11 +715,11 @@ fn request_budget_line_counts_are_one_graphql_request_per_project() {
     fixture.recorder.enter("refocused");
     set_focus(&mut harness, true);
     // !27: 270 added, 27 deleted (see `diff_stats_summaries`).
-    wait_until(&mut harness, "the counted lines", |harness| {
+    wait_until_unsettled(&mut harness, "the counted lines", |harness| {
         has(harness, "297 lines changed in 2 files: 270 added, 27 deleted")
     });
     pump(&mut harness, 30.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let refocused = fixture.recorder.endpoints("refocused");
     assert_eq!(
         graphql("refocused"),
@@ -724,7 +746,7 @@ fn request_budget_line_counts_are_one_graphql_request_per_project() {
     fixture.recorder.enter("revisit");
     harness.state_mut().navigator.go(Route::MyPullRequests);
     pump(&mut harness, 60.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let revisit = fixture.recorder.endpoints("revisit");
     assert_eq!(
         revisit.get("GET /api/v4/groups/group/merge_requests").copied(),
@@ -743,9 +765,11 @@ fn request_budget_azure_devops_sizes_are_asked_for_the_rows_on_screen() {
     let fixture = AzureFixture::new("azure-sizes");
     fixture.recorder.enter("listed");
     let mut harness = harness_for(fixture.paths.clone());
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 40"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 40")
+    });
     pump(&mut harness, 30.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let listed = asked_pull_requests(&fixture.recorder, "listed");
     let on_screen = uncounted_rows(&harness);
     let endpoints = fixture.recorder.endpoints("listed");
@@ -788,7 +812,7 @@ fn request_budget_azure_devops_sizes_are_asked_for_the_rows_on_screen() {
     fixture.recorder.enter("refocused");
     set_focus(&mut harness, true);
     pump(&mut harness, 30.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let refocused = asked_pull_requests(&fixture.recorder, "refocused");
     assert!(!refocused.is_empty(), "the rows that scrolled in are asked once the window is active");
     assert!(
@@ -805,7 +829,7 @@ fn request_budget_azure_devops_sizes_are_asked_for_the_rows_on_screen() {
     fixture.recorder.enter("revisit");
     harness.state_mut().navigator.go(Route::MyPullRequests);
     pump(&mut harness, 30.0);
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     let revisit = fixture.recorder.endpoints("revisit");
     assert_eq!(
         revisit.get("GET /north/_apis/git/pullrequests").copied(),
@@ -829,17 +853,17 @@ fn request_budget_favorites_always_count_their_lines() {
     fixture.star_the_repository();
     fixture.recorder.enter("listed");
     let mut harness = harness_for(fixture.paths.clone());
-    wait_until(&mut harness, "the Favorites card", |harness| {
+    wait_until_unsettled(&mut harness, "the Favorites card", |harness| {
         has(harness, "Favorites (1 repository), 40 pull requests, expanded")
     });
     // Each file of the fixture's head changes three lines and adds one.
-    wait_until(&mut harness, "the counted lines of a large favorite", |harness| {
+    wait_until_unsettled(&mut harness, "the counted lines of a large favorite", |harness| {
         has(harness, "175 lines changed in 25 files: 100 added, 75 deleted")
     });
-    wait_until(&mut harness, "every favorite on screen counted", |harness| {
+    wait_until_unsettled(&mut harness, "every favorite on screen counted", |harness| {
         !has(harness, "Counting the lines of !")
     });
-    settle(&harness);
+    wait_background_idle_without_frames(&harness);
     assert!(!has(&harness, "not counted"), "no favorite waits for Count lines");
     let endpoints = fixture.recorder.endpoints("listed");
     assert!(
@@ -860,19 +884,13 @@ fn request_budget_favorites_always_count_their_lines() {
 /// Wheels the list down by `points` from over its rows.
 pub(super) fn scroll_list(harness: &mut Harness<'_, ReviewApp>, points: f32) {
     harness.hover_at(egui::pos2(720.0, 600.0));
-    let wheel = |delta: f32, phase| egui::Event::MouseWheel {
-        unit: egui::MouseWheelUnit::Point,
-        delta: egui::vec2(0.0, delta),
-        phase,
-        modifiers: egui::Modifiers::NONE,
-        source: egui::MouseWheelSource::Wheel,
-    };
-    harness.event(wheel(0.0, egui::TouchPhase::Start));
+    let mouse = |delta: f32, phase| wheel(delta, phase, egui::MouseWheelSource::Wheel);
+    harness.event(mouse(0.0, egui::TouchPhase::Start));
     for _ in 0..4 {
-        harness.event(wheel(-points / 4.0, egui::TouchPhase::Move));
+        harness.event(mouse(-points / 4.0, egui::TouchPhase::Move));
         harness.step();
     }
-    harness.event(wheel(0.0, egui::TouchPhase::End));
+    harness.event(mouse(0.0, egui::TouchPhase::End));
     pump(harness, 2.0);
 }
 
@@ -921,20 +939,22 @@ fn run_scenario(file_count: usize) {
 
     fixture.recorder.enter("My pull requests (60 s)");
     let mut harness = fixture.harness();
-    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(&mut harness, "the pull request list", |harness| {
+        has(harness, "Change 27")
+    });
     pump(&mut harness, 60.0);
     phases.push(("My pull requests (60 s)", 60.0));
 
     enter_phase(&fixture.recorder, &harness, "Open MR + Overview (20 s)");
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     pump(&mut harness, 20.0);
     // Simulated seconds pass faster than git works; a person reading the overview gives the
     // chunked download of the changed blobs (line counts) this time.
     wait_idle(&mut harness);
     // The changed files' grammar compiles while the overview shows, from the mirror's file list:
     // the phase's request counts below hold with it.
-    wait_until(&mut harness, "the files' grammar warmed on the overview", |harness| {
+    wait_until_unsettled(&mut harness, "the files' grammar warmed on the overview", |harness| {
         held_languages(harness, &fixture).iter().any(|language| language == "Rust")
     });
     phases.push(("Open MR + Overview (20 s)", 20.0));
@@ -942,14 +962,14 @@ fn run_scenario(file_count: usize) {
     let fetches_before_files = fetched_before_files.len();
 
     let files_label = format!("Files ({})", cv_widgets::numbers::group_digits(file_count));
-    wait_until(&mut harness, "the file list", |harness| {
+    wait_until_unsettled(&mut harness, "the file list", |harness| {
         harness.query_by_label(&files_label).is_some()
     });
     // The phase starts once the Files tab shows: a probe while the Overview still shows refreshes
     // its running checks too (the click lands over a few frames), and belongs to the Overview,
     // also when its requests are still on the way.
     harness.click_at(harness.get_by_label(&files_label).rect());
-    wait_until(&mut harness, "the Files tab", |harness| {
+    wait_until_unsettled(&mut harness, "the Files tab", |harness| {
         harness.query_by_label(&files_label).is_some_and(|tab| {
             tab.accesskit_node().toggled() == Some(egui::accesskit::Toggled::True)
         })
@@ -969,7 +989,7 @@ fn run_scenario(file_count: usize) {
     enter_phase(&fixture.recorder, &harness, "Pipelines, running (3 min)");
     let started = harness_time(&harness);
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(&mut harness, "the jobs", |harness| has(harness, "test-3-1"));
+    wait_until_unsettled(&mut harness, "the jobs", |harness| has(harness, "test-3-1"));
     // A loaded machine stretches the wait over simulated seconds; the phase stays 3 min.
     let waited = harness_time(&harness) - started;
     pump_live(&mut harness, (180.0 - waited).max(0.0));
@@ -1062,51 +1082,31 @@ fn run_scenario(file_count: usize) {
 }
 
 fn open_pipelines(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture) {
-    wait_until(harness, "the pull request list", |harness| has(harness, "Change 27"));
+    wait_until_unsettled(harness, "the pull request list", |harness| has(harness, "Change 27"));
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
-    wait_until(harness, "the overview", |harness| has(harness, "Budget scenario"));
+    wait_until_unsettled(harness, "the overview", |harness| has(harness, "Budget scenario"));
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_until(harness, "the jobs", |harness| has(harness, "test-3-1"));
+    wait_until_unsettled(harness, "the jobs", |harness| has(harness, "test-3-1"));
     pump(harness, 20.0);
 }
 
-/// Waits until no background task ran for a stretch of frames: one finished task (the mirror)
-/// starts the next (file lists, the chunked download of the changed blobs) only in the following
-/// frame.
-pub(super) fn wait_idle(harness: &mut Harness<'_, ReviewApp>) {
-    let _step = test_support::step("waiting for the background work to end over 20 frames");
-    let started = Instant::now();
-    let mut idle_frames = 0;
-    while idle_frames < 20 {
-        harness.step();
-        test_support::let_threads_run(Duration::from_millis(10));
-        idle_frames =
-            if harness.state().services.background.running() == 0 { idle_frames + 1 } else { 0 };
-        assert!(started.elapsed() < LIMIT, "background work did not finish");
-    }
-}
-
-/// Starts `phase` once the background work in flight has finished ([`settle`]): what the last
-/// phase started (a job log's download, a probe) reaches the host in that phase, however long a
-/// loaded machine takes to send it.
+/// Starts `phase` once the background work in flight has finished
+/// ([`wait_background_idle_without_frames`]): what the last phase started (a job log's download, a
+/// probe) reaches the host in that phase, however long a loaded machine takes to send it.
 fn enter_phase(recorder: &Recorder, harness: &Harness<'_, ReviewApp>, phase: &str) {
-    settle(harness);
+    wait_background_idle_without_frames(harness);
     recorder.enter(phase);
 }
 
 /// Waits in real time, without a frame, until the background work in flight has finished, so the
 /// requests it sends land in the current phase and no simulated time passes.
-pub(super) fn settle(harness: &Harness<'_, ReviewApp>) {
-    let _step = test_support::step("waiting without a frame for the background work to end");
+fn wait_background_idle_without_frames(harness: &Harness<'_, ReviewApp>) {
+    let _step = cv_testkit::step("waiting without a frame for the background work to end");
     let started = Instant::now();
     while harness.state().services.background.running() > 0 {
         assert!(started.elapsed() < LIMIT, "background work did not finish");
-        test_support::let_threads_run(Duration::from_millis(2));
+        cv_testkit::let_threads_run(Duration::from_millis(2));
     }
-}
-
-pub(super) fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
 }
 
 /// The languages whose compiled grammars the fixture's pull request page keeps.
@@ -1119,25 +1119,6 @@ fn held_languages(harness: &Harness<'_, ReviewApp>, fixture: &Fixture) -> Vec<St
         .find(|(open, _)| *open == key)
         .map(|(_, page)| page.held_languages())
         .unwrap_or_default()
-}
-
-pub(super) fn click_first(harness: &mut Harness<'_, ReviewApp>, text: &str) {
-    harness.click_at(
-        harness
-            .query_all_by_label_contains(text)
-            .next()
-            .unwrap_or_else(|| panic!("nothing labelled {text}"))
-            .rect(),
-    );
-    harness.step();
-}
-
-fn set_focus(harness: &mut Harness<'_, ReviewApp>, is_focused: bool) {
-    let _step = test_support::step(format!("a frame with the window focused: {is_focused}"));
-    let viewport = harness.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default();
-    viewport.focused = Some(is_focused);
-    harness.input_mut().focused = is_focused;
-    harness.step();
 }
 
 fn harness_time(harness: &Harness<'_, ReviewApp>) -> f64 {
@@ -1154,38 +1135,20 @@ fn pump_live(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
     let end = harness_time(harness) + seconds;
     while harness_time(harness) < end {
         harness.step();
-        test_support::let_threads_run(Duration::from_secs_f32(STEP_SECONDS));
+        cv_testkit::let_threads_run(Duration::from_secs_f32(STEP_SECONDS));
     }
 }
 
-/// Advances simulated time; each frame also gives background work a moment of real time. Each
-/// frame moves egui's clock on by [`STEP_SECONDS`] unless the test pinned the next frames' time
-/// (`harness.input_mut().time`), which would hold the clock still.
-pub(super) fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
-    let _step = test_support::step(format!("letting {seconds} s of simulated time pass"));
-    let (started, end) = (Instant::now(), harness_time(harness) + seconds);
-    while harness_time(harness) < end {
-        assert!(
-            started.elapsed() < LIMIT,
-            "{seconds} s of simulated time did not pass: egui's clock stands at {} s, the next frame's \
-             time is pinned to {:?}",
-            harness_time(harness),
-            harness.input().time
-        );
-        harness.step();
-        test_support::let_threads_run(Duration::from_millis(3));
-    }
-}
-
-/// [`wait_until`] for work that takes real time, such as git reading a diff: egui's time follows
-/// the wall clock meanwhile instead of going on by [`STEP_SECONDS`] a frame, so a loaded machine
-/// does not stretch the work over simulated minutes. Afterwards it goes on by the step again.
+/// [`wait_until_unsettled`] for work that takes real time, such as git reading a diff: egui's time
+/// follows the wall clock meanwhile instead of going on by [`STEP_SECONDS`] a frame, so a loaded
+/// machine does not stretch the work over simulated minutes. Afterwards it goes on by the step
+/// again.
 fn wait_in_real_time(
     harness: &mut Harness<'_, ReviewApp>,
     what: &str,
     is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
 ) {
-    let _step = test_support::step(format!("waiting in real time for {what}"));
+    let _step = cv_testkit::step(format!("waiting in real time for {what}"));
     let (started, time) = (Instant::now(), harness_time(harness));
     loop {
         harness.input_mut().time = Some(time + started.elapsed().as_secs_f64());
@@ -1194,17 +1157,9 @@ fn wait_in_real_time(
             break;
         }
         assert!(started.elapsed() < LIMIT, "timed out waiting for {what}");
-        test_support::let_threads_run(Duration::from_millis(10));
+        cv_testkit::let_threads_run(Duration::from_millis(10));
     }
     harness.input_mut().time = None;
-}
-
-pub(super) fn wait_until(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
 }
 
 /// Requests by phase, method and path template.
@@ -1261,14 +1216,14 @@ impl Recorder {
 }
 
 struct Fixture {
-    runtime: tokio::runtime::Runtime,
-    server: MockServer,
+    host: MockHost,
     recorder: Arc<Recorder>,
     paths: AppPaths,
     /// Unique per test: request counters and rate-limit notices are kept per connection id.
     connection_id: String,
     /// Real time the group listing takes to answer.
     listing_delay: Arc<Mutex<Duration>>,
+    _scratch: ScratchDir,
 }
 
 impl Fixture {
@@ -1287,46 +1242,29 @@ impl Fixture {
     }
 
     fn build(name: &str, file_count: usize, token: Option<&str>, older_pipelines: u64) -> Self {
-        let root =
-            std::env::temp_dir().join(format!("review-budget-{name}-{}", std::process::id()));
-        test_support::remove_dir(&root);
-        std::fs::create_dir_all(&root).expect("fixture folder");
-        let (repository, base, head) = build_repository(&root.join("remote.git"), file_count);
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .expect("mock runtime");
-        let server = runtime.block_on(MockServer::start());
-        cv_testkit::fresh_origin(&server.uri());
+        let scratch = ScratchDir::new(&format!("budget-{name}"));
+        let (repository, base, head) =
+            build_repository(&scratch.path().join("remote.git"), file_count);
         let recorder = Arc::new(Recorder::default());
         let listing_delay = Arc::new(Mutex::new(Duration::ZERO));
-        let gitlab = MockGitLab {
+        let host = MockHost::start(|base_url| MockGitLab {
             recorder: recorder.clone(),
-            base_url: server.uri(),
+            base_url: base_url.to_owned(),
             clone_url: format!("file:///{}", repository.display().to_string().replace('\\', "/")),
             base,
             head,
             older_pipelines,
             listing_delay: listing_delay.clone(),
-        };
-        runtime.block_on(
-            wiremock::Mock::given(wiremock::matchers::any()).respond_with(gitlab).mount(&server),
-        );
-        let paths = AppPaths::new(root.join("config"), root.join("cache"));
+        });
         let connection_id = format!("budget-{name}");
-        let mut store = ConnectionStore::open(&paths).expect("empty store");
-        store
-            .upsert(Connection {
-                id: connection_id.clone(),
-                name: "Mock GitLab".to_owned(),
-                kind: ProviderKind::GitLab,
-                base_url: server.uri(),
-                organizations: vec!["group".to_owned()],
-                token: token.map(str::to_owned),
-            })
-            .expect("store the connection");
-        Self { runtime, server, recorder, paths, connection_id, listing_delay }
+        let connection = Connection {
+            name: "Mock GitLab".to_owned(),
+            organizations: vec!["group".to_owned()],
+            token: token.map(str::to_owned),
+            ..samples::connection(&connection_id, ProviderKind::GitLab, &host.uri())
+        };
+        let paths = saved_paths(&scratch, &[connection]);
+        Self { host, recorder, paths, connection_id, listing_delay, _scratch: scratch }
     }
 
     /// The app on the fixture. Its phases let simulated minutes pass without a pointer, which
@@ -1337,10 +1275,15 @@ impl Fixture {
         harness
     }
 
-    /// [`Self::harness`] after its first frames only ([`loading_harness_from`]): for a start that
-    /// need not settle.
+    /// [`Self::harness`] after its first frames only ([`startup::first_frames`]): for a test that
+    /// checks a state while the app still loads. A settled start runs frames until nothing asks
+    /// for a repaint, and the spinner of a running load asks every frame: a slow host's answer
+    /// would land before the test sees the first frame.
     fn loading_harness(&self) -> Harness<'static, ReviewApp> {
-        let mut harness = loading_harness_from(harness_builder(), self.paths.clone());
+        let paths = self.paths.clone();
+        let mut harness = startup::first_frames(harness_builder(), |creation| {
+            ReviewApp::new(creation, paths, cv_providers::create_provider)
+        });
         harness.state_mut().attention = Attention::without_pauses();
         harness
     }
@@ -1351,12 +1294,14 @@ impl Fixture {
         let mut store = ConnectionStore::open(&self.paths).expect("the store");
         store
             .upsert(Connection {
-                id: format!("{}-{suffix}", self.connection_id),
                 name: format!("Mock GitLab {suffix}"),
-                kind: ProviderKind::GitLab,
-                base_url: self.server.uri(),
                 organizations: vec![format!("group-{suffix}")],
                 token: Some(MOCK_TOKEN.to_owned()),
+                ..samples::connection(
+                    &format!("{}-{suffix}", self.connection_id),
+                    ProviderKind::GitLab,
+                    &self.host.uri(),
+                )
             })
             .expect("store the connection");
     }
@@ -1381,7 +1326,7 @@ impl Fixture {
             .respond_with(limited)
             .up_to_n_times(1)
             .with_priority(1);
-        self.runtime.block_on(mock.mount(&self.server));
+        self.host.mount(mock);
     }
 
     /// [`Self::limit_once`] with the 429 arriving `delay` after the request.
@@ -1395,7 +1340,7 @@ impl Fixture {
             .respond_with(limited)
             .up_to_n_times(1)
             .with_priority(1);
-        self.runtime.block_on(mock.mount(&self.server));
+        self.host.mount(mock);
     }
 
     fn key(&self) -> PullRequestKey {
@@ -1431,7 +1376,7 @@ impl Fixture {
     }
 
     fn report(&self, phases: &[(&str, f64)]) -> String {
-        let mut report = format!("\n=== Request budget against {} ===\n", self.server.uri());
+        let mut report = format!("\n=== Request budget against {} ===\n", self.host.uri());
         for (phase, seconds) in phases {
             let count = self.recorder.count(phase);
             let per_minute = count as f64 / (seconds / 60.0);
@@ -1445,41 +1390,13 @@ impl Fixture {
 }
 
 /// The app on `paths`, in a 1440 × 900 window, once its start settled.
-pub(super) fn harness_for(paths: AppPaths) -> Harness<'static, ReviewApp> {
-    harness_from(harness_builder(), paths)
+fn harness_for(paths: AppPaths) -> Harness<'static, ReviewApp> {
+    walkthrough::app_with(harness_builder(), paths, cv_providers::create_provider)
 }
 
 /// The app's harness with the window and step of [`harness_for`], before the renderer is picked.
 pub(super) fn harness_builder() -> HarnessBuilder<ReviewApp> {
     Harness::builder().with_size([1440.0, 900.0]).with_step_dt(STEP_SECONDS).allow_missing_glyphs()
-}
-
-/// The app on `paths` from `builder`, once its start settled ([`startup::start`]).
-pub(super) fn harness_from(
-    builder: HarnessBuilder<ReviewApp>,
-    paths: AppPaths,
-) -> Harness<'static, ReviewApp> {
-    with_cli_tools(startup::start(builder, app(paths)))
-}
-
-/// [`harness_from`] for a test that checks a state while the app still loads. A settled start
-/// runs frames until nothing asks for a repaint, and the spinner of a running load asks every
-/// frame: a slow host's answer would land before the test sees the first frame. This one runs
-/// only the first frames, as a person would see them ([`startup::first_frames`]).
-pub(super) fn loading_harness_from(
-    builder: HarnessBuilder<ReviewApp>,
-    paths: AppPaths,
-) -> Harness<'static, ReviewApp> {
-    with_cli_tools(startup::first_frames(builder, app(paths)))
-}
-
-fn app(paths: AppPaths) -> impl FnOnce(&mut eframe::CreationContext<'static>) -> ReviewApp {
-    move |creation| ReviewApp::new(creation, paths, cv_providers::create_provider)
-}
-
-fn with_cli_tools(mut harness: Harness<'static, ReviewApp>) -> Harness<'static, ReviewApp> {
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
-    harness
 }
 
 const AZURE_ROWS: u64 = 40;
@@ -1489,11 +1406,11 @@ const AZURE_PULL_REQUESTS: &str = "/north/Web/_apis/git/repositories/site/pullre
 
 /// An Azure DevOps connection (organization `north`) against [`MockAzure`].
 struct AzureFixture {
-    _runtime: tokio::runtime::Runtime,
-    _server: MockServer,
+    _host: MockHost,
     recorder: Arc<Recorder>,
     paths: AppPaths,
     connection_id: String,
+    _scratch: ScratchDir,
 }
 
 impl AzureFixture {
@@ -1508,42 +1425,24 @@ impl AzureFixture {
     }
 
     fn build(name: &str, has_git: bool) -> Self {
-        let root =
-            std::env::temp_dir().join(format!("review-budget-{name}-{}", std::process::id()));
-        test_support::remove_dir(&root);
-        std::fs::create_dir_all(&root).expect("fixture folder");
+        let scratch = ScratchDir::new(&format!("budget-{name}"));
         let git = has_git.then(|| {
-            let project_root = root.join("git");
+            let project_root = scratch.path().join("git");
             let (_, base, head) =
                 build_repository(&project_root.join("north/Web/_git/site"), AZURE_FILES);
             AzureGit { project_root, base, head }
         });
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .expect("mock runtime");
-        let server = runtime.block_on(MockServer::start());
-        cv_testkit::fresh_origin(&server.uri());
         let recorder = Arc::new(Recorder::default());
-        let azure = MockAzure { recorder: recorder.clone(), git };
-        runtime.block_on(
-            wiremock::Mock::given(wiremock::matchers::any()).respond_with(azure).mount(&server),
-        );
-        let paths = AppPaths::new(root.join("config"), root.join("cache"));
+        let host = MockHost::start(|_| MockAzure { recorder: recorder.clone(), git });
         let connection_id = format!("budget-{name}");
-        let mut store = ConnectionStore::open(&paths).expect("empty store");
-        store
-            .upsert(Connection {
-                id: connection_id.clone(),
-                name: "Mock Azure DevOps".to_owned(),
-                kind: ProviderKind::AzureDevOps,
-                base_url: server.uri(),
-                organizations: vec!["north".to_owned()],
-                token: Some("ado-mock-only".to_owned()),
-            })
-            .expect("store the connection");
-        Self { _runtime: runtime, _server: server, recorder, paths, connection_id }
+        let connection = Connection {
+            name: "Mock Azure DevOps".to_owned(),
+            organizations: vec!["north".to_owned()],
+            token: Some("ado-mock-only".to_owned()),
+            ..samples::connection(&connection_id, ProviderKind::AzureDevOps, &host.uri())
+        };
+        let paths = saved_paths(&scratch, &[connection]);
+        Self { _host: host, recorder, paths, connection_id, _scratch: scratch }
     }
 
     /// Stars `north/Web/site` before the app starts.

@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use egui::Role;
@@ -19,20 +19,21 @@ use review_core::{
     Result, ReviewThread, ReviewVote, Reviewer, RunStatus, RunningLogs, ThreadComment,
     ThreadStatus, Timestamp, UserIdentity,
 };
-use review_store::{AppPaths, AppSettings, CheckFilter, ConnectionStore};
+use review_store::{AppPaths, CheckFilter};
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::ReviewApp;
+use super::walkthrough::{
+    app_with, has, opened_urls, saved_paths, saved_settings, settle_background, wait_for,
+    wait_until, wheel,
+};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_settings::onboarding::CliTools;
-use cv_testkit as test_support;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const REPOSITORY: &str = "fabrikam-logistics/fabrikam-logistics";
 const NUMBER: u64 = 17;
 const HEAD_SHA: &str = "3f9a2c1d8e7b6a5f4e3d2c1b0a9f8e7d6c5b4a39";
-const TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Which pipelines the scripted provider reports, per connection id.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -77,7 +78,7 @@ static SCENARIOS: Mutex<Option<Scripts>> = Mutex::new(None);
 fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
     let app = App::start("pipelines-green", Scenario::Green, [1500.0, 900.0]);
     let mut harness = app.harness;
-    wait_for(&mut harness, "the merge status", |harness| has(harness, "All pipelines succeeded"));
+    wait_until(&mut harness, "the merge status", |harness| has(harness, "All pipelines succeeded"));
     assert!(has(&harness, "2 pipelines · 2 succeeded"), "status checks are no pipelines");
     assert!(has(&harness, "No merge conflicts"));
     assert!(
@@ -86,10 +87,10 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
     );
 
     harness.click_at(harness.get_by_label("Show pipelines").rect());
-    wait_for(&mut harness, "the pipelines", |harness| {
+    wait_until(&mut harness, "the pipelines", |harness| {
         harness.query_by_role_and_label(Role::Link, "Pipeline #2279, Succeeded").is_some()
     });
-    assert!(saved(&app.paths).pipelines.is_overview_expanded, "the open card is remembered");
+    assert!(saved_settings(&harness).pipelines.is_overview_expanded, "the open card is remembered");
     assert!(
         harness.query_by_role_and_label(Role::Link, "Security scan #88, Succeeded").is_none(),
         "status checks stay in the Pipelines tab"
@@ -98,7 +99,7 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
 
     // "Open" shows the run full width with its jobs inside the stage cards.
     harness.click_at(harness.get_by_role_and_label(Role::Link, "Pipeline #2279, Succeeded").rect());
-    wait_for(&mut harness, "the stage graph", |harness| {
+    wait_until(&mut harness, "the stage graph", |harness| {
         harness.query_by_label("Stage Analyze").is_some()
     });
     assert!(has(&harness, "Pipeline #2279 (current page)"), "the breadcrumb names the run");
@@ -116,7 +117,7 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
 
     // J steps to the next check, the run's first job, and opens its log; K goes back to the run.
     harness.key_press(egui::Key::J);
-    wait_for(&mut harness, "the first job's log", |harness| {
+    wait_until(&mut harness, "the first job's log", |harness| {
         has(harness, "Detect changes (current page)")
     });
     assert!(
@@ -124,7 +125,7 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
         "the switcher follows"
     );
     harness.key_press(egui::Key::K);
-    wait_for(&mut harness, "the run again", |harness| {
+    wait_until(&mut harness, "the run again", |harness| {
         harness.query_by_label("Stage Analyze").is_some()
     });
     assert!(harness.query_by_label_contains("Pipeline #2279, 1 of 14").is_some(), "K moves back");
@@ -144,7 +145,7 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
         "status checks are options"
     );
     harness.click_at(harness.get_by_label("Docs preview #412, Succeeded").rect());
-    wait_for(&mut harness, "the docs pipeline", |harness| {
+    wait_until(&mut harness, "the docs pipeline", |harness| {
         harness.query_by_label("Stage deploy").is_some()
     });
     assert!(harness.query_by_label_contains("Docs preview #412, 12 of 14").is_some());
@@ -153,17 +154,17 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
     settle(&mut harness);
     assert!(harness.query_by_label("Stage deploy").is_none(), "the flat job list");
     harness.click_at(harness.get_by_role_and_label(Role::Link, "Pipelines").rect());
-    wait_for(&mut harness, "the checks table", |harness| {
+    wait_until(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     harness.click_at(harness.get_by_label("Pipeline #2279, Succeeded").rect());
-    wait_for(&mut harness, "the run again", |harness| {
+    wait_until(&mut harness, "the run again", |harness| {
         harness.query_by_label("Stage Analyze").is_some()
     });
 
     // A job opens its log; the breadcrumb grows by the job, Esc goes back step by step.
     harness.click_at(harness.get_by_label("Quality").rect());
-    wait_for(&mut harness, "the log", |harness| has(harness, "Quality (current page)"));
+    wait_until(&mut harness, "the log", |harness| has(harness, "Quality (current page)"));
     assert!(
         harness.query_by_label_contains("Quality, 4 of 14").is_some(),
         "the header names the job"
@@ -181,7 +182,7 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
 
     // The breadcrumb's "Pipelines" leads to the checks table.
     harness.click_at(harness.get_by_role_and_label(Role::Link, "Pipelines").rect());
-    wait_for(&mut harness, "the checks table", |harness| {
+    wait_until(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     assert!(has(&harness, "Checks for 3f9a2c1"));
@@ -198,18 +199,16 @@ fn pipelines_overview_card_remembers_open_or_closed_across_restarts() {
     let is_listed = |harness: &Harness<'_, ReviewApp>| {
         harness.query_by_role_and_label(Role::Link, "Pipeline #2279, Succeeded").is_some()
     };
-    let app = App::start(ID, Scenario::Green, SIZE);
-    let paths = app.paths.clone();
-    let mut harness = app.harness;
-    wait_for(&mut harness, "the merge status", |harness| has(harness, "All pipelines succeeded"));
+    let App { mut harness, scratch, .. } = App::start(ID, Scenario::Green, SIZE);
+    wait_until(&mut harness, "the merge status", |harness| has(harness, "All pipelines succeeded"));
     assert!(!is_listed(&harness) && has(&harness, "Show pipelines"), "collapsed by default");
     let summary = harness.get_by_label("2 pipelines · 2 succeeded").rect();
 
     // The headline is no button of its own; the line under it takes the click.
     harness.click_at(harness.get_by_label("All pipelines succeeded").rect());
-    wait_for(&mut harness, "the pipelines", is_listed);
+    wait_until(&mut harness, "the pipelines", is_listed);
     assert!(has(&harness, "Hide pipelines"));
-    assert!(saved(&paths).pipelines.is_overview_expanded, "the open card is saved");
+    assert!(saved_settings(&harness).pipelines.is_overview_expanded, "the open card is saved");
     assert_eq!(
         harness.get_by_label("2 pipelines · 2 succeeded").rect(),
         summary,
@@ -217,18 +216,18 @@ fn pipelines_overview_card_remembers_open_or_closed_across_restarts() {
     );
     drop(harness);
 
-    let mut harness = App::reopen(ID, paths.clone(), SIZE).harness;
-    wait_for(&mut harness, "the pipelines, open after the restart", is_listed);
+    let mut harness = App::reopen(ID, &scratch, SIZE);
+    wait_until(&mut harness, "the pipelines, open after the restart", is_listed);
     harness.click_at(harness.get_by_label("Hide pipelines").rect());
-    wait_for(&mut harness, "the collapsed card", |harness| {
+    wait_until(&mut harness, "the collapsed card", |harness| {
         !is_listed(harness) && has(harness, "Show pipelines")
     });
-    assert!(!saved(&paths).pipelines.is_overview_expanded, "the closed card is saved");
+    assert!(!saved_settings(&harness).pipelines.is_overview_expanded, "the closed card is saved");
     drop(harness);
 
-    let mut harness = App::reopen(ID, paths, SIZE).harness;
-    wait_for(&mut harness, "the merge status", |harness| has(harness, "All pipelines succeeded"));
-    settle_long(&mut harness);
+    let mut harness = App::reopen(ID, &scratch, SIZE);
+    wait_until(&mut harness, "the merge status", |harness| has(harness, "All pipelines succeeded"));
+    settle_background(&mut harness);
     assert!(!is_listed(&harness), "closed after the restart");
 }
 
@@ -236,9 +235,9 @@ fn pipelines_overview_card_remembers_open_or_closed_across_restarts() {
 fn pipelines_checks_table_sorts_filters_steps_and_reruns_failed() {
     let app = App::start("pipelines-mixed", Scenario::Mixed, [1500.0, 900.0]);
     let mut harness = app.harness;
-    wait_for(&mut harness, "the merge status", |harness| has(harness, "1 pipeline failed"));
+    wait_until(&mut harness, "the merge status", |harness| has(harness, "1 pipeline failed"));
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_for(&mut harness, "the checks table", |harness| {
+    wait_until(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
 
@@ -270,42 +269,44 @@ fn pipelines_checks_table_sorts_filters_steps_and_reruns_failed() {
     settle(&mut harness);
     assert_eq!(row_labels(&harness).len(), 5, "chips add up");
     assert_eq!(
-        saved(&app.paths).pipelines.status_filter,
+        saved_settings(&harness).pipelines.status_filter,
         [CheckFilter::Failed, CheckFilter::Running].into()
     );
     harness.click_at(harness.get_by_label("All, 20 checks").rect());
     settle(&mut harness);
     assert_eq!(row_labels(&harness)[..7], rows[..7]);
-    assert!(saved(&app.paths).pipelines.status_filter.is_empty());
+    assert!(saved_settings(&harness).pipelines.status_filter.is_empty());
 
     // ↓ ↓ ↓ Enter opens the third row.
     harness.key_press(egui::Key::ArrowDown);
     harness.key_press(egui::Key::ArrowDown);
     harness.key_press(egui::Key::ArrowDown);
     harness.key_press(egui::Key::Enter);
-    wait_for(&mut harness, "the third check", |harness| {
+    wait_until(&mut harness, "the third check", |harness| {
         harness.query_by_label_contains("License compliance, 3 of 20").is_some()
     });
     assert!(has(&harness, "No job details"), "a status check explains where its details are");
     harness.key_press(egui::Key::Escape);
-    wait_for(&mut harness, "the checks table", |harness| {
+    wait_until(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
 
     // A job's row opens its log, its run's stages a step back.
     harness.click_at(harness.get_by_label("Build images in Pipeline #2281, Failed").rect());
-    wait_for(&mut harness, "the job's log", |harness| has(harness, "Build images (current page)"));
+    wait_until(&mut harness, "the job's log", |harness| {
+        has(harness, "Build images (current page)")
+    });
     assert!(harness.query_by_label_contains("Build images, 2 of 20").is_some());
     harness.key_press(egui::Key::Escape);
-    wait_for(&mut harness, "the run", |harness| harness.query_by_label("Stage Build").is_some());
+    wait_until(&mut harness, "the run", |harness| harness.query_by_label("Stage Build").is_some());
     harness.key_press(egui::Key::Escape);
-    wait_for(&mut harness, "the checks table", |harness| {
+    wait_until(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
 
     // "Rerun failed" reruns the failed jobs of the failed pipeline.
     harness.click_at(harness.get_by_label("Rerun failed").rect());
-    wait_for(&mut harness, "the rerun", |harness| has(harness, "Rerun started"));
+    wait_until(&mut harness, "the rerun", |harness| has(harness, "Rerun started"));
     assert_eq!(
         app.calls.lock().unwrap_or_else(PoisonError::into_inner).reruns,
         [("pipeline:2281".to_owned(), RerunKind::RunFailed)]
@@ -315,7 +316,9 @@ fn pipelines_checks_table_sorts_filters_steps_and_reruns_failed() {
     let logs =
         harness.query_all_by_label("Logs").next().expect("the failed pipeline offers its logs");
     harness.click_at(logs.rect());
-    wait_for(&mut harness, "the failed log", |harness| has(harness, "Build images (current page)"));
+    wait_until(&mut harness, "the failed log", |harness| {
+        has(harness, "Build images (current page)")
+    });
 }
 
 /// A failed pipeline of an older push does not fail the merge request: the summary, the chips and
@@ -326,10 +329,10 @@ fn pipelines_older_runs_stay_listed_but_never_fail_the_summary() {
     // Tall enough to draw every row of the checks table, the older run last.
     let app = App::start("pipelines-superseded", Scenario::Superseded, [1500.0, 1400.0]);
     let mut harness = app.harness;
-    wait_for(&mut harness, "the merge status", |harness| has(harness, "All pipelines succeeded"));
+    wait_until(&mut harness, "the merge status", |harness| has(harness, "All pipelines succeeded"));
     assert!(has(&harness, "1 pipeline · 1 succeeded"));
     harness.click_at(harness.get_by_label("Show pipelines").rect());
-    wait_for(&mut harness, "the pipelines", |harness| {
+    wait_until(&mut harness, "the pipelines", |harness| {
         harness.query_by_role_and_label(Role::Link, "Pipeline #2279, Succeeded").is_some()
     });
     assert!(
@@ -338,7 +341,7 @@ fn pipelines_older_runs_stay_listed_but_never_fail_the_summary() {
     );
 
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_for(&mut harness, "the checks table", |harness| {
+    wait_until(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     assert!(
@@ -367,13 +370,13 @@ fn pipelines_job_clicks_stay_in_the_app() {
     let app = App::start("pipelines-azure", Scenario::Azure, [1500.0, 900.0]);
     let mut harness = app.harness;
     let mut opened = Vec::new();
-    wait_for(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
+    wait_until(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_for(&mut harness, "the checks table", |harness| {
+    wait_until(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     harness.click_at(harness.get_by_label(&format!("{ADO_RUN}, Running")).rect());
-    wait_for(&mut harness, "the stage graph", |harness| {
+    wait_until(&mut harness, "the stage graph", |harness| {
         harness.query_by_role_and_label(Role::Link, ADO_RUNNING_JOB).is_some()
     });
 
@@ -432,13 +435,13 @@ fn pipelines_github_running_job_waits_for_its_log_and_loads_it_when_done() {
     let mut opened = Vec::new();
     let calls = app.calls.clone();
     let logs = || calls.lock().unwrap_or_else(PoisonError::into_inner).logs.clone();
-    wait_for(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
+    wait_until(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_for(&mut harness, "the checks table", |harness| {
+    wait_until(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     harness.click_at(harness.get_by_label(&format!("{GH_RUN}, Running")).rect());
-    wait_for(&mut harness, "the stage graph", |harness| {
+    wait_until(&mut harness, "the stage graph", |harness| {
         harness.query_by_role_and_label(Role::Link, GH_JOB).is_some()
     });
 
@@ -462,7 +465,7 @@ fn pipelines_github_running_job_waits_for_its_log_and_loads_it_when_done() {
 
     // The job finishes; the next stages refresh (15 s while focused) brings it and the log loads.
     calls.lock().unwrap_or_else(PoisonError::into_inner).is_job_finished = true;
-    step_until(&mut harness, "the finished job's log", 30 * 60, |harness| {
+    wait_until(&mut harness, "the finished job's log", |harness| {
         harness.query_by_label("Copy log").is_some()
     });
     assert_eq!(logs(), ["501"], "fetched once, when the job finished");
@@ -492,50 +495,40 @@ fn pipelines_gitlab_running_job_log_follows_the_job() {
         cv_shell::focus_mode::top_line(&harness.ctx, cv_shell::focus_mode::Surface::Log)
             .map_or(0, |(line, _)| line)
     };
-    wait_for(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
+    wait_until(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_for(&mut harness, "the checks table", |harness| {
+    wait_until(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     harness.click_at(harness.get_by_label(&format!("{GL_RUN}, Running")).rect());
-    wait_for(&mut harness, "the stage graph", |harness| {
+    wait_until(&mut harness, "the stage graph", |harness| {
         harness.query_by_role_and_label(Role::Link, GL_JOB).is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::Link, GL_JOB).rect());
 
-    wait_for(&mut harness, "the live log", |harness| has(harness, "200 lines · live"));
+    wait_until(&mut harness, "the live log", |harness| has(harness, "200 lines · live"));
     let at_open = top_line(&harness);
     assert!(at_open > 150, "a live log opens at its end, top line {at_open}");
-    step_until(&mut harness, "what the job added", 10 * 60, |harness| {
-        has(harness, "250 lines · live")
-    });
+    wait_until(&mut harness, "what the job added", |harness| has(harness, "250 lines · live"));
     let followed = top_line(&harness);
     assert!(followed >= at_open + 50, "the view follows the end: {at_open} -> {followed}");
 
     // Scrolled up, the log keeps its place while it grows.
     harness.get_by_role(Role::Document).hover();
-    harness.event(egui::Event::MouseWheel {
-        unit: egui::MouseWheelUnit::Point,
-        delta: egui::vec2(0.0, 2000.0),
-        phase: egui::TouchPhase::Move,
-        modifiers: egui::Modifiers::NONE,
-        source: egui::MouseWheelSource::Wheel,
-    });
+    harness.event(wheel(2000.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
     // The wheel scrolls smoothly; once it settled the view stays where it went.
     step_frames(&mut harness, 60);
     let scrolled = top_line(&harness);
     assert!(scrolled < followed, "scrolled up: {followed} -> {scrolled}");
-    step_until(&mut harness, "more of the job", 10 * 60, |harness| {
-        has(harness, "300 lines · live")
-    });
+    wait_until(&mut harness, "more of the job", |harness| has(harness, "300 lines · live"));
     assert_eq!(top_line(&harness), scrolled, "no jump while scrolled up");
 
     // The job finishes: its end comes once, then nothing more is fetched. A fetch while the log
     // was still live may already bring the end; the fetch for the end starts the frame the job
     // shows finished and counts only once it ran, so the count is taken with nothing in flight.
     calls.lock().unwrap_or_else(PoisonError::into_inner).is_job_finished = true;
-    step_until(&mut harness, "the finished job", 30 * 60, |harness| line_count(harness).is_some());
-    step_until(&mut harness, "the job's end", 5 * 60, |harness| {
+    wait_until(&mut harness, "the finished job", |harness| line_count(harness).is_some());
+    wait_until(&mut harness, "the job's end", |harness| {
         line_count(harness).is_some_and(|lines| (lines - 200) % 50 == 2)
             && harness.state().services.background.running() == 0
     });
@@ -554,29 +547,10 @@ fn line_count(harness: &Harness<'_, ReviewApp>) -> Option<usize> {
     })
 }
 
-/// Steps frames (each 1/60 s of app time) until `is_done`, at most `frames`; background loads get
-/// a moment of real time between frames.
-fn step_until(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    frames: usize,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    for _ in 0..frames {
-        harness.step();
-        if is_done(harness) {
-            settle(harness);
-            return;
-        }
-        test_support::let_threads_run(Duration::from_millis(1));
-    }
-    panic!("{what} did not come within {frames} frames");
-}
-
 fn step_frames(harness: &mut Harness<'_, ReviewApp>, frames: usize) {
     for _ in 0..frames {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(1));
+        cv_testkit::let_threads_run(Duration::from_millis(1));
     }
 }
 
@@ -590,9 +564,9 @@ fn pipelines_attempts_open_earlier_attempts_in_the_app() {
     let mut opened = Vec::new();
     let calls = app.calls.clone();
     let attempts_loaded = || calls.lock().unwrap_or_else(PoisonError::into_inner).attempts.clone();
-    wait_for(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
+    wait_until(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_for(&mut harness, "the checks table", |harness| {
+    wait_until(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     let rows = row_labels(&harness);
@@ -696,34 +670,30 @@ fn collect_until(
     what: &str,
     is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
 ) {
-    let started = Instant::now();
-    loop {
-        collect_frames(harness, opened, 1);
-        if is_done(harness) {
-            collect_frames(harness, opened, 10);
-            return;
-        }
-        assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        test_support::let_threads_run(Duration::from_millis(10));
-    }
+    wait_for(
+        harness,
+        what,
+        |harness| {
+            opened.extend(opened_urls(harness));
+            is_done(harness).then_some(())
+        },
+        |_| {},
+    );
+    collect_frames(harness, opened, 10);
 }
 
 fn collect_frames(harness: &mut Harness<'_, ReviewApp>, opened: &mut Vec<String>, frames: usize) {
     for _ in 0..frames {
         harness.step();
-        opened.extend(harness.output().platform_output.commands.iter().filter_map(|command| {
-            match command {
-                egui::OutputCommand::OpenUrl(open) => Some(open.url.clone()),
-                _ => None,
-            }
-        }));
+        opened.extend(opened_urls(harness));
     }
 }
 
 struct App {
     harness: Harness<'static, ReviewApp>,
-    paths: AppPaths,
     calls: Arc<Mutex<Calls>>,
+    /// The app's data folders; declared after the harness so it drops last.
+    scratch: ScratchDir,
 }
 
 impl App {
@@ -734,59 +704,32 @@ impl App {
             .unwrap_or_else(PoisonError::into_inner)
             .get_or_insert_with(HashMap::new)
             .insert(id.to_owned(), (scenario, calls.clone()));
-        let root = std::env::temp_dir().join(format!("review-{id}-{}", std::process::id()));
-        test_support::remove_dir(&root);
-        let paths = AppPaths::new(root.join("config"), root.join("cache"));
-        let mut store = ConnectionStore::open(&paths).expect("empty store");
-        store
-            .upsert(Connection {
-                id: id.to_owned(),
-                name: "example.com".to_owned(),
-                kind: platform(scenario),
-                base_url: "https://gitlab.example.com".to_owned(),
-                organizations: Vec::new(),
-                token: Some("glpat-walkthrough".to_owned()),
-            })
-            .expect("store the connection");
-        Self::open(id, paths, size, calls)
+        let scratch = ScratchDir::new(id);
+        let connection = Connection {
+            name: "example.com".to_owned(),
+            token: Some("glpat-walkthrough".to_owned()),
+            ..samples::connection(id, platform(scenario), "https://gitlab.example.com")
+        };
+        let harness = Self::open(id, saved_paths(&scratch, &[connection]), size);
+        Self { harness, calls, scratch }
     }
 
-    /// The app again on the files an earlier [`App::start`] left, as after a restart.
-    fn reopen(id: &str, paths: AppPaths, size: [f32; 2]) -> Self {
-        let calls = SCENARIOS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .as_ref()
-            .and_then(|scenarios| scenarios.get(id))
-            .expect("started before")
-            .1
-            .clone();
-        Self::open(id, paths, size, calls)
+    /// The app again on the files an earlier [`App::start`] left in `scratch`, as after a restart.
+    fn reopen(id: &str, scratch: &ScratchDir, size: [f32; 2]) -> Harness<'static, ReviewApp> {
+        Self::open(id, scratch.app_paths(), size)
     }
 
-    fn open(id: &str, paths: AppPaths, size: [f32; 2], calls: Arc<Mutex<Calls>>) -> Self {
+    fn open(id: &str, paths: AppPaths, size: [f32; 2]) -> Harness<'static, ReviewApp> {
         let builder =
             Harness::builder().with_size(size).with_step_dt(1.0 / 60.0).allow_missing_glyphs();
-        let app_paths = paths.clone();
-        let mut harness = super::startup::start(builder, move |creation| {
-            ReviewApp::new(creation, app_paths, scripted_provider)
-        });
-        harness.state_mut().settings.cli_tools = Some(CliTools::default());
+        let mut harness = app_with(builder, paths, scripted_provider);
         harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
             connection_id: id.to_owned(),
             repository_key: REPOSITORY.to_owned(),
             number: NUMBER,
         }));
-        Self { harness, paths, calls }
+        harness
     }
-}
-
-fn saved(paths: &AppPaths) -> AppSettings {
-    AppSettings::load(&paths.settings_file()).expect("settings file")
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_by_label_contains(text).is_some()
 }
 
 /// The checks table's rows, top to bottom.
@@ -799,33 +742,8 @@ fn row_labels(harness: &Harness<'_, ReviewApp>) -> Vec<String> {
     rows.into_iter().map(|(_, label)| label).collect()
 }
 
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    let started = Instant::now();
-    loop {
-        harness.step();
-        if is_done(harness) {
-            settle(harness);
-            return;
-        }
-        assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        test_support::let_threads_run(Duration::from_millis(10));
-    }
-}
-
 fn settle(harness: &mut Harness<'_, ReviewApp>) {
     for _ in 0..10 {
-        harness.step();
-    }
-}
-
-/// Long enough for loads in flight and every eased transition to finish.
-fn settle_long(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..30 {
-        test_support::let_threads_run(Duration::from_millis(10));
         harness.step();
     }
 }

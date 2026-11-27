@@ -11,20 +11,23 @@ use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use review_store::{AppPaths, FilesStart};
+use review_store::FilesStart;
 
 use super::ReviewApp;
-use super::action_e2e::{
-    app, has_cached_diff, open_pull_request, settle_background, shows_file_view, wait_until,
+use super::github_mock::{
+    ExtraFile, FILE, GitHubHost, MockThread, REPOSITORY, THREAD_TEXT, open_pull_request,
 };
-use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread, REPOSITORY, THREAD_TEXT};
+use super::walkthrough::{
+    app, files_tab, has_cached_diff, settle_background, shows_file_view, wait_for, wait_until,
+    wait_until_unsettled,
+};
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 /// Changed files in `src/m00/` to `src/m19/`, counted in tree order before `zz/`: more than the
 /// first four chunks take (16 + 32 + 64 + 128), so `zz/` waits for a chunk while those are held.
@@ -62,7 +65,7 @@ fn blob_ids(scratch: &ScratchDir, paths: &[&str]) -> Vec<String> {
     let mut ids = Vec::new();
     for path in paths {
         for version in ["main", "feature"] {
-            ids.push(test_support::git(&hosted, &["rev-parse", &format!("{version}:{path}")]));
+            ids.push(cv_testkit::git(&hosted, &["rev-parse", &format!("{version}:{path}")]));
         }
     }
     ids
@@ -70,7 +73,7 @@ fn blob_ids(scratch: &ScratchDir, paths: &[&str]) -> Vec<String> {
 
 /// The app's mirror of the repository.
 fn mirror_dir(scratch: &ScratchDir) -> PathBuf {
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
+    let paths = scratch.app_paths();
     let mirrors = std::fs::read_dir(paths.mirrors_dir()).expect("the mirrors folder");
     mirrors.flatten().map(|entry| entry.path()).find(|path| path.is_dir()).expect("a mirror")
 }
@@ -83,7 +86,7 @@ fn fetched_blobs(mirror: &Path) -> Vec<Vec<String>> {
     for pack in packs.flatten().map(|entry| entry.path()) {
         if pack.extension().is_some_and(|extension| extension == "promisor") {
             let index = pack.with_extension("idx").display().to_string();
-            let listed = test_support::git(mirror, &["verify-pack", "-v", &index]);
+            let listed = cv_testkit::git(mirror, &["verify-pack", "-v", &index]);
             let blobs = listed.lines().filter(|line| line.contains(" blob "));
             fetches.push(blobs.filter_map(|line| line.get(..40)).map(str::to_owned).collect());
         }
@@ -107,17 +110,6 @@ fn filter_tree(harness: &mut Harness<'_, ReviewApp>, text: &str) {
     harness.step();
 }
 
-fn files_tab(harness: &mut Harness<'_, ReviewApp>) {
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
-}
-
 #[test]
 fn count_priority_a_file_opened_deep_in_tree_order_counts_with_its_neighbours_first() {
     let scratch = ScratchDir::new("count-priority");
@@ -133,12 +125,9 @@ fn count_priority_a_file_opened_deep_in_tree_order_counts_with_its_neighbours_fi
     });
     // The count lists the files, then starts its first chunks at once, all held. Opened before
     // that, the deep file would join the first chunk, filled up to its size in tree order.
-    let started = Instant::now();
-    while held.waiting() < PARALLEL_CHUNKS {
-        harness.step();
-        test_support::let_threads_run(Duration::from_millis(20));
-        assert!(started.elapsed() < Duration::from_secs(60), "the first chunks never went out");
-    }
+    wait_until_unsettled(&mut harness, "the first chunks to go out", |_| {
+        held.waiting() >= PARALLEL_CHUNKS
+    });
     let mirror = mirror_dir(&scratch);
     let opened = DEEP[1];
     filter_tree(&mut harness, "zz/");
@@ -150,14 +139,15 @@ fn count_priority_a_file_opened_deep_in_tree_order_counts_with_its_neighbours_fi
     // The neighbours (the previous and the next file of its folder) came with it, as wanted
     // files of the count: a fetch of the opened file's own would bring its two blobs alone.
     let neighbours = blob_ids(&scratch, &[DEEP[0], DEEP[2]]);
-    let mut fetched: HashSet<String> = HashSet::new();
-    let started = Instant::now();
-    while !neighbours.iter().all(|id| fetched.contains(id)) {
-        harness.step();
-        test_support::let_threads_run(Duration::from_millis(50));
-        fetched = fetched_blobs(&mirror).into_iter().flatten().collect();
-        assert!(started.elapsed() < Duration::from_secs(60), "the neighbours never came");
-    }
+    let fetched = wait_for(
+        &mut harness,
+        "the neighbours' blobs",
+        |_| {
+            let fetched: HashSet<String> = fetched_blobs(&mirror).into_iter().flatten().collect();
+            neighbours.iter().all(|id| fetched.contains(id)).then_some(fetched)
+        },
+        |_| {},
+    );
     assert!(fetched.is_superset(&blob_ids(&scratch, &[opened]).into_iter().collect()));
     assert!(harness.query_by_label(COUNTING).is_some(), "the held chunks still count");
     let early = fetched_blobs(&mirror).len();
@@ -199,18 +189,18 @@ fn click_row_until_shown(
     path: &str,
 ) -> (usize, bool) {
     harness.click_at(thread_row(harness, text).expect("the thread's row").rect());
-    let started = Instant::now();
     let (mut frames, mut skeleton) = (0, false);
-    loop {
-        harness.step();
-        frames += 1;
-        skeleton |= harness.query_by_label("Loading the diff").is_some();
-        if shows_file_view(harness, path) {
-            return (frames, skeleton);
-        }
-        assert!(started.elapsed() < Duration::from_secs(60), "{path} never showed");
-        test_support::let_threads_run(Duration::from_millis(1));
-    }
+    wait_for(
+        harness,
+        &format!("{path}'s diff"),
+        |harness| {
+            frames += 1;
+            skeleton |= harness.query_by_label("Loading the diff").is_some();
+            shows_file_view(harness, path).then_some(())
+        },
+        |_| {},
+    );
+    (frames, skeleton)
 }
 
 const FAR: &str = "web/far.rs";
@@ -255,7 +245,7 @@ fn count_priority_a_resting_pointer_on_a_thread_row_loads_its_file_ahead() {
     harness.hover_at(row.center());
     for _ in 0..10 {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
     settle_background(&mut harness);
     assert!(has_cached_diff(&harness, FAR), "the resting pointer loaded {FAR} ahead");

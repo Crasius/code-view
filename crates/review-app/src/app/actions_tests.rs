@@ -3,7 +3,6 @@
 //! a list's rows, and stay there through the refresh after it and the list's next answer.
 
 use std::sync::{Arc, LazyLock};
-use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use review_core::{
@@ -12,7 +11,7 @@ use review_core::{
     PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result, ReviewThread,
     ReviewVote, Reviewer, ThreadComment, ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
+use review_store::ConnectionStore;
 use tokio::io::AsyncWrite;
 
 use cv_lists::pull_request_list::PullRequestListPage;
@@ -24,14 +23,13 @@ use cv_runtime::route::PullRequestKey;
 use cv_services::Services;
 use cv_services::self_review::Identities;
 use cv_services::writes::Effect;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::{ScratchDir, poll_until};
 
 mod overview;
 
 const CONNECTION: &str = "scripted";
 const REPOSITORY: &str = "acme/app";
 const NUMBER: u64 = 7;
-const TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The page of pull request 7, an overview list that lists it, and the services both use.
 struct World {
@@ -49,7 +47,7 @@ impl World {
         let row_key = pull_request_part(&key().storage_key(), "summary");
         services.cache.put(&row_key, summary(), 0.0);
         let mut session = PullRequestSession::open(key(), &mut services).expect("the page opens");
-        wait("the page's first answers", || {
+        poll_until("the page's first answers", || {
             session.poll(&mut services);
             !session.detail.is_loading() && !session.threads.is_loading()
         });
@@ -63,7 +61,7 @@ impl World {
         let ticket = start(self).expect("the write starts");
         let World { services, session, actions, .. } = self;
         let mut refresh = None;
-        wait("the write", || {
+        poll_until("the write", || {
             refresh = actions.poll(services, session);
             assert_ne!(actions.outcome(ticket), Some(false), "the write failed");
             refresh.is_some()
@@ -79,7 +77,7 @@ impl World {
             Refresh::PullRequest => session.refresh(services),
             Refresh::Threads => session.reload_threads(services),
         }
-        wait("the refresh", || {
+        poll_until("the refresh", || {
             session.poll(services);
             !session.detail.is_loading() && !session.threads.is_loading()
         });
@@ -91,7 +89,7 @@ impl World {
         list.poll_for_test(services);
         let caught_up = rows(list);
         list.revisit(services);
-        wait("the list's answer", || !list.poll_for_test(services));
+        poll_until("the list's answer", || !list.poll_for_test(services));
         (caught_up, rows(list))
     }
 
@@ -107,7 +105,7 @@ impl World {
 
 /// Services over the scripted host, with its one connection stored and "me" known.
 fn scripted_services(dir: &ScratchDir, ctx: egui::Context) -> Services {
-    let paths = AppPaths::new(dir.path().join("config"), dir.path().join("cache"));
+    let paths = dir.app_paths();
     let mut store = ConnectionStore::open(&paths).expect("empty store");
     store
         .upsert(Connection {
@@ -250,14 +248,6 @@ fn a_resolved_thread_shows_at_once_and_stays_while_the_host_says_active() {
     let part = pull_request_part(&key().storage_key(), "threads");
     let cached: Vec<ReviewThread> = world.services.cache.get(&part).expect("remembered");
     assert_eq!(cached[0].status, ThreadStatus::Resolved);
-}
-
-fn wait(what: &str, mut is_done: impl FnMut() -> bool) {
-    let started = Instant::now();
-    while !is_done() {
-        assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        test_support::let_threads_run(Duration::from_millis(5));
-    }
 }
 
 fn key() -> PullRequestKey {

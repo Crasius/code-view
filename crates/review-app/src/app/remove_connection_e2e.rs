@@ -8,8 +8,8 @@ use egui::Role;
 use egui_kittest::kittest::Queryable;
 use review_store::stable_hash;
 
-use super::action_e2e::{app, open_pull_request, press, wait_until};
-use super::github_mock::GitHubHost;
+use super::github_mock::{GitHubHost, open_pull_request};
+use super::walkthrough::{app, press, wait_until};
 use cv_runtime::route::Route;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;

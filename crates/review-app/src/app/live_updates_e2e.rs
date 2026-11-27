@@ -7,8 +7,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_diff, open_pull_request, press, type_into, wait_until};
-use super::github_mock::{FILE, GitHubHost, THREAD_TEXT};
+use super::github_mock::{FILE, GitHubHost, THREAD_TEXT, open_diff, open_pull_request};
+use super::walkthrough::{app, has, press, type_into, wait_until};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -26,8 +26,8 @@ fn live_push_while_viewing_applies_without_a_card_and_keeps_the_file() {
     host.push_lines_on_top("/// The greeting every caller shows.\n");
     wait_until(&mut harness, "the pushed commit", |harness| commits_tab(harness, 2));
     assert!(reload_button(&harness).is_none(), "nobody was writing, so nothing asks for a reload");
-    assert!(!shows(&harness, "1 new commit by Test"), "an applied update shows no card");
-    assert!(!shows(&harness, "Updated: "), "an applied update shows no card");
+    assert!(!has(&harness, "1 new commit by Test"), "an applied update shows no card");
+    assert!(!has(&harness, "Updated: "), "an applied update shows no card");
     let diff = format!("Diff of {FILE}");
     assert!(harness.query_by_label(&diff).is_some(), "the same file stays open");
     assert!(harness.query_by_label(THREAD_TEXT).is_some(), "the thread stays in the diff");
@@ -51,7 +51,7 @@ fn live_reply_while_writing_waits_for_reload_and_keeps_the_draft() {
         harness.query_by_label("Kept it as an alias.").is_none(),
         "nothing reloads underneath the draft"
     );
-    assert!(shows(&harness, "1 new comment by dee"), "the card says what came in");
+    assert!(has(&harness, "1 new comment by dee"), "the card says what came in");
 
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Reload").rect());
     wait_until(&mut harness, "the new reply", |harness| {
@@ -63,11 +63,6 @@ fn live_reply_while_writing_waits_for_reload_and_keeps_the_draft() {
             && node.value().as_deref() == Some("Half an answer")
     });
     assert!(draft.is_some(), "the reply box stays open with the draft");
-}
-
-/// The card's text is both a label and the card's announcement, so it matches more than once.
-fn shows(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
 }
 
 /// The Commits tab counts `count` commits: the page shows that version of the pull request.

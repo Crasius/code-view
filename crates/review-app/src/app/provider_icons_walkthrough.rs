@@ -5,7 +5,6 @@
 //! `cargo test -p review-app provider_icons`
 
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use egui::Role;
@@ -17,17 +16,13 @@ use review_core::{
     PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result, ReviewThread,
     ReviewVote, RunStatus, ThreadComment, ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
 use super::navigation_walkthrough::{Fixture, create_origin};
+use super::walkthrough::{app_with, files_tab, has, opened_urls, saved_paths, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
-
-const TIMEOUT: Duration = Duration::from_secs(60);
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 /// A local repository GitHub's pull requests are fetched from, so its Files tab has a file.
 static ORIGIN: Mutex<Option<Fixture>> = Mutex::new(None);
@@ -62,33 +57,25 @@ const HOSTS: [(&str, &str, ProviderKind, &str, &str, &str); 3] = [
 
 #[test]
 fn provider_icons_name_the_platform_everywhere() {
-    let scratch = ScratchDir::new("provider-icons-origin");
+    let scratch = ScratchDir::new("provider-icons");
     *ORIGIN.lock().unwrap() = Some(create_origin(&scratch.path().join("origin")));
-    let paths = isolated_paths();
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    for (id, name, kind, base_url, _, _) in HOSTS {
-        store
-            .upsert(Connection {
-                id: id.to_owned(),
-                name: name.to_owned(),
-                kind,
-                base_url: base_url.to_owned(),
-                organizations: if kind == ProviderKind::AzureDevOps {
-                    vec!["contoso".to_owned()]
-                } else {
-                    Vec::new()
-                },
-                token: Some("scripted".to_owned()),
-            })
-            .expect("store the connection");
-    }
+    let connections: Vec<Connection> = HOSTS
+        .iter()
+        .map(|&(id, name, kind, base_url, _, _)| Connection {
+            name: name.to_owned(),
+            organizations: if kind == ProviderKind::AzureDevOps {
+                vec!["contoso".to_owned()]
+            } else {
+                Vec::new()
+            },
+            token: Some("scripted".to_owned()),
+            ..samples::connection(id, kind, base_url)
+        })
+        .collect();
     let builder = Harness::builder().with_size([1280.0, 1080.0]).with_step_dt(1.0 / 60.0);
-    let mut harness = super::startup::start(builder, move |creation| {
-        ReviewApp::new(creation, paths, scripted_provider)
-    });
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
+    let mut harness = app_with(builder, saved_paths(&scratch, &connections), scripted_provider);
 
-    wait_for(&mut harness, "every card", |harness| {
+    wait_until(&mut harness, "every card", |harness| {
         HOSTS.iter().all(|(_, _, kind, ..)| has(harness, &title(*kind, 1)))
     });
     for (_, _, _, _, _, mark) in HOSTS {
@@ -106,7 +93,7 @@ fn provider_icons_name_the_platform_everywhere() {
             connection_id: id.to_owned(),
             repository_key: repository.to_owned(),
         });
-        wait_for(&mut harness, "the repository's rows", |harness| has(harness, &title(kind, 1)));
+        wait_until(&mut harness, "the repository's rows", |harness| has(harness, &title(kind, 1)));
         assert!(
             harness.query_by_role_and_label(Role::Link, connection_name).is_some(),
             "{connection_name} crumb"
@@ -124,7 +111,7 @@ fn provider_icons_name_the_platform_everywhere() {
         harness.state_mut().navigator.go(Route::PullRequest(key));
         // The page keeps the tab it showed last; its header names it on every tab.
         let shown = title(kind, 1);
-        wait_for(&mut harness, "the pull request header", |harness| {
+        wait_until(&mut harness, "the pull request header", |harness| {
             harness.query_by_role_and_label(Role::Tab, "Overview").is_some() && has(harness, &shown)
         });
     }
@@ -156,7 +143,7 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
         number: 1,
     };
     harness.state_mut().navigator.go(Route::PullRequest(key));
-    wait_for(harness, "the GitHub pull request", |harness| {
+    wait_until(harness, "the GitHub pull request", |harness| {
         harness.query_by_role_and_label(Role::Link, LINK).is_some()
     });
     harness.get_by_role_and_label(Role::Link, LINK).focus();
@@ -195,17 +182,10 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
     assert!(has(harness, "Right-click for more links"), "the mark's tooltip");
 
     // On the Files tab the menu also offers the shown file.
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(harness);
     // The tab opens on the summary of the changed files;
     // the card's View opens the file.
-    wait_for(harness, "the changed files", |harness| has(harness, "README.md"));
+    wait_until(harness, "the changed files", |harness| has(harness, "README.md"));
     if let Some(view) = harness.query_by_label("View README.md") {
         harness.click_at(view.rect());
         settle(harness);
@@ -234,51 +214,8 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
     settle(harness);
 }
 
-fn opened_urls(harness: &Harness<'_, ReviewApp>) -> Vec<String> {
-    harness
-        .output()
-        .platform_output
-        .commands
-        .iter()
-        .filter_map(|command| match command {
-            egui::OutputCommand::OpenUrl(open) => Some(open.url.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
 fn title(kind: ProviderKind, number: u64) -> String {
     format!("{} change {number}", kind.label())
-}
-
-fn isolated_paths() -> AppPaths {
-    let root = std::env::temp_dir().join(format!("review-provider-icons-{}", std::process::id()));
-    test_support::remove_dir(&root);
-    AppPaths::new(root.join("config"), root.join("cache"))
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
-}
-
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    let started = Instant::now();
-    loop {
-        harness.step();
-        if is_done(harness) {
-            settle(harness);
-            return;
-        }
-        if started.elapsed() > TIMEOUT {
-            let tree: String = format!("{:?}", harness.root()).chars().take(6000).collect();
-            panic!("timed out waiting for {what}; screen:\n{tree}");
-        }
-        test_support::let_threads_run(Duration::from_millis(10));
-    }
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

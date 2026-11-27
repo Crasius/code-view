@@ -15,8 +15,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, shows_file_view, shows_folder_view, wait_until};
-use super::github_mock::{ExtraFile, FILE, GitHubHost};
+use super::github_mock::{ExtraFile, FILE, GitHubHost, open_pull_request};
+use super::walkthrough::{app, files_tab, shows_file_view, shows_folder_view, wait_until};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -50,14 +50,7 @@ fn counting_walkthrough_diffs_show_while_the_lines_are_counted() {
     // Dropped before the app, so a failing test lets the held downloads go before it shuts down.
     let held = held;
     open_pull_request(&mut harness);
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(&mut harness);
 
     // A card draws its code with the file view's diff view, under the same label.
     wait_until(&mut harness, "the first card's code", |harness| {

@@ -5,19 +5,19 @@
 //! run, or inside one. Needs `git` on PATH, no network.
 
 use std::fmt::Write as _;
-use std::time::{Duration, Instant};
 
 use egui::{Rect, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
-use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread};
+use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread, open_pull_request};
+use super::walkthrough::{
+    app, files_tab, open_in_tree, settle_background, shows_file_view, wait_until,
+};
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
-const TIMEOUT: Duration = Duration::from_secs(30);
 const CODE: &str = "src/long.rs";
 const INTRO: &str = "docs/intro.md";
 const SOURCES: &str = "docs/build-sources.md";
@@ -77,14 +77,7 @@ fn a_thread_in_a_file_never_opened_comes_into_view() {
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     harness.state_mut().services.settings.threads_panel.is_open = true;
     open_pull_request(&mut harness);
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(&mut harness);
 
     // A text diff is open; the code thread's file was never opened.
     open_in_tree(&mut harness, FILE);
@@ -112,14 +105,6 @@ fn a_thread_in_a_file_never_opened_comes_into_view() {
     wait_for_card(&mut harness, FOLDED_THREAD);
 }
 
-fn open_in_tree(harness: &mut Harness<'_, ReviewApp>, path: &str) {
-    wait_until(harness, "the file's row in the tree", |harness| {
-        harness.query_by_role_and_label(Role::TreeItem, path).is_some()
-    });
-    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
-    harness.step();
-}
-
 /// Clicks the threads panel's row of the thread reading `text`.
 fn click_row(harness: &mut Harness<'_, ReviewApp>, text: &str) {
     wait_until(harness, "the thread's row", |harness| row(harness, text).is_some());
@@ -136,25 +121,14 @@ fn row<'h>(harness: &'h Harness<'_, ReviewApp>, text: &str) -> Option<egui_kitte
 /// Steps until the card of the thread reading `text` shows in the diff, left of the threads
 /// panel and inside the window; returns its place.
 fn wait_for_card(harness: &mut Harness<'_, ReviewApp>, text: &str) -> Rect {
-    let started = Instant::now();
-    loop {
-        harness.step();
-        if card(harness, text).is_some() {
-            // The view settles before the place is read.
-            for _ in 0..10 {
-                harness.step();
-            }
-            let card = card_rect(harness, text).expect("the card stays in view");
-            let window = harness.ctx.content_rect();
-            assert!(window.contains_rect(card), "the card {card:?} inside the window {window:?}");
-            return card;
-        }
-        assert!(
-            started.elapsed() < TIMEOUT,
-            "the card of {text:?} never came into view; the diff stayed where it was"
-        );
-        test_support::let_threads_run(Duration::from_millis(20));
-    }
+    wait_until(harness, &format!("the card of {text:?} in view"), |harness| {
+        card(harness, text).is_some()
+    });
+    settle_background(harness);
+    let card = card_rect(harness, text).expect("the card stays in view");
+    let window = harness.ctx.content_rect();
+    assert!(window.contains_rect(card), "the card {card:?} inside the window {window:?}");
+    card
 }
 
 /// The card's place while it shows in the diff (not the panel's row of it) inside the window.

@@ -9,14 +9,11 @@
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_store::AppSettings;
 use review_store::checkouts::WhenFinished;
 
 use super::ReviewApp;
-use super::action_e2e::{app, wait_until};
-use super::checkout_walkthrough::{
-    Setup, click_last, open_form, shows, start, tap, wait_ready, worktree_of,
-};
+use super::checkout_walkthrough::{Setup, click_last, open_form, start, wait_ready, worktree_of};
+use super::walkthrough::{app, has, press, saved_settings, wait_until};
 use cv_runtime::route::Route;
 use cv_testkit::Clicks;
 
@@ -36,7 +33,7 @@ fn checked_out(name: &str, mode: WhenFinished) -> Setup {
 fn merged_elsewhere(setup: &mut Setup) {
     setup.host.answer_merged();
     setup.harness.key_press(egui::Key::F5);
-    wait_until(&mut setup.harness, "the merged pull request", |harness| shows(harness, "Merged"));
+    wait_until(&mut setup.harness, "the merged pull request", |harness| has(harness, "Merged"));
 }
 
 fn has_record(harness: &Harness<'_, ReviewApp>) -> bool {
@@ -56,22 +53,22 @@ fn checkout_finish_removes_a_clean_worktree_silently_by_default() {
     wait_until(harness, "the removed worktree", |harness| !has_record(harness));
     assert!(!worktree.exists(), "the worktree went");
     assert!(silent(harness), "no toast: {:?}", harness.state().services.toasts.texts());
-    assert!(shows(harness, "Check out"), "the page offers a new checkout");
+    assert!(has(harness, "Check out"), "the page offers a new checkout");
 }
 
 #[test]
 fn checkout_finish_offers_the_removal_in_ask_mode_and_does_nothing_in_keep_mode() {
     let mut ask = checked_out("finish-ask", WhenFinished::Ask);
     merged_elsewhere(&mut ask);
-    wait_until(&mut ask.harness, "the offer", |harness| shows(harness, REMOVE_LINK));
+    wait_until(&mut ask.harness, "the offer", |harness| has(harness, REMOVE_LINK));
     assert!(worktree_of(&ask.clone).exists() && has_record(&ask.harness), "nothing removed");
-    tap(&mut ask.harness, REMOVE_LINK);
-    assert!(shows(&ask.harness, "Remove this worktree?"), "the link asks first");
+    press(&mut ask.harness, REMOVE_LINK);
+    assert!(has(&ask.harness, "Remove this worktree?"), "the link asks first");
 
     let mut keep = checked_out("finish-keep", WhenFinished::Keep);
     merged_elsewhere(&mut keep);
     keep.harness.run_steps(20);
-    assert!(!shows(&keep.harness, REMOVE_LINK), "keep mode offers nothing");
+    assert!(!has(&keep.harness, REMOVE_LINK), "keep mode offers nothing");
     assert!(worktree_of(&keep.clone).exists() && has_record(&keep.harness), "nothing removed");
 }
 
@@ -82,27 +79,27 @@ fn checkout_finish_keeps_a_worktree_with_untracked_files_and_says_why() {
     std::fs::write(worktree.join("notes.txt"), "mine\n").expect("untracked file");
     merged_elsewhere(&mut setup);
     let harness = &mut setup.harness;
-    wait_until(harness, "the fallback offer", |harness| shows(harness, REMOVE_LINK));
+    wait_until(harness, "the fallback offer", |harness| has(harness, REMOVE_LINK));
     assert!(worktree.join("notes.txt").exists(), "the user's file stays");
     let log = harness.state().services.checkouts.records().all()[0].log.join("\n");
     assert!(log.contains("worktree kept: 1 uncommitted file in the worktree"), "{log}");
     assert!(silent(harness), "no toast");
-    tap(harness, REMOVE_LINK);
-    assert!(shows(harness, "It stayed when the pull request was done: 1 uncommitted file"));
+    press(harness, REMOVE_LINK);
+    assert!(has(harness, "It stayed when the pull request was done: 1 uncommitted file"));
 }
 
 #[test]
 fn checkout_finish_asks_after_a_merge_from_code_view() {
     let mut setup = checked_out("finish-here", WhenFinished::RemoveAutomatically);
     setup.host.accept_merge();
-    tap(&mut setup.harness, "Merge commit");
-    tap(&mut setup.harness, "Click again to merge");
+    press(&mut setup.harness, "Merge commit");
+    press(&mut setup.harness, "Click again to merge");
     wait_until(&mut setup.harness, "the merge", |harness| {
         harness.state().services.toasts.texts().contains(&"Pull request merged.")
     });
     assert!(setup.harness.state().services.checkouts.records().all()[0].merged_here);
     merged_elsewhere(&mut setup);
-    wait_until(&mut setup.harness, "the offer", |harness| shows(harness, REMOVE_LINK));
+    wait_until(&mut setup.harness, "the offer", |harness| has(harness, REMOVE_LINK));
     assert!(worktree_of(&setup.clone).exists(), "a merge from Code View removes nothing");
 }
 
@@ -128,8 +125,8 @@ fn checkout_finish_setting_is_a_select_with_its_help_and_saves() {
         harness.query_all_by_label("Local checkouts").next().expect("the section").rect(),
     );
     let label = "When a pull request is merged or closed elsewhere";
-    wait_until(&mut harness, "the row", |harness| shows(harness, label));
-    assert!(shows(
+    wait_until(&mut harness, "the row", |harness| has(harness, label));
+    assert!(has(
         &harness,
         "Applies when a merge or close is detected on the server, not when you merge from Code View. \
          Worktrees with uncommitted changes are never removed automatically."
@@ -142,11 +139,9 @@ fn checkout_finish_setting_is_a_select_with_its_help_and_saves() {
     let select = select().expect("the select shows the default");
     harness.click_at(select.rect());
     harness.run_steps(3);
-    assert!(shows(&harness, "Ask me first"), "the select offers its three choices");
+    assert!(has(&harness, "Ask me first"), "the select offers its three choices");
     click_last(&mut harness, "Keep worktree");
     harness.run_steps(3);
     assert_eq!(harness.state().services.settings.checkouts.when_finished, WhenFinished::Keep);
-    let saved =
-        AppSettings::load(&harness.state().services.paths.settings_file()).expect("saved settings");
-    assert_eq!(saved.checkouts.when_finished, WhenFinished::Keep);
+    assert_eq!(saved_settings(&harness).checkouts.when_finished, WhenFinished::Keep);
 }

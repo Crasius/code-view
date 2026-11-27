@@ -11,11 +11,10 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request};
-use super::github_mock::{GitHubHost, NUMBER, REPOSITORY};
-use super::request_budget::wait_idle;
+use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, open_pull_request};
+use super::walkthrough::{app, pump, set_focus, wait_idle, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 /// More than the probe interval with a token (`live::INTERVAL`, 30 s).
 const PROBE_DUE_AFTER: f64 = 35.0;
@@ -32,8 +31,11 @@ fn leave_page_by_breadcrumb_or_rail_sends_nothing_for_the_page_left() {
     let before = pull_request_reads(&host);
     make_probe_due_while_inactive(&mut harness);
     set_focus(&mut harness, true);
-    let has_gone_out = pump_until(&mut harness, 2.0, || pull_request_reads(&host) > before);
-    assert!(has_gone_out, "the pending probe goes out once the window is active");
+    // The probe leaves in time; its arrival at the host goes at the machine's pace.
+    pump(&mut harness, 2.0);
+    wait_until(&mut harness, "the pending probe to go out once the window is active", |_| {
+        pull_request_reads(&host) > before
+    });
 
     // The breadcrumb click is the first active frame: the pull request page does not run in it.
     pump(&mut harness, 5.0);
@@ -105,48 +107,6 @@ fn click_as_first_active_frame(harness: &mut Harness<'_, ReviewApp>, role: Role,
     };
     harness.event(button(true));
     harness.step();
-    focus_input(harness, true);
     harness.event(button(false));
-    harness.step();
-}
-
-fn set_focus(harness: &mut Harness<'_, ReviewApp>, is_focused: bool) {
-    focus_input(harness, is_focused);
-    harness.step();
-}
-
-fn focus_input(harness: &mut Harness<'_, ReviewApp>, is_focused: bool) {
-    harness.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().focused =
-        Some(is_focused);
-    harness.input_mut().focused = is_focused;
-}
-
-/// Pumps `seconds` of simulated time, then keeps stepping (real time, up to 10 s) until the mocked
-/// host has seen what `has_arrived` waits for: the request leaves in time, but its arrival at the
-/// host depends on how busy the machine is.
-fn pump_until(
-    harness: &mut Harness<'_, ReviewApp>,
-    seconds: f64,
-    has_arrived: impl Fn() -> bool,
-) -> bool {
-    pump(harness, seconds);
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while !has_arrived() {
-        if std::time::Instant::now() > deadline {
-            return false;
-        }
-        harness.step();
-        test_support::let_threads_run(std::time::Duration::from_millis(10));
-    }
-    true
-}
-
-/// Advances simulated time; each frame also gives background work a moment of real time.
-fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
-    let time = |harness: &Harness<'_, ReviewApp>| harness.ctx.input(|input| input.time);
-    let end = time(harness) + seconds;
-    while time(harness) < end {
-        harness.step();
-        test_support::let_threads_run(std::time::Duration::from_millis(3));
-    }
+    set_focus(harness, true);
 }

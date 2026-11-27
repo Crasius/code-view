@@ -2,22 +2,23 @@
 //! against a mock GitLab and a mock GitHub Enterprise Server. No network, no real token.
 
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
 
 use egui::accesskit::{Role, Toggled};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{Connection, ProviderKind};
-use review_store::{AppPaths, AppSettings, ConnectionStore};
+use review_store::{AppPaths, AppSettings};
 use serde_json::{Value, json};
-use wiremock::{MockServer, Request, Respond, ResponseTemplate};
+use wiremock::{Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
 use super::github_mock::GitHubHost;
+use super::mock_host::MockHost;
+use super::walkthrough::{
+    app_with, has, press, pump, saved_paths, saved_settings, secondary_press, wait_until_unsettled,
+};
 use cv_runtime::route::Route;
-use cv_settings::onboarding::CliTools;
-use cv_testkit as test_support;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const TOKEN: &str = "glpat-mock-only";
 const GROUP: &str = "team";
@@ -30,17 +31,19 @@ const LANE_TOOL: &str = "Show the Favorites lane";
 #[test]
 fn favorites_star_in_the_repository_browser_persists() {
     let gitlab = GitLabHost::start();
-    let paths = isolated_paths("star");
-    store(&paths, &[gitlab.connection("gitlab", "Team GitLab")]);
+    let scratch = ScratchDir::new("favorites-star");
+    let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab")]);
     let mut harness = start_app(&paths);
     go(&mut harness, Route::Repositories);
-    wait_until(&mut harness, "the repositories", |harness| has(harness, "Favorite team/api"));
+    wait_until_unsettled(&mut harness, "the repositories", |harness| {
+        has(harness, "Favorite team/api")
+    });
     assert_eq!(toggled(&harness, "Favorite team/api"), Some(Toggled::False));
 
     press(&mut harness, "Favorite team/api");
     assert_eq!(toggled(&harness, "Favorite team/api"), Some(Toggled::True), "the star fills");
     assert_eq!(
-        saved_favorites(&paths),
+        saved_favorites(&harness),
         [("gitlab".to_owned(), "team/api".to_owned())],
         "saved at once"
     );
@@ -48,11 +51,11 @@ fn favorites_star_in_the_repository_browser_persists() {
     harness.get_by_label("Favorite team/app").focus();
     harness.key_press(egui::Key::Space);
     pump(&mut harness, 0.5);
-    assert_eq!(saved_favorites(&paths).len(), 2);
+    assert_eq!(saved_favorites(&harness).len(), 2);
     drop(harness);
 
     let mut harness = start_app(&paths);
-    wait_until(&mut harness, "the Favorites card after the restart", |harness| {
+    wait_until_unsettled(&mut harness, "the Favorites card after the restart", |harness| {
         has(harness, "Favorites (2 repositories)")
     });
     assert!(has(&harness, "2 repositories"));
@@ -63,7 +66,9 @@ fn favorites_star_in_the_repository_browser_persists() {
             repository_key: "team/api".to_owned(),
         },
     );
-    wait_until(&mut harness, "the repository's star", |harness| has(harness, "Favorite team/api"));
+    wait_until_unsettled(&mut harness, "the repository's star", |harness| {
+        has(harness, "Favorite team/api")
+    });
     assert_eq!(
         toggled(&harness, "Favorite team/api"),
         Some(Toggled::True),
@@ -71,7 +76,7 @@ fn favorites_star_in_the_repository_browser_persists() {
     );
     press(&mut harness, "Favorite team/api");
     assert_eq!(toggled(&harness, "Favorite team/api"), Some(Toggled::False));
-    assert_eq!(saved_favorites(&paths), [("gitlab".to_owned(), "team/app".to_owned())]);
+    assert_eq!(saved_favorites(&harness), [("gitlab".to_owned(), "team/app".to_owned())]);
 }
 
 /// One card lists the starred repositories of GitLab and GitHub together, grouped by repository,
@@ -82,9 +87,9 @@ fn favorites_star_in_the_repository_browser_persists() {
 fn favorites_card_mixes_two_platforms_newest_updated_first() {
     let gitlab = GitLabHost::start();
     let github = GitHubHost::start("acme", &github_rows());
-    let paths = isolated_paths("mixed");
-    store(
-        &paths,
+    let scratch = ScratchDir::new("favorites-mixed");
+    let paths = saved_paths(
+        &scratch,
         &[gitlab.connection("gitlab", "Team GitLab"), github.connection("github", "Acme GitHub")],
     );
     let mut settings = AppSettings::default();
@@ -96,7 +101,7 @@ fn favorites_card_mixes_two_platforms_newest_updated_first() {
     settings.save(&paths.settings_file()).expect("save the favorites");
 
     let mut harness = start_app(&paths);
-    wait_until(&mut harness, "the Favorites card's rows", |harness| {
+    wait_until_unsettled(&mut harness, "the Favorites card's rows", |harness| {
         has(harness, "Favorites (3 repositories), 4 pull requests, expanded")
     });
     pump(&mut harness, 1.0);
@@ -140,7 +145,7 @@ fn favorites_card_mixes_two_platforms_newest_updated_first() {
     // The overview's state filter applies: merged pull requests are asked for, not filtered here.
     press(&mut harness, "State: Active");
     press(&mut harness, "Merged");
-    wait_until(&mut harness, "the merged listing", |_| gitlab.count(APP_LISTING) == 2);
+    wait_until_unsettled(&mut harness, "the merged listing", |_| gitlab.count(APP_LISTING) == 2);
     let merged = gitlab.queries(APP_LISTING);
     assert!(merged.last().is_some_and(|query| query.contains("state=merged")), "{merged:?}");
 }
@@ -152,9 +157,9 @@ fn favorites_card_mixes_two_platforms_newest_updated_first() {
 fn favorites_card_follows_the_role_filter() {
     let gitlab = GitLabHost::start();
     let github = GitHubHost::start("acme", &github_rows());
-    let paths = isolated_paths("role");
-    store(
-        &paths,
+    let scratch = ScratchDir::new("favorites-role");
+    let paths = saved_paths(
+        &scratch,
         &[gitlab.connection("gitlab", "Team GitLab"), github.connection("github", "Acme GitHub")],
     );
     let mut settings = AppSettings::default();
@@ -166,12 +171,12 @@ fn favorites_card_follows_the_role_filter() {
     settings.save(&paths.settings_file()).expect("save the favorites");
 
     let mut harness = start_app(&paths);
-    wait_until(&mut harness, "the Favorites card's rows", |harness| {
+    wait_until_unsettled(&mut harness, "the Favorites card's rows", |harness| {
         has(harness, "Favorites (3 repositories), 4 pull requests, expanded")
     });
     press(&mut harness, "Created by me");
     // Grace wrote both merge requests of team/app; the mock lists none of them as the user's.
-    wait_until(&mut harness, "the user's own favorites", |harness| {
+    wait_until_unsettled(&mut harness, "the user's own favorites", |harness| {
         has(harness, "Favorites (3 repositories), 2 pull requests, expanded")
     });
     assert!(!has(&harness, "App: retry uploads"), "rows of others leave the card");
@@ -190,18 +195,18 @@ fn favorites_card_follows_the_role_filter() {
 #[test]
 fn favorites_card_emptied_by_a_filter_offers_to_clear_it() {
     let gitlab = GitLabHost::start();
-    let paths = isolated_paths("role-empty");
-    store(&paths, &[gitlab.connection("gitlab", "Team GitLab")]);
+    let scratch = ScratchDir::new("favorites-role-empty");
+    let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab")]);
     let mut settings = AppSettings::default();
     settings.favorites.toggle("gitlab", "team/app");
     settings.save(&paths.settings_file()).expect("save the favorite");
 
     let mut harness = start_app(&paths);
-    wait_until(&mut harness, "the Favorites card's rows", |harness| {
+    wait_until_unsettled(&mut harness, "the Favorites card's rows", |harness| {
         has(harness, "Favorites (1 repository), 2 pull requests, expanded")
     });
     press(&mut harness, "Assigned to me");
-    wait_until(&mut harness, "the emptied card", |harness| {
+    wait_until_unsettled(&mut harness, "the emptied card", |harness| {
         has(harness, "Favorites (1 repository), 0 pull requests, expanded")
     });
     let listed = gitlab.queries(APP_LISTING);
@@ -213,7 +218,7 @@ fn favorites_card_emptied_by_a_filter_offers_to_clear_it() {
     harness
         .click_at(harness.query_all_by_label("Clear filters").next().expect("a way back").rect());
     harness.run_steps(4);
-    wait_until(&mut harness, "the rows again", |harness| {
+    wait_until_unsettled(&mut harness, "the rows again", |harness| {
         has(harness, "Favorites (1 repository), 2 pull requests, expanded")
     });
     assert!(has(&harness, "App: retry uploads"));
@@ -226,23 +231,23 @@ fn favorites_card_emptied_by_a_filter_offers_to_clear_it() {
 #[test]
 fn favorites_hidden_by_a_role_are_named_with_the_way_to_a_token() {
     let gitlab = GitLabHost::start();
-    let paths = isolated_paths("role-hidden");
+    let scratch = ScratchDir::new("favorites-role-hidden");
     let public = Connection { token: None, ..gitlab.connection("public", "Public GitLab") };
-    store(&paths, &[gitlab.connection("gitlab", "Team GitLab"), public]);
+    let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab"), public]);
     let mut settings = AppSettings::default();
     settings.favorites.toggle("gitlab", "team/app");
     settings.favorites.toggle("public", "team/api");
     settings.save(&paths.settings_file()).expect("save the favorites");
 
     let mut harness = start_app(&paths);
-    wait_until(&mut harness, "the Favorites card's rows", |harness| {
+    wait_until_unsettled(&mut harness, "the Favorites card's rows", |harness| {
         has(harness, "Favorites (2 repositories), 2 pull requests, expanded")
     });
     assert!(!has(&harness, "hidden"), "everything is listed while no role is chosen");
     press(&mut harness, "Created by me");
     let note = "1 repository hidden: Public GitLab has no token to know who you are.";
     let placed = harness.get_by_label_contains(note).rect();
-    wait_until(&mut harness, "the user's own favorites", |harness| {
+    wait_until_unsettled(&mut harness, "the user's own favorites", |harness| {
         has(harness, "Favorites (1 repository, 1 hidden), 0 pull requests, expanded")
     });
     pump(&mut harness, 1.0);
@@ -261,7 +266,7 @@ fn favorites_hidden_by_a_role_are_named_with_the_way_to_a_token() {
     press(&mut harness, "Add token");
     pump(&mut harness, 0.5);
     assert_eq!(harness.state().route, Route::Settings);
-    wait_until(&mut harness, "the token step", |harness| {
+    wait_until_unsettled(&mut harness, "the token step", |harness| {
         harness.query_by_role(egui::accesskit::Role::PasswordInput).is_some()
     });
 }
@@ -271,23 +276,25 @@ fn favorites_hidden_by_a_role_are_named_with_the_way_to_a_token() {
 #[test]
 fn favorites_empty_card_leads_to_the_repositories_and_rows_star_from_their_menu() {
     let gitlab = GitLabHost::start();
-    let paths = isolated_paths("empty");
-    store(&paths, &[gitlab.connection("gitlab", "Team GitLab")]);
+    let scratch = ScratchDir::new("favorites-empty");
+    let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab")]);
     let mut harness = start_app(&paths);
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Team change 1"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Team change 1"));
     assert!(has(&harness, "Star a repository to see its pull requests here"));
     assert_eq!(gitlab.count(APP_LISTING), 0, "nothing starred, nothing asked");
 
-    secondary_click(&mut harness, "1 Team change 1");
+    secondary_press(&mut harness, "1 Team change 1");
     press(&mut harness, "Add team/app to favorites");
-    wait_until(&mut harness, "the starred project's rows", |harness| {
+    wait_until_unsettled(&mut harness, "the starred project's rows", |harness| {
         has(harness, "Favorites (1 repository), 2 pull requests, expanded")
     });
-    assert_eq!(saved_favorites(&paths), [("gitlab".to_owned(), "team/app".to_owned())]);
+    assert_eq!(saved_favorites(&harness), [("gitlab".to_owned(), "team/app".to_owned())]);
 
-    secondary_click(&mut harness, "5 App: retry uploads");
+    secondary_press(&mut harness, "5 App: retry uploads");
     press(&mut harness, "Remove team/app from favorites");
-    wait_until(&mut harness, "the empty card again", |harness| has(harness, "Star a repository"));
+    wait_until_unsettled(&mut harness, "the empty card again", |harness| {
+        has(harness, "Star a repository")
+    });
     press(&mut harness, "Browse repositories");
     assert_eq!(harness.state().route, Route::Repositories);
 }
@@ -299,22 +306,22 @@ fn favorites_empty_card_leads_to_the_repositories_and_rows_star_from_their_menu(
 #[test]
 fn favorites_lane_hidden_lifts_starred_rows_and_asks_nothing() {
     let gitlab = GitLabHost::start();
-    let paths = isolated_paths("lane");
-    store(&paths, &[gitlab.connection("gitlab", "Team GitLab")]);
+    let scratch = ScratchDir::new("favorites-lane");
+    let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab")]);
     let mut harness = start_app(&paths);
-    wait_until(&mut harness, "the overview", |harness| has(harness, "Team change 1"));
+    wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Team change 1"));
     assert!(has(&harness, "Favorites ("), "the lane is shown by default");
     assert_eq!(lane_tool(&harness), Some(Toggled::True));
     press_lane_tool(&mut harness);
     assert!(!has(&harness, "Favorites ("), "the card leaves");
     assert_eq!(lane_tool(&harness), Some(Toggled::False));
-    assert!(!saved_lane(&paths), "saved at once");
+    assert!(!saved_lane(&harness), "saved at once");
     assert!(first_top(&harness, "2 API change 2") < first_top(&harness, "1 Team change 1"));
 
-    secondary_click(&mut harness, "1 Team change 1");
+    secondary_press(&mut harness, "1 Team change 1");
     press(&mut harness, "Add team/app to favorites");
     pump(&mut harness, 1.0);
-    assert_eq!(saved_favorites(&paths), [("gitlab".to_owned(), "team/app".to_owned())]);
+    assert_eq!(saved_favorites(&harness), [("gitlab".to_owned(), "team/app".to_owned())]);
     assert!(
         first_top(&harness, "1 Team change 1") < first_top(&harness, "2 API change 2"),
         "the starred repository's row leads its card"
@@ -325,7 +332,7 @@ fn favorites_lane_hidden_lifts_starred_rows_and_asks_nothing() {
     drop(harness);
 
     let mut harness = start_app(&paths);
-    wait_until(&mut harness, "the overview after the restart", |harness| {
+    wait_until_unsettled(&mut harness, "the overview after the restart", |harness| {
         has(harness, "Team change 1")
     });
     pump(&mut harness, 1.0);
@@ -335,10 +342,10 @@ fn favorites_lane_hidden_lifts_starred_rows_and_asks_nothing() {
     assert_eq!(gitlab.count(APP_LISTING), 0, "the restart asks for no favorites either");
 
     press_lane_tool(&mut harness);
-    wait_until(&mut harness, "the lane again", |harness| {
+    wait_until_unsettled(&mut harness, "the lane again", |harness| {
         has(harness, "Favorites (1 repository), 2 pull requests, expanded")
     });
-    assert!(saved_lane(&paths));
+    assert!(saved_lane(&harness));
     assert_eq!(gitlab.count(APP_LISTING), 1, "the lane asks once it is back");
     assert!(!has(&harness, "is a favorite"), "with the lane shown rows carry no mark");
     assert!(
@@ -346,10 +353,10 @@ fn favorites_lane_hidden_lifts_starred_rows_and_asks_nothing() {
         "with the lane shown the cards keep their own order"
     );
 
-    secondary_click(&mut harness, "Favorites (1 repository), 2 pull requests, expanded");
+    secondary_press(&mut harness, "Favorites (1 repository), 2 pull requests, expanded");
     press(&mut harness, "Hide the Favorites lane");
     pump(&mut harness, 0.5);
-    assert!(!has(&harness, "Favorites (") && !saved_lane(&paths), "the card's menu hides it");
+    assert!(!has(&harness, "Favorites (") && !saved_lane(&harness), "the card's menu hides it");
 }
 
 /// The overview's star tool: whether it is on.
@@ -363,8 +370,8 @@ fn press_lane_tool(harness: &mut Harness<'_, ReviewApp>) {
     pump(harness, 1.0);
 }
 
-fn saved_lane(paths: &AppPaths) -> bool {
-    AppSettings::load(&paths.settings_file()).expect("saved settings").favorites.is_lane_shown
+fn saved_lane(harness: &Harness<'_, ReviewApp>) -> bool {
+    saved_settings(harness).favorites.is_lane_shown
 }
 
 fn github_rows() -> Vec<Value> {
@@ -400,36 +407,26 @@ fn github_searches(github: &GitHubHost) -> Vec<String> {
 /// A GitLab group `team` with the projects `team/app` and `team/api`; the group lists one merge
 /// request of each project, newest first, `team/app` two others. Records every request's path and query.
 struct GitLabHost {
-    server: MockServer,
+    host: MockHost,
     hits: Arc<Mutex<Vec<(String, String)>>>,
-    _runtime: tokio::runtime::Runtime,
 }
 
 impl GitLabHost {
     fn start() -> Self {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .expect("mock runtime");
-        let server = runtime.block_on(MockServer::start());
-        cv_testkit::fresh_origin(&server.uri());
         let hits = Arc::new(Mutex::new(Vec::new()));
-        let responder = GitLabResponder { hits: hits.clone(), base_url: server.uri() };
-        runtime.block_on(
-            wiremock::Mock::given(wiremock::matchers::any()).respond_with(responder).mount(&server),
-        );
-        Self { server, hits, _runtime: runtime }
+        let host = MockHost::start(|base_url| GitLabResponder {
+            hits: hits.clone(),
+            base_url: base_url.to_owned(),
+        });
+        Self { host, hits }
     }
 
     fn connection(&self, id: &str, name: &str) -> Connection {
         Connection {
-            id: id.to_owned(),
             name: name.to_owned(),
-            kind: ProviderKind::GitLab,
-            base_url: self.server.uri(),
             organizations: vec![GROUP.to_owned()],
             token: Some(TOKEN.to_owned()),
+            ..samples::connection(id, ProviderKind::GitLab, &self.host.uri())
         }
     }
 
@@ -516,16 +513,8 @@ impl GitLabResponder {
     }
 }
 
-fn store(paths: &AppPaths, connections: &[Connection]) {
-    let mut store = ConnectionStore::open(paths).expect("empty store");
-    for connection in connections {
-        store.upsert(connection.clone()).expect("store the connection");
-    }
-}
-
-fn saved_favorites(paths: &AppPaths) -> Vec<(String, String)> {
-    let settings = AppSettings::load(&paths.settings_file()).expect("saved settings");
-    settings
+fn saved_favorites(harness: &Harness<'_, ReviewApp>) -> Vec<(String, String)> {
+    saved_settings(harness)
         .favorites
         .repositories()
         .iter()
@@ -546,61 +535,13 @@ fn first_top(harness: &Harness<'_, ReviewApp>, label: &str) -> f32 {
         .unwrap_or_else(|| panic!("no row labelled {label}"))
 }
 
-fn isolated_paths(name: &str) -> AppPaths {
-    let root = std::env::temp_dir().join(format!("review-favorites-{name}-{}", std::process::id()));
-    test_support::remove_dir(&root);
-    AppPaths::new(root.join("config"), root.join("cache"))
-}
-
 fn start_app(paths: &AppPaths) -> Harness<'static, ReviewApp> {
-    let paths = paths.clone();
     let builder =
         Harness::builder().with_size([1440.0, 900.0]).with_step_dt(0.25).allow_missing_glyphs();
-    let mut harness = super::startup::start(builder, move |creation| {
-        ReviewApp::new(creation, paths, cv_providers::create_provider)
-    });
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
-    harness
-}
-
-/// Moves the pointer onto the labelled widget first, as a mouse does, then clicks it.
-fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    harness.get_by_label(label).hover();
-    harness.step();
-    harness.click_at(harness.get_by_label(label).rect());
-    harness.run_steps(4);
-}
-
-/// A right click on the labelled widget, the pointer resting there first.
-fn secondary_click(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    harness.get_by_label(label).hover();
-    harness.step();
-    harness.secondary_click_at(harness.get_by_label(label).rect());
-    harness.run_steps(2);
+    app_with(builder, paths.clone(), cv_providers::create_provider)
 }
 
 fn go(harness: &mut Harness<'_, ReviewApp>, route: Route) {
     harness.state_mut().navigator.go(route);
     harness.step();
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
-}
-
-/// Advances simulated time; each frame also gives background work a moment of real time.
-fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
-    let end = harness.ctx.input(|input| input.time) + seconds;
-    while harness.ctx.input(|input| input.time) < end {
-        harness.step();
-        test_support::let_threads_run(Duration::from_millis(2));
-    }
-}
-
-fn wait_until(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
 }
