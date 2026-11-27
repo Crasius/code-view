@@ -27,16 +27,7 @@ struct Node {
     file_count: u32,
 }
 
-/// `paths` yields (file index, path) for every visible file.
-#[cfg(test)]
-pub fn build<'a>(
-    paths: impl Iterator<Item = (usize, &'a str)>,
-    collapsed: &HashSet<String>,
-) -> Vec<TreeRow> {
-    build_with_order(paths, collapsed).0
-}
-
-/// The rows, and every file in the order the rows would list them with no folder collapsed.
+/// The rows of the files `paths` yields as (file index, path), and every file in the order the rows would list them with no folder collapsed.
 pub fn build_with_order<'a>(
     paths: impl Iterator<Item = (usize, &'a str)>,
     collapsed: &HashSet<String>,
@@ -45,9 +36,8 @@ pub fn build_with_order<'a>(
     for (index, path) in paths {
         let mut node = &mut root;
         node.file_count += 1;
-        let mut segments: Vec<&str> = path.split('/').collect();
-        segments.pop();
-        for segment in segments {
+        let folders = path.rsplit_once('/').map(|(folders, _)| folders);
+        for segment in folders.into_iter().flat_map(|folders| folders.split('/')) {
             node = node.folders.entry(segment.to_owned()).or_default();
             node.file_count += 1;
         }
@@ -130,7 +120,7 @@ mod tests {
     #[test]
     fn compresses_single_child_chains_and_lists_folders_first() {
         let paths = ["src/app/features/a.rs", "src/app/features/b.rs", "src/lib.rs", "README.md"];
-        let rows = build(paths.iter().copied().enumerate(), &HashSet::new());
+        let (rows, _) = build_with_order(paths.iter().copied().enumerate(), &HashSet::new());
         assert_eq!(labels(&rows), ["src/", "  app/features/", "    #0", "    #1", "  #2", "#3"]);
         let TreeRow::Folder { file_count, .. } = &rows[0] else { panic!("folder expected") };
         assert_eq!(*file_count, 3);
@@ -140,7 +130,7 @@ mod tests {
     fn skips_children_of_collapsed_folders() {
         let paths = ["src/a.rs", "docs/b.md"];
         let collapsed: HashSet<String> = ["src".to_owned()].into();
-        let rows = build(paths.iter().copied().enumerate(), &collapsed);
+        let (rows, _) = build_with_order(paths.iter().copied().enumerate(), &collapsed);
         assert_eq!(labels(&rows), ["docs/", "  #1", "src/"]);
     }
 

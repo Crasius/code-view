@@ -4,10 +4,12 @@
 //! Folders and files at one depth share the viewed column, so their marks line up. The folder summary's cards paint
 //! their file glyphs, badges and cut names with the same functions.
 
+use std::sync::Arc;
+
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
 use egui::{
-    Align2, Color32, FontId, Painter, Pos2, Rect, RectAlign, Response, Sense, Stroke, Ui, Vec2,
-    pos2, vec2,
+    Align2, Color32, FontId, Galley, Painter, Pos2, Rect, RectAlign, Response, Sense, Stroke, Ui,
+    Vec2, pos2, vec2,
 };
 use review_git::{ChangeKind, ChangedFile};
 use review_store::TreeSide;
@@ -22,7 +24,7 @@ use cv_widgets::{checkbox, focus, row, skeleton};
 
 /// Rows sit on the 4 px grid and touch each other, so hover, selection and indent guides run
 /// without gaps.
-pub const ROW_HEIGHT: f32 = 28.0;
+pub(crate) const ROW_HEIGHT: f32 = 28.0;
 /// One nesting level; the guide of a folder runs through the middle of its caret column.
 const INDENT: f32 = 16.0;
 /// Space between the panel edge and the depth-0 caret column.
@@ -45,9 +47,11 @@ const NAME_LEFT: f32 = ICON_LEFT + ICON_WIDTH + style::SPACE_S;
 const RIGHT_INSET: f32 = style::SPACE_M;
 const NAME_SIZE: f32 = 13.0;
 const PILL_HEIGHT: f32 = 18.0;
+/// Space between a pill's text and its rounded ends.
+const PILL_PADDING_X: f32 = 6.0;
 
 /// The loading skeleton's rows sit where these rows will, so they replace it in place.
-pub const SKELETON: skeleton::TreeShape = skeleton::TreeShape {
+pub(crate) const SKELETON: skeleton::TreeShape = skeleton::TreeShape {
     row_height: ROW_HEIGHT,
     indent: INDENT,
     inset: INSET,
@@ -56,14 +60,14 @@ pub const SKELETON: skeleton::TreeShape = skeleton::TreeShape {
 };
 
 /// What a click on a row asks for.
-pub enum RowAction {
+pub(crate) enum RowAction {
     Tree(TreeEvent),
     /// The caret (or a double click): open or close the folder at this path.
     ToggleFolder(String),
 }
 
 /// A row as it showed this frame.
-pub struct ShownRow {
+pub(crate) struct ShownRow {
     /// What the user did with it.
     pub action: Option<RowAction>,
     /// The pointer is on it (on the row or a control in it).
@@ -80,12 +84,11 @@ pub(crate) fn show(
 ) -> ShownRow {
     let (rect, response) =
         ui.allocate_exact_size(vec2(ui.available_width(), ROW_HEIGHT), Sense::click());
-    let accessible_name = match row {
-        TreeRow::Folder { path, .. } => path.clone(),
-        TreeRow::File { index, .. } => inputs.files[*index as usize].path.clone(),
+    let accessible_name: &str = match row {
+        TreeRow::Folder { path, .. } => path,
+        TreeRow::File { index, .. } => &inputs.files[*index as usize].path,
     };
-    response
-        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::TreeItem, true, &accessible_name));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TreeItem, true, accessible_name));
     let action = match row {
         TreeRow::Folder { path, label, depth, file_count, is_collapsed, mark } => {
             let folder = FolderRow {
@@ -127,7 +130,7 @@ pub(crate) fn show(
 }
 
 /// Right-aligned "+12  −3" columns shared by every file row, sized for the widest count.
-pub struct CountColumns {
+pub(crate) struct CountColumns {
     font: FontId,
     /// Widths of the additions and deletions columns; `None` while no line counts are known.
     widths: Option<(f32, f32)>,
@@ -297,16 +300,7 @@ fn paint_folder(
     let format = TextFormat::simple(fonts::semibold_font(NAME_SIZE), palette.text);
     paint_elided(&painter, name_left, folder.label, format, count.left() - style::SPACE_S);
 
-    let mut detail = if folder.file_count == 1 {
-        "1 changed file".to_owned()
-    } else {
-        format!("{} changed files", group_digits(folder.file_count as usize))
-    };
-    match folder.mark {
-        FolderMark::None => {}
-        FolderMark::Some => detail.push_str(", some viewed"),
-        FolderMark::All => detail.push_str(", all viewed"),
-    }
+    let detail = || folder_summary(folder);
     tooltip_beside_row(ui, response, folder.path, detail, folder.side, &palette);
     if mark.clicked() {
         return Some(FolderRowEvent::ToggleViewed);
@@ -315,6 +309,21 @@ fn paint_folder(
         return Some(FolderRowEvent::Toggle);
     }
     response.clicked().then_some(FolderRowEvent::Select)
+}
+
+/// "12 changed files, some viewed" for a folder's tooltip.
+fn folder_summary(folder: &FolderRow<'_>) -> String {
+    let mut summary = if folder.file_count == 1 {
+        "1 changed file".to_owned()
+    } else {
+        format!("{} changed files", group_digits(folder.file_count as usize))
+    };
+    match folder.mark {
+        FolderMark::None => {}
+        FolderMark::Some => summary.push_str(", some viewed"),
+        FolderMark::All => summary.push_str(", all viewed"),
+    }
+    summary
 }
 
 /// A folder's tri-state viewed mark in the viewed column, between the caret and the folder glyph,
@@ -365,12 +374,24 @@ fn paint_count_pill(painter: &Painter, right_center: Pos2, count: u32, palette: 
         FontId::proportional(style::SMALL_SIZE),
         palette.text_secondary,
     );
-    let size = vec2((galley.size().x + 2.0 * 6.0).max(PILL_HEIGHT), PILL_HEIGHT);
+    paint_pill(painter, right_center, galley, palette.border, PILL_HEIGHT)
+}
+
+/// A pill [`PILL_HEIGHT`] high, at least `min_width` wide, that ends at `right_center`: `galley`
+/// centred on `fill`. Returns the pill's rect.
+fn paint_pill(
+    painter: &Painter,
+    right_center: Pos2,
+    galley: Arc<Galley>,
+    fill: Color32,
+    min_width: f32,
+) -> Rect {
+    let size = vec2((galley.size().x + 2.0 * PILL_PADDING_X).max(min_width), PILL_HEIGHT);
     let pill =
         Rect::from_min_size(pos2(right_center.x - size.x, right_center.y - size.y / 2.0), size);
-    painter.rect_filled(pill, PILL_HEIGHT / 2.0, palette.border);
-    let text_pos = pill.center() - galley.size() / 2.0;
-    painter.galley(text_pos, galley, palette.text_secondary);
+    painter.rect_filled(pill, PILL_HEIGHT / 2.0, fill);
+    // The galley carries its own color.
+    painter.galley(pill.center() - galley.size() / 2.0, galley, Color32::PLACEHOLDER);
     pill
 }
 
@@ -451,7 +472,7 @@ fn paint_file(
         name_right - style::SPACE_XS,
     );
 
-    let summary = row_summary(file, &change, state);
+    let summary = || row_summary(file, &change, state);
     tooltip_beside_row(ui, response, &file.path, summary, state.side, &palette);
     if checkbox.clicked() {
         return Some(FileRowEvent::ToggleViewed);
@@ -533,16 +554,17 @@ fn row_summary(file: &ChangedFile, change: &ChangeLook, state: &FileRowState) ->
 
 /// Path tooltips open beside the row, over the diff (away from the window edge the tree sits at),
 /// so they never hide the rows around it.
-/// The detail line is also the row's accessible description.
+/// The detail line is also the row's accessible description; `detail` runs only for what shows
+/// it, as most rows have neither the tooltip open nor a screen reader asking.
 fn tooltip_beside_row(
     ui: &Ui,
     response: &Response,
     path: &str,
-    detail: String,
+    detail: impl Fn() -> String,
     side: TreeSide,
     palette: &Palette,
 ) {
-    ui.ctx().accesskit_node_builder(response.id, |node| node.set_description(detail.clone()));
+    ui.ctx().accesskit_node_builder(response.id, |node| node.set_description(detail()));
     let (towards_diff, alternatives): (_, &'static [RectAlign]) = match side {
         TreeSide::Left => (RectAlign::RIGHT, &[RectAlign::RIGHT_START, RectAlign::LEFT]),
         TreeSide::Right => (RectAlign::LEFT, &[RectAlign::LEFT_START, RectAlign::RIGHT]),
@@ -551,7 +573,9 @@ fn tooltip_beside_row(
     tooltip.popup = tooltip.popup.align(towards_diff).align_alternatives(alternatives);
     tooltip.show(|ui| {
         ui.label(egui::RichText::new(path).size(NAME_SIZE).color(palette.text));
-        ui.label(egui::RichText::new(detail).size(style::SMALL_SIZE).color(palette.text_secondary));
+        ui.label(
+            egui::RichText::new(detail()).size(style::SMALL_SIZE).color(palette.text_secondary),
+        );
     });
 }
 
@@ -606,13 +630,8 @@ pub fn paint_comment_badge(
     let text = format!("{} {}", icons::CHAT_CIRCLE_TEXT, group_digits(count));
     let galley =
         painter.layout_no_wrap(text, FontId::proportional(style::SMALL_SIZE), palette.accent_text);
-    let size = vec2(galley.size().x + 2.0 * 6.0, PILL_HEIGHT);
-    let pill =
-        Rect::from_min_size(pos2(right_center.x - size.x, right_center.y - size.y / 2.0), size);
     let strength = if palette.is_dark { 0.22 } else { 0.12 };
-    painter.rect_filled(pill, PILL_HEIGHT / 2.0, palette.accent.gamma_multiply(strength));
-    painter.galley(pill.center() - galley.size() / 2.0, galley, palette.accent_text);
-    pill
+    paint_pill(painter, right_center, galley, palette.accent.gamma_multiply(strength), 0.0)
 }
 
 /// A file's type glyph with its change mark, as its tree row shows it, on a row of `row_color`.

@@ -15,8 +15,8 @@ use cv_widgets::numbers::group_digits;
 use cv_widgets::{change_breakdown, focus, row};
 
 /// Height of the progress strip; the bar itself is a 2 px hairline centred in it.
-pub const PROGRESS_HEIGHT: f32 = 4.0;
-pub const BAR_HEIGHT: f32 = 2.0;
+pub(crate) const PROGRESS_HEIGHT: f32 = 4.0;
+pub(crate) const BAR_HEIGHT: f32 = 2.0;
 /// Space between the viewed count and the line totals on one line.
 const TOTALS_GAP: f32 = 12.0;
 /// Space between the added and deleted totals.
@@ -38,7 +38,7 @@ pub enum VoteOffer {
 }
 
 /// What the review progress line shows besides the line totals.
-pub struct Progress {
+pub(crate) struct Progress {
     pub viewed: usize,
     pub total: usize,
     /// The line totals are still on their way.
@@ -47,7 +47,11 @@ pub struct Progress {
 }
 
 /// The line and its bar; returns the step a link asked for.
-pub fn show(ui: &mut Ui, progress: &Progress, breakdown: &ChangeBreakdown) -> Option<ReviewStep> {
+pub(crate) fn show(
+    ui: &mut Ui,
+    progress: &Progress,
+    breakdown: &ChangeBreakdown,
+) -> Option<ReviewStep> {
     let Progress { viewed, total, .. } = *progress;
     let is_done = total > 0 && viewed >= total;
     let step =
@@ -139,14 +143,11 @@ fn done_line(ui: &mut Ui, progress: &Progress, breakdown: &ChangeBreakdown) -> O
     // Links take their color when painted, so they can ease to the accent on hover.
     let overview = galley(ui, "Overview", &font, Color32::PLACEHOLDER, width);
     let vote = match progress.vote {
-        VoteOffer::Approve { is_enabled } => {
-            Some((galley(ui, "Approve", &font, Color32::PLACEHOLDER, width), Some(is_enabled)))
-        }
-        VoteOffer::Voted(label) => {
-            Some((galley(ui, label, &font, Color32::PLACEHOLDER, width), None))
-        }
+        VoteOffer::Approve { .. } => Some("Approve"),
+        VoteOffer::Voted(label) => Some(label),
         VoteOffer::None => None,
-    };
+    }
+    .map(|label| (galley(ui, label, &font, Color32::PLACEHOLDER, width), progress.vote));
     let vote_width = vote.as_ref().map_or(0.0, |(galley, _)| galley.size().x + LINK_GAP);
     let links_width = overview.size().x + vote_width;
 
@@ -161,13 +162,13 @@ fn done_line(ui: &mut Ui, progress: &Progress, breakdown: &ChangeBreakdown) -> O
     if link.show(ui, overview_rect, overview, palette.accent_text) {
         step = Some(ReviewStep::Overview);
     }
-    if let Some((galley, enabled)) = vote {
+    if let Some((galley, offer)) = vote {
         let rect = Rect::from_min_size(
             pos2(overview_rect.left() - LINK_GAP - galley.size().x, line.top()),
             galley.size(),
         );
-        match enabled {
-            Some(true) => {
+        match offer {
+            VoteOffer::Approve { is_enabled: true } => {
                 let link = Link {
                     id: response.id.with("approve"),
                     name: "Approve",
@@ -177,19 +178,20 @@ fn done_line(ui: &mut Ui, progress: &Progress, breakdown: &ChangeBreakdown) -> O
                     step = Some(ReviewStep::Approve);
                 }
             }
-            Some(false) => {
+            VoteOffer::Approve { is_enabled: false } => {
                 let label = ui.interact(rect, response.id.with("approve"), Sense::hover());
                 label.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, false, "Approve"));
                 ui.painter().galley(rect.min, galley, palette.text_disabled);
                 label.on_hover_text("Another change is on its way to the platform");
             }
-            None => {
-                let text = format!("Your vote: {}", galley.text());
+            VoteOffer::Voted(label) => {
+                let text = format!("Your vote: {label}");
                 let label = ui.interact(rect, response.id.with("approve"), Sense::hover());
                 label.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &text));
                 ui.painter().galley(rect.min, galley, palette.text_secondary);
                 label.on_hover_text(text);
             }
+            VoteOffer::None => {}
         }
     }
 
