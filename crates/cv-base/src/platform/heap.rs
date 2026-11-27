@@ -49,21 +49,8 @@ pub fn private_bytes() -> Option<usize> {
     };
     use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
-    let mut counters = PROCESS_MEMORY_COUNTERS_EX {
-        cb: 0,
-        PageFaultCount: 0,
-        PeakWorkingSetSize: 0,
-        WorkingSetSize: 0,
-        QuotaPeakPagedPoolUsage: 0,
-        QuotaPagedPoolUsage: 0,
-        QuotaPeakNonPagedPoolUsage: 0,
-        QuotaNonPagedPoolUsage: 0,
-        PagefileUsage: 0,
-        PeakPagefileUsage: 0,
-        PrivateUsage: 0,
-    };
-    let size = u32::try_from(size_of::<PROCESS_MEMORY_COUNTERS_EX>()).unwrap_or(u32::MAX);
-    counters.cb = size;
+    let size = size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
+    let mut counters = PROCESS_MEMORY_COUNTERS_EX { cb: size, ..Default::default() };
     // SAFETY: takes no arguments and returns a pseudo handle that needs no closing.
     let process = unsafe { GetCurrentProcess() };
     // SAFETY: `counters` is a writable `PROCESS_MEMORY_COUNTERS_EX` of `size` bytes, which the

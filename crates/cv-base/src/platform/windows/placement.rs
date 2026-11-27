@@ -26,14 +26,14 @@ use windows_sys::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITOR_DEFAULTTONEAREST,
     MONITOR_DEFAULTTOPRIMARY, MONITORINFO, MonitorFromPoint, MonitorFromWindow,
 };
-use windows_sys::Win32::System::Threading::{GetStartupInfoW, STARTF_USESHOWWINDOW, STARTUPINFOW};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GWL_EXSTYLE, GetWindowLongPtrW, GetWindowPlacement, GetWindowRect, IsIconic, IsZoomed,
-    SHOW_WINDOW_CMD, SW_HIDE, SW_MINIMIZE, SW_SHOWMAXIMIZED, SW_SHOWMINNOACTIVE, SW_SHOWNA,
-    SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER, SetWindowLongPtrW,
+    GWL_EXSTYLE, GetWindowLongPtrW, GetWindowPlacement, GetWindowRect, IsIconic, IsZoomed, SW_HIDE,
+    SW_SHOWMAXIMIZED, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER, SetWindowLongPtrW,
     SetWindowPos, ShowWindow, WINDOWPLACEMENT, WPF_RESTORETOMAXIMIZED, WS_EX_NOACTIVATE,
 };
 use windows_sys::core::BOOL;
+
+use super::startup::{launch_activates, launch_show_command};
 
 /// Physical pixels of the title bar that must lie on a monitor to drag the window back.
 const GRIP_WIDTH: i32 = 120;
@@ -288,26 +288,6 @@ impl PlacedWindow {
     }
 }
 
-/// How the launcher asked the first window to show (`STARTUPINFO.wShowWindow`), if it did.
-fn launch_show_command() -> Option<SHOW_WINDOW_CMD> {
-    let mut startup =
-        STARTUPINFOW { cb: std::mem::size_of::<STARTUPINFOW>() as u32, ..Default::default() };
-    // SAFETY: fills a local struct that carries its size.
-    unsafe { GetStartupInfoW(&raw mut startup) };
-    (startup.dwFlags & STARTF_USESHOWWINDOW != 0)
-        .then(|| SHOW_WINDOW_CMD::from(startup.wShowWindow))
-}
-
-/// Whether the launcher wants the window active: as for a plain start (Explorer, a shortcut,
-/// `Start-Process`) unless it named a show command that leaves the window inactive (a start in
-/// the background, `scripts/start-background.ps1`).
-fn launch_activates(show: Option<SHOW_WINDOW_CMD>) -> bool {
-    !matches!(
-        show,
-        Some(SW_HIDE | SW_SHOWNOACTIVATE | SW_MINIMIZE | SW_SHOWMINNOACTIVE | SW_SHOWNA)
-    )
-}
-
 /// The work areas of all monitors attached now.
 fn work_areas() -> Vec<ScreenRect> {
     unsafe extern "system" fn collect(
@@ -367,25 +347,7 @@ fn screen_rect(rect: RECT) -> ScreenRect {
 
 #[cfg(test)]
 mod tests {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        SW_HIDE, SW_MINIMIZE, SW_SHOW, SW_SHOWDEFAULT, SW_SHOWMAXIMIZED, SW_SHOWMINNOACTIVE,
-        SW_SHOWNA, SW_SHOWNOACTIVATE, SW_SHOWNORMAL,
-    };
-
-    use super::{ScreenRect, centered, fit, launch_activates};
-
-    #[test]
-    fn a_background_launch_keeps_the_restored_maximize_inactive() {
-        // A plain start, or one that asks for a shown window, comes to the front.
-        for show in [None, Some(SW_SHOWNORMAL), Some(SW_SHOW), Some(SW_SHOWDEFAULT)] {
-            assert!(launch_activates(show), "{show:?}");
-        }
-        assert!(launch_activates(Some(SW_SHOWMAXIMIZED)));
-        // `scripts/start-background.ps1` starts with SW_SHOWNOACTIVATE, or SW_SHOWMINNOACTIVE.
-        for show in [SW_SHOWNOACTIVATE, SW_SHOWMINNOACTIVE, SW_SHOWNA, SW_MINIMIZE, SW_HIDE] {
-            assert!(!launch_activates(Some(show)), "{show}");
-        }
-    }
+    use super::{ScreenRect, centered, fit};
 
     /// 1920x1080 primary with a 48 px taskbar, and a 2560x1440 monitor (150 %) to its left.
     const PRIMARY: ScreenRect = ScreenRect { left: 0, top: 0, right: 1920, bottom: 1032 };
