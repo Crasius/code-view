@@ -140,7 +140,7 @@ async fn the_search_brings_line_and_file_counts() {
     let rows =
         provider.list_pull_requests(&query(PullRequestScope::Visible)).await.expect("overview");
     assert_eq!(rows[0].diff_stat, DiffStat::new(1240, 312, 18));
-    let requests = server.received_requests().await.unwrap_or_default();
+    let requests = server.received_requests().await.expect("recorded");
     assert_eq!(
         requests.iter().filter(|request| request.url.path() == "/api/graphql").count(),
         1,
@@ -305,7 +305,7 @@ async fn the_users_part_of_one_repository_is_one_search_for_it() {
             provider.list_pull_requests(&query).await.expect("the user's part of contoso/app");
         assert_eq!(rows.iter().map(|row| row.number).collect::<Vec<_>>(), [number], "{role:?}");
     }
-    let requests = server.received_requests().await.unwrap_or_default();
+    let requests = server.received_requests().await.expect("recorded");
     assert!(requests.iter().all(|request| request.url.path() == "/api/graphql"), "no owner lookup");
 }
 
@@ -412,7 +412,7 @@ async fn anonymous_overview_asks_for_a_token_without_a_request() {
         .await
         .expect_err("GraphQL needs a token");
     assert!(matches!(error, ProviderError::Unsupported(_)), "{error:?}");
-    assert!(server.received_requests().await.unwrap_or_default().is_empty());
+    assert!(server.received_requests().await.expect("recorded").is_empty());
 }
 
 /// Several repositories share one search, so one busy repository can fill the page: each keeps at

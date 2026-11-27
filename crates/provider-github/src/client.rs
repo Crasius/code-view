@@ -30,8 +30,7 @@ impl ApiRoots {
     /// `https://github.com` → `api.github.com`; any other host is GitHub Enterprise Server.
     pub(crate) fn for_base_url(base_url: &str) -> Self {
         let base = base_url.trim_end_matches('/');
-        let is_public = PUBLIC_WEB_ROOTS.iter().any(|root| base.eq_ignore_ascii_case(root));
-        if is_public {
+        if is_public_web_root(base) {
             return Self {
                 rest: PUBLIC_API_ROOT.to_owned(),
                 graphql: format!("{PUBLIC_API_ROOT}/graphql"),
@@ -39,6 +38,12 @@ impl ApiRoots {
         }
         Self { rest: format!("{base}/api/v3"), graphql: format!("{base}/api/graphql") }
     }
+}
+
+/// Whether `base_url` is public github.com rather than a GitHub Enterprise Server.
+pub(crate) fn is_public_web_root(base_url: &str) -> bool {
+    let base = base_url.trim_end_matches('/');
+    PUBLIC_WEB_ROOTS.iter().any(|root| base.eq_ignore_ascii_case(root))
 }
 
 /// How far a listing pages: stop at `limit` items or after `max_pages` requests.
