@@ -4,61 +4,22 @@
 //! a pull request header, whose mark links to the pull request.
 //! `cargo test -p review-app provider_icons`
 
-use std::sync::{Arc, Mutex};
-
-use async_trait::async_trait;
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_core::{
-    Capabilities, Connection, GitRemote, Label, MergeOptions, MergeStatus, MergeStrategy,
-    NewThread, PipelineJob, PipelineRun, Provider, ProviderError, ProviderKind, PullRequestDetail,
-    PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result, ReviewThread,
-    ReviewVote, RunStatus, ThreadComment, ThreadStatus, UserIdentity,
-};
-use tokio::io::AsyncWrite;
+use review_core::{Connection, ProviderKind};
 
 use super::ReviewApp;
-use super::navigation_walkthrough::{Fixture, create_origin};
+use super::scripted_platforms::{HOSTS, create_origin, platforms, title};
 use super::walkthrough::{app_with, files_tab, has, opened_urls, saved_paths, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::{Clicks, ScratchDir, samples};
 
-/// A local repository GitHub's pull requests are fetched from, so its Files tab has a file.
-static ORIGIN: Mutex<Option<Fixture>> = Mutex::new(None);
-
-/// (id, name, platform, web root, repository, accessible name of its mark).
-const HOSTS: [(&str, &str, ProviderKind, &str, &str, &str); 3] = [
-    (
-        "ado",
-        "Contoso Azure DevOps",
-        ProviderKind::AzureDevOps,
-        "https://dev.azure.com/contoso",
-        "contoso/Web/site",
-        "Azure DevOps · dev.azure.com",
-    ),
-    (
-        "gh",
-        "Contoso GitHub",
-        ProviderKind::GitHub,
-        "https://github.com",
-        "contoso/widgets",
-        "GitHub · github.com",
-    ),
-    (
-        "gl",
-        "Fabrikam GitLab",
-        ProviderKind::GitLab,
-        "https://gitlab.example.com",
-        "fabrikam/app",
-        "GitLab self-managed · gitlab.example.com",
-    ),
-];
-
 #[test]
 fn provider_icons_name_the_platform_everywhere() {
     let scratch = ScratchDir::new("provider-icons");
-    *ORIGIN.lock().unwrap() = Some(create_origin(&scratch.path().join("origin")));
+    // GitHub's pull requests come from a local repository, so its Files tab has a file.
+    let origin = create_origin(&scratch.path().join("origin"));
     let connections: Vec<Connection> = HOSTS
         .iter()
         .map(|&(id, name, kind, base_url, _, _)| Connection {
@@ -73,7 +34,8 @@ fn provider_icons_name_the_platform_everywhere() {
         })
         .collect();
     let builder = Harness::builder().with_size([1280.0, 1080.0]).with_step_dt(1.0 / 60.0);
-    let mut harness = app_with(builder, saved_paths(&scratch, &connections), scripted_provider);
+    let mut harness =
+        app_with(builder, saved_paths(&scratch, &connections), platforms(Some(origin)));
 
     wait_until(&mut harness, "every card", |harness| {
         HOSTS.iter().all(|(_, _, kind, ..)| has(harness, &title(*kind, 1)))
@@ -214,10 +176,6 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
     settle(harness);
 }
 
-fn title(kind: ProviderKind, number: u64) -> String {
-    format!("{} change {number}", kind.label())
-}
-
 fn settle(harness: &mut Harness<'_, ReviewApp>) {
     for _ in 0..30 {
         harness.step();
@@ -241,243 +199,5 @@ fn hooked_middle_click(harness: &mut Harness<'_, ReviewApp>, at: egui::Pos2) {
         eframe::App::raw_input_hook(harness.state_mut(), &ctx, &mut input);
         *harness.input_mut() = input;
         harness.step();
-    }
-}
-
-pub(super) fn scripted_provider(
-    connection: Connection,
-    _http: reqwest::Client,
-) -> Arc<dyn Provider> {
-    Arc::new(ScriptedProvider { connection })
-}
-
-/// Answers listings and pull requests of its connection's platform; everything else is unused.
-struct ScriptedProvider {
-    connection: Connection,
-}
-
-impl ScriptedProvider {
-    fn repository(&self) -> &'static str {
-        HOSTS
-            .iter()
-            .find(|(id, ..)| *id == self.connection.id)
-            .map_or("unknown/repo", |(_, _, _, _, repository, _)| repository)
-    }
-
-    fn summary(&self, number: u64) -> PullRequestSummary {
-        let kind = self.connection.kind;
-        let repository = self.repository();
-        let base = &self.connection.base_url;
-        let web_url = match kind {
-            ProviderKind::AzureDevOps => format!("{base}/Web/_git/site/pullrequest/{number}"),
-            ProviderKind::GitHub => format!("{base}/{repository}/pull/{number}"),
-            ProviderKind::GitLab => format!("{base}/{repository}/-/merge_requests/{number}"),
-        };
-        PullRequestSummary {
-            repository_key: repository.to_owned(),
-            repository_name: repository.rsplit('/').next().unwrap_or(repository).to_owned(),
-            number,
-            title: title(kind, number),
-            author: person("1", "Ada Lovelace"),
-            state: PullRequestState::Open,
-            is_draft: number == 2,
-            source_branch: format!("feature/{number}"),
-            target_branch: "main".to_owned(),
-            created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
-            updated_at: Some(time::macros::datetime!(2026-10-18 15:00 UTC)),
-            web_url,
-            labels: Vec::new(),
-            reviewers: Vec::new(),
-            checks: Some(if number == 1 { RunStatus::Succeeded } else { RunStatus::Running }),
-            diff_stat: review_core::DiffStat::default(),
-            head_sha: None,
-            target_sha: None,
-        }
-    }
-
-    fn origin(&self) -> Option<Fixture> {
-        (self.connection.kind == ProviderKind::GitHub)
-            .then(|| ORIGIN.lock().unwrap().clone())
-            .flatten()
-    }
-
-    fn unused<T>() -> Result<T> {
-        Err(ProviderError::Unsupported("Not part of the provider icons walkthrough.".to_owned()))
-    }
-}
-
-fn person(id: &str, name: &str) -> UserIdentity {
-    UserIdentity {
-        id: id.to_owned(),
-        display_name: name.to_owned(),
-        login: Some(name.to_lowercase()),
-        avatar_url: None,
-    }
-}
-
-static CAPABILITIES: std::sync::LazyLock<Capabilities> =
-    std::sync::LazyLock::new(|| Capabilities {
-        votes: vec![ReviewVote::Approved, ReviewVote::None],
-        merge_strategies: vec![MergeStrategy::Merge],
-        has_label_catalog: false,
-        running_logs: review_core::RunningLogs::Growing,
-    });
-
-#[async_trait]
-impl Provider for ScriptedProvider {
-    fn capabilities(&self) -> &Capabilities {
-        &CAPABILITIES
-    }
-
-    async fn current_user(&self) -> Result<UserIdentity> {
-        Ok(person("1", "Ada Lovelace"))
-    }
-
-    async fn list_repositories(&self, _search: Option<&str>) -> Result<Vec<RepositoryInfo>> {
-        Ok(Vec::new())
-    }
-
-    async fn git_remote(&self, _repo: &str) -> Result<GitRemote> {
-        let origin = self.origin().ok_or_else(|| {
-            ProviderError::Unsupported("No files in this walkthrough.".to_owned())
-        })?;
-        Ok(GitRemote { clone_url: origin.clone_url, authorization_header: None })
-    }
-
-    async fn list_pull_requests(
-        &self,
-        _query: &PullRequestQuery,
-    ) -> Result<Vec<PullRequestSummary>> {
-        Ok((1..=3).map(|number| self.summary(number)).collect())
-    }
-
-    async fn pull_request(&self, _repo: &str, number: u64) -> Result<PullRequestDetail> {
-        // GitHub's pull requests come from the local origin; the others have no files to show.
-        let (target_sha, head_sha, git_fetch_refs) = match self.origin() {
-            Some(origin) => (
-                origin.target,
-                origin.head,
-                vec!["refs/heads/feature".to_owned(), "refs/heads/main".to_owned()],
-            ),
-            None => ("b".repeat(40), "a".repeat(40), Vec::new()),
-        };
-        Ok(PullRequestDetail {
-            summary: self.summary(number),
-            description: "Merge or complete this change on any platform.".to_owned(),
-            target_sha,
-            head_sha,
-            merge_status: MergeStatus::Mergeable,
-            git_fetch_refs,
-            closed_at: None,
-            auto_complete: None,
-        })
-    }
-
-    async fn merge(&self, _repo: &str, _number: u64, _options: &MergeOptions) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn close(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn reopen(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_draft(&self, _repo: &str, _number: u64, _is_draft: bool) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn update_title_description(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _title: &str,
-        _description: &str,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_vote(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _vote: ReviewVote,
-        _comment: Option<&str>,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn add_reviewer(&self, _repo: &str, _number: u64, _user: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn remove_reviewer(&self, _repo: &str, _number: u64, _reviewer_id: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn threads(&self, _repo: &str, _number: u64) -> Result<Vec<ReviewThread>> {
-        Ok(Vec::new())
-    }
-
-    async fn create_thread(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread: &NewThread,
-    ) -> Result<ReviewThread> {
-        Self::unused()
-    }
-
-    async fn reply(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _body: &str,
-    ) -> Result<ThreadComment> {
-        Self::unused()
-    }
-
-    async fn set_thread_status(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _status: ThreadStatus,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn available_labels(&self, _repo: &str) -> Result<Vec<Label>> {
-        Ok(Vec::new())
-    }
-
-    async fn set_labels(&self, _repo: &str, _number: u64, _labels: &[String]) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn pipeline_runs(&self, _repo: &str, _number: u64) -> Result<Vec<PipelineRun>> {
-        Ok(Vec::new())
-    }
-
-    async fn pipeline_jobs(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _run_id: &str,
-    ) -> Result<Vec<PipelineJob>> {
-        Ok(Vec::new())
-    }
-
-    async fn download_log(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _log_id: &str,
-        _sink: &mut (dyn AsyncWrite + Unpin + Send),
-    ) -> Result<()> {
-        Self::unused()
     }
 }

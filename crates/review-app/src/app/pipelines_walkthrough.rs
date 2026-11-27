@@ -1233,7 +1233,7 @@ fn scripted_provider(connection: Connection, _http: reqwest::Client) -> Arc<dyn 
         .unwrap_or_else(PoisonError::into_inner)
         .as_ref()
         .and_then(|scenarios| scenarios.get(&connection.id).cloned())
-        .unwrap_or((Scenario::Green, Arc::new(Mutex::new(Calls::default()))));
+        .unwrap_or_else(|| panic!("no script for connection {}", connection.id));
     let capabilities = Capabilities {
         votes: vec![ReviewVote::Approved, ReviewVote::None],
         merge_strategies: vec![MergeStrategy::Merge],

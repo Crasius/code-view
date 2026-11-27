@@ -274,7 +274,12 @@ fn web_url(number: u64) -> String {
     reason = "a ProviderFactory, whose signature hands the connection and the client over"
 )]
 fn scripted_provider(connection: Connection, _http: reqwest::Client) -> Arc<dyn Provider> {
-    let calls = CALLS.lock().unwrap().get(&connection.id).cloned().unwrap_or_default();
+    let calls = CALLS
+        .lock()
+        .unwrap()
+        .get(&connection.id)
+        .cloned()
+        .unwrap_or_else(|| panic!("no script for connection {}", connection.id));
     Arc::new(ScriptedProvider { calls })
 }
 

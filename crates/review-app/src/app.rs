@@ -163,6 +163,8 @@ mod remove_connection_e2e;
 #[cfg(test)]
 mod request_budget;
 #[cfg(test)]
+mod scripted_platforms;
+#[cfg(test)]
 mod self_review_walkthrough;
 #[cfg(test)]
 mod settings_walkthrough;

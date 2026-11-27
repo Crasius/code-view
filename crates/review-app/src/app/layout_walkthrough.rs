@@ -2,9 +2,8 @@
 //! request page, offline: a local git repository is the remote and a scripted provider describes
 //! the pull request. No network, no tokens. Runs with `cargo test`.
 
-use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -15,13 +14,10 @@ use egui::{
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{
-    Capabilities, Connection, GitRemote, Label, MergeOptions, MergeStatus, MergeStrategy,
-    NewThread, PipelineJob, PipelineRun, Provider, ProviderError, ProviderKind, PullRequestDetail,
-    PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result, ReviewThread,
-    ReviewVote, ThreadComment, ThreadStatus, UserIdentity,
+    Capabilities, Connection, GitRemote, Label, MergeStatus, ProviderKind, PullRequestDetail,
+    PullRequestState, PullRequestSummary, Result,
 };
 use review_store::{AppPaths, AppSettings, DiffLayout, PaneSizes, TreeSide};
-use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
 use super::walkthrough::{
@@ -29,6 +25,7 @@ use super::walkthrough::{
     wait_until,
 };
 use cv_runtime::route::{PullRequestKey, Route};
+use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{Clicks, ScratchDir, git, samples};
 use cv_widgets::skeleton;
 
@@ -38,9 +35,6 @@ const NUMBER: u64 = 7;
 const CODE_PATH: &str = "src/widgets.rs";
 const GADGETS_PATH: &str = "src/gadgets.rs";
 const LOGO_PATH: &str = "assets/logo.png";
-
-/// The local remote per connection id; the provider factory is a plain function.
-static FIXTURES: Mutex<Option<HashMap<String, Fixture>>> = Mutex::new(None);
 
 #[derive(Clone)]
 struct Fixture {
@@ -54,12 +48,7 @@ struct Fixture {
 fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     let scratch = ScratchDir::new("layout");
     let fixture = create_origin(&scratch.path().join("origin"));
-    FIXTURES
-        .lock()
-        .unwrap()
-        .get_or_insert_with(HashMap::new)
-        .insert(CONNECTION_ID.to_owned(), fixture);
-    let mut harness = harness(saved_paths(&scratch, &[connection(CONNECTION_ID)]));
+    let mut harness = harness(saved_paths(&scratch, &[connection(CONNECTION_ID)]), fixture);
 
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: CONNECTION_ID.to_owned(),
@@ -269,8 +258,7 @@ fn folder_view_zooms_the_code_over_cards_and_the_app_elsewhere() {
     const FOLDER_ID: &str = "local-folder-zoom";
     let scratch = ScratchDir::new("folder-zoom");
     let fixture = create_origin(&scratch.path().join("origin"));
-    FIXTURES.lock().unwrap().get_or_insert_with(HashMap::new).insert(FOLDER_ID.to_owned(), fixture);
-    let mut harness = harness(saved_paths(&scratch, &[connection(FOLDER_ID)]));
+    let mut harness = harness(saved_paths(&scratch, &[connection(FOLDER_ID)]), fixture);
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: FOLDER_ID.to_owned(),
         repository_key: REPOSITORY.to_owned(),
@@ -323,8 +311,7 @@ fn switching_files_keeps_the_header_still_without_placeholders() {
     const SWITCH_ID: &str = "local-switch";
     let scratch = ScratchDir::new("switch");
     let fixture = create_origin(&scratch.path().join("origin"));
-    FIXTURES.lock().unwrap().get_or_insert_with(HashMap::new).insert(SWITCH_ID.to_owned(), fixture);
-    let mut harness = harness(saved_paths(&scratch, &[connection(SWITCH_ID)]));
+    let mut harness = harness(saved_paths(&scratch, &[connection(SWITCH_ID)]), fixture);
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: SWITCH_ID.to_owned(),
         repository_key: REPOSITORY.to_owned(),
@@ -434,9 +421,11 @@ fn rects(controls: &[(String, egui::Rect)]) -> Vec<egui::Rect> {
     controls.iter().map(|(_, rect)| *rect).collect()
 }
 
-fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
+fn harness(paths: AppPaths, fixture: Fixture) -> Harness<'static, ReviewApp> {
     let builder = Harness::builder().with_size([1440.0, 900.0]).with_step_dt(1.0 / 60.0);
-    app_with(builder, paths, local_provider)
+    app_with(builder, paths, move |_, _| {
+        Arc::new(Scripted(LayoutScript { fixture: fixture.clone() }))
+    })
 }
 
 fn center(harness: &Harness<'_, ReviewApp>, label: &str) -> Pos2 {
@@ -564,7 +553,7 @@ fn create_origin(origin: &Path) -> Fixture {
     }
 }
 
-/// The anonymous GitHub connection `id`, whose provider serves the origin saved under `id`.
+/// The anonymous GitHub connection `id`.
 fn connection(id: &str) -> Connection {
     Connection {
         name: "Local".to_owned(),
@@ -572,77 +561,26 @@ fn connection(id: &str) -> Connection {
     }
 }
 
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "a ProviderFactory, whose signature hands the connection and the client over"
-)]
-fn local_provider(connection: Connection, _http: reqwest::Client) -> Arc<dyn Provider> {
-    let fixture = FIXTURES
-        .lock()
-        .unwrap()
-        .as_ref()
-        .and_then(|fixtures| fixtures.get(&connection.id).cloned());
-    Arc::new(LocalProvider { fixture })
+struct LayoutScript {
+    fixture: Fixture,
 }
 
-struct LocalProvider {
-    fixture: Option<Fixture>,
-}
-
-impl LocalProvider {
-    fn fixture(&self) -> Result<&Fixture> {
-        self.fixture.as_ref().ok_or_else(|| ProviderError::Local("no local fixture".to_owned()))
-    }
-
-    fn unused<T>() -> Result<T> {
-        Err(ProviderError::Unsupported("Not part of the layout walkthrough.".to_owned()))
-    }
-}
-
-fn author() -> UserIdentity {
-    UserIdentity {
-        id: "1".into(),
-        display_name: "Ada Lovelace".into(),
-        login: Some("ada".into()),
-        avatar_url: None,
-    }
-}
-
-static CAPABILITIES: std::sync::LazyLock<Capabilities> =
-    std::sync::LazyLock::new(|| Capabilities {
-        votes: vec![ReviewVote::Approved, ReviewVote::None],
-        merge_strategies: vec![MergeStrategy::Merge],
-        has_label_catalog: false,
-        running_logs: review_core::RunningLogs::Growing,
-    });
+static CAPABILITIES: LazyLock<Capabilities> = LazyLock::new(|| Capabilities {
+    running_logs: review_core::RunningLogs::Growing,
+    ..cv_testkit::provider::CAPABILITIES.clone()
+});
 
 #[async_trait]
-impl Provider for LocalProvider {
+impl Script for LayoutScript {
     fn capabilities(&self) -> &Capabilities {
         &CAPABILITIES
     }
 
-    async fn current_user(&self) -> Result<UserIdentity> {
-        Ok(author())
-    }
-
-    async fn list_repositories(&self, _search: Option<&str>) -> Result<Vec<RepositoryInfo>> {
-        Ok(Vec::new())
-    }
-
     async fn git_remote(&self, _repo: &str) -> Result<GitRemote> {
-        Ok(GitRemote { clone_url: self.fixture()?.clone_url.clone(), authorization_header: None })
-    }
-
-    async fn list_pull_requests(
-        &self,
-        _query: &PullRequestQuery,
-    ) -> Result<Vec<PullRequestSummary>> {
-        Ok(Vec::new())
+        Ok(GitRemote { clone_url: self.fixture.clone_url.clone(), authorization_header: None })
     }
 
     async fn pull_request(&self, repo: &str, number: u64) -> Result<PullRequestDetail> {
-        let fixture = self.fixture()?;
         let created_at = time::macros::datetime!(2026-10-01 09:30 UTC);
         Ok(PullRequestDetail {
             summary: PullRequestSummary {
@@ -650,7 +588,7 @@ impl Provider for LocalProvider {
                 repository_name: "widgets".to_owned(),
                 number,
                 title: "Speed up widget construction".to_owned(),
-                author: author(),
+                author: samples::author(),
                 state: PullRequestState::Open,
                 is_draft: false,
                 source_branch: "feature".to_owned(),
@@ -671,121 +609,13 @@ impl Provider for LocalProvider {
             // Starts with the heading most PR templates use; the card must not repeat it.
             description: "## Description\nBuilds every widget with its final value right away.\n\n- Fewer allocations\n- Same layout"
                 .to_owned(),
-            target_sha: fixture.target.clone(),
-            head_sha: fixture.head.clone(),
+            target_sha: self.fixture.target.clone(),
+            head_sha: self.fixture.head.clone(),
             merge_status: MergeStatus::Mergeable,
             git_fetch_refs: vec!["refs/heads/feature".to_owned(), "refs/heads/main".to_owned()],
             closed_at: None,
             auto_complete: None,
         })
-    }
-
-    async fn merge(&self, _repo: &str, _number: u64, _options: &MergeOptions) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn close(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn reopen(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_draft(&self, _repo: &str, _number: u64, _is_draft: bool) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn update_title_description(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _title: &str,
-        _description: &str,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_vote(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _vote: ReviewVote,
-        _comment: Option<&str>,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn add_reviewer(&self, _repo: &str, _number: u64, _user: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn remove_reviewer(&self, _repo: &str, _number: u64, _reviewer_id: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn threads(&self, _repo: &str, _number: u64) -> Result<Vec<ReviewThread>> {
-        Ok(Vec::new())
-    }
-
-    async fn create_thread(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread: &NewThread,
-    ) -> Result<ReviewThread> {
-        Self::unused()
-    }
-
-    async fn reply(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _body: &str,
-    ) -> Result<ThreadComment> {
-        Self::unused()
-    }
-
-    async fn set_thread_status(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _status: ThreadStatus,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn available_labels(&self, _repo: &str) -> Result<Vec<Label>> {
-        Ok(Vec::new())
-    }
-
-    async fn set_labels(&self, _repo: &str, _number: u64, _labels: &[String]) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn pipeline_runs(&self, _repo: &str, _number: u64) -> Result<Vec<PipelineRun>> {
-        Ok(Vec::new())
-    }
-
-    async fn pipeline_jobs(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _run_id: &str,
-    ) -> Result<Vec<PipelineJob>> {
-        Ok(Vec::new())
-    }
-
-    async fn download_log(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _log_id: &str,
-        _sink: &mut (dyn AsyncWrite + Unpin + Send),
-    ) -> Result<()> {
-        Self::unused()
     }
 }
 

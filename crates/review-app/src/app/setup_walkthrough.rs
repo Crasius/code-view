@@ -9,17 +9,16 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_core::setup::{Access, Feature, FeatureCheck, ScopeKind};
 use review_core::{
-    AccessProblem, AccessReport, Capabilities, Connection, GitRemote, Label, MergeOptions,
-    MergeStrategy, NewThread, PipelineJob, PipelineRun, Provider, ProviderError, ProviderKind,
-    PullRequestDetail, PullRequestQuery, PullRequestSummary, RepositoryInfo, Result, ReviewThread,
-    ReviewVote, ScopeCandidate, ThreadComment, ThreadStatus, UserIdentity,
+    AccessProblem, AccessReport, Capabilities, Connection, MergeStrategy, Provider, ProviderError,
+    ProviderKind, PullRequestQuery, PullRequestSummary, Result, ReviewVote, ScopeCandidate,
+    UserIdentity,
 };
 use review_store::{AppPaths, ConnectionStore, LINUX_HELP_URL, TokenVault, VaultProblem};
-use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
 use super::walkthrough::{press, saved_paths, wait_until};
 use cv_settings::onboarding::CliTools;
+use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{Clicks, ScratchDir, samples};
 
 /// Scripted tokens; they only ever reach the fake provider below.
@@ -269,7 +268,10 @@ fn back() -> String {
 
 pub(super) fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
     super::startup::start(Harness::builder().with_size([1280.0, 1000.0]), |creation| {
-        let mut app = ReviewApp::new(creation, paths, fake_provider);
+        let mut app = ReviewApp::new(creation, paths, |connection: Connection, http| {
+            let gitlab = provider_gitlab::GitLabProvider::new(connection.clone(), http);
+            Arc::new(Scripted(ScriptedGitLab { gitlab, connection })) as Arc<dyn Provider>
+        });
         // Both sign-in tools as if installed, before the harness's first frame, which opens the
         // setup with the tools it has.
         app.settings.set_cli_tools(CliTools { github: true, azure: true });
@@ -288,13 +290,6 @@ fn settle(harness: &mut Harness<'_, ReviewApp>) {
     for _ in 0..4 {
         harness.step();
     }
-}
-
-fn fake_provider(connection: Connection, http: reqwest::Client) -> Arc<dyn Provider> {
-    Arc::new(ScriptedGitLab {
-        gitlab: provider_gitlab::GitLabProvider::new(connection.clone(), http),
-        connection,
-    })
 }
 
 /// GitLab as the user met it: a fine-grained token without "Merge Request: Read", then a token
@@ -316,10 +311,6 @@ impl ScriptedGitLab {
             body: r#"{"message":"Access denied: This operation requires a fine-grained personal access token with the following project permissions: [Merge Request: Read]."}"#.to_owned(),
         }
     }
-
-    fn unused<T>() -> Result<T> {
-        Err(ProviderError::Unsupported("Not part of the setup walkthrough.".to_owned()))
-    }
 }
 
 fn user() -> UserIdentity {
@@ -340,21 +331,13 @@ static CAPABILITIES: std::sync::LazyLock<Capabilities> =
     });
 
 #[async_trait]
-impl Provider for ScriptedGitLab {
+impl Script for ScriptedGitLab {
     fn capabilities(&self) -> &Capabilities {
         &CAPABILITIES
     }
 
     async fn current_user(&self) -> Result<UserIdentity> {
         Ok(user())
-    }
-
-    async fn list_repositories(&self, _search: Option<&str>) -> Result<Vec<RepositoryInfo>> {
-        Ok(Vec::new())
-    }
-
-    async fn git_remote(&self, _repo: &str) -> Result<GitRemote> {
-        Self::unused()
     }
 
     async fn list_pull_requests(
@@ -366,118 +349,6 @@ impl Provider for ScriptedGitLab {
         } else {
             Err(Self::denied("/api/v4/merge_requests"))
         }
-    }
-
-    async fn pull_request(&self, _repo: &str, _number: u64) -> Result<PullRequestDetail> {
-        Self::unused()
-    }
-
-    async fn merge(&self, _repo: &str, _number: u64, _options: &MergeOptions) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn close(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn reopen(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_draft(&self, _repo: &str, _number: u64, _is_draft: bool) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn update_title_description(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _title: &str,
-        _description: &str,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_vote(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _vote: ReviewVote,
-        _comment: Option<&str>,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn add_reviewer(&self, _repo: &str, _number: u64, _user: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn remove_reviewer(&self, _repo: &str, _number: u64, _reviewer_id: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn threads(&self, _repo: &str, _number: u64) -> Result<Vec<ReviewThread>> {
-        Self::unused()
-    }
-
-    async fn create_thread(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread: &NewThread,
-    ) -> Result<ReviewThread> {
-        Self::unused()
-    }
-
-    async fn reply(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _body: &str,
-    ) -> Result<ThreadComment> {
-        Self::unused()
-    }
-
-    async fn set_thread_status(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _status: ThreadStatus,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn available_labels(&self, _repo: &str) -> Result<Vec<Label>> {
-        Self::unused()
-    }
-
-    async fn set_labels(&self, _repo: &str, _number: u64, _labels: &[String]) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn pipeline_runs(&self, _repo: &str, _number: u64) -> Result<Vec<PipelineRun>> {
-        Self::unused()
-    }
-
-    async fn pipeline_jobs(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _run_id: &str,
-    ) -> Result<Vec<PipelineJob>> {
-        Self::unused()
-    }
-
-    async fn download_log(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _log_id: &str,
-        _sink: &mut (dyn AsyncWrite + Unpin + Send),
-    ) -> Result<()> {
-        Self::unused()
     }
 
     async fn inspect_access(&self) -> Result<AccessReport> {
