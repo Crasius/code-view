@@ -167,6 +167,12 @@ fn a_file_with_one_version_shows_each_of_its_lines() {
         let mut harness = harness(whole_file_fixture(side));
         settle(&mut harness);
         let state = harness.state();
+        assert_eq!(state.layout, Layout::WholeFile(side));
+        let absent = match side {
+            DiffSide::Old => &state.contents.new,
+            DiffSide::New => &state.contents.old,
+        };
+        assert!(absent.is_none(), "{side:?}: the other version is absent");
         let row = |line: u32| match side {
             DiffSide::Old => state.view.row_of(&state.diff, Some(line), None),
             DiffSide::New => state.view.row_of(&state.diff, None, Some(line)),
