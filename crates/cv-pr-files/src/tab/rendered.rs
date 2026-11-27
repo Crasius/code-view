@@ -7,9 +7,9 @@ use review_git::ChangedFile;
 use review_store::DiffLayout;
 
 use super::super::{Env, FilesTab};
+use super::choices;
 use cv_pr_diff::diff_view::LineRequest;
 use cv_pr_rendered::markdown_diff::RenderedEvent;
-use cv_services::Services;
 
 /// Carries out `event` of the rendered diff of `path`.
 pub fn apply(tab: &mut FilesTab, env: &mut Env<'_>, path: &str, event: RenderedEvent) {
@@ -29,16 +29,9 @@ pub fn apply(tab: &mut FilesTab, env: &mut Env<'_>, path: &str, event: RenderedE
             }
         }
         RenderedEvent::ShowSideBySide => tab.switch_layout(env.services, DiffLayout::SideBySide),
-        RenderedEvent::SwitchPastEnd(is_on) => switch_past_end(env.services, is_on),
+        RenderedEvent::SwitchPastEnd(is_on) => choices::switch_past_end(env.services, is_on),
         RenderedEvent::SplitResized | RenderedEvent::WidthResized => {}
     }
-}
-
-/// "Scroll past the end" switched in the overview strip's menu of the rendered diff, the text
-/// diff or a thread's original version: saved for every diff.
-pub fn switch_past_end(services: &mut Services, is_on: bool) {
-    services.settings.scroll_past_end = is_on;
-    services.save_settings();
 }
 
 /// [`apply`] for the rendered card of `files[file]` in the folder summary: what goes to the text

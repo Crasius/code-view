@@ -55,7 +55,7 @@ use self::tab::review::stepping::{self, Stepping};
 use self::tab::review::viewed::{ViewedMarks, ViewedToggle};
 use self::tab::start::{self, Start};
 use self::tab::summary_pane::SummaryPane;
-use self::tab::{layout, rendered};
+use self::tab::{choices, layout, rendered};
 use cv_code::diff_rows::Layout;
 use cv_editor::markdown_editor;
 use cv_pr_diff::diff_view::{ChangePosition, DiffEvent, DiffInputs, DiffView, LineRequest};
@@ -616,7 +616,7 @@ impl FilesTab {
                 self.switch_layout(env.services, target);
             }
             Some(DiffEvent::SplitResized) => env.services.save_settings(),
-            Some(DiffEvent::SwitchPastEnd(is_on)) => rendered::switch_past_end(env.services, is_on),
+            Some(DiffEvent::SwitchPastEnd(is_on)) => choices::switch_past_end(env.services, is_on),
             Some(DiffEvent::Create { key, thread }) => {
                 env.threads_ui.post_new_thread(&key, thread, env.session, env.services);
             }
