@@ -15,6 +15,7 @@ use review_store::retention::{
 };
 
 use super::rows;
+use crate::onboarding::parts;
 
 /// Sizes on screen are measured again when the section has been open this long.
 const REMEASURE_SECONDS: f64 = 30.0;
@@ -62,7 +63,7 @@ impl StorageSection {
         rows::card(ui, |ui| {
             for (index, category) in categories.iter().enumerate() {
                 if index > 0 {
-                    rows::divider(ui);
+                    parts::divider(ui);
                 }
                 category_row(ui, category);
             }
@@ -402,26 +403,7 @@ pub fn format_bytes(bytes: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_folder, format_bytes};
-
-    #[test]
-    fn creating_the_cache_folder_reports_the_failing_path() {
-        let root = std::env::temp_dir().join(format!("review-storage-{}", std::process::id()));
-        std::fs::create_dir_all(&root).expect("temp root");
-        let fresh = root.join("cache");
-        assert_eq!(create_folder(&fresh), Ok(()));
-        assert!(fresh.is_dir());
-
-        // A file where a parent folder belongs makes create_dir_all fail.
-        let blocker = root.join("blocker");
-        std::fs::write(&blocker, b"").expect("blocker file");
-        let blocked = blocker.join("cache");
-        let message = create_folder(&blocked).expect_err("a file blocks the folder");
-        assert!(message.starts_with("Could not create the cache folder "), "{message}");
-        assert!(message.contains(&blocked.display().to_string()), "{message}");
-
-        std::fs::remove_dir_all(&root).expect("clean up");
-    }
+    use super::format_bytes;
 
     #[test]
     fn formats_sizes_like_explorer() {

@@ -32,15 +32,19 @@ struct Choice {
 }
 
 const CHOICES: [Choice; 3] = [
-    Choice { mode: HeaderMode::AlwaysShown, label: "Always shown", hint: "Stays while you scroll" },
+    Choice {
+        mode: HeaderMode::AlwaysShown,
+        label: label_of(HeaderMode::AlwaysShown),
+        hint: "Stays while you scroll",
+    },
     Choice {
         mode: HeaderMode::HideOnScroll,
-        label: "Hide on scroll",
+        label: label_of(HeaderMode::HideOnScroll),
         hint: "Away going down, back at the top",
     },
     Choice {
         mode: HeaderMode::StartMinimized,
-        label: "Start minimized",
+        label: label_of(HeaderMode::StartMinimized),
         hint: "Away from the start, peeks on demand",
     },
 ];
@@ -366,8 +370,12 @@ fn pictogram(ui: &Ui, rect: Rect, mode: HeaderMode, ink: egui::Color32) {
     painter.add(egui::Shape::line(points, Stroke::new(1.5, ink)));
 }
 
-fn label_of(mode: HeaderMode) -> &'static str {
-    CHOICES.iter().find(|choice| choice.mode == mode).map_or("", |choice| choice.label)
+const fn label_of(mode: HeaderMode) -> &'static str {
+    match mode {
+        HeaderMode::AlwaysShown => "Always shown",
+        HeaderMode::HideOnScroll => "Hide on scroll",
+        HeaderMode::StartMinimized => "Start minimized",
+    }
 }
 
 /// The mode badge: neutral while the header stays, in the accent where it moves.

@@ -13,36 +13,23 @@ use cv_widgets::{buttons, glyph, tabs};
 use egui::{RichText, Ui};
 use review_agent::{AgentError, AgentKind, ModelChoice};
 
-use super::rows::{self, RowId};
+use super::rows::{self, AssistantRow, Row, RowId};
 
 /// Whether row `id` can be used: every Assistant row but the switch waits for the assistant to be
 /// on; rows of other sections always can.
 pub fn is_active(id: RowId, services: &Services) -> bool {
-    let needs_assistant = matches!(
-        id,
-        RowId::AssistantAgent
-            | RowId::AssistantClaudeModel
-            | RowId::AssistantCodexModel
-            | RowId::AssistantMiniChat
-    );
-    !needs_assistant || services.settings.assistant.enabled
+    !matches!(id, RowId::Assistant(row) if row != AssistantRow::Shown)
+        || services.settings.assistant.enabled
 }
 
-/// The control of Assistant row `id`.
-pub fn control(ui: &mut Ui, id: RowId, services: &mut Services) {
+/// The control of Assistant row `id`; a switch takes its name from `row`.
+pub fn control(ui: &mut Ui, id: AssistantRow, row: &Row, services: &mut Services) {
     let changed = match id {
-        RowId::AssistantShown => {
-            rows::switch(ui, &mut services.settings.assistant.enabled, "Show the assistant")
-        }
-        RowId::AssistantAgent => agent(ui, services),
-        RowId::AssistantClaudeModel => model(ui, AgentKind::Claude, services),
-        RowId::AssistantCodexModel => model(ui, AgentKind::Codex, services),
-        RowId::AssistantMiniChat => rows::switch(
-            ui,
-            &mut services.settings.assistant.mini_chat,
-            "Keep the answer beside the code",
-        ),
-        _ => false,
+        AssistantRow::Shown => rows::switch(ui, &mut services.settings.assistant.enabled, row),
+        AssistantRow::Agent => agent(ui, services),
+        AssistantRow::ClaudeModel => model(ui, AgentKind::Claude, services),
+        AssistantRow::CodexModel => model(ui, AgentKind::Codex, services),
+        AssistantRow::MiniChat => rows::switch(ui, &mut services.settings.assistant.mini_chat, row),
     };
     if changed {
         services.save_settings();
@@ -72,12 +59,7 @@ fn status(ui: &mut Ui, kind: AgentKind, services: &mut Services) {
         Detection::Installed(cli) => {
             (icons::CHECK_CIRCLE, palette.success, format!("Installed, {}", cli.version))
         }
-        Detection::Missing(AgentError::NotInstalled(_)) => {
-            (icons::WARNING, palette.warning, "Not installed".to_owned())
-        }
-        Detection::Missing(error) => {
-            (icons::WARNING, palette.warning, format!("Found, but it did not answer: {error}"))
-        }
+        Detection::Missing(error) => (icons::WARNING, palette.warning, missing_text(error)),
     };
     let is_not_installed = matches!(detection, Detection::Missing(AgentError::NotInstalled(_)));
     let is_failed = matches!(detection, Detection::Missing(_));
@@ -99,6 +81,15 @@ fn status(ui: &mut Ui, kind: AgentKind, services: &mut Services) {
     });
     if check_again {
         services.agents.check_again(kind);
+    }
+}
+
+/// Why a CLI is not usable. A timeout names what did not answer once, not as a nested reason.
+fn missing_text(error: &AgentError) -> String {
+    match error {
+        AgentError::NotInstalled(_) => "Not installed".to_owned(),
+        AgentError::Timeout(what) => format!("Found, but {what} did not answer in time"),
+        error => format!("Found, but it did not answer: {error}"),
     }
 }
 
@@ -173,9 +164,16 @@ fn typed_model(id: &str) -> ModelChoice {
 
 #[cfg(test)]
 mod tests {
-    use review_agent::ModelChoice;
+    use review_agent::{AgentError, AgentKind, ModelChoice};
 
-    use super::typed_model;
+    use super::{missing_text, typed_model};
+
+    #[test]
+    fn a_cli_that_does_not_answer_in_time_names_what_timed_out_once() {
+        let text = missing_text(&AgentError::Timeout("--version"));
+        assert_eq!(text, "Found, but --version did not answer in time");
+        assert_eq!(missing_text(&AgentError::NotInstalled(AgentKind::Claude)), "Not installed");
+    }
 
     #[test]
     fn a_typed_model_id_is_saved_without_surrounding_spaces() {

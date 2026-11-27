@@ -8,7 +8,7 @@ use egui::{
 };
 use review_core::setup::{Access, FeatureCheck};
 
-pub const HEADLINE_SIZE: f32 = 22.0;
+const HEADLINE_SIZE: f32 = 22.0;
 const STEP_DOT: f32 = 22.0;
 const ROW_HEIGHT: f32 = 56.0;
 
@@ -114,14 +114,23 @@ pub fn stepper(ui: &mut Ui, labels: &[&str], current: usize) -> Option<usize> {
     clicked
 }
 
-/// A full-width list row: icon, title, detail, and a radio mark or chevron.
+/// What a choice row shows at its right end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mark {
+    /// A radio mark: the row is one of several choices.
+    Radio,
+    /// A chevron: the row leads on to the next step.
+    Chevron,
+}
+
+/// A full-width list row: icon, title, detail, and its `mark`.
 pub fn choice_row(
     ui: &mut Ui,
     icon: &str,
     title: &str,
     detail: &str,
     is_selected: bool,
-    shows_chevron: bool,
+    mark: Mark,
 ) -> Response {
     let palette = theme::palette(ui.ctx());
     let width = ui.available_width();
@@ -166,7 +175,7 @@ pub fn choice_row(
         palette.text_secondary,
     );
     let mark_center = egui::pos2(rect.right() - 24.0, rect.center().y);
-    if shows_chevron {
+    if mark == Mark::Chevron {
         painter.text(
             mark_center,
             egui::Align2::CENTER_CENTER,
@@ -204,9 +213,9 @@ impl Tone {
     fn colors(self, palette: &Palette) -> (Color32, Color32, &'static str) {
         match self {
             Tone::Info => (palette.selection, palette.accent_text, icons::INFO),
-            Tone::Success => (palette.diff_added_line, palette.success, icons::CHECK_CIRCLE),
+            Tone::Success => (palette.success_surface, palette.success, icons::CHECK_CIRCLE),
             Tone::Warning => (palette.warning_surface, palette.warning, icons::WARNING),
-            Tone::Error => (palette.diff_deleted_line, palette.error, icons::X_CIRCLE),
+            Tone::Error => (palette.error_surface, palette.error, icons::X_CIRCLE),
         }
     }
 }
@@ -267,7 +276,7 @@ pub fn open_button(ui: &mut Ui, is_primary: bool, text: &str, url: &str) -> Resp
     response
 }
 
-pub fn access_icon(access: Access, palette: &Palette) -> (&'static str, Color32, &'static str) {
+fn access_icon(access: Access, palette: &Palette) -> (&'static str, Color32, &'static str) {
     match access {
         Access::Granted => (icons::CHECK_CIRCLE, palette.success, "Works"),
         Access::Limited => (icons::MINUS_CIRCLE, palette.warning, "Works partly"),
@@ -314,7 +323,7 @@ pub fn divider(ui: &mut Ui) {
     ui.painter().hline(rect.x_range(), rect.center().y, Stroke::new(1.0, palette.border));
 }
 
-/// A white sheet with a hairline border, the frame every step is drawn in.
+/// A sheet in the surface colour with a hairline border, the frame every step is drawn in.
 pub fn sheet<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
     let palette = theme::palette(ui.ctx());
     Frame::new()

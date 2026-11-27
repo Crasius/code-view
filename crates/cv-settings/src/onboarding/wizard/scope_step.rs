@@ -1,19 +1,20 @@
 //! Step 5: which organizations, groups or collections to show, the connection's name, and save.
 
 use cv_base::theme::{self, icons};
+use cv_runtime::load::Load;
 use cv_services::Services;
 use cv_widgets::{buttons, checkbox, states};
 use egui::{RichText, TextEdit, Ui};
 use review_core::{ProviderKind, ScopeCandidate};
 
-use super::{Discovery, Step, VaultCheck, Wizard, footer};
+use super::{Step, VaultCheck, Wizard, footer};
 use crate::onboarding::host::Hosting;
 use crate::onboarding::parts::{self, Tone};
 
 /// Returns the saved connection's name.
 pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) -> Option<String> {
     let Ok(host) = wizard.resolved() else {
-        wizard.go(Step::Host);
+        wizard.step = Step::Host;
         return None;
     };
     wizard.start_discovery(services);
@@ -75,7 +76,7 @@ pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) -> Option
         }
     });
     if goes_back {
-        wizard.go(Step::Access);
+        wizard.step = Step::Access;
     }
     if wants_retry {
         wizard.discovered_for = None;
@@ -118,7 +119,7 @@ fn everything_choice(ui: &mut Ui, wizard: &mut Wizard, noun: &str) {
         everything,
         everything_detail,
         wizard.includes_everything,
-        false,
+        parts::Mark::Radio,
     )
     .clicked()
     {
@@ -132,7 +133,7 @@ fn everything_choice(ui: &mut Ui, wizard: &mut Wizard, noun: &str) {
         &only,
         "Pick from the list below",
         !wizard.includes_everything,
-        false,
+        parts::Mark::Radio,
     )
     .clicked()
     {
@@ -145,10 +146,10 @@ fn everything_choice(ui: &mut Ui, wizard: &mut Wizard, noun: &str) {
 fn scope_list(ui: &mut Ui, wizard: &mut Wizard, noun: &str) -> bool {
     let mut wants_retry = false;
     match &wizard.discovery {
-        Discovery::Running(_) | Discovery::Idle => {
+        Load::Loading(_) | Load::Idle => {
             states::loading(ui, &format!("Looking up your {noun}…"));
         }
-        Discovery::Failed(message) => {
+        Load::Failed(message) => {
             parts::callout(
                 ui,
                 Tone::Warning,
@@ -160,10 +161,10 @@ fn scope_list(ui: &mut Ui, wizard: &mut Wizard, noun: &str) -> bool {
                 },
             );
         }
-        Discovery::Done(candidates) if candidates.is_empty() => {
+        Load::Ready(candidates) if candidates.is_empty() => {
             parts::small(ui, &format!("The token sees no {noun}. Type the names below."));
         }
-        Discovery::Done(candidates) => {
+        Load::Ready(candidates) => {
             for candidate in candidates {
                 candidate_row(ui, &mut wizard.selected, candidate);
             }

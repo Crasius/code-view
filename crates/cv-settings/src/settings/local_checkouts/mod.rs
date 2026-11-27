@@ -20,19 +20,19 @@ use review_store::checkouts::{
     TerminalChoice, WhenFinished,
 };
 
-use super::rows::RowId;
+use super::rows::CheckoutRow;
 
 /// The control of Local checkouts row `id`; true when its link to the Assistant section was
 /// clicked.
-pub fn control(ui: &mut Ui, id: RowId, services: &mut Services) -> bool {
+pub fn control(ui: &mut Ui, id: CheckoutRow, services: &mut Services) -> bool {
     let mut changed = false;
     let mut opens_assistant = false;
     match id {
-        RowId::CheckoutClones => changed = clones(ui, services),
-        RowId::CheckoutSearch => changed = search(ui, services),
-        RowId::CheckoutPattern => changed = pattern(ui, services),
-        RowId::CheckoutRemoval => changed = when_finished(ui, services),
-        RowId::CheckoutOpen => {
+        CheckoutRow::Clones => changed = clones(ui, services),
+        CheckoutRow::Search => changed = search(ui, services),
+        CheckoutRow::Pattern => changed = pattern(ui, services),
+        CheckoutRow::Removal => changed = when_finished(ui, services),
+        CheckoutRow::Open => {
             let options = [
                 (OpenByDefault::Ask, "Ask each time"),
                 (OpenByDefault::Always(OpenWith::Nothing), "Nothing"),
@@ -43,12 +43,11 @@ pub fn control(ui: &mut Ui, id: RowId, services: &mut Services) -> bool {
             changed =
                 tabs::segmented(ui, &mut services.settings.checkouts.open_by_default, &options);
         }
-        RowId::CheckoutTerminal => {
+        CheckoutRow::Terminal => {
             let options: Vec<(TerminalChoice, &str)> = platform::TERMINALS.to_vec();
             changed = tabs::segmented(ui, &mut services.settings.checkouts.terminal, &options);
         }
-        RowId::CheckoutAgents => opens_assistant = agents(ui, services),
-        _ => {}
+        CheckoutRow::Agents => opens_assistant = agents(ui, services),
     }
     if changed {
         services.save_settings();
@@ -228,23 +227,26 @@ fn search(ui: &mut Ui, services: &mut Services) -> bool {
 
 /// What happens to a worktree once its pull request is merged or closed elsewhere.
 fn when_finished(ui: &mut Ui, services: &mut Services) -> bool {
-    let options = [
-        (WhenFinished::RemoveAutomatically, "Remove worktree automatically"),
-        (WhenFinished::Ask, "Ask me first"),
-        (WhenFinished::Keep, "Keep worktree"),
-    ];
+    let options = [WhenFinished::RemoveAutomatically, WhenFinished::Ask, WhenFinished::Keep];
     let value = &mut services.settings.checkouts.when_finished;
-    let selected = options.iter().find(|(option, _)| option == value).map_or("", |(_, name)| *name);
     let mut changed = false;
     egui::ComboBox::from_id_salt("checkout_when_finished")
         .width(320.0)
-        .selected_text(selected)
+        .selected_text(finished_label(*value))
         .show_ui(ui, |ui| {
-            for (option, name) in options {
-                changed |= ui.selectable_value(value, option, name).changed();
+            for option in options {
+                changed |= ui.selectable_value(value, option, finished_label(option)).changed();
             }
         });
     changed
+}
+
+fn finished_label(when: WhenFinished) -> &'static str {
+    match when {
+        WhenFinished::RemoveAutomatically => "Remove worktree automatically",
+        WhenFinished::Ask => "Ask me first",
+        WhenFinished::Keep => "Keep worktree",
+    }
 }
 
 /// The pattern as text, with the folder it gives for an example pull request.

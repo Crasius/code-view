@@ -8,9 +8,10 @@ use cv_base::theme::{self, icons, style};
 use cv_services::Services;
 use cv_services::connection::traffic::ConnectionRate;
 use cv_widgets::provider_icon;
-use egui::{RichText, Ui};
+use egui::{Color32, RichText, Ui};
 
 use super::rows;
+use crate::onboarding::parts;
 
 const TOP_ENDPOINTS: usize = 5;
 const STAT_COLUMNS: usize = 4;
@@ -47,7 +48,7 @@ fn card(ui: &mut Ui, rate: &ConnectionRate) {
                 header(ui, rate);
                 counters(ui, rate);
                 if !rate.traffic.endpoints.is_empty() {
-                    rows::divider(ui);
+                    parts::divider(ui);
                     endpoints(ui, rate);
                 }
             });
@@ -85,22 +86,24 @@ fn header(ui: &mut Ui, rate: &ConnectionRate) {
 /// Sent, unchanged, shared and rate-limited side by side; screen readers get them as one sentence.
 fn counters(ui: &mut Ui, rate: &ConnectionRate) {
     let traffic = &rate.traffic;
+    let palette = theme::palette(ui.ctx());
+    let limited = if traffic.rate_limited > 0 { palette.warning } else { palette.text };
     let stats = [
-        (traffic.sent, "sent"),
-        (traffic.not_modified, "unchanged (304)"),
-        (traffic.shared, "shared with an identical request"),
-        (traffic.rate_limited, "rate-limited"),
+        (traffic.sent, "sent", palette.text),
+        (traffic.not_modified, "unchanged (304)", palette.text),
+        (traffic.shared, "shared with an identical request", palette.text),
+        (traffic.rate_limited, "rate-limited", limited),
     ];
     let top = ui.cursor().top();
     ui.columns(STAT_COLUMNS, |columns| {
-        for (column, (value, label)) in columns.iter_mut().zip(stats) {
-            stat(column, value, label);
+        for (column, (value, label, color)) in columns.iter_mut().zip(stats) {
+            stat(column, value, label, color);
         }
     });
     let sentence = format!(
         "{} per minute now, {}",
         traffic.last_minute,
-        stats.map(|(value, label)| format!("{value} {label}")).join(", ")
+        stats.map(|(value, label, _)| format!("{value} {label}")).join(", ")
     );
     let row = ui.min_rect().with_min_y(top);
     let id = ui.scope_id().with(("network_counters", &rate.connection_id));
@@ -126,10 +129,9 @@ fn endpoints(ui: &mut Ui, rate: &ConnectionRate) {
         });
 }
 
-/// A counter: its value above its name. Rate-limited answers show in the warning color.
-fn stat(ui: &mut Ui, value: u64, label: &str) {
+/// A counter: its value in `color` above its name.
+fn stat(ui: &mut Ui, value: u64, label: &str, color: Color32) {
     let palette = theme::palette(ui.ctx());
-    let color = if label == "rate-limited" && value > 0 { palette.warning } else { palette.text };
     ui.spacing_mut().item_spacing.y = 0.0;
     ui.label(
         RichText::new(value.to_string())

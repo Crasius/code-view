@@ -16,17 +16,13 @@ use review_store::{
     PullRequestStart, ThemePreference, TreeSide,
 };
 
-use super::rows::{self, NEXT_UNVIEWED, OCCURRENCES, RowId};
+use super::rows::{self, AppearanceRow, Row};
 
-const FAVORITES_LANE: &str = "Show the Favorites lane";
-const GROUP_BY_REPOSITORY: &str = "Group by repository";
-const PAST_END: &str = "Scroll past the end";
-
-/// The control of Appearance row `id`.
-pub fn control(ui: &mut Ui, id: RowId, services: &mut Services) {
+/// The control of Appearance row `id`; a switch takes its name from `row`.
+pub fn control(ui: &mut Ui, id: AppearanceRow, row: &Row, services: &mut Services) {
     let settings = &mut services.settings;
     let changed = match id {
-        RowId::Theme => tabs::segmented(
+        AppearanceRow::Theme => tabs::segmented(
             ui,
             &mut settings.theme,
             &[
@@ -35,7 +31,7 @@ pub fn control(ui: &mut Ui, id: RowId, services: &mut Services) {
                 (ThemePreference::Dark, "Dark"),
             ],
         ),
-        RowId::DiffLayout => tabs::segmented(
+        AppearanceRow::DiffLayout => tabs::segmented(
             ui,
             &mut settings.diff_layout,
             &[
@@ -44,52 +40,49 @@ pub fn control(ui: &mut Ui, id: RowId, services: &mut Services) {
                 (DiffLayout::NewOnly, "New only"),
             ],
         ),
-        RowId::CodeFontSize => ui
+        AppearanceRow::CodeFontSize => ui
             .add(
                 egui::Slider::new(&mut settings.code_font_size, zoom::CODE_SIZE_RANGE).step_by(0.5),
             )
             .changed(),
-        RowId::WrapLines => rows::switch(ui, &mut settings.wrap_lines, "Wrap long lines"),
-        RowId::Comments => {
-            rows::switch(ui, &mut settings.show_comments_in_diff, "Comments in the diff")
+        AppearanceRow::WrapLines => rows::switch(ui, &mut settings.wrap_lines, row),
+        AppearanceRow::Comments => rows::switch(ui, &mut settings.show_comments_in_diff, row),
+        AppearanceRow::SelectionOccurrences => {
+            rows::switch(ui, &mut settings.highlight_selection_occurrences, row)
         }
-        RowId::SelectionOccurrences => {
-            rows::switch(ui, &mut settings.highlight_selection_occurrences, OCCURRENCES)
-        }
-        RowId::ScrollPastEnd => rows::switch(ui, &mut settings.scroll_past_end, PAST_END),
-        RowId::ContextLines => {
+        AppearanceRow::ScrollPastEnd => rows::switch(ui, &mut settings.scroll_past_end, row),
+        AppearanceRow::ContextLines => {
             ui.add(egui::Slider::new(&mut settings.context_lines, 0..=50)).changed()
         }
-        RowId::FavoritesLane => {
-            rows::switch(ui, &mut settings.favorites.is_lane_shown, FAVORITES_LANE)
+        AppearanceRow::FavoritesLane => {
+            rows::switch(ui, &mut settings.favorites.is_lane_shown, row)
         }
-        RowId::RepositorySections => {
-            rows::switch(ui, &mut settings.repository_sections.is_grouped, GROUP_BY_REPOSITORY)
+        AppearanceRow::RepositorySections => {
+            rows::switch(ui, &mut settings.repository_sections.is_grouped, row)
         }
-        RowId::PullRequestStart => pull_request_start(ui, &mut settings.pull_request_start),
-        RowId::FilesStart => files_start(ui, &mut settings.files_start),
-        RowId::TreeSide => tabs::segmented(
+        AppearanceRow::PullRequestStart => pull_request_start(ui, &mut settings.pull_request_start),
+        AppearanceRow::FilesStart => files_start(ui, &mut settings.files_start),
+        AppearanceRow::TreeSide => tabs::segmented(
             ui,
             &mut settings.file_tree_side,
             &[(TreeSide::Left, "Left"), (TreeSide::Right, "Right")],
         ),
-        RowId::NextUnviewed => rows::switch(ui, &mut settings.open_next_unviewed, NEXT_UNVIEWED),
-        RowId::PullRequestHeader => header_modes::show(ui, &mut settings.header_modes),
-        RowId::RenderedMarkdown => tabs::segmented(
+        AppearanceRow::NextUnviewed => rows::switch(ui, &mut settings.open_next_unviewed, row),
+        AppearanceRow::PullRequestHeader => header_modes::show(ui, &mut settings.header_modes),
+        AppearanceRow::RenderedMarkdown => tabs::segmented(
             ui,
             &mut settings.rendered_width.full,
             &[(false, "Reading column"), (true, "Full width")],
         ),
-        RowId::CommentEditor => comment_editors(ui, &mut settings.comment_editors),
-        RowId::InterfaceScale => {
+        AppearanceRow::CommentEditor => comment_editors(ui, &mut settings.comment_editors),
+        AppearanceRow::InterfaceScale => {
             let scale = ui
                 .add(egui::Slider::new(&mut settings.ui_scale, zoom::UI_SCALE_RANGE).step_by(0.05));
             // Applying the scale while dragging would move the slider under the pointer.
             scale.drag_stopped() || scale.lost_focus()
         }
-        RowId::FrameRate => frame_rate(ui, &mut settings.frame_rate),
-        RowId::PaneSizes => reset_panes(ui, &mut settings.panes),
-        _ => false,
+        AppearanceRow::FrameRate => frame_rate(ui, &mut settings.frame_rate),
+        AppearanceRow::PaneSizes => reset_panes(ui, &mut settings.panes),
     };
     if changed {
         services.save_settings();

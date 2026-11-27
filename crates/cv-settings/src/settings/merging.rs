@@ -9,7 +9,7 @@ use cv_widgets::{buttons, provider_icon, tabs};
 use egui::{RichText, Ui};
 use review_core::{MergeStrategy, ProviderKind};
 
-use super::rows::RowId;
+use super::rows::MergingRow;
 
 /// Platforms of the saved connections, each once, in the app's platform order.
 pub fn connected_kinds(services: &Services) -> Vec<ProviderKind> {
@@ -43,14 +43,13 @@ fn short(strategy: MergeStrategy, kind: ProviderKind) -> &'static str {
 /// The control of Merging row `id`; `previewed` follows the platform the user works on.
 pub fn control(
     ui: &mut Ui,
-    id: RowId,
+    id: MergingRow,
     services: &mut Services,
     previewed: &mut Option<ProviderKind>,
 ) {
     let changed = match id {
-        RowId::Favourites => favourites(ui, services, previewed),
-        RowId::Remembered => remembered(ui, services),
-        _ => false,
+        MergingRow::Favourites => favourites(ui, services, previewed),
+        MergingRow::Remembered => remembered(ui, services),
     };
     if changed {
         services.save_settings();

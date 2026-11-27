@@ -168,6 +168,8 @@ mod tests {
         let token = services.connection("ado").and_then(Connection::token);
         assert_eq!(token, Some("eyJnew.payload.signature"));
         apply(&mut services, "ado", Err("az: not signed in".into()));
-        assert!(services.providers.issues().get("ado").is_some(), "a failed renewal says so");
+        let problem = services.providers.issues().get("ado").expect("a failed renewal says so");
+        assert_eq!(problem.status, 401, "the banner offers Fix token");
+        assert!(problem.title.contains("az: not signed in"), "{}", problem.title);
     }
 }
