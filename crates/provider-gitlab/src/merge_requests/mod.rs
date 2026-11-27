@@ -17,6 +17,7 @@ use serde_json::json;
 
 use crate::client::{ApiClient, group_path, merge_request_path, project_path};
 use crate::dto::{ApprovalsDto, MergeRequestDto, ReviewerDto, UserDto};
+use crate::graphql::Nodes;
 
 use self::labels::to_label;
 use self::reviews::combine_reviewers;
@@ -101,17 +102,31 @@ pub(crate) async fn list(
         .collect())
 }
 
+/// Reviewers one merge request lists at most.
+const MAX_REVIEWERS: usize = 100;
+
 pub(crate) async fn detail(client: &ApiClient, repo: &str, iid: u64) -> Result<PullRequestDetail> {
+    let (merge_request, reviewers, approvals) = with_votes(client, repo, iid).await?;
+    to_detail(merge_request, repo.to_owned(), &reviewers, &approvals)
+}
+
+/// The merge request with its reviewers' states and its approvals, in three requests at once.
+/// The detail and the revision probe both ask through here, so a reload right after the detail
+/// shares its answers.
+pub(crate) async fn with_votes(
+    client: &ApiClient,
+    repo: &str,
+    iid: u64,
+) -> Result<(MergeRequestDto, Vec<ReviewerDto>, ApprovalsDto)> {
     let path = merge_request_path(repo, iid);
     let reviewers_path = format!("{path}/reviewers");
     let approvals_path = format!("{path}/approvals");
     let label_details = [("with_labels_details", "true".to_owned())];
-    let (merge_request, reviewers, approvals) = tokio::try_join!(
+    tokio::try_join!(
         client.get::<MergeRequestDto>(&path, &label_details),
-        client.get_pages::<ReviewerDto>(&reviewers_path, &[], 100),
+        client.get_pages::<ReviewerDto>(&reviewers_path, &[], MAX_REVIEWERS),
         client.get::<ApprovalsDto>(&approvals_path, &[]),
-    )?;
-    to_detail(merge_request, repo.to_owned(), &reviewers, &approvals)
+    )
 }
 
 /// The merge request without reviewers' votes; enough for writes that need ids, SHAs or the title.
@@ -217,11 +232,7 @@ pub(crate) async fn diff_stats(
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Project {
-        merge_requests: Nodes,
-    }
-    #[derive(Deserialize)]
-    struct Nodes {
-        nodes: Vec<Node>,
+        merge_requests: Nodes<Node>,
     }
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -246,7 +257,7 @@ pub(crate) async fn diff_stats(
         let project = data.project.ok_or_else(|| {
             ProviderError::Local(format!("GitLab GraphQL does not show the project {repo}."))
         })?;
-        for node in project.merge_requests.nodes {
+        for node in project.merge_requests.into_items() {
             if let (Ok(iid), Some(summary)) = (node.iid.parse(), node.diff_stats_summary) {
                 stats.push((
                     iid,
@@ -265,14 +276,11 @@ pub(crate) fn to_detail(
     approvals: &ApprovalsDto,
 ) -> Result<PullRequestDetail> {
     let iid = merge_request.iid;
+    let head_sha = merge_request.head_sha().map(str::to_owned);
     let diff_refs = merge_request.diff_refs.take();
     let target_sha = diff_refs
         .as_ref()
         .and_then(|refs| refs.base_sha.clone().or_else(|| refs.start_sha.clone()));
-    let head_sha = diff_refs
-        .as_ref()
-        .and_then(|refs| refs.head_sha.clone())
-        .or_else(|| merge_request.sha.clone());
     let (Some(target_sha), Some(head_sha)) = (target_sha, head_sha) else {
         return Err(ProviderError::Decode(format!(
             "GitLab has not computed the diff refs of !{iid} yet; reload in a moment."

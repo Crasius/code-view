@@ -31,6 +31,18 @@ fn too_many_requests() -> ResponseTemplate {
         .set_body_string("Retry later")
 }
 
+/// Waits for the 429 to arrive rather than a fixed time, so a busy test machine cannot outrun it.
+async fn paused(server: &MockServer) {
+    let is_paused = || http::rate_limits().iter().any(|notice| notice.origin == server.uri());
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !is_paused() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the host pauses after the 429");
+}
+
 #[tokio::test]
 async fn waits_for_retry_after_then_retries_once() {
     let server = MockServer::start().await;
@@ -55,7 +67,7 @@ async fn waits_for_retry_after_then_retries_once() {
     let call = tokio::spawn(http::for_connection("gitlab-rate-retry", async move {
         provider.current_user().await
     }));
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    paused(&server).await;
     let notices = http::rate_limits();
     let notice =
         notices.iter().find(|notice| notice.origin == server.uri()).expect("the host is paused");
@@ -106,20 +118,12 @@ async fn retry_now_ends_the_pause_early() {
         .await;
     let provider = provider(&server);
     let call = tokio::spawn(async move { provider.current_user().await });
-    // Wait for the 429 to arrive rather than a fixed time, so a busy test machine cannot outrun it.
-    let is_paused = || http::rate_limits().iter().any(|notice| notice.origin == server.uri());
-    tokio::time::timeout(Duration::from_secs(5), async {
-        while !is_paused() {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("the host pauses after the 429");
+    paused(&server).await;
 
     http::resume(&server.uri());
     let user = tokio::time::timeout(Duration::from_secs(5), call)
         .await
         .expect("woken by resume")
         .expect("task");
-    assert!(user.is_ok());
+    user.expect("retried");
 }

@@ -5,11 +5,8 @@ use serde::Deserialize;
 pub(crate) struct UserDto {
     pub id: u64,
     pub username: String,
-    #[serde(default)]
     pub name: Option<String>,
-    #[serde(default)]
     pub avatar_url: Option<String>,
-    #[serde(default)]
     pub public_email: Option<String>,
 }
 

@@ -61,25 +61,25 @@ async fn mount_user(server: &MockServer, expected: u64) {
 async fn everything_in_a_group_is_one_listing_even_anonymously() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/api/v4/groups/gitlab-org/merge_requests"))
+        .and(path("/api/v4/groups/acme/merge_requests"))
         .and(query_param("state", "opened"))
         .and(query_param("scope", "all"))
         .and(query_param("with_labels_details", "true"))
         .respond_with(listing(vec![
-            merge_request("gitlab-org/cli", 7, 3, 2),
-            merge_request("gitlab-org/gitlab", 9, 8, 5),
+            merge_request("acme/cli", 7, 3, 2),
+            merge_request("acme/app", 9, 8, 5),
         ]))
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["gitlab-org"], None);
+    let provider = provider(&server, &["acme"], None);
 
     let rows =
         provider.list_pull_requests(&query(PullRequestScope::Visible)).await.expect("overview");
     let keys: Vec<(&str, u64)> =
         rows.iter().map(|row| (row.repository_key.as_str(), row.number)).collect();
-    assert_eq!(keys, [("gitlab-org/gitlab", 8), ("gitlab-org/cli", 3)], "newest first");
-    let requests = server.received_requests().await.unwrap_or_default();
+    assert_eq!(keys, [("acme/app", 8), ("acme/cli", 3)], "newest first");
+    let requests = server.received_requests().await.expect("recorded");
     assert!(
         requests.iter().all(|request| request.url.path() != "/api/v4/user"),
         "a group listing needs no user"
@@ -209,6 +209,7 @@ async fn diff_stats_of_a_project_are_one_graphql_request() {
     let nodes = json!([
         { "iid": "5", "diffStatsSummary": { "additions": 1240, "deletions": 312, "fileCount": 18 } },
         { "iid": "6", "diffStatsSummary": null },
+        null,
         { "iid": "9", "diffStatsSummary": { "additions": 0, "deletions": 4, "fileCount": 1 } },
     ]);
     Mock::given(method("POST"))
@@ -230,7 +231,7 @@ async fn diff_stats_of_a_project_are_one_graphql_request() {
     assert_eq!(
         stats,
         [(5, DiffStat::new(1240, 312, 18)), (9, DiffStat::new(0, 4, 1))],
-        "a merge request without a diff yet is left out"
+        "a merge request without a diff yet and a null node are left out"
     );
 }
 

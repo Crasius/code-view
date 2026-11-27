@@ -14,7 +14,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::client::{ApiClient, merge_request_path};
 use crate::dto::{CommitStatusDto, JobDto, PipelineDto};
-use crate::graphql::SchemaGaps;
+use crate::graphql::{Nodes, SchemaGaps};
 use crate::merge_requests::fetch;
 use crate::pipeline_mapping::{
     JobNeeds, group_stages, is_ci_job_status, pipeline_runs, status_run,
@@ -35,11 +35,7 @@ pub(crate) async fn runs(client: &ApiClient, repo: &str, iid: u64) -> Result<Vec
     let mut named: Vec<&mut PipelineDto> =
         pipelines.iter_mut().chain(merge_request.head_pipeline.as_mut()).collect();
     pipeline_names::name(client, merge_request.project_id, iid, &mut named).await;
-    let head_sha = merge_request
-        .diff_refs
-        .as_ref()
-        .and_then(|refs| refs.head_sha.clone())
-        .or_else(|| merge_request.sha.clone());
+    let head_sha = merge_request.head_sha().map(str::to_owned);
     let mut runs =
         pipeline_runs(pipelines, merge_request.head_pipeline, head_sha.as_deref(), MAX_RUNS);
     // gitlab.com answers commit statuses only with a token; anonymous runs show pipelines alone.
@@ -147,8 +143,7 @@ async fn needs_of(
             client.graphql_fitted(|schema| needs_query(schema, key), variables).await?;
         let Some(jobs) = data
             .projects
-            .nodes
-            .into_iter()
+            .into_items()
             .next()
             .and_then(|project| project.pipeline)
             .map(|pipeline| pipeline.jobs)
@@ -160,7 +155,7 @@ async fn needs_of(
         for job in jobs.nodes {
             let job_needs = JobNeeds {
                 is_dag: job.scheduling_type.as_deref() == Some("dag"),
-                needs: job.needs.nodes.into_iter().map(|need| need.name).collect(),
+                needs: job.needs.into_items().map(|need| need.name).collect(),
             };
             needs.insert(job.name, job_needs);
         }
@@ -175,11 +170,6 @@ async fn needs_of(
 #[derive(Deserialize)]
 struct NeedsData {
     projects: Nodes<ProjectNode>,
-}
-
-#[derive(Deserialize)]
-struct Nodes<T> {
-    nodes: Vec<T>,
 }
 
 #[derive(Deserialize)]
@@ -292,5 +282,15 @@ mod tests {
         assert!(parse_pipeline_run_id("pipeline:x").is_err());
         assert_eq!(parse_log_id("1:2").expect("log"), (1, 2));
         assert!(parse_log_id("17220013682").is_err());
+    }
+
+    #[test]
+    fn a_null_need_is_skipped() {
+        let job: JobNode = serde_json::from_str(
+            r#"{"name": "lint", "schedulingType": "dag", "needs": {"nodes": [null, {"name": "compile"}]}}"#,
+        )
+        .expect("a null need parses");
+        let needs: Vec<String> = job.needs.into_items().map(|need| need.name).collect();
+        assert_eq!(needs, ["compile"]);
     }
 }

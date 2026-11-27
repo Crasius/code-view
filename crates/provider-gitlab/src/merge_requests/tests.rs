@@ -3,17 +3,17 @@ use review_core::ReviewVote;
 use super::*;
 
 const MERGE_REQUEST: &str = r###"{
-  "id": 549786808, "iid": 4131, "project_id": 34675721, "source_project_id": 34675721,
+  "id": 901, "iid": 4131, "project_id": 42, "source_project_id": 42,
   "title": "Draft: docs: regenerate", "description": "## Summary", "state": "opened",
   "draft": true, "work_in_progress": true,
-  "author": {"id": 12187344, "username": "nrosandich", "name": "Nate Rosandich", "avatar_url": "https://a/x.png"},
+  "author": {"id": 7, "username": "ann", "name": "Ann", "avatar_url": "https://a/x.png"},
   "source_branch": "duo/fix", "target_branch": "main",
   "created_at": "2026-10-16T01:53:46.784Z", "updated_at": "2026-10-16T02:08:48.051Z",
   "merged_at": null, "closed_at": null,
-  "web_url": "https://gitlab.com/gitlab-org/cli/-/merge_requests/4131",
+  "web_url": "https://gitlab.example.com/acme/cli/-/merge_requests/4131",
   "labels": [{"id": 1, "name": "type::maintenance", "color": "#330066", "description": "Upkeep"}],
-  "reviewers": [{"id": 21826781, "username": "GitLabDuo", "name": "GitLab Duo"}],
-  "references": {"short": "!4131", "full": "gitlab-org/cli!4131"},
+  "reviewers": [{"id": 8, "username": "bob", "name": "Bob"}],
+  "references": {"short": "!4131", "full": "acme/cli!4131"},
   "sha": "7622f050",
   "diff_refs": {"base_sha": "af362f57", "head_sha": "7622f050", "start_sha": "af362f58"},
   "detailed_merge_status": "not_approved", "merge_status": "can_be_merged", "has_conflicts": false
@@ -25,13 +25,13 @@ fn merge_request() -> MergeRequestDto {
 
 #[test]
 fn maps_summary() {
-    let summary = to_summary(merge_request(), "gitlab-org/cli".to_owned());
+    let summary = to_summary(merge_request(), "acme/cli".to_owned());
     assert_eq!(summary.repository_name, "cli");
     assert_eq!(summary.number, 4131);
     assert_eq!(summary.state, PullRequestState::Open);
     assert!(summary.is_draft);
-    assert_eq!(summary.author.login.as_deref(), Some("nrosandich"));
-    assert_eq!(summary.author.display_name, "Nate Rosandich");
+    assert_eq!(summary.author.login.as_deref(), Some("ann"));
+    assert_eq!(summary.author.display_name, "Ann");
     assert_eq!(summary.labels[0].color.as_deref(), Some("330066"));
     assert_eq!(summary.reviewers.len(), 1);
     assert_eq!(summary.reviewers[0].vote, ReviewVote::None);
@@ -39,17 +39,12 @@ fn maps_summary() {
 
 #[test]
 fn maps_detail_with_refs_and_votes() {
-    let reviewers: Vec<ReviewerDto> = serde_json::from_str(
-        r#"[{"user":{"id":21826781,"username":"GitLabDuo"},"state":"approved"}]"#,
-    )
-    .expect("fixture");
-    let detail = to_detail(
-        merge_request(),
-        "gitlab-org/cli".to_owned(),
-        &reviewers,
-        &ApprovalsDto::default(),
-    )
-    .expect("detail");
+    let reviewers: Vec<ReviewerDto> =
+        serde_json::from_str(r#"[{"user":{"id":8,"username":"bob"},"state":"approved"}]"#)
+            .expect("fixture");
+    let detail =
+        to_detail(merge_request(), "acme/cli".to_owned(), &reviewers, &ApprovalsDto::default())
+            .expect("detail");
     assert_eq!(detail.target_sha, "af362f57");
     assert_eq!(detail.head_sha, "7622f050");
     assert_eq!(detail.description, "## Summary");
@@ -67,18 +62,21 @@ fn rejects_detail_without_diff_refs() {
     let mut dto = merge_request();
     dto.diff_refs = None;
     dto.sha = None;
-    assert!(to_detail(dto, "gitlab-org/cli".to_owned(), &[], &ApprovalsDto::default()).is_err());
+    assert!(matches!(
+        to_detail(dto, "acme/cli".to_owned(), &[], &ApprovalsDto::default()),
+        Err(ProviderError::Decode(_))
+    ));
 }
 
 #[test]
 fn derives_repository_key() {
-    let web_root = "https://gitlab.com";
+    let web_root = "https://gitlab.example.com";
     let mut dto = merge_request();
-    assert_eq!(repository_key(&dto, web_root), "gitlab-org/cli");
+    assert_eq!(repository_key(&dto, web_root), "acme/cli");
     dto.references = None;
-    assert_eq!(repository_key(&dto, web_root), "gitlab-org/cli");
+    assert_eq!(repository_key(&dto, web_root), "acme/cli");
     dto.web_url = "https://elsewhere/x".to_owned();
-    assert_eq!(repository_key(&dto, web_root), "34675721");
+    assert_eq!(repository_key(&dto, web_root), "42");
 }
 
 #[test]
@@ -123,7 +121,7 @@ fn maps_who_set_auto_merge_and_its_squash() {
         let mut value: serde_json::Value = serde_json::from_str(MERGE_REQUEST).expect("fixture");
         value.as_object_mut().expect("object").extend(extra.as_object().expect("object").clone());
         let dto: MergeRequestDto = serde_json::from_value(value).expect("fixture");
-        to_detail(dto, "gitlab-org/cli".to_owned(), &[], &ApprovalsDto::default()).expect("detail")
+        to_detail(dto, "acme/cli".to_owned(), &[], &ApprovalsDto::default()).expect("detail")
     };
     let user = serde_json::json!({"id": 5, "username": "ada", "name": "Ada"});
     let squashed = detail(serde_json::json!({

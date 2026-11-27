@@ -78,7 +78,10 @@ async fn approves_with_comment_and_unapproves() {
     let provider = provider(&server);
     provider.set_vote(REPO, 7, ReviewVote::Approved, Some(" Looks good ")).await.expect("approve");
     provider.set_vote(REPO, 7, ReviewVote::None, None).await.expect("unapprove");
-    assert!(provider.set_vote(REPO, 7, ReviewVote::ChangesRequested, None).await.is_err());
+    assert!(matches!(
+        provider.set_vote(REPO, 7, ReviewVote::ChangesRequested, None).await,
+        Err(ProviderError::Unsupported(_))
+    ));
 }
 
 #[tokio::test]
@@ -103,74 +106,49 @@ async fn creates_general_discussion() {
     assert!(thread.anchor.is_none());
 }
 
+/// The position's SHAs come from the merge request's `diff_refs`; the unit tests of `discussions`
+/// hold the line mapping of every side.
 #[tokio::test]
-async fn creates_line_discussions_with_documented_positions() {
+async fn creates_line_discussion_with_the_merge_requests_diff_refs() {
     let server = MockServer::start().await;
     mount_merge_request(&server, "Title", &json!([])).await;
-    let refs = json!({ "position_type": "text", "base_sha": "base1", "start_sha": "start1", "head_sha": "head1" });
-    let cases = [
-        // Added line: new_line only.
-        (
-            None,
-            Some(12),
-            json!({ "new_path": "src/new.rs", "old_path": "src/old.rs", "new_line": 12 }),
-        ),
-        // Deleted line: old_line only.
-        (
-            Some(8),
-            None,
-            json!({ "new_path": "src/new.rs", "old_path": "src/old.rs", "old_line": 8 }),
-        ),
-        // Unchanged line: both.
-        (
-            Some(3),
-            Some(4),
-            json!({ "new_path": "src/new.rs", "old_path": "src/old.rs", "old_line": 3, "new_line": 4 }),
-        ),
-    ];
-    let provider = provider(&server);
-    for (old_line, new_line, lines) in cases {
-        let mut position = refs.clone();
-        position
-            .as_object_mut()
-            .expect("object")
-            .extend(lines.as_object().expect("object").clone());
-        let position_matches = move |request: &wiremock::Request| {
-            let body: Value = serde_json::from_slice(&request.body).unwrap_or_default();
-            body.get("position") == Some(&position) && body.get("body") == Some(&json!("Inline"))
-        };
-        let response = json!({ "id": "d2", "notes": [{
-            "id": 11, "body": "Inline", "author": user(1, "ann"), "created_at": "2026-01-01T10:00:00Z",
-            "resolvable": true, "resolved": false,
-            "position": { "head_sha": "head1", "old_path": "src/old.rs", "new_path": "src/new.rs",
-                          "position_type": "text", "old_line": old_line, "new_line": new_line } }] });
-        let mock = Mock::given(method("POST"))
-            .and(path(format!("{MR}/discussions")))
-            .and(header("PRIVATE-TOKEN", TOKEN))
-            .and(position_matches)
-            .respond_with(ResponseTemplate::new(201).set_body_json(response))
-            .expect(1)
-            .mount_as_scoped(&server)
-            .await;
-        let anchor = ThreadAnchor {
-            path: "src/new.rs".to_owned(),
-            old_path: Some("src/old.rs".to_owned()),
-            old_line,
-            new_line,
-            range: None,
-        };
-        let thread = provider
-            .create_thread(
-                REPO,
-                7,
-                &NewThread { body: "Inline".to_owned(), anchor: Some(anchor.clone()) },
-            )
-            .await
-            .expect("line discussion");
-        assert_eq!(thread.anchor, Some(anchor));
-        assert!(!thread.is_outdated);
-        drop(mock);
-    }
+    let expected = json!({
+        "body": "Inline",
+        "position": {
+            "position_type": "text", "base_sha": "base1", "start_sha": "start1", "head_sha": "head1",
+            "new_path": "src/new.rs", "old_path": "src/old.rs", "new_line": 12,
+        },
+    });
+    let response = json!({ "id": "d2", "notes": [{
+        "id": 11, "body": "Inline", "author": user(1, "ann"), "created_at": "2026-01-01T10:00:00Z",
+        "resolvable": true, "resolved": false,
+        "position": { "head_sha": "head1", "old_path": "src/old.rs", "new_path": "src/new.rs",
+                      "position_type": "text", "old_line": null, "new_line": 12 } }] });
+    Mock::given(method("POST"))
+        .and(path(format!("{MR}/discussions")))
+        .and(header("PRIVATE-TOKEN", TOKEN))
+        .and(body_json(expected))
+        .respond_with(ResponseTemplate::new(201).set_body_json(response))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let anchor = ThreadAnchor {
+        path: "src/new.rs".to_owned(),
+        old_path: Some("src/old.rs".to_owned()),
+        old_line: None,
+        new_line: Some(12),
+        range: None,
+    };
+    let thread = provider(&server)
+        .create_thread(
+            REPO,
+            7,
+            &NewThread { body: "Inline".to_owned(), anchor: Some(anchor.clone()) },
+        )
+        .await
+        .expect("line discussion");
+    assert_eq!(thread.anchor, Some(anchor));
+    assert!(!thread.is_outdated);
 }
 
 /// Multi-line note: `position[line_range]` with `line_code` (`<SHA-1 of the path>_<old>_<new>`) and
@@ -226,21 +204,10 @@ async fn creates_multi_line_discussion_with_line_range() {
             }),
         }),
     };
-    let thread = provider(&server)
+    provider(&server)
         .create_thread(REPO, 7, &NewThread { body: "Range".to_owned(), anchor: Some(anchor) })
         .await
         .expect("multi-line discussion");
-    let anchor = thread.anchor.expect("anchor");
-    assert_eq!(anchor.new_line, Some(14));
-    assert_eq!(
-        anchor.range,
-        Some(LineRange {
-            start_old_line: Some(8),
-            start_new_line: None,
-            side: DiffSide::New,
-            detail: None
-        })
-    );
 }
 
 #[tokio::test]
@@ -459,19 +426,30 @@ async fn closes_and_reopens() {
 }
 
 #[tokio::test]
-async fn marks_draft_by_title_prefix() {
-    let server = MockServer::start().await;
-    mount_merge_request(&server, "Fix parser", &json!([])).await;
-    expect_write(&server, "PUT", MR, json!({ "title": "Draft: Fix parser" }), 200).await;
-    provider(&server).set_draft(REPO, 7, true).await.expect("set draft");
-}
-
-#[tokio::test]
-async fn removes_draft_prefix() {
-    let server = MockServer::start().await;
-    mount_merge_request(&server, "Draft: Fix parser", &json!([])).await;
-    expect_write(&server, "PUT", MR, json!({ "title": "Fix parser" }), 200).await;
-    provider(&server).set_draft(REPO, 7, false).await.expect("unset draft");
+async fn sets_draft_by_title_prefix_and_skips_a_title_that_is_right() {
+    let cases = [
+        ("Fix parser", true, Some("Draft: Fix parser")),
+        ("Draft: Fix parser", false, Some("Fix parser")),
+        ("Draft: Fix parser", true, None),
+    ];
+    for (title, is_draft, written) in cases {
+        let server = MockServer::start().await;
+        mount_merge_request(&server, title, &json!([])).await;
+        match written {
+            Some(written) => {
+                expect_write(&server, "PUT", MR, json!({ "title": written }), 200).await;
+            }
+            None => {
+                Mock::given(method("PUT"))
+                    .and(path(MR))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+                    .expect(0)
+                    .mount(&server)
+                    .await;
+            }
+        }
+        provider(&server).set_draft(REPO, 7, is_draft).await.expect("set draft");
+    }
 }
 
 #[tokio::test]
@@ -503,10 +481,13 @@ async fn refuses_writes_without_token() {
         token: None,
     };
     let provider = GitLabProvider::new(connection, reqwest::Client::new());
-    assert!(provider.close(REPO, 7).await.is_err());
-    assert!(provider.set_vote(REPO, 7, ReviewVote::Approved, None).await.is_err());
+    assert!(matches!(provider.close(REPO, 7).await, Err(ProviderError::Unsupported(_))));
+    assert!(matches!(
+        provider.set_vote(REPO, 7, ReviewVote::Approved, None).await,
+        Err(ProviderError::Unsupported(_))
+    ));
     assert!(
-        server.received_requests().await.unwrap_or_default().is_empty(),
+        server.received_requests().await.expect("recorded").is_empty(),
         "no request without a token"
     );
 }

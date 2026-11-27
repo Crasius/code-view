@@ -6,24 +6,16 @@
 
 use review_core::{Fingerprint, PullRequestRevision, Result};
 
-use crate::client::{ApiClient, merge_request_path};
+use crate::client::ApiClient;
 use crate::dto::{ApprovalsDto, LabelRef, MergeRequestDto, ReviewerDto};
+use crate::merge_requests::with_votes;
 
 pub(crate) async fn revision(
     client: &ApiClient,
     repo: &str,
     iid: u64,
 ) -> Result<PullRequestRevision> {
-    let path = merge_request_path(repo, iid);
-    let reviewers_path = format!("{path}/reviewers");
-    let approvals_path = format!("{path}/approvals");
-    // The detail's exact requests, so a reload right after shares their answers.
-    let label_details = [("with_labels_details", "true".to_owned())];
-    let (merge_request, reviewers, approvals) = tokio::try_join!(
-        client.get::<MergeRequestDto>(&path, &label_details),
-        client.get_pages::<ReviewerDto>(&reviewers_path, &[], 100),
-        client.get::<ApprovalsDto>(&approvals_path, &[]),
-    )?;
+    let (merge_request, reviewers, approvals) = with_votes(client, repo, iid).await?;
     Ok(of(&merge_request, &reviewers, &approvals))
 }
 
@@ -55,11 +47,6 @@ fn of(
     for approval in &approvals.approved_by {
         fingerprint.add(approval.user.id);
     }
-    let head_sha = merge_request
-        .diff_refs
-        .as_ref()
-        .and_then(|refs| refs.head_sha.clone())
-        .or_else(|| merge_request.sha.clone())
-        .unwrap_or_default();
+    let head_sha = merge_request.head_sha().unwrap_or_default().to_owned();
     PullRequestRevision { head_sha, marker: fingerprint.finish() }
 }

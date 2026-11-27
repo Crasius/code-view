@@ -65,10 +65,9 @@ pub fn token_guide(base_url: &str) -> TokenGuide {
 }
 
 /// The token page, pre-filled with name, description and the `api` scope.
-pub fn token_url(base_url: &str) -> String {
+fn token_url(base: &str) -> String {
     format!(
-        "{}/-/user_settings/personal_access_tokens?name={}&description={}&scopes=api",
-        base_url.trim_end_matches('/'),
+        "{base}/-/user_settings/personal_access_tokens?name={}&description={}&scopes=api",
         urlencoding::encode(TOKEN_NAME),
         urlencoding::encode(TOKEN_DESCRIPTION)
     )
@@ -78,9 +77,7 @@ pub fn token_url(base_url: &str) -> String {
 struct TokenSelfDto {
     #[serde(default)]
     scopes: Vec<String>,
-    #[serde(default)]
     granular_scopes: Option<Vec<GranularScopeDto>>,
-    #[serde(default)]
     expires_at: Option<String>,
 }
 
@@ -93,7 +90,6 @@ struct GranularScopeDto {
 #[derive(Debug, Deserialize)]
 struct GroupDto {
     full_path: String,
-    #[serde(default)]
     full_name: Option<String>,
 }
 
@@ -314,7 +310,7 @@ mod tests {
             .and(query_param("membership", "true"))
             .respond_with(
                 ResponseTemplate::new(200)
-                    .set_body_json(json!([{"id": 42, "path_with_namespace": "ttrpg/ttrpg-ai"}])),
+                    .set_body_json(json!([{"id": 42, "path_with_namespace": "acme/app"}])),
             )
             .mount(&server)
             .await;
@@ -379,7 +375,7 @@ mod tests {
             .and(query_param("min_access_level", "10"))
             .and(query_param("top_level_only", "true"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-                {"id": 1, "full_path": "ttrpg", "full_name": "TTRPG"},
+                {"id": 1, "full_path": "acme", "full_name": "Acme"},
                 {"id": 2, "full_path": "tools", "full_name": ""}
             ])))
             .mount(&server)
@@ -387,14 +383,14 @@ mod tests {
         let scopes = provider.discover_scopes().await.expect("groups");
         let found: Vec<(&str, &str)> =
             scopes.iter().map(|scope| (scope.key.as_str(), scope.display_name.as_str())).collect();
-        assert_eq!(found, [("ttrpg", "TTRPG"), ("tools", "tools")]);
+        assert_eq!(found, [("acme", "Acme"), ("tools", "tools")]);
     }
 
     #[test]
     fn explains_the_reported_fine_grained_denial() {
         let error = ProviderError::Status {
             status: 403,
-            path: "/api/v4/projects/ttrpg%2Fttrpg-ai/merge_requests/3/approvals".into(),
+            path: "/api/v4/projects/acme%2Fapp/merge_requests/3/approvals".into(),
             body: json!({"message": "Access denied: This operation requires a fine-grained personal access token with the following project permissions: [Merge Request: Read]."}).to_string(),
         };
         let problem = explain(&error).expect("explained");
@@ -414,6 +410,10 @@ mod tests {
             guide.recommended.create_url,
             "https://gitlab.example.com/-/user_settings/personal_access_tokens?name=Code%20View&description=Pull%20request%20review%20desktop%20app&scopes=api"
         );
+    }
+
+    #[test]
+    fn maps_permission_names_to_granular_keys() {
         assert_eq!(permission_key("Merge Request: Read"), "read_merge_request");
         assert_eq!(permission_key("Code: Download"), "download_code");
     }

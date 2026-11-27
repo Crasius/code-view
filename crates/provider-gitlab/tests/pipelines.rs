@@ -2,7 +2,9 @@
 //! documented retry endpoints (docs.gitlab.com/api/jobs, /api/pipelines, /api/graphql).
 
 use provider_gitlab::GitLabProvider;
-use review_core::{Connection, Provider, ProviderError, ProviderKind, RerunAction, RerunKind};
+use review_core::{
+    Connection, PipelineJob, Provider, ProviderError, ProviderKind, RerunAction, RerunKind,
+};
 use serde_json::{Value, json};
 use wiremock::matchers::{
     body_partial_json, body_string_contains, header, method, path, query_param,
@@ -51,22 +53,30 @@ fn graphql_jobs(nodes: &Value) -> Value {
     } } } ] } } })
 }
 
+/// `compile` is stage-scheduled, `lint` needs `compile`, `docs` needs nothing.
+fn needs_nodes() -> Value {
+    json!([
+        { "name": "compile", "schedulingType": "stage", "needs": { "nodes": [] } },
+        { "name": "lint", "schedulingType": "dag", "needs": { "nodes": [ { "name": "compile" } ] } },
+        { "name": "docs", "schedulingType": "dag", "needs": { "nodes": [] } }
+    ])
+}
+
+fn stage_dependencies(stages: &[PipelineJob]) -> Vec<Vec<&str>> {
+    stages.iter().map(|stage| stage.depends_on.iter().map(String::as_str).collect()).collect()
+}
+
 #[tokio::test]
 async fn jobs_carry_their_needs_from_graphql_and_stages_keep_their_order() {
     let server = MockServer::start().await;
     mount_rest_jobs(&server).await;
-    let nodes = json!([
-        { "name": "compile", "schedulingType": "stage", "needs": { "nodes": [] } },
-        { "name": "lint", "schedulingType": "dag", "needs": { "nodes": [ { "name": "compile" } ] } },
-        { "name": "docs", "schedulingType": "dag", "needs": { "nodes": [] } }
-    ]);
     Mock::given(method("POST"))
         .and(path("/api/graphql"))
         .and(header("authorization", format!("Bearer {TOKEN}").as_str()))
         .and(body_partial_json(json!({ "variables": {
             "project": "gid://gitlab/Project/7", "pipeline": "gid://gitlab/Ci::Pipeline/99", "after": null
         } })))
-        .respond_with(ResponseTemplate::new(200).set_body_json(graphql_jobs(&nodes)))
+        .respond_with(ResponseTemplate::new(200).set_body_json(graphql_jobs(&needs_nodes())))
         .expect(1)
         .mount(&server)
         .await;
@@ -115,16 +125,11 @@ async fn a_host_without_pipeline_by_id_gets_the_needs_by_iid() {
         .expect(2)
         .mount(&server)
         .await;
-    let nodes = json!([
-        { "name": "compile", "schedulingType": "stage", "needs": { "nodes": [] } },
-        { "name": "lint", "schedulingType": "dag", "needs": { "nodes": [ { "name": "compile" } ] } },
-        { "name": "docs", "schedulingType": "dag", "needs": { "nodes": [] } }
-    ]);
     Mock::given(method("POST"))
         .and(path("/api/graphql"))
         .and(body_string_contains("pipeline(iid:"))
         .and(body_partial_json(json!({ "variables": { "pipeline": "12" } })))
-        .respond_with(ResponseTemplate::new(200).set_body_json(graphql_jobs(&nodes)))
+        .respond_with(ResponseTemplate::new(200).set_body_json(graphql_jobs(&needs_nodes())))
         .expect(2)
         .mount(&server)
         .await;
@@ -149,9 +154,10 @@ async fn stages_run_in_order_when_graphql_fails() {
         .await;
     let stages =
         provider(&server, None).pipeline_jobs("group/project", 1, RUN).await.expect("jobs");
-    let dependencies: Vec<Vec<&str>> =
-        stages.iter().map(|stage| stage.depends_on.iter().map(String::as_str).collect()).collect();
-    assert_eq!(dependencies, vec![vec![], vec!["stage:99:build"], vec!["stage:99:test"]]);
+    assert_eq!(
+        stage_dependencies(&stages),
+        vec![vec![], vec!["stage:99:build"], vec!["stage:99:test"]]
+    );
 }
 
 /// gitlab.com limits anonymous GraphQL per IP far below REST and answers with a `Retry-After` up to
@@ -181,10 +187,8 @@ async fn a_rate_limited_graphql_neither_holds_back_the_jobs_nor_pauses_rest() {
         .await
         .expect("the jobs do not wait for the GraphQL limit")
         .expect("jobs");
-    let dependencies: Vec<Vec<&str>> =
-        stages.iter().map(|stage| stage.depends_on.iter().map(String::as_str).collect()).collect();
     assert_eq!(
-        dependencies,
+        stage_dependencies(&stages),
         vec![vec![], vec!["stage:99:build"], vec!["stage:99:test"]],
         "stages in order, without needs"
     );
@@ -245,5 +249,5 @@ async fn retries_need_a_token() {
         .rerun("group/project", 1, RUN, &RerunAction::new(RerunKind::Job, "7:3"))
         .await;
     assert!(matches!(result, Err(ProviderError::Unsupported(_))), "{result:?}");
-    assert!(server.received_requests().await.unwrap_or_default().is_empty());
+    assert!(server.received_requests().await.expect("recorded").is_empty());
 }

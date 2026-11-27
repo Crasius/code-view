@@ -15,7 +15,7 @@ use serde_json::json;
 
 use crate::client::ApiClient;
 use crate::dto::PipelineDto;
-use crate::graphql::SchemaGaps;
+use crate::graphql::{Nodes, SchemaGaps};
 
 /// Pipelines one query names at most: as many as the merge request's pipelines are listed.
 const MAX_NAMED: usize = 50;
@@ -89,11 +89,9 @@ async fn labels(client: &ApiClient, project_id: u64, iid: u64) -> Result<HashMap
 fn labels_of(data: Data) -> HashMap<u64, Label> {
     let pipelines = data
         .projects
-        .nodes
-        .into_iter()
-        .flatten()
+        .into_items()
         .filter_map(|project| project.merge_request)
-        .flat_map(|merge_request| merge_request.pipelines.nodes.into_iter().flatten());
+        .flat_map(|merge_request| merge_request.pipelines.into_items());
     pipelines
         .filter_map(|pipeline| {
             let id = pipeline.id.rsplit('/').next()?.parse().ok()?;
@@ -142,12 +140,6 @@ struct Data {
 }
 
 #[derive(Deserialize)]
-struct Nodes<T> {
-    #[serde(default = "Vec::new")]
-    nodes: Vec<Option<T>>,
-}
-
-#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ProjectNode {
     merge_request: Option<MergeRequestNode>,
@@ -163,20 +155,30 @@ struct MergeRequestNode {
 struct PipelineNode {
     /// A global id: `gid://gitlab/Ci::Pipeline/2695`.
     id: String,
-    #[serde(default)]
     name: Option<String>,
-    #[serde(default)]
     merge_request_event_type: Option<String>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graphql::GraphqlError;
+
+    fn unknown_pipeline_field(field: &str) -> Vec<GraphqlError> {
+        serde_json::from_value(serde_json::json!([{
+            "message": format!("Field '{field}' doesn't exist on type 'Pipeline'"),
+            "extensions": {"code": "undefinedField", "typeName": "Pipeline", "fieldName": field}
+        }]))
+        .expect("fixture")
+    }
 
     #[test]
     fn asks_only_for_the_fields_the_host_has() {
         let schema = SchemaGaps::default();
-        assert!(query(&schema).contains("nodes { id name mergeRequestEventType }"));
+        assert!(schema.learn(&unknown_pipeline_field("name")));
+        assert!(query(&schema).contains("nodes { id mergeRequestEventType }"));
+        assert!(schema.learn(&unknown_pipeline_field("mergeRequestEventType")));
+        assert!(fields(&schema).is_empty(), "a host without both fields is not asked");
     }
 
     #[test]

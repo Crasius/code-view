@@ -13,13 +13,9 @@ use crate::dto::{ProjectDto, UserDto};
 
 const MAX_REPOSITORIES: usize = 100;
 
-pub(crate) async fn current_user_dto(client: &ApiClient) -> Result<UserDto> {
-    client.require_token("Reading the current user")?;
-    client.get("/user", &[]).await
-}
-
 pub(crate) async fn current_user(client: &ApiClient) -> Result<UserIdentity> {
-    Ok(current_user_dto(client).await?.to_identity())
+    client.require_token("Reading the current user")?;
+    Ok(client.get::<UserDto>("/user", &[]).await?.to_identity())
 }
 
 /// Group projects (with subgroups) per organization, otherwise the projects the token is a
@@ -123,12 +119,12 @@ mod tests {
 
     #[test]
     fn maps_simple_project() {
-        let json = r#"{"id":1,"name":"cli","path_with_namespace":"gitlab-org/cli","description":"",
-            "web_url":"https://gitlab.com/gitlab-org/cli","default_branch":"main",
-            "http_url_to_repo":"https://gitlab.com/gitlab-org/cli.git"}"#;
+        let json = r#"{"id":1,"name":"cli","path_with_namespace":"acme/cli","description":"",
+            "web_url":"https://gitlab.example.com/acme/cli","default_branch":"main",
+            "http_url_to_repo":"https://gitlab.example.com/acme/cli.git"}"#;
         let project: ProjectDto = serde_json::from_str(json).expect("fixture");
         let repository = to_repository(project);
-        assert_eq!(repository.key, "gitlab-org/cli");
+        assert_eq!(repository.key, "acme/cli");
         assert_eq!(repository.description, None);
         assert_eq!(repository.default_branch.as_deref(), Some("main"));
     }

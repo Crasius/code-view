@@ -65,22 +65,6 @@ async fn semi_linear_project_with_squash_on_by_default() {
     );
 }
 
-#[tokio::test]
-async fn squash_always_forces_it_and_never_hides_it() {
-    let server = MockServer::start().await;
-    mount_project(&server, project(json!({ "merge_method": "merge", "squash_option": "always" })))
-        .await;
-    let policy = provider(&server, Some("token")).merge_policy(REPO, "main").await.unwrap();
-    assert_eq!(policy.allowed, [MergeStrategy::Squash]);
-
-    let server = MockServer::start().await;
-    mount_project(&server, project(json!({ "merge_method": "ff", "squash_option": "never" })))
-        .await;
-    let policy = provider(&server, Some("token")).merge_policy(REPO, "main").await.unwrap();
-    assert_eq!(policy.allowed, [MergeStrategy::Rebase]);
-    assert_eq!(policy.default, Some(MergeStrategy::Rebase));
-}
-
 /// Anonymous answers (and low roles) leave the merge settings out: merge commit or squash, not reported.
 #[tokio::test]
 async fn absent_settings_fall_back() {

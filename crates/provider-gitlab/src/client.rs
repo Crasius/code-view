@@ -221,7 +221,7 @@ mod tests {
     fn encodes_nested_project_paths() {
         assert_eq!(project_path("group/sub/project"), "/projects/group%2Fsub%2Fproject");
         assert_eq!(merge_request_path("a/b", 7), "/projects/a%2Fb/merge_requests/7");
-        assert_eq!(group_path("gitlab-org/ci"), "/groups/gitlab-org%2Fci");
+        assert_eq!(group_path("acme/ci"), "/groups/acme%2Fci");
     }
 
     #[test]
@@ -241,6 +241,6 @@ mod tests {
             request.headers().get("private-token").is_none(),
             "empty token counts as anonymous"
         );
-        assert!(client.require_token("Merging").is_err());
+        assert!(matches!(client.require_token("Merging"), Err(ProviderError::Unsupported(_))));
     }
 }

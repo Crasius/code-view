@@ -8,14 +8,12 @@ pub(crate) struct PipelineDto {
     pub id: u64,
     pub project_id: u64,
     pub sha: String,
-    #[serde(default, rename = "ref")]
+    #[serde(rename = "ref")]
     pub git_ref: Option<String>,
     pub status: String,
-    #[serde(default)]
     pub source: Option<String>,
     /// `workflow:name`; REST leaves it out of merge request pipelines, GraphQL fills it in
     /// (`crate::pipeline_names`).
-    #[serde(default)]
     pub name: Option<String>,
     /// `PipelineMergeRequestEventType` (`DETACHED`, `MERGED_RESULT`, `MERGE_TRAIN`), from GraphQL
     /// only.
@@ -29,7 +27,6 @@ pub(crate) struct PipelineDto {
     pub started_at: Option<Timestamp>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub finished_at: Option<Timestamp>,
-    #[serde(default)]
     pub web_url: Option<String>,
 }
 
@@ -46,16 +43,13 @@ pub(crate) struct JobDto {
     pub started_at: Option<Timestamp>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub finished_at: Option<Timestamp>,
-    #[serde(default)]
     pub web_url: Option<String>,
     /// Set on bridges (trigger jobs) only.
-    #[serde(default)]
     pub downstream_pipeline: Option<DownstreamPipelineDto>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct DownstreamPipelineDto {
-    #[serde(default)]
     pub web_url: Option<String>,
 }
 
@@ -65,9 +59,7 @@ pub(crate) struct CommitStatusDto {
     pub id: u64,
     pub name: String,
     pub status: String,
-    #[serde(default)]
     pub description: Option<String>,
-    #[serde(default)]
     pub target_url: Option<String>,
     #[serde(default)]
     pub allow_failure: bool,
