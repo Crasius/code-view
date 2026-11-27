@@ -236,7 +236,8 @@ fn read_images(services: &mut Services, row: &StatRow, detail: &PullRequestDetai
     services.images.fetch_ahead(services.now(), targets);
 }
 
-fn key_of(row: &StatRow) -> PullRequestKey {
+/// The key of the pull request `row` shows.
+pub(super) fn key_of(row: &StatRow) -> PullRequestKey {
     PullRequestKey {
         connection_id: row.connection_id.clone(),
         repository_key: row.repository_key.clone(),

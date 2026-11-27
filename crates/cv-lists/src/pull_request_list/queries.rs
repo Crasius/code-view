@@ -1,3 +1,14 @@
+//! The listings of a pull request list: one request per connection, whose results arrive
+//! independently so fast hosts show first. Each keeps its last answer on screen while a newer one
+//! loads (stale-while-revalidate). The user's own writes ([`cv_services::writes`]) apply to its
+//! rows as they succeed and to every answer that arrives while the host has not caught up; a row a
+//! write moved out of the list leaves it eased ([`Leaving`]). An answer also updates the rows other
+//! lists of the connection show ([`spread`]).
+//!
+//! Answers rest in the page cache under a key per connection, repository, role and state
+//! ([`query_cache_key`]); its connection part ([`cache_stamp`]) digests the connection's
+//! [`signature`], so an edited host, organization or token presence lists under a key of its own.
+
 use std::collections::BTreeSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Duration;
@@ -31,18 +42,14 @@ pub const LIST_INTERVAL: Duration = Duration::from_secs(120);
 /// requests an hour, which the pull request page's probe shares.
 pub const ANONYMOUS_LIST_INTERVAL: Duration = ANONYMOUS_PIPELINE_INTERVAL;
 
-/// One listing request per connection; results arrive independently so fast hosts show first.
-/// Each keeps its last answer on screen while a newer one loads (stale-while-revalidate). The
-/// user's own writes ([`cv_services::writes`]) apply to its rows as they succeed and to every
-/// answer that arrives while the host has not caught up; a row a write moved out of the list
-/// leaves it eased ([`Leaving`]). An answer also updates the rows other lists of the connection show
-/// ([`spread`]).
+/// One connection's listing, its answer and the rows on their way out (see the module doc).
 pub struct ConnectionResult {
     pub connection_id: String,
     pub connection_name: String,
     pub kind: ProviderKind,
-    /// The connection has a token: how often the card refreshes on its own.
-    has_token: bool,
+    /// The connection has a token: how often the card refreshes on its own, and how its rows'
+    /// lines are counted.
+    pub(super) has_token: bool,
     /// The connection's web root, for the platform mark's host.
     pub base_url: String,
     pub load: Live<Vec<PullRequestSummary>>,
@@ -129,7 +136,7 @@ impl ConnectionQueries {
         }
         self.key = Some(key);
         self.results.clear();
-        self.collapsible = matches!(source, ListSource::Mine);
+        self.collapsible = source.is_overview();
 
         let (connections, repository_key): (Vec<Connection>, Option<String>) = match source {
             ListSource::Mine => {
@@ -547,22 +554,24 @@ pub(super) fn signature(connection: &Connection) -> String {
 fn finished_keys(connection_id: &str, rows: &[PullRequestSummary]) -> Vec<String> {
     rows.iter()
         .filter(|row| row.state != PullRequestState::Open)
-        .map(|row| {
-            PullRequestKey {
-                connection_id: connection_id.to_owned(),
-                repository_key: row.repository_key.clone(),
-                number: row.number,
-            }
-            .storage_key()
-        })
+        .map(|row| key_of(connection_id, row).storage_key())
         .collect()
+}
+
+/// The key of `summary`, listed by the connection `connection_id`.
+pub(super) fn key_of(connection_id: &str, summary: &PullRequestSummary) -> PullRequestKey {
+    PullRequestKey {
+        connection_id: connection_id.to_owned(),
+        repository_key: summary.repository_key.clone(),
+        number: summary.number,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use review_core::{
-        Connection, DiffStat, ProviderKind, PullRequestScope, PullRequestState, PullRequestSummary,
-        StateFilter, UserIdentity,
+        Connection, ProviderKind, PullRequestScope, PullRequestState, PullRequestSummary,
+        StateFilter,
     };
 
     use PullRequestScope::Visible;
@@ -573,25 +582,12 @@ mod tests {
     };
 
     fn row(number: u64, state: PullRequestState) -> PullRequestSummary {
+        let row = crate::pull_request_list::list_rows::tests::row;
         PullRequestSummary {
+            state,
             repository_key: "cli/cli".into(),
             repository_name: "cli".into(),
-            number,
-            title: format!("Change {number}"),
-            author: UserIdentity::default(),
-            state,
-            is_draft: false,
-            source_branch: "feature".into(),
-            target_branch: "main".into(),
-            created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
-            updated_at: None,
-            web_url: String::new(),
-            labels: Vec::new(),
-            reviewers: Vec::new(),
-            checks: None,
-            diff_stat: DiffStat::default(),
-            head_sha: None,
-            target_sha: None,
+            ..row(number)
         }
     }
 
