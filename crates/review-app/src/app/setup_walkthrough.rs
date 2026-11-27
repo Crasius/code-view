@@ -16,7 +16,7 @@ use review_core::{
 use review_store::{AppPaths, ConnectionStore, LINUX_HELP_URL, TokenVault, VaultProblem};
 
 use super::ReviewApp;
-use super::walkthrough::{press, saved_paths, wait_until};
+use super::walkthrough::{press, saved_paths, settle_background, wait_until};
 use cv_settings::onboarding::CliTools;
 use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{Clicks, ScratchDir, samples};
@@ -31,14 +31,7 @@ fn setup_wizard_first_run_to_saved_connection() {
     let paths = scratch.app_paths();
     let mut harness = harness(paths.clone());
 
-    wait_until(&mut harness, "the welcome screen", |harness| {
-        harness.query_by_label_contains("GitLab.com or self-managed").is_some()
-    });
-    harness.click_at(harness.get_by_label_contains("GitLab.com or self-managed").rect());
-    wait_until(&mut harness, "the host step", |harness| {
-        harness.query_by_label("Continue").is_some()
-    });
-    harness.click_at(harness.get_by_label("Continue").rect());
+    to_gitlab_token_step(&mut harness);
 
     wait_until(&mut harness, "the token step", |harness| {
         harness.query_by_role(Role::PasswordInput).is_some()
@@ -53,21 +46,13 @@ fn setup_wizard_first_run_to_saved_connection() {
     wait_until(&mut harness, "the token step again", |harness| {
         harness.query_by_role(Role::PasswordInput).is_some()
     });
-    type_token(&mut harness, COMPLETE_TOKEN);
-    wait_until(&mut harness, "a complete report", |harness| {
-        harness.query_by_label_contains("Everything works with this token").is_some()
-    });
-
-    harness.click_at(harness.get_by_label("Continue").rect());
-    wait_until(&mut harness, "the groups step", |harness| {
-        harness.query_by_label_contains("Only selected groups").is_some()
-    });
+    complete_token_to_groups(&mut harness);
     harness.click_at(harness.get_by_label_contains("Only selected groups").rect());
     wait_until(&mut harness, "discovered groups", |harness| {
         harness.query_by_label("TTRPG").is_some()
     });
     harness.click_at(harness.get_by_label("TTRPG").rect());
-    settle(&mut harness);
+    harness.run_steps(4);
 
     harness.click_at(harness.get_by_label("Save connection").rect());
     wait_until(&mut harness, "the saved confirmation", |harness| {
@@ -90,25 +75,11 @@ fn setup_save_failure_stays_on_the_step_with_its_cause() {
     let scratch = ScratchDir::new("setup-save-failure");
     let paths = scratch.app_paths();
     let mut harness = harness(paths.clone());
-    wait_until(&mut harness, "the welcome screen", |harness| {
-        harness.query_by_label_contains("GitLab.com or self-managed").is_some()
-    });
-    harness.click_at(harness.get_by_label_contains("GitLab.com or self-managed").rect());
-    wait_until(&mut harness, "the host step", |harness| {
-        harness.query_by_label("Continue").is_some()
-    });
-    harness.click_at(harness.get_by_label("Continue").rect());
+    to_gitlab_token_step(&mut harness);
     wait_until(&mut harness, "the token step", |harness| {
         harness.query_by_role(Role::PasswordInput).is_some()
     });
-    type_token(&mut harness, COMPLETE_TOKEN);
-    wait_until(&mut harness, "a complete report", |harness| {
-        harness.query_by_label_contains("Everything works with this token").is_some()
-    });
-    harness.click_at(harness.get_by_label("Continue").rect());
-    wait_until(&mut harness, "the groups step", |harness| {
-        harness.query_by_label("Save connection").is_some()
-    });
+    complete_token_to_groups(&mut harness);
 
     cv_testkit::remove_dir(paths.config_dir());
     std::fs::create_dir_all(paths.config_dir().parent().expect("the config folder's parent"))
@@ -147,14 +118,7 @@ fn setup_missing_keyring_offers_a_tokenless_save() {
     let scratch = ScratchDir::new("setup-missing-keyring");
     let paths = scratch.app_paths().with_token_vault(TokenVault::Refusing(problem));
     let mut harness = harness(paths.clone());
-    wait_until(&mut harness, "the welcome screen", |harness| {
-        harness.query_by_label_contains("GitLab.com or self-managed").is_some()
-    });
-    harness.click_at(harness.get_by_label_contains("GitLab.com or self-managed").rect());
-    wait_until(&mut harness, "the host step", |harness| {
-        harness.query_by_label("Continue").is_some()
-    });
-    harness.click_at(harness.get_by_label("Continue").rect());
+    to_gitlab_token_step(&mut harness);
     wait_until(&mut harness, "the keyring message", |harness| {
         harness.query_by_label_contains(&problem.title).is_some()
     });
@@ -164,21 +128,14 @@ fn setup_missing_keyring_offers_a_tokenless_save() {
         "nothing to save on the token step yet"
     );
 
-    type_token(&mut harness, COMPLETE_TOKEN);
-    wait_until(&mut harness, "a complete report", |harness| {
-        harness.query_by_label_contains("Everything works with this token").is_some()
-    });
-    harness.click_at(harness.get_by_label("Continue").rect());
-    wait_until(&mut harness, "the groups step", |harness| {
-        harness.query_by_label("Save connection").is_some()
-    });
+    complete_token_to_groups(&mut harness);
     assert!(
         harness.query_by_label_contains(&problem.title).is_some(),
         "the fix shows before the save"
     );
 
     press(&mut harness, "Save connection");
-    settle(&mut harness);
+    settle_background(&mut harness);
     assert!(
         harness.query_by_label_contains("is connected").is_none(),
         "the refused token keeps the wizard on its step"
@@ -227,7 +184,7 @@ fn setup_token_pages_offer_cli_and_checklists() {
     });
     harness.get_by_role(Role::TextInput).focus();
     harness.get_by_role(Role::TextInput).type_text("https://dev.azure.com/contoso/Web/_git/site");
-    settle(&mut harness);
+    harness.run_steps(4);
     assert!(harness.query_by_label_contains("Connects to dev.azure.com/contoso").is_some());
     harness.click_at(harness.get_by_label("Continue").rect());
     wait_until(&mut harness, "the Azure checklist", |harness| {
@@ -286,10 +243,26 @@ fn type_token(harness: &mut Harness<'_, ReviewApp>, token: &str) {
     harness.step();
 }
 
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..4 {
-        harness.step();
-    }
+/// From the welcome screen through GitLab's host step to its token step.
+fn to_gitlab_token_step(harness: &mut Harness<'_, ReviewApp>) {
+    wait_until(harness, "the welcome screen", |harness| {
+        harness.query_by_label_contains("GitLab.com or self-managed").is_some()
+    });
+    harness.click_at(harness.get_by_label_contains("GitLab.com or self-managed").rect());
+    wait_until(harness, "the host step", |harness| harness.query_by_label("Continue").is_some());
+    harness.click_at(harness.get_by_label("Continue").rect());
+}
+
+/// Types the complete token on the token step and goes on to the groups step.
+fn complete_token_to_groups(harness: &mut Harness<'_, ReviewApp>) {
+    type_token(harness, COMPLETE_TOKEN);
+    wait_until(harness, "a complete report", |harness| {
+        harness.query_by_label_contains("Everything works with this token").is_some()
+    });
+    harness.click_at(harness.get_by_label("Continue").rect());
+    wait_until(harness, "the groups step", |harness| {
+        harness.query_by_label("Save connection").is_some()
+    });
 }
 
 /// GitLab as the user met it: a fine-grained token without "Merge Request: Read", then a token

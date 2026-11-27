@@ -730,8 +730,7 @@ impl App {
         paths: AppPaths,
         size: [f32; 2],
     ) -> Harness<'static, ReviewApp> {
-        let builder =
-            Harness::builder().with_size(size).with_step_dt(1.0 / 60.0).allow_missing_glyphs();
+        let builder = Harness::builder().with_size(size).with_step_dt(1.0 / 60.0);
         let calls = calls.clone();
         let mut harness = app_with(builder, paths, move |_, _| {
             Arc::new(Scripted(PipelinesScript::new(scenario, calls.clone())))

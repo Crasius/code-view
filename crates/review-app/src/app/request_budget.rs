@@ -7,8 +7,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -21,6 +21,7 @@ use wiremock::{Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
 use super::mock_host::MockHost;
+use super::recording::{Recorder, iids, template};
 use super::startup;
 use super::walkthrough::{
     self, LIMIT, click_first, has, pump, saved_paths, set_focus, wait_idle, wait_until_unsettled,
@@ -30,7 +31,7 @@ use cv_lists::pull_request_list::LIST_INTERVAL;
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_shell::attention::{Attention, PAUSE};
-use cv_testkit::{Clicks, ScratchDir, git_in, samples};
+use cv_testkit::{Clicks, ScratchDir, fast_import, file_url, git_in, samples};
 
 const MOCK_TOKEN: &str = "glpat-mock-only";
 const PROJECT: &str = "group/app";
@@ -42,12 +43,12 @@ const OLDER_PIPELINE_ID: u64 = 901;
 const STEP_SECONDS: f32 = 0.5;
 
 #[test]
-fn request_budget_300_files() {
+fn browsing_300_files_costs_only_the_live_probe() {
     run_scenario(300);
 }
 
 #[test]
-fn request_budget_3000_files() {
+fn browsing_3000_files_fetches_blobs_in_chunks() {
     run_scenario(3000);
 }
 
@@ -115,7 +116,7 @@ fn request_budget_unfocused_window_is_silent_and_catches_up_once() {
     // A full live interval passes first, so the pipeline refresh is due while the window is away.
     set_focus(&mut harness, false);
     fixture.recorder.enter("unfocused");
-    pump_live(&mut harness, 300.0);
+    pump(&mut harness, 300.0);
     wait_background_idle_without_frames(&harness);
     assert_eq!(fixture.recorder.count("unfocused"), 0, "an unfocused window sends nothing");
 
@@ -397,7 +398,7 @@ fn request_budget_pipelines_tab_loads_jobs_of_the_head_run_only() {
     pump(&mut harness, 2.0);
     // The pipelines whose jobs were asked for, and how many GraphQL requests (the jobs' needs) went out.
     let job_requests = |phase: &str| {
-        let paths = fixture.recorder.paths(phase);
+        let paths = fixture.recorder.details(|hit, _| hit == phase);
         // Jobs and bridges load concurrently.
         let mut pipelines: Vec<String> = paths
             .iter()
@@ -414,7 +415,7 @@ fn request_budget_pipelines_tab_loads_jobs_of_the_head_run_only() {
     assert_eq!(
         job_requests("open the tab"),
         (head.clone(), 2),
-        "jobs, bridges and needs of the head run only, and the pipelines' names once although the          runs loaded twice: {opened:?}"
+        "jobs, bridges and needs of the head run only, and the pipelines' names once although the runs loaded twice: {opened:?}"
     );
     assert!(
         has(&harness, "Budget pipeline, Running"),
@@ -897,7 +898,7 @@ pub(super) fn scroll_list(harness: &mut Harness<'_, ReviewApp>, points: f32) {
 /// How often each Azure DevOps pull request's iterations were asked for in `phase`.
 fn asked_pull_requests(recorder: &Recorder, phase: &str) -> BTreeMap<u64, usize> {
     let mut asked = BTreeMap::new();
-    for path in recorder.paths(phase) {
+    for path in recorder.details(|hit, _| hit == phase) {
         let number = path
             .strip_prefix(AZURE_PULL_REQUESTS)
             .and_then(|rest| rest.strip_suffix("/iterations"))
@@ -928,13 +929,26 @@ fn filter_checks(harness: &mut Harness<'_, ReviewApp>, text: &str) {
     harness.step();
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "one request budget scenario: every page step and its count"
-)]
+/// The git fetches of [`drive_scenario`]'s page steps.
+struct ScenarioFetches {
+    /// The objects of each fetch until the Files tab listed the files.
+    before_files: Vec<usize>,
+    /// Fetches while 20 diffs were browsed.
+    while_browsing: usize,
+}
+
 fn run_scenario(file_count: usize) {
+    let (fixture, fetches) = drive_scenario(file_count);
+    assert_list_phases(&fixture);
+    assert_browsing_reads_the_mirror(&fixture, &fetches);
+    assert_pipeline_rounds(&fixture);
+    assert_blob_chunks(file_count, &fetches);
+}
+
+/// The list, a merge request's overview, its Files tab with 20 diffs, its running pipelines, a job
+/// log and the list again, each phase recorded; prints the report.
+fn drive_scenario(file_count: usize) -> (Fixture, ScenarioFetches) {
     let fixture = Fixture::new(&format!("scenario-{file_count}"), file_count);
-    let report_only = std::env::var_os("REQUEST_BUDGET_REPORT_ONLY").is_some();
     let mut phases: Vec<(&'static str, f64)> = Vec::new();
 
     fixture.recorder.enter("My pull requests (60 s)");
@@ -992,7 +1006,7 @@ fn run_scenario(file_count: usize) {
     wait_until_unsettled(&mut harness, "the jobs", |harness| has(harness, "test-3-1"));
     // A loaded machine stretches the wait over simulated seconds; the phase stays 3 min.
     let waited = harness_time(&harness) - started;
-    pump_live(&mut harness, (180.0 - waited).max(0.0));
+    pump(&mut harness, (180.0 - waited).max(0.0));
     phases.push(("Pipelines, running (3 min)", 180.0));
 
     enter_phase(&fixture.recorder, &harness, "Job log (10 s)");
@@ -1014,9 +1028,16 @@ fn run_scenario(file_count: usize) {
     println!(
         "{report}git: {fetches_before_files} fetches until the files were listed, {fetches_while_browsing} while browsing 20 diffs\n"
     );
-    if report_only {
-        return;
-    }
+    let fetches = ScenarioFetches {
+        before_files: fetched_before_files,
+        while_browsing: fetches_while_browsing,
+    };
+    (fixture, fetches)
+}
+
+/// The list asks once and its rows' checks once; back on it, the card on screen refreshes every
+/// interval, with its rows' checks.
+fn assert_list_phases(fixture: &Fixture) {
     let count = |phase: &str| fixture.recorder.count(phase);
     let listed = fixture.recorder.endpoints("My pull requests (60 s)");
     assert_eq!(
@@ -1033,19 +1054,23 @@ fn run_scenario(file_count: usize) {
     assert_eq!(revisit.get(GROUP_LISTING).copied(), Some(1 + beats), "{revisit:?}");
     assert_eq!(revisit.get(STATUSES).copied(), Some(beats), "{revisit:?}");
     assert_eq!(count("Back to list + idle (5 min)"), 1 + 2 * beats, "{revisit:?}");
+}
+
+/// The overview loads the merge request once; the Files tab reads its diffs from the mirror and
+/// asks the API only for the live-update probe: the merge request, its approvals and reviewers
+/// every 30 s, never the discussions.
+fn assert_browsing_reads_the_mirror(fixture: &Fixture, fetches: &ScenarioFetches) {
     let endpoint = |endpoints: &BTreeMap<String, usize>, name: &str| {
         endpoints
             .get(&format!("GET /api/v4/projects/:project/merge_requests/:id{name}"))
             .copied()
             .unwrap_or(0)
     };
-    // The live-update probe of an unchanged merge request: the merge request, its approvals and
-    // reviewers every 30 s, never the discussions.
     let browsing = fixture.recorder.endpoints("Files + 20 diffs (60 s)");
     let probes = endpoint(&browsing, "/approvals");
     assert!(probes <= 2, "one live-update probe per 30 s: {browsing:?}");
     assert_eq!(
-        count("Files + 20 diffs (60 s)"),
+        fixture.recorder.count("Files + 20 diffs (60 s)"),
         3 * probes,
         "diffs come from the git mirror; only the probe asks the API: {browsing:?}"
     );
@@ -1061,6 +1086,11 @@ fn run_scenario(file_count: usize) {
         1,
         "an unchanged merge request is not reloaded: {open:?}"
     );
+    assert_eq!(fetches.while_browsing, 0, "diffs and syntax colors read the local mirror");
+}
+
+/// The running pipelines refresh once per 15 s.
+fn assert_pipeline_rounds(fixture: &Fixture) {
     let live = fixture.recorder.endpoints("Pipelines, running (3 min)");
     let rounds = live
         .get("GET /api/v4/projects/:project/merge_requests/:id/pipelines")
@@ -1070,15 +1100,18 @@ fn run_scenario(file_count: usize) {
         rounds <= 13,
         "the first load, then one round per 15 s while a run is going: {rounds} rounds"
     );
+}
+
+/// The mirror fetches commits and trees, then the changed blobs in chunks. The thread excerpts'
+/// diffs wait in the mirror for the count's chunks: no file is fetched on its own.
+fn assert_blob_chunks(file_count: usize, fetches: &ScenarioFetches) {
     let chunks = review_git::download_chunk_sizes(file_count);
-    // The thread excerpts' diffs wait in the mirror for the count's chunks: no file is fetched on
-    // its own.
     assert_eq!(
-        fetches_before_files,
+        fetches.before_files.len(),
         1 + chunks.len(),
-        "commits and trees, then the changed blobs in chunks of {chunks:?} files: objects per fetch {fetched_before_files:?}"
+        "commits and trees, then the changed blobs in chunks of {chunks:?} files: objects per fetch {:?}",
+        fetches.before_files
     );
-    assert_eq!(fetches_while_browsing, 0, "diffs and syntax colors read the local mirror");
 }
 
 fn open_pipelines(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture) {
@@ -1125,20 +1158,6 @@ fn harness_time(harness: &Harness<'_, ReviewApp>) -> f64 {
     harness.ctx.input(|input| input.time)
 }
 
-/// Like [`pump`] for phases with timers; `REQUEST_BUDGET_REALTIME=1` lets them pass in real time,
-/// to compare with timers that run on the wall clock.
-fn pump_live(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
-    if std::env::var_os("REQUEST_BUDGET_REALTIME").is_none() {
-        pump(harness, seconds);
-        return;
-    }
-    let end = harness_time(harness) + seconds;
-    while harness_time(harness) < end {
-        harness.step();
-        cv_testkit::let_threads_run(Duration::from_secs_f32(STEP_SECONDS));
-    }
-}
-
 /// [`wait_until_unsettled`] for work that takes real time, such as git reading a diff: egui's time
 /// follows the wall clock meanwhile instead of going on by [`STEP_SECONDS`] a frame, so a loaded
 /// machine does not stretch the work over simulated minutes. Afterwards it goes on by the step
@@ -1160,59 +1179,6 @@ fn wait_in_real_time(
         cv_testkit::let_threads_run(Duration::from_millis(10));
     }
     harness.input_mut().time = None;
-}
-
-/// Requests by phase, method and path template.
-#[derive(Default)]
-struct Recorder {
-    phase: Mutex<String>,
-    /// (phase, method and path template, path)
-    hits: Mutex<Vec<(String, String, String)>>,
-}
-
-impl Recorder {
-    fn enter(&self, phase: &str) {
-        *self.phase.lock().unwrap_or_else(PoisonError::into_inner) = phase.to_owned();
-    }
-
-    fn record(&self, endpoint: String, path: &str) {
-        let phase = self.phase.lock().unwrap_or_else(PoisonError::into_inner).clone();
-        self.hits.lock().unwrap_or_else(PoisonError::into_inner).push((
-            phase,
-            endpoint,
-            path.to_owned(),
-        ));
-    }
-
-    /// The paths requested in `phase`, in order.
-    fn paths(&self, phase: &str) -> Vec<String> {
-        self.hits
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .iter()
-            .filter(|(hit, _, _)| hit == phase)
-            .map(|(_, _, path)| path.clone())
-            .collect()
-    }
-
-    fn count(&self, phase: &str) -> usize {
-        self.hits
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .iter()
-            .filter(|(hit, _, _)| hit == phase)
-            .count()
-    }
-
-    fn endpoints(&self, phase: &str) -> BTreeMap<String, usize> {
-        let mut counts = BTreeMap::new();
-        for (hit, endpoint, _) in self.hits.lock().unwrap_or_else(PoisonError::into_inner).iter() {
-            if hit == phase {
-                *counts.entry(endpoint.clone()).or_default() += 1;
-            }
-        }
-        counts
-    }
 }
 
 struct Fixture {
@@ -1250,7 +1216,7 @@ impl Fixture {
         let host = MockHost::start(|base_url| MockGitLab {
             recorder: recorder.clone(),
             base_url: base_url.to_owned(),
-            clone_url: format!("file:///{}", repository.display().to_string().replace('\\', "/")),
+            clone_url: file_url(&repository),
             base,
             head,
             older_pipelines,
@@ -1396,7 +1362,7 @@ fn harness_for(paths: AppPaths) -> Harness<'static, ReviewApp> {
 
 /// The app's harness with the window and step of [`harness_for`], before the renderer is picked.
 pub(super) fn harness_builder() -> HarnessBuilder<ReviewApp> {
-    Harness::builder().with_size([1440.0, 900.0]).with_step_dt(STEP_SECONDS).allow_missing_glyphs()
+    Harness::builder().with_size([1440.0, 900.0]).with_step_dt(STEP_SECONDS)
 }
 
 const AZURE_ROWS: u64 = 40;
@@ -1475,7 +1441,7 @@ struct MockAzure {
 impl Respond for MockAzure {
     fn respond(&self, request: &Request) -> ResponseTemplate {
         let path = request.url.path().to_owned();
-        self.recorder.record(format!("{} {}", request.method, template(&path)), &path);
+        self.recorder.record(format!("{} {}", request.method, template(&path)), path.clone());
         if let Some(git) = self.git.as_ref().filter(|_| path.starts_with("/north/Web/_git/")) {
             return super::github_mock::SmartGit { project_root: git.project_root.clone() }
                 .respond(request);
@@ -1559,14 +1525,7 @@ fn azure_pull_request(id: u64, git: Option<&AzureGit>) -> Value {
 /// GraphQL's `diffStatsSummary` of the merge requests a request names: iid × 10 lines added, iid
 /// deleted, in 2 files.
 pub(super) fn diff_stats_summaries(request: &Request) -> Value {
-    let body: Value = serde_json::from_slice(&request.body).unwrap_or_default();
-    let iids = body["variables"]["iids"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .filter_map(|iid| iid.parse::<u64>().ok());
-    let nodes: Vec<Value> = iids.map(|iid| json!({ "iid": iid.to_string(), "diffStatsSummary": { "additions": iid * 10, "deletions": iid, "fileCount": 2 } })).collect();
+    let nodes: Vec<Value> = iids(&request.body).into_iter().map(|iid| json!({ "iid": iid.to_string(), "diffStatsSummary": { "additions": iid * 10, "deletions": iid, "fileCount": 2 } })).collect();
     json!({ "data": { "project": { "mergeRequests": { "nodes": nodes } } } })
 }
 
@@ -1581,14 +1540,8 @@ fn pipeline_names() -> Value {
 /// The list rows' checks of the merge requests a request names: a passed pipeline, but [`IID`]'s
 /// running one.
 fn row_statuses(request: &Request) -> Value {
-    let body: Value = serde_json::from_slice(&request.body).unwrap_or_default();
-    let iids = body["variables"]["iids"]
-        .as_array()
+    let nodes: Vec<Value> = iids(&request.body)
         .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .filter_map(|iid| iid.parse::<u64>().ok());
-    let nodes: Vec<Value> = iids
         .map(|iid| {
             let status = if iid == IID { "RUNNING" } else { "SUCCESS" };
             json!({ "iid": iid.to_string(), "headPipeline": { "status": status, "stages": { "nodes": [] } } })
@@ -1616,7 +1569,8 @@ impl Respond for MockGitLab {
         let path = request.url.path().to_owned();
         let asks_statuses = String::from_utf8_lossy(&request.body).contains("headPipeline");
         let suffix = if asks_statuses { " statuses" } else { "" };
-        self.recorder.record(format!("{} {}{suffix}", request.method, template(&path)), &path);
+        self.recorder
+            .record(format!("{} {}{suffix}", request.method, template(&path)), path.clone());
         let project = format!("/api/v4/projects/{}", urlencoding::encode(PROJECT));
         let merge_request = format!("{project}/merge_requests/{IID}");
         let pipeline = |id: u64| format!("/api/v4/projects/{PROJECT_ID}/pipelines/{id}");
@@ -1765,24 +1719,6 @@ fn file_path(index: usize) -> String {
     format!("src/m{:02}/f{index:04}.rs", index / 30)
 }
 
-/// Ids in paths become placeholders so equal endpoints count together.
-fn template(path: &str) -> String {
-    path.split('/')
-        .map(|segment| {
-            if !segment.is_empty() && segment.bytes().all(|byte| byte.is_ascii_digit()) {
-                ":id"
-            } else if segment.contains("%2F") || segment.contains("%2f") {
-                ":project"
-            } else if segment.len() == 40 && segment.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-                ":sha"
-            } else {
-                segment
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
 /// A bare repository with `main` (base) and `refs/merge-requests/7/head` changing `file_count` files.
 fn build_repository(git_dir: &Path, file_count: usize) -> (PathBuf, String, String) {
     git_in(None, &["init", "--bare", "--quiet", &git_dir.display().to_string()]);
@@ -1792,17 +1728,17 @@ fn build_repository(git_dir: &Path, file_count: usize) -> (PathBuf, String, Stri
                       parent: Option<u32>,
                       contents: &dyn Fn(usize) -> String| {
         write!(
-            Text(&mut stream),
+            stream,
             "commit {reference}\nmark :{mark}\ncommitter Test <test@example.com> {} +0000\ndata 6\nchange\n",
             1_700_000_000 + mark
         ).unwrap();
         if let Some(parent) = parent {
-            writeln!(Text(&mut stream), "from :{parent}").unwrap();
+            writeln!(stream, "from :{parent}").unwrap();
         }
         for index in 0..file_count {
             let content = contents(index);
             write!(
-                Text(&mut stream),
+                stream,
                 "M 100644 inline {}\ndata {}\n{content}\n",
                 file_path(index),
                 content.len()
@@ -1812,15 +1748,7 @@ fn build_repository(git_dir: &Path, file_count: usize) -> (PathBuf, String, Stri
     };
     commit("refs/heads/main", 1, None, &|index| body(index, false));
     commit(&format!("refs/merge-requests/{IID}/head"), 2, Some(1), &|index| body(index, true));
-    let mut child = Command::new("git")
-        .args(["--git-dir", &git_dir.display().to_string(), "fast-import", "--quiet"])
-        .stdin(Stdio::piped())
-        .spawn()
-        .expect("git fast-import");
-    std::io::Write::write_all(child.stdin.as_mut().expect("stdin"), &stream)
-        .expect("feed fast-import");
-    drop(child.stdin.take());
-    assert!(child.wait().expect("fast-import exit").success(), "fast-import failed");
+    fast_import(git_dir, &stream);
     for (key, value) in
         [("uploadpack.allowFilter", "true"), ("uploadpack.allowAnySHA1InWant", "true")]
     {
@@ -1840,14 +1768,4 @@ fn body(index: usize, is_head: bool) -> String {
         lines.push(format!("pub fn added_{index}() -> u32 {{ 1 }}"));
     }
     lines.join("\n")
-}
-
-/// `write!` into a byte buffer.
-pub(super) struct Text<'a>(pub(super) &'a mut Vec<u8>);
-
-impl std::fmt::Write for Text<'_> {
-    fn write_str(&mut self, text: &str) -> std::fmt::Result {
-        self.0.extend_from_slice(text.as_bytes());
-        Ok(())
-    }
 }

@@ -161,6 +161,8 @@ mod private_image_e2e;
 #[cfg(test)]
 mod provider_icons_walkthrough;
 #[cfg(test)]
+mod recording;
+#[cfg(test)]
 mod remove_connection_e2e;
 #[cfg(test)]
 mod request_budget;

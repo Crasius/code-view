@@ -44,9 +44,10 @@ fn ux_keys_pick_tabs_and_open_the_shortcuts() {
                 && node.label().is_some_and(|label| label.starts_with("Commits"))
         })
         .hover();
-    harness.run_steps(40);
     let tooltip = concat!("Commits (", shortcut!(command "3"), ")");
-    assert!(harness.query_by_label(tooltip).is_some(), "the tab's tooltip: {tooltip}");
+    wait_until(&mut harness, "the tab's tooltip", |harness| {
+        harness.query_by_label(tooltip).is_some()
+    });
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Num1);
     harness.run_steps(4);
     assert!(tab(&harness) == Some(PullRequestTab::Overview), "Ctrl+1 goes back to the Overview");

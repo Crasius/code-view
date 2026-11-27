@@ -545,6 +545,7 @@ fn realtime_harness(paths: &AppPaths) -> Harness<'static, ReviewApp> {
     let builder = Harness::builder()
         .with_size([1440.0, 900.0])
         .with_step_dt(1.0 / 60.0)
+        // Real hosts' text may hold characters no font of the app draws.
         .allow_missing_glyphs();
     super::startup::start(builder, move |creation| {
         ReviewApp::new(creation, paths, cv_providers::create_provider)

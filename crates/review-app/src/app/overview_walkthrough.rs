@@ -668,8 +668,7 @@ fn start_app(paths: &AppPaths) -> Harness<'static, ReviewApp> {
 }
 
 fn start_app_sized(paths: &AppPaths, height: f32) -> Harness<'static, ReviewApp> {
-    let builder =
-        Harness::builder().with_size([1440.0, height]).with_step_dt(0.25).allow_missing_glyphs();
+    let builder = Harness::builder().with_size([1440.0, height]).with_step_dt(0.25);
     app_with(builder, paths.clone(), cv_providers::create_provider)
 }
 

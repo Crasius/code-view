@@ -20,14 +20,13 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{
     Capabilities, Connection, MergeStrategy, ProviderError, ProviderKind, PullRequestDetail,
-    PullRequestQuery, PullRequestState, PullRequestSummary, Result, ReviewVote, Reviewer,
-    UserIdentity,
+    PullRequestQuery, PullRequestSummary, Result, ReviewVote, Reviewer, UserIdentity,
 };
 use tokio::sync::watch;
 
 use super::ReviewApp;
 use super::walkthrough::{
-    app_with, has, press_button, pump, saved_paths, secondary_press, wait_until,
+    app_with, has, press_button, pump, saved_paths, secondary_press, settle_background, wait_until,
 };
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::self_review;
@@ -89,7 +88,7 @@ fn self_review_adds_me_from_the_reviewers_card_once() {
     // The author is not offered a review of their own pull request.
     open(&mut harness, "card", 3);
     wait_until(&mut harness, "Grace's own pull request", |harness| has(harness, "Grace's change"));
-    harness.run_steps(10);
+    settle_background(&mut harness);
     assert!(!button(&harness, self_review::LABEL));
     assert_eq!(calls.adds.lock().unwrap().len(), 2, "nothing asked for the author");
 }
@@ -136,7 +135,7 @@ fn self_review_is_off_with_its_reason_without_a_token() {
     );
     assert!(button(&harness, "Add a token"), "with the way to a token beside it");
     harness.key_press_modifiers(egui::Modifiers::ALT, egui::Key::R);
-    harness.run_steps(5);
+    settle_background(&mut harness);
     assert!(calls.adds.lock().unwrap().is_empty(), "Alt+R asks nothing either");
     press_button(&mut harness, "Add a token");
     wait_until(&mut harness, "the connection's setup", |harness| {
@@ -203,7 +202,7 @@ fn self_review_refused_row_request_retries_from_its_toast() {
 
     press_button(&mut harness, "Retry");
     wait_until(&mut harness, "the retried add", |harness| has(harness, self_review::DONE));
-    harness.run_steps(10);
+    settle_background(&mut harness);
     assert_eq!(
         *calls.adds.lock().unwrap(),
         [(4, GRACE.to_owned()), (4, GRACE.to_owned())],
@@ -331,24 +330,12 @@ fn summary(number: u64, reviewers: Vec<Reviewer>) -> PullRequestSummary {
         _ => ("Fourth change", samples::author()),
     };
     PullRequestSummary {
-        repository_key: REPOSITORY.to_owned(),
-        repository_name: "site".to_owned(),
-        number,
         title: title.to_owned(),
         author,
-        state: PullRequestState::Open,
-        is_draft: false,
-        source_branch: format!("feature/{number}"),
-        target_branch: "main".to_owned(),
-        created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
         updated_at: Some(time::macros::datetime!(2026-10-18 15:00 UTC)),
         web_url: format!("https://github.com/{REPOSITORY}/pull/{number}"),
-        labels: Vec::new(),
         reviewers,
-        checks: None,
-        diff_stat: review_core::DiffStat::default(),
-        head_sha: None,
-        target_sha: None,
+        ..samples::summary(REPOSITORY, number)
     }
 }
 

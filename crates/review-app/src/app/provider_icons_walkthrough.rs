@@ -11,7 +11,10 @@ use review_core::{Connection, ProviderKind};
 
 use super::ReviewApp;
 use super::scripted_platforms::{HOSTS, origin, platforms, title};
-use super::walkthrough::{app_with, files_tab, has, opened_urls, saved_paths, wait_until};
+use super::walkthrough::{
+    app_with, files_tab, has, opened_urls, press, saved_paths, settle_background, shows,
+    shows_folder_view, wait_until,
+};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::{Clicks, ScratchDir, samples};
 
@@ -48,7 +51,7 @@ fn provider_icons_name_the_platform_everywhere() {
         );
     }
     harness.state_mut().navigator.go(Route::MyPullRequests);
-    settle(&mut harness);
+    settle_background(&mut harness);
     for (id, connection_name, kind, _, repository, mark) in HOSTS {
         // As from outside: the trail is the structure, with the connection's crumb.
         harness.state_mut().navigator.jump(Route::RepositoryPullRequests {
@@ -85,13 +88,14 @@ fn provider_icons_name_the_platform_everywhere() {
 fn crumb_tooltip(harness: &mut Harness<'_, ReviewApp>, connection_name: &str, mark: &str) {
     let marks = harness.query_all_by_label(mark).count();
     harness.get_by_role_and_label(Role::Link, connection_name).hover();
-    for _ in 0..60 {
-        harness.step();
-    }
-    assert!(has(harness, "This connection's repositories"), "the crumb's tooltip is open");
+    wait_until(harness, "the crumb's tooltip", |harness| {
+        has(harness, "This connection's repositories")
+    });
     assert!(harness.query_all_by_label(mark).count() > marks, "the crumb's tooltip names {mark}");
     harness.event(egui::Event::PointerGone);
-    settle(harness);
+    wait_until(harness, "the crumb's tooltip closed", |harness| {
+        !has(harness, "This connection's repositories")
+    });
 }
 
 /// The pull request header's platform mark: a link (Enter opens the pull request), with a hover
@@ -136,24 +140,17 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
     assert_eq!(opened_urls(harness), [PAGE], "a middle click opens the pull request");
     assert!(!harness.state().autoscroll.is_active(), "and starts no autoscroll");
     harness.event(egui::Event::PointerGone);
-    settle(harness);
+    settle_background(harness);
     harness.get_by_role_and_label(Role::Link, LINK).hover();
-    for _ in 0..60 {
-        harness.step();
-    }
-    assert!(has(harness, "Right-click for more links"), "the mark's tooltip");
+    wait_until(harness, "the mark's tooltip", |harness| has(harness, "Right-click for more links"));
 
     // On the Files tab the menu also offers the shown file.
     files_tab(harness);
-    // The tab opens on the summary of the changed files;
-    // the card's View opens the file.
-    wait_until(harness, "the changed files", |harness| has(harness, "README.md"));
-    if let Some(view) = harness.query_by_label("View README.md") {
-        harness.click_at(view.rect());
-        settle(harness);
-    }
+    // The tab opens on the summary; the card's View opens the file.
+    press(harness, "View README.md");
+    wait_until(harness, "README.md's view", |harness| !shows_folder_view(harness));
     harness.secondary_click_at(harness.get_by_role_and_label(Role::Link, LINK).rect());
-    settle(harness);
+    wait_until(harness, "the mark's menu", |harness| shows(harness, "Copy link"));
     for item in ["Open pull request on GitHub", "Open this file on GitHub", "Copy link"] {
         assert!(harness.query_by_label(item).is_some(), "menu item {item}");
     }
@@ -171,15 +168,6 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
         harness.query_by_label("Open on GitHub").is_none(),
         "no platform button in the file header"
     );
-    harness.key_press(egui::Key::Escape);
-    harness.event(egui::Event::PointerGone);
-    settle(harness);
-}
-
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..30 {
-        harness.step();
-    }
 }
 
 /// A middle click at `at`, one frame each for press and release, whose raw input first runs

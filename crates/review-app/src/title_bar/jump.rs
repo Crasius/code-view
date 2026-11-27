@@ -532,7 +532,7 @@ mod tests {
     use egui::{Key, Rect, Role, pos2, vec2};
     use egui_kittest::Harness;
     use egui_kittest::kittest::{NodeT, Queryable};
-    use review_core::{PullRequestState, PullRequestSummary, UserIdentity};
+    use review_core::{PullRequestSummary, UserIdentity};
     use review_store::ThemePreference;
 
     use cv_base::theme::{self, style};
@@ -540,7 +540,7 @@ mod tests {
     use cv_runtime::intents::open_search;
     use cv_runtime::route::Route;
     use cv_services::Services;
-    use cv_testkit::ScratchDir;
+    use cv_testkit::{ScratchDir, samples};
 
     use super::{BOX_HEIGHT, JumpAction, JumpBox, MAX_VISIBLE_RESULTS, ROW_HEIGHT, popup_chrome};
 
@@ -559,24 +559,8 @@ mod tests {
 
     fn row(number: u64) -> PullRequestSummary {
         PullRequestSummary {
-            repository_key: "acme/shop".into(),
-            repository_name: "shop".into(),
-            number,
-            title: format!("Change {number}"),
             author: UserIdentity::default(),
-            state: PullRequestState::Open,
-            is_draft: false,
-            source_branch: "feature".into(),
-            target_branch: "main".into(),
-            created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
-            updated_at: None,
-            web_url: String::new(),
-            labels: Vec::new(),
-            reviewers: Vec::new(),
-            checks: None,
-            diff_stat: review_core::DiffStat::default(),
-            head_sha: None,
-            target_sha: None,
+            ..samples::summary("acme/shop", number)
         }
     }
 
