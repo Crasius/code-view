@@ -8,14 +8,12 @@ use review_store::AppPaths;
 
 use super::ReviewApp;
 use cv_runtime::route::Route;
-use cv_testkit as test_support;
 
 const WIDTH: f32 = 1280.0;
 
 fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
     let mut harness = Harness::builder()
         .with_size([WIDTH, 360.0])
-        .with_pixels_per_point(1.0)
         .with_step_dt(1.0 / 60.0)
         .build_eframe(|creation| ReviewApp::new(creation, paths, cv_providers::create_provider));
     let app = harness.state_mut();
@@ -43,7 +41,7 @@ fn set_window(harness: &mut Harness<'_, ReviewApp>, is_focused: bool, is_maximiz
 #[test]
 fn title_bar_caption_buttons_maximized_and_search() {
     let scratch = std::env::temp_dir().join(format!("review-title-bar-{}", std::process::id()));
-    test_support::remove_dir(&scratch);
+    cv_testkit::remove_dir(&scratch);
     let paths = AppPaths::new(scratch.join("config"), scratch.join("cache"));
     let mut harness = harness(paths);
 
@@ -78,5 +76,5 @@ fn title_bar_caption_buttons_maximized_and_search() {
     assert_eq!(harness.state().route, Route::MyPullRequests, "Enter runs the highlighted result");
     assert!(harness.query_by_label(filter).is_none(), "the results close after a pick");
     drop(harness);
-    test_support::remove_dir(&scratch);
+    cv_testkit::remove_dir(&scratch);
 }

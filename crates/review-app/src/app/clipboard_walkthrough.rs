@@ -13,16 +13,16 @@ use egui_kittest::kittest::Queryable;
 use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, press, type_into, wait_until};
 use super::github_mock::{
     FAILING_NUMBER, FORBIDDEN_NUMBER, GitHubHost, HIDDEN_NUMBER, NUMBER, READABLE_NUMBER,
-    REPOSITORY, SLOW_NUMBER, TITLE,
+    REPOSITORY, SLOW_NUMBER, TITLE, open_pull_request,
 };
+use super::walkthrough::{app, press, type_into, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_shell::links::clipboard_links::ClipboardSource;
 use cv_shell::links::link_access::BUDGET;
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 const CONNECTION_ID: &str = "gh";
 
@@ -311,7 +311,7 @@ fn idle(harness: &mut Harness<'_, ReviewApp>) {
     let until = Instant::now() + Duration::from_millis(500);
     while Instant::now() < until {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(10));
+        cv_testkit::let_threads_run(Duration::from_millis(10));
     }
 }
 

@@ -13,7 +13,6 @@ use super::ReviewApp;
 use super::provider_icons_walkthrough::scripted_provider;
 use cv_runtime::route::Route;
 use cv_settings::onboarding::CliTools;
-use cv_testkit as test_support;
 use cv_testkit::Clicks;
 
 const ROW: &str = "Frame rate limit";
@@ -90,7 +89,7 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
     settle(&mut harness);
     assert_eq!(saved(&paths).frame_rate, FrameRateLimit::DEFAULT);
     drop(harness);
-    test_support::remove_dir(paths.config_dir().parent().expect("scratch root"));
+    cv_testkit::remove_dir(paths.config_dir().parent().expect("scratch root"));
 }
 
 fn is_selected(harness: &Harness<'_, ReviewApp>, label: &str) -> bool {
@@ -114,7 +113,7 @@ fn saved(paths: &AppPaths) -> AppSettings {
 
 fn isolated_paths() -> AppPaths {
     let root = std::env::temp_dir().join(format!("review-frame-rate-{}", std::process::id()));
-    test_support::remove_dir(&root);
+    cv_testkit::remove_dir(&root);
     AppPaths::new(root.join("config"), root.join("cache"))
 }
 
@@ -123,7 +122,7 @@ fn wait_for(
     what: &str,
     is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
 ) {
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
+    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
     settle(harness);
 }
 

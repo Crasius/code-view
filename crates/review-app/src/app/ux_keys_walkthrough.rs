@@ -12,8 +12,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, type_into, wait_until};
-use super::github_mock::{GitHubHost, OWNER, REPOSITORY, search_row};
+use super::github_mock::{GitHubHost, OWNER, REPOSITORY, open_pull_request, search_row};
+use super::walkthrough::{app, type_into, wait_until};
 use cv_base::platform::shortcut;
 use cv_runtime::route::{PullRequestTab, Route};
 use cv_testkit::ScratchDir;

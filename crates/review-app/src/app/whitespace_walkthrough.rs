@@ -10,10 +10,10 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
-use super::github_mock::{ExtraFile, GitHubHost};
+use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
+use super::walkthrough::{app, shows_file_view, wait_until};
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 const EOL: &str = "src/eol.rs";
 const TABS: &str = "src/tabs.rs";
@@ -157,6 +157,6 @@ fn has(harness: &Harness<'_, ReviewApp>, label: &str) -> bool {
 fn pump(harness: &mut Harness<'_, ReviewApp>, frames: usize) {
     for _ in 0..frames {
         harness.step();
-        test_support::let_threads_run(std::time::Duration::from_millis(10));
+        cv_testkit::let_threads_run(std::time::Duration::from_millis(10));
     }
 }

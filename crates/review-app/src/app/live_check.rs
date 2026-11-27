@@ -25,7 +25,6 @@ use review_store::{AppPaths, ConnectionStore, DiffLayout, FilesStart};
 
 use super::ReviewApp;
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_testkit as test_support;
 use cv_testkit::Clicks;
 
 const CONNECTION_ID: &str = "live";
@@ -305,7 +304,7 @@ fn wait_for_colors(
             return None;
         }
         assert!(started.elapsed() < NETWORK_TIMEOUT, "timed out while coloring");
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 
@@ -635,7 +634,7 @@ fn probe_due_while_inactive(harness: &mut Harness<'_, ReviewApp>) {
     let end = time(harness) + 130.0;
     while time(harness) < end {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(3));
+        cv_testkit::let_threads_run(Duration::from_millis(3));
     }
     assert!(harness.state().services.refresh.pending_count() > 0, "the probe waits for the window");
 }
@@ -656,7 +655,7 @@ fn wait_for_quiet(harness: &mut Harness<'_, ReviewApp>) {
             quiet_since = Instant::now();
         }
         assert!(started.elapsed() < NETWORK_TIMEOUT, "background work did not finish");
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 
@@ -826,7 +825,7 @@ fn wait_until(
             let tree: String = format!("{:?}", harness.root()).chars().take(8000).collect();
             panic!("{reason} while waiting for {what}; screen:\n{tree}");
         }
-        test_support::let_threads_run(Duration::from_millis(40));
+        cv_testkit::let_threads_run(Duration::from_millis(40));
     }
 }
 
@@ -835,6 +834,6 @@ fn settle(harness: &mut Harness<'_, ReviewApp>, duration: Duration) {
     let started = Instant::now();
     while started.elapsed() < duration {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(40));
+        cv_testkit::let_threads_run(Duration::from_millis(40));
     }
 }

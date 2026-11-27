@@ -26,7 +26,6 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use super::ReviewApp;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
-use cv_testkit as test_support;
 use cv_testkit::Clicks;
 
 const REPOSITORY: &str = "fabrikam-logistics/fabrikam-logistics";
@@ -568,7 +567,7 @@ fn step_until(
             settle(harness);
             return;
         }
-        test_support::let_threads_run(Duration::from_millis(1));
+        cv_testkit::let_threads_run(Duration::from_millis(1));
     }
     panic!("{what} did not come within {frames} frames");
 }
@@ -576,7 +575,7 @@ fn step_until(
 fn step_frames(harness: &mut Harness<'_, ReviewApp>, frames: usize) {
     for _ in 0..frames {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(1));
+        cv_testkit::let_threads_run(Duration::from_millis(1));
     }
 }
 
@@ -704,7 +703,7 @@ fn collect_until(
             return;
         }
         assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        test_support::let_threads_run(Duration::from_millis(10));
+        cv_testkit::let_threads_run(Duration::from_millis(10));
     }
 }
 
@@ -735,7 +734,7 @@ impl App {
             .get_or_insert_with(HashMap::new)
             .insert(id.to_owned(), (scenario, calls.clone()));
         let root = std::env::temp_dir().join(format!("review-{id}-{}", std::process::id()));
-        test_support::remove_dir(&root);
+        cv_testkit::remove_dir(&root);
         let paths = AppPaths::new(root.join("config"), root.join("cache"));
         let mut store = ConnectionStore::open(&paths).expect("empty store");
         store
@@ -812,7 +811,7 @@ fn wait_for(
             return;
         }
         assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        test_support::let_threads_run(Duration::from_millis(10));
+        cv_testkit::let_threads_run(Duration::from_millis(10));
     }
 }
 
@@ -825,7 +824,7 @@ fn settle(harness: &mut Harness<'_, ReviewApp>) {
 /// Long enough for loads in flight and every eased transition to finish.
 fn settle_long(harness: &mut Harness<'_, ReviewApp>) {
     for _ in 0..30 {
-        test_support::let_threads_run(Duration::from_millis(10));
+        cv_testkit::let_threads_run(Duration::from_millis(10));
         harness.step();
     }
 }

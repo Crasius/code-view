@@ -16,8 +16,8 @@ use review_core::AgentKind;
 use review_store::AppSettings;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, press, wait_until};
-use super::github_mock::{GitHubHost, NUMBER, REPOSITORY};
+use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, open_pull_request};
+use super::walkthrough::{app, press, wait_until};
 use cv_runtime::route::Route;
 use cv_services::agents::FakeCli;
 use cv_testkit::Clicks;

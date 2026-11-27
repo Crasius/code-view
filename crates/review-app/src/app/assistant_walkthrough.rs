@@ -21,10 +21,8 @@ use review_agent::{
 use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
-use super::action_e2e::{
-    app, open_diff, open_pull_request, press, shows_file_view, type_into, wait_for, wait_until,
-};
-use super::github_mock::{FILE, GitHubHost, TITLE};
+use super::github_mock::{FILE, GitHubHost, TITLE, open_diff, open_pull_request};
+use super::walkthrough::{app, press, shows_file_view, type_into, wait_for, wait_until};
 use cv_pr_assistant::CARD_LABEL;
 use cv_pr_assistant::mini::{self, ANSWERING, FOLLOW_UP};
 use cv_runtime::route::Route;

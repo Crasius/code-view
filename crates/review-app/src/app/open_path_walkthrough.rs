@@ -10,10 +10,10 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::action_e2e::{app, wait_until};
 use super::github_mock::{ExtraFile, GitHubHost, NUMBER, TITLE};
+use super::walkthrough::{app, wait_until};
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 /// True once a mirror's bare repository exists in the app's cache.
 fn has_mirror(scratch: &Path) -> bool {
@@ -98,6 +98,6 @@ fn time_to_files(harness: &mut Harness<'_, ReviewApp>) -> Duration {
             return started.elapsed();
         }
         assert!(started.elapsed() < Duration::from_secs(60), "the files never listed");
-        test_support::let_threads_run(Duration::from_millis(1));
+        cv_testkit::let_threads_run(Duration::from_millis(1));
     }
 }

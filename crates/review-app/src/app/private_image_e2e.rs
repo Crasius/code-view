@@ -11,8 +11,8 @@ use tokio::runtime::Runtime;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use super::action_e2e::{app, open_pull_request, press, wait_until};
-use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, TOKEN};
+use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, TOKEN, open_pull_request};
+use super::walkthrough::{app, press, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::ScratchDir;
 

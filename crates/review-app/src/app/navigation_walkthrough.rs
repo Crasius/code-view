@@ -283,7 +283,7 @@ fn wait_for(
     is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
 ) {
     let started = Instant::now();
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
+    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
     println!("{what} after {:.1} s", started.elapsed().as_secs_f32());
     settle(harness);
 }

@@ -14,14 +14,14 @@ use review_core::{Connection, ProviderKind};
 use review_store::{AppPaths, ConnectionStore, DiffLayout, TreeSide};
 
 use super::ReviewApp;
-use super::action_e2e::app;
 use super::github_mock::GitHubHost;
 use super::provider_icons_walkthrough::scripted_provider;
 use super::tree_side_walkthrough as tree_side;
+use super::walkthrough::app;
 use cv_runtime::route::Route;
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -105,7 +105,7 @@ fn settings_walkthrough_sections_search_previews_and_connections() {
     assert!(has(&harness, "github.com"), "the host among the facts");
 
     drop(harness);
-    test_support::remove_dir(paths.config_dir().parent().expect("scratch root"));
+    cv_testkit::remove_dir(paths.config_dir().parent().expect("scratch root"));
 }
 
 /// At 960 px the preview moves above the rows, and no section cuts, overlaps or loses anything.
@@ -132,7 +132,7 @@ fn settings_walkthrough_sections_fit_a_narrow_window() {
     findings.extend(super::clip_check::inspect(&mut harness));
     assert!(findings.is_empty(), "layout problems:\n{}", findings.join("\n"));
     drop(harness);
-    test_support::remove_dir(paths.config_dir().parent().expect("scratch root"));
+    cv_testkit::remove_dir(paths.config_dir().parent().expect("scratch root"));
 }
 
 /// At the default code size every sample line shows whole in its pane, in each diff layout, at
@@ -158,7 +158,7 @@ fn settings_walkthrough_sample_lines_fit_their_panes() {
         }
         drop(harness);
     }
-    test_support::remove_dir(paths.config_dir().parent().expect("scratch root"));
+    cv_testkit::remove_dir(paths.config_dir().parent().expect("scratch root"));
 }
 
 /// "File tree side" in Appearance: Right is saved, and the Files tab then puts the tree right. The
@@ -224,7 +224,7 @@ fn settings_walkthrough_checkboxes_center_on_their_rows() {
         assert!((control - block).abs() <= 1.0, "{name}: box at {control}, text block at {block}");
     }
     drop(harness);
-    test_support::remove_dir(paths.config_dir().parent().expect("scratch root"));
+    cv_testkit::remove_dir(paths.config_dir().parent().expect("scratch root"));
 }
 
 /// Shows the sample: beside the rows it is always in view, above them it is at the top.
@@ -277,7 +277,7 @@ fn harness(paths: AppPaths, width: f32) -> Harness<'static, ReviewApp> {
 
 fn isolated_paths(name: &str) -> AppPaths {
     let root = std::env::temp_dir().join(format!("review-settings-{name}-{}", std::process::id()));
-    test_support::remove_dir(&root);
+    cv_testkit::remove_dir(&root);
     AppPaths::new(root.join("config"), root.join("cache"))
 }
 
@@ -294,7 +294,7 @@ fn wait_for(
             return;
         }
         assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        test_support::let_threads_run(Duration::from_millis(10));
+        cv_testkit::let_threads_run(Duration::from_millis(10));
     }
 }
 

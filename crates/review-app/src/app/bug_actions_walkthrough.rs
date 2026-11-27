@@ -10,8 +10,8 @@ use egui::Role;
 use egui_kittest::kittest::{NodeT, Queryable};
 use serde_json::json;
 
-use super::action_e2e::{app, open_pull_request, press, press_button, type_into, wait_until};
-use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, TITLE};
+use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, TITLE, open_pull_request};
+use super::walkthrough::{app, press, press_button, type_into, wait_until};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 

@@ -20,8 +20,8 @@ use egui_kittest::kittest::Queryable;
 use review_store::DiffLayout;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
-use super::github_mock::{ExtraFile, GitHubHost};
+use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
+use super::walkthrough::{app, shows_file_view, wait_until};
 use cv_base::theme::{self, icons};
 use cv_code::find_paint::{HitSide, last_current as last_current_find};
 use cv_pr_diff::diff_overview::{forget_view_box, last_view_box};

@@ -19,12 +19,12 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use review_store::{AppPaths, FilesStart};
 
 use super::ReviewApp;
-use super::action_e2e::{
-    app, has_cached_diff, open_pull_request, settle_background, shows_file_view, wait_until,
+use super::github_mock::{
+    ExtraFile, FILE, GitHubHost, MockThread, REPOSITORY, THREAD_TEXT, open_pull_request,
 };
-use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread, REPOSITORY, THREAD_TEXT};
+use super::walkthrough::{app, has_cached_diff, settle_background, shows_file_view, wait_until};
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 /// Changed files in `src/m00/` to `src/m19/`, counted in tree order before `zz/`: more than the
 /// first four chunks take (16 + 32 + 64 + 128), so `zz/` waits for a chunk while those are held.
@@ -62,7 +62,7 @@ fn blob_ids(scratch: &ScratchDir, paths: &[&str]) -> Vec<String> {
     let mut ids = Vec::new();
     for path in paths {
         for version in ["main", "feature"] {
-            ids.push(test_support::git(&hosted, &["rev-parse", &format!("{version}:{path}")]));
+            ids.push(cv_testkit::git(&hosted, &["rev-parse", &format!("{version}:{path}")]));
         }
     }
     ids
@@ -83,7 +83,7 @@ fn fetched_blobs(mirror: &Path) -> Vec<Vec<String>> {
     for pack in packs.flatten().map(|entry| entry.path()) {
         if pack.extension().is_some_and(|extension| extension == "promisor") {
             let index = pack.with_extension("idx").display().to_string();
-            let listed = test_support::git(mirror, &["verify-pack", "-v", &index]);
+            let listed = cv_testkit::git(mirror, &["verify-pack", "-v", &index]);
             let blobs = listed.lines().filter(|line| line.contains(" blob "));
             fetches.push(blobs.filter_map(|line| line.get(..40)).map(str::to_owned).collect());
         }
@@ -136,7 +136,7 @@ fn count_priority_a_file_opened_deep_in_tree_order_counts_with_its_neighbours_fi
     let started = Instant::now();
     while held.waiting() < PARALLEL_CHUNKS {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
         assert!(started.elapsed() < Duration::from_secs(60), "the first chunks never went out");
     }
     let mirror = mirror_dir(&scratch);
@@ -154,7 +154,7 @@ fn count_priority_a_file_opened_deep_in_tree_order_counts_with_its_neighbours_fi
     let started = Instant::now();
     while !neighbours.iter().all(|id| fetched.contains(id)) {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(50));
+        cv_testkit::let_threads_run(Duration::from_millis(50));
         fetched = fetched_blobs(&mirror).into_iter().flatten().collect();
         assert!(started.elapsed() < Duration::from_secs(60), "the neighbours never came");
     }
@@ -209,7 +209,7 @@ fn click_row_until_shown(
             return (frames, skeleton);
         }
         assert!(started.elapsed() < Duration::from_secs(60), "{path} never showed");
-        test_support::let_threads_run(Duration::from_millis(1));
+        cv_testkit::let_threads_run(Duration::from_millis(1));
     }
 }
 
@@ -255,7 +255,7 @@ fn count_priority_a_resting_pointer_on_a_thread_row_loads_its_file_ahead() {
     harness.hover_at(row.center());
     for _ in 0..10 {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
     settle_background(&mut harness);
     assert!(has_cached_diff(&harness, FAR), "the resting pointer loaded {FAR} ahead");

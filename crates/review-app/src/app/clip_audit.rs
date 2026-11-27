@@ -30,14 +30,14 @@ use review_store::{AppPaths, ConnectionStore};
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use super::action_e2e::shows_file_view;
+use super::walkthrough::shows_file_view;
 use super::{ReviewApp, clip_check};
 use cv_base::platform::FOCUS_MODE_KEY;
 use cv_pr_diff::find::bar::last_bar as last_find_bar;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir, git};
+use cv_testkit::{ScratchDir, git};
 
 const CONNECTION: &str = "clip-audit";
 /// The same host without a token: its stage cards offer to add one.
@@ -504,7 +504,7 @@ fn wait_for(
     what: &str,
     is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
 ) {
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
+    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
     settle(harness);
 }
 
@@ -519,7 +519,7 @@ fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
     let end = harness.ctx.input(|input| input.time) + seconds;
     while harness.ctx.input(|input| input.time) < end {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(2));
+        cv_testkit::let_threads_run(Duration::from_millis(2));
     }
 }
 

@@ -16,7 +16,6 @@ use super::ReviewApp;
 use super::github_mock::GitHubHost;
 use cv_runtime::route::Route;
 use cv_settings::onboarding::CliTools;
-use cv_testkit as test_support;
 use cv_testkit::Clicks;
 
 const TOKEN: &str = "glpat-mock-only";
@@ -548,7 +547,7 @@ fn first_top(harness: &Harness<'_, ReviewApp>, label: &str) -> f32 {
 
 fn isolated_paths(name: &str) -> AppPaths {
     let root = std::env::temp_dir().join(format!("review-favorites-{name}-{}", std::process::id()));
-    test_support::remove_dir(&root);
+    cv_testkit::remove_dir(&root);
     AppPaths::new(root.join("config"), root.join("cache"))
 }
 
@@ -593,7 +592,7 @@ fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
     let end = harness.ctx.input(|input| input.time) + seconds;
     while harness.ctx.input(|input| input.time) < end {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(2));
+        cv_testkit::let_threads_run(Duration::from_millis(2));
     }
 }
 
@@ -602,5 +601,5 @@ fn wait_until(
     what: &str,
     is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
 ) {
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
+    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
 }

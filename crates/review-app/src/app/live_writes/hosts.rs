@@ -19,8 +19,6 @@ use review_core::ProviderKind;
 use review_store::AppPaths;
 use serde_json::Value;
 
-use cv_testkit as test_support;
-
 /// The file in the owner's config folder that names the released repositories.
 pub const TARGETS_FILE: &str = "live-writes.json";
 /// The shape of [`TARGETS_FILE`]. `repository` is the app's repository key; Azure DevOps takes the
@@ -245,7 +243,7 @@ impl<'r> TestPullRequest<'r> {
                 return;
             }
             assert!(started.elapsed() < CI_WAIT, "the pipeline did not fail in time: {status:?}");
-            test_support::let_threads_run(Duration::from_secs(10));
+            cv_testkit::let_threads_run(Duration::from_secs(10));
         }
     }
 
@@ -297,7 +295,7 @@ impl<'r> TestPullRequest<'r> {
         let started = Instant::now();
         while self.state() != state {
             assert!(started.elapsed() < Duration::from_secs(120), "never became {state:?}");
-            test_support::let_threads_run(Duration::from_secs(3));
+            cv_testkit::let_threads_run(Duration::from_secs(3));
         }
     }
 

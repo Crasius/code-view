@@ -20,15 +20,15 @@ use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
-use super::action_e2e::LIMIT;
 use super::startup;
+use super::walkthrough::{self, LIMIT, click_first, has, pump, set_focus, wait_idle};
 use cv_lists::pull_request_list::LIST_INTERVAL;
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_shell::attention::{Attention, PAUSE};
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, git_in};
+use cv_testkit::git_in;
 
 const MOCK_TOKEN: &str = "glpat-mock-only";
 const PROJECT: &str = "group/app";
@@ -333,7 +333,7 @@ fn request_budget_a_click_held_while_the_banner_opens_still_counts() {
         assert!(started.elapsed() < LIMIT, "the banner never opened");
         harness.input_mut().time = Some(time);
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(10));
+        cv_testkit::let_threads_run(Duration::from_millis(10));
     }
     harness.event(button(false));
     harness.input_mut().time = Some(time);
@@ -1070,22 +1070,6 @@ fn open_pipelines(harness: &mut Harness<'_, ReviewApp>, fixture: &Fixture) {
     pump(harness, 20.0);
 }
 
-/// Waits until no background task ran for a stretch of frames: one finished task (the mirror)
-/// starts the next (file lists, the chunked download of the changed blobs) only in the following
-/// frame.
-pub(super) fn wait_idle(harness: &mut Harness<'_, ReviewApp>) {
-    let _step = test_support::step("waiting for the background work to end over 20 frames");
-    let started = Instant::now();
-    let mut idle_frames = 0;
-    while idle_frames < 20 {
-        harness.step();
-        test_support::let_threads_run(Duration::from_millis(10));
-        idle_frames =
-            if harness.state().services.background.running() == 0 { idle_frames + 1 } else { 0 };
-        assert!(started.elapsed() < LIMIT, "background work did not finish");
-    }
-}
-
 /// Starts `phase` once the background work in flight has finished ([`settle`]): what the last
 /// phase started (a job log's download, a probe) reaches the host in that phase, however long a
 /// loaded machine takes to send it.
@@ -1097,16 +1081,12 @@ fn enter_phase(recorder: &Recorder, harness: &Harness<'_, ReviewApp>, phase: &st
 /// Waits in real time, without a frame, until the background work in flight has finished, so the
 /// requests it sends land in the current phase and no simulated time passes.
 pub(super) fn settle(harness: &Harness<'_, ReviewApp>) {
-    let _step = test_support::step("waiting without a frame for the background work to end");
+    let _step = cv_testkit::step("waiting without a frame for the background work to end");
     let started = Instant::now();
     while harness.state().services.background.running() > 0 {
         assert!(started.elapsed() < LIMIT, "background work did not finish");
-        test_support::let_threads_run(Duration::from_millis(2));
+        cv_testkit::let_threads_run(Duration::from_millis(2));
     }
-}
-
-pub(super) fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
 }
 
 /// The languages whose compiled grammars the fixture's pull request page keeps.
@@ -1119,25 +1099,6 @@ fn held_languages(harness: &Harness<'_, ReviewApp>, fixture: &Fixture) -> Vec<St
         .find(|(open, _)| *open == key)
         .map(|(_, page)| page.held_languages())
         .unwrap_or_default()
-}
-
-pub(super) fn click_first(harness: &mut Harness<'_, ReviewApp>, text: &str) {
-    harness.click_at(
-        harness
-            .query_all_by_label_contains(text)
-            .next()
-            .unwrap_or_else(|| panic!("nothing labelled {text}"))
-            .rect(),
-    );
-    harness.step();
-}
-
-fn set_focus(harness: &mut Harness<'_, ReviewApp>, is_focused: bool) {
-    let _step = test_support::step(format!("a frame with the window focused: {is_focused}"));
-    let viewport = harness.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default();
-    viewport.focused = Some(is_focused);
-    harness.input_mut().focused = is_focused;
-    harness.step();
 }
 
 fn harness_time(harness: &Harness<'_, ReviewApp>) -> f64 {
@@ -1154,26 +1115,7 @@ fn pump_live(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
     let end = harness_time(harness) + seconds;
     while harness_time(harness) < end {
         harness.step();
-        test_support::let_threads_run(Duration::from_secs_f32(STEP_SECONDS));
-    }
-}
-
-/// Advances simulated time; each frame also gives background work a moment of real time. Each
-/// frame moves egui's clock on by [`STEP_SECONDS`] unless the test pinned the next frames' time
-/// (`harness.input_mut().time`), which would hold the clock still.
-pub(super) fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
-    let _step = test_support::step(format!("letting {seconds} s of simulated time pass"));
-    let (started, end) = (Instant::now(), harness_time(harness) + seconds);
-    while harness_time(harness) < end {
-        assert!(
-            started.elapsed() < LIMIT,
-            "{seconds} s of simulated time did not pass: egui's clock stands at {} s, the next frame's \
-             time is pinned to {:?}",
-            harness_time(harness),
-            harness.input().time
-        );
-        harness.step();
-        test_support::let_threads_run(Duration::from_millis(3));
+        cv_testkit::let_threads_run(Duration::from_secs_f32(STEP_SECONDS));
     }
 }
 
@@ -1185,7 +1127,7 @@ fn wait_in_real_time(
     what: &str,
     is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
 ) {
-    let _step = test_support::step(format!("waiting in real time for {what}"));
+    let _step = cv_testkit::step(format!("waiting in real time for {what}"));
     let (started, time) = (Instant::now(), harness_time(harness));
     loop {
         harness.input_mut().time = Some(time + started.elapsed().as_secs_f64());
@@ -1194,7 +1136,7 @@ fn wait_in_real_time(
             break;
         }
         assert!(started.elapsed() < LIMIT, "timed out waiting for {what}");
-        test_support::let_threads_run(Duration::from_millis(10));
+        cv_testkit::let_threads_run(Duration::from_millis(10));
     }
     harness.input_mut().time = None;
 }
@@ -1204,7 +1146,7 @@ pub(super) fn wait_until(
     what: &str,
     is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
 ) {
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
+    walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
 }
 
 /// Requests by phase, method and path template.
@@ -1289,7 +1231,7 @@ impl Fixture {
     fn build(name: &str, file_count: usize, token: Option<&str>, older_pipelines: u64) -> Self {
         let root =
             std::env::temp_dir().join(format!("review-budget-{name}-{}", std::process::id()));
-        test_support::remove_dir(&root);
+        cv_testkit::remove_dir(&root);
         std::fs::create_dir_all(&root).expect("fixture folder");
         let (repository, base, head) = build_repository(&root.join("remote.git"), file_count);
         let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -1337,10 +1279,15 @@ impl Fixture {
         harness
     }
 
-    /// [`Self::harness`] after its first frames only ([`loading_harness_from`]): for a start that
-    /// need not settle.
+    /// [`Self::harness`] after its first frames only ([`startup::first_frames`]): for a test that
+    /// checks a state while the app still loads. A settled start runs frames until nothing asks
+    /// for a repaint, and the spinner of a running load asks every frame: a slow host's answer
+    /// would land before the test sees the first frame.
     fn loading_harness(&self) -> Harness<'static, ReviewApp> {
-        let mut harness = loading_harness_from(harness_builder(), self.paths.clone());
+        let paths = self.paths.clone();
+        let mut harness = with_cli_tools(startup::first_frames(harness_builder(), |creation| {
+            ReviewApp::new(creation, paths, cv_providers::create_provider)
+        }));
         harness.state_mut().attention = Attention::without_pauses();
         harness
     }
@@ -1445,8 +1392,8 @@ impl Fixture {
 }
 
 /// The app on `paths`, in a 1440 × 900 window, once its start settled.
-pub(super) fn harness_for(paths: AppPaths) -> Harness<'static, ReviewApp> {
-    harness_from(harness_builder(), paths)
+fn harness_for(paths: AppPaths) -> Harness<'static, ReviewApp> {
+    with_cli_tools(walkthrough::app_with(harness_builder(), paths, cv_providers::create_provider))
 }
 
 /// The app's harness with the window and step of [`harness_for`], before the renderer is picked.
@@ -1454,30 +1401,9 @@ pub(super) fn harness_builder() -> HarnessBuilder<ReviewApp> {
     Harness::builder().with_size([1440.0, 900.0]).with_step_dt(STEP_SECONDS).allow_missing_glyphs()
 }
 
-/// The app on `paths` from `builder`, once its start settled ([`startup::start`]).
-pub(super) fn harness_from(
-    builder: HarnessBuilder<ReviewApp>,
-    paths: AppPaths,
+pub(super) fn with_cli_tools(
+    mut harness: Harness<'static, ReviewApp>,
 ) -> Harness<'static, ReviewApp> {
-    with_cli_tools(startup::start(builder, app(paths)))
-}
-
-/// [`harness_from`] for a test that checks a state while the app still loads. A settled start
-/// runs frames until nothing asks for a repaint, and the spinner of a running load asks every
-/// frame: a slow host's answer would land before the test sees the first frame. This one runs
-/// only the first frames, as a person would see them ([`startup::first_frames`]).
-pub(super) fn loading_harness_from(
-    builder: HarnessBuilder<ReviewApp>,
-    paths: AppPaths,
-) -> Harness<'static, ReviewApp> {
-    with_cli_tools(startup::first_frames(builder, app(paths)))
-}
-
-fn app(paths: AppPaths) -> impl FnOnce(&mut eframe::CreationContext<'static>) -> ReviewApp {
-    move |creation| ReviewApp::new(creation, paths, cv_providers::create_provider)
-}
-
-fn with_cli_tools(mut harness: Harness<'static, ReviewApp>) -> Harness<'static, ReviewApp> {
     harness.state_mut().settings.cli_tools = Some(CliTools::default());
     harness
 }
@@ -1510,7 +1436,7 @@ impl AzureFixture {
     fn build(name: &str, has_git: bool) -> Self {
         let root =
             std::env::temp_dir().join(format!("review-budget-{name}-{}", std::process::id()));
-        test_support::remove_dir(&root);
+        cv_testkit::remove_dir(&root);
         std::fs::create_dir_all(&root).expect("fixture folder");
         let git = has_git.then(|| {
             let project_root = root.join("git");

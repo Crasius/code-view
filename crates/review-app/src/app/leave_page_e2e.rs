@@ -11,11 +11,10 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request};
-use super::github_mock::{GitHubHost, NUMBER, REPOSITORY};
-use super::request_budget::wait_idle;
+use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, open_pull_request};
+use super::walkthrough::{app, wait_idle};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 /// More than the probe interval with a token (`live::INTERVAL`, 30 s).
 const PROBE_DUE_AFTER: f64 = 35.0;
@@ -136,7 +135,7 @@ fn pump_until(
             return false;
         }
         harness.step();
-        test_support::let_threads_run(std::time::Duration::from_millis(10));
+        cv_testkit::let_threads_run(std::time::Duration::from_millis(10));
     }
     true
 }
@@ -147,6 +146,6 @@ fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
     let end = time(harness) + seconds;
     while time(harness) < end {
         harness.step();
-        test_support::let_threads_run(std::time::Duration::from_millis(3));
+        cv_testkit::let_threads_run(std::time::Duration::from_millis(3));
     }
 }

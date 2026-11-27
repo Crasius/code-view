@@ -80,8 +80,8 @@ mod tests {
     use egui::accesskit::{Node, Role};
     use egui_kittest::kittest::{NodeT, Queryable};
 
-    use super::super::action_e2e::{app, open_diff, open_pull_request};
-    use super::super::github_mock::GitHubHost;
+    use super::super::github_mock::{GitHubHost, open_diff, open_pull_request};
+    use super::super::walkthrough::app;
     use super::findings;
     use cv_testkit::ScratchDir;
 

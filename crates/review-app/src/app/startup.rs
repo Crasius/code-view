@@ -16,8 +16,7 @@ use std::time::{Duration, Instant};
 use egui_kittest::{Harness, HarnessBuilder};
 
 use super::ReviewApp;
-use super::action_e2e::LIMIT;
-use cv_testkit as test_support;
+use super::walkthrough::LIMIT;
 
 /// The frames kittest itself runs when it builds the harness; its default.
 const KITTEST_FRAMES: u64 = 4;
@@ -38,7 +37,7 @@ pub(super) fn first_frames(
     builder: HarnessBuilder<ReviewApp>,
     build: impl FnOnce(&mut eframe::CreationContext<'static>) -> ReviewApp,
 ) -> Harness<'static, ReviewApp> {
-    let _step = test_support::step("building the app's harness");
+    let _step = cv_testkit::step("building the app's harness");
     builder.with_max_steps(KITTEST_FRAMES).build_eframe(build)
 }
 
@@ -46,7 +45,7 @@ pub(super) fn first_frames(
 /// (animations done, no answer just landed) and no image is still loading; while only images load
 /// the image loaders get a moment of real time between frames.
 pub(super) fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    let _step = test_support::step("starting the app: frames until none asks for the next at once");
+    let _step = cv_testkit::step("starting the app: frames until none asks for the next at once");
     let started = Instant::now();
     let mut frames: u64 = 0;
     loop {
@@ -55,7 +54,7 @@ pub(super) fn settle(harness: &mut Harness<'_, ReviewApp>) {
             if !has_pending_images {
                 return;
             }
-            test_support::let_threads_run(Duration::from_millis(10));
+            cv_testkit::let_threads_run(Duration::from_millis(10));
         }
         if started.elapsed() > LIMIT {
             let causes: Vec<String> =

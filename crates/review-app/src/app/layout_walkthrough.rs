@@ -24,10 +24,10 @@ use review_store::{AppPaths, AppSettings, ConnectionStore, DiffLayout, PaneSizes
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::action_e2e::{shows_file_view, shows_folder_view};
+use super::walkthrough::{shows_file_view, shows_folder_view};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir, git};
+use cv_testkit::{ScratchDir, git};
 use cv_widgets::skeleton;
 
 const CONNECTION_ID: &str = "local-layout";
@@ -360,7 +360,7 @@ fn switching_files_keeps_the_header_still_without_placeholders() {
         for step in 0..40 {
             harness.step();
             // Wall time at least as long as the frames say, so a slow load really is late.
-            test_support::let_threads_run(Duration::from_millis(16));
+            cv_testkit::let_threads_run(Duration::from_millis(16));
             let waited = harness.ctx.input(|input| input.time) - clicked;
             // The click's frame still draws the file it left, with that file's placeholder if its
             // own load is late; a placeholder counts for `path` once the header names it.
@@ -522,7 +522,7 @@ fn wait_for(
     is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
 ) {
     let started = Instant::now();
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
+    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
     println!("{what} after {:.1} s", started.elapsed().as_secs_f32());
     settle(harness);
 }

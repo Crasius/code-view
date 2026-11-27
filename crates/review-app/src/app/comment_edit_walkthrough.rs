@@ -15,8 +15,8 @@ use review_store::{AppSettings, CommentEditor};
 use serde_json::{Value, json};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, press_button, settle_background, wait_until};
-use super::github_mock::{GitHubHost, OwnComment, REPOSITORY, THREAD_TEXT};
+use super::github_mock::{GitHubHost, OwnComment, REPOSITORY, THREAD_TEXT, open_pull_request};
+use super::walkthrough::{app, press_button, settle_background, wait_until};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 

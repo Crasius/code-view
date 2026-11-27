@@ -12,8 +12,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
-use super::github_mock::{CURRENT_TEXT, FILE, GitHubHost, THREAD_TEXT};
+use super::github_mock::{CURRENT_TEXT, FILE, GitHubHost, THREAD_TEXT, open_pull_request};
+use super::walkthrough::{app, shows_file_view, wait_until};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 

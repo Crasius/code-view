@@ -32,7 +32,6 @@ use super::ReviewApp;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::self_review;
 use cv_settings::onboarding::CliTools;
-use cv_testkit as test_support;
 use cv_testkit::Clicks;
 
 const REPOSITORY: &str = "contoso/site";
@@ -57,7 +56,7 @@ fn self_review_adds_me_from_the_reviewers_card_once() {
     let (mut harness, calls) = start("card", true);
     // Whether field and button fit side by side is the fonts' width; the bundled ones are the
     // same everywhere.
-    test_support::use_bundled_fonts(&harness.ctx);
+    cv_testkit::use_bundled_fonts(&harness.ctx);
     open(&mut harness, "card", 1);
     wait_for(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
     assert!(has(&harness, "Reviewers") && !has(&harness, "Grace Hopper"), "not listed yet");
@@ -274,7 +273,7 @@ fn start(name: &str, has_token: bool) -> (Harness<'static, ReviewApp>, Arc<Calls
     CALLS.lock().unwrap().insert(name.to_owned(), calls.clone());
     let root =
         std::env::temp_dir().join(format!("review-self-review-{name}-{}", std::process::id()));
-    test_support::remove_dir(&root);
+    cv_testkit::remove_dir(&root);
     let paths = AppPaths::new(root.join("config"), root.join("cache"));
     let mut store = ConnectionStore::open(&paths).expect("empty store");
     store
@@ -332,7 +331,7 @@ fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
     let end = harness.ctx.input(|input| input.time) + seconds;
     while harness.ctx.input(|input| input.time) < end {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(2));
+        cv_testkit::let_threads_run(Duration::from_millis(2));
     }
 }
 
@@ -341,7 +340,7 @@ fn wait_for(
     what: &str,
     is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
 ) {
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
+    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
     harness.run_steps(3);
 }
 

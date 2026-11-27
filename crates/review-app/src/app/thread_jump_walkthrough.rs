@@ -12,10 +12,10 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
-use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread};
+use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread, open_pull_request};
+use super::walkthrough::{app, shows_file_view, wait_until};
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 const CODE: &str = "src/long.rs";
@@ -153,7 +153,7 @@ fn wait_for_card(harness: &mut Harness<'_, ReviewApp>, text: &str) -> Rect {
             started.elapsed() < TIMEOUT,
             "the card of {text:?} never came into view; the diff stayed where it was"
         );
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 

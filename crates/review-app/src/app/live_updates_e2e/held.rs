@@ -7,8 +7,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::super::ReviewApp;
-use super::super::action_e2e::{app, open_diff, open_pull_request, press, type_into, wait_until};
-use super::super::github_mock::{ExtraFile, GitHubHost};
+use super::super::github_mock::{ExtraFile, GitHubHost, open_diff, open_pull_request};
+use super::super::walkthrough::{app, press, type_into, wait_until};
 use super::{commits_tab, reload_button, shows};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;

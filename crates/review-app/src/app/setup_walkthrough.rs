@@ -20,7 +20,6 @@ use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
 use cv_settings::onboarding::CliTools;
-use cv_testkit as test_support;
 use cv_testkit::Clicks;
 
 /// Scripted tokens; they only ever reach the fake provider below.
@@ -107,7 +106,7 @@ fn setup_save_failure_stays_on_the_step_with_its_cause() {
         harness.query_by_label("Save connection").is_some()
     });
 
-    test_support::remove_dir(paths.config_dir());
+    cv_testkit::remove_dir(paths.config_dir());
     std::fs::create_dir_all(paths.config_dir().parent().expect("the config folder's parent"))
         .expect("the temp root");
     std::fs::write(paths.config_dir(), b"not a folder").expect("block the config folder");
@@ -274,7 +273,7 @@ pub(super) fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
 
 pub(super) fn isolated_paths(name: &str) -> AppPaths {
     let root = std::env::temp_dir().join(format!("review-setup-{name}-{}", std::process::id()));
-    test_support::remove_dir(&root);
+    cv_testkit::remove_dir(&root);
     AppPaths::new(root.join("config"), root.join("cache"))
 }
 
@@ -306,7 +305,7 @@ pub(super) fn wait_for(
             return;
         }
         assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 

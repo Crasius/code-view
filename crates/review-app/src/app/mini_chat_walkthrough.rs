@@ -18,10 +18,8 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use review_agent::{AgentEvent, AgentKind, FakeAgent, ModelInfo, Usage};
 
 use super::ReviewApp;
-use super::action_e2e::{
-    app, open_pull_request, shows_file_view, type_into, wait_for, wait_for_link, wait_until,
-};
-use super::github_mock::{ExtraFile, GitHubHost};
+use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
+use super::walkthrough::{app, shows_file_view, type_into, wait_for, wait_for_link, wait_until};
 use cv_code::diff_paint::flashed_lines;
 use cv_pr_assistant::mini::{
     self, ANSWERING, CARD_LABEL, FOLLOW_UP, NEXT, OPEN, OPEN_AT_HEAD, PREVIOUS, SHRINK, SKIP_NEXT,

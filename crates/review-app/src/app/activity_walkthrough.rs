@@ -17,11 +17,11 @@ use review_store::chats_dir;
 use serde_json::Value;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, type_into, wait_until};
-use super::github_mock::{FILE, GitHubHost};
+use super::github_mock::{FILE, GitHubHost, open_pull_request};
+use super::walkthrough::{app, type_into, wait_until};
 use cv_services::agents::FakeCli;
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 use cv_widgets::buttons;
 
 const TIMEOUT: Duration = Duration::from_secs(60);
@@ -224,6 +224,6 @@ fn wait_for_agent(harness: &mut Harness<'_, ReviewApp>) -> FakeAgent {
             started.elapsed() < TIMEOUT,
             "timed out waiting for the question to reach the agent"
         );
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }

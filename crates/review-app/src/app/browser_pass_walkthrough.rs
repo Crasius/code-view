@@ -10,14 +10,14 @@ use cv_runtime::route::PullRequestKey;
 use cv_shell::browser::host::{self, InstalledApp};
 use cv_shell::browser::passes;
 use cv_shell::single_instance::queue_link;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 use egui::Role;
 use egui_kittest::kittest::Queryable;
 use review_store::AppPaths;
 use serde_json::{Value, json};
 
-use super::action_e2e::{app, wait_until};
 use super::github_mock::{GitHubHost, HIDDEN_NUMBER, READABLE_NUMBER, REPOSITORY};
+use super::walkthrough::{app, wait_until};
 use cv_testkit::Clicks;
 
 const CONNECTION_ID: &str = "gh";
@@ -50,7 +50,7 @@ fn open_on_github_keeps_that_pull_request_in_the_browser() {
     // The host, as the browser starts it, on the same data folders.
     let side = InstalledApp {
         paths,
-        http: test_support::http_client(),
+        http: cv_testkit::http_client(),
         factory: cv_providers::create_provider,
     };
     let hidden_reads = detail_reads(&host, HIDDEN_NUMBER);

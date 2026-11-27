@@ -25,7 +25,6 @@ use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
 use cv_settings::onboarding::CliTools;
-use cv_testkit as test_support;
 use cv_testkit::Clicks;
 use cv_widgets::numbers::number_prefix;
 
@@ -439,7 +438,7 @@ impl Host {
     fn start(name: &str, kind: ProviderKind, script: Script) -> Self {
         let root = std::env::temp_dir()
             .join(format!("review-pr-list-status-{name}-{}", std::process::id()));
-        test_support::remove_dir(&root);
+        cv_testkit::remove_dir(&root);
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -826,7 +825,7 @@ fn wait_idle(harness: &mut Harness<'_, ReviewApp>) {
     let mut idle_frames = 0;
     while idle_frames < 20 {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(5));
+        cv_testkit::let_threads_run(Duration::from_millis(5));
         idle_frames =
             if harness.state().services.background.running() == 0 { idle_frames + 1 } else { 0 };
         assert!(started.elapsed() < TIMEOUT, "background work did not finish");
@@ -851,6 +850,6 @@ fn wait_until(
                 .collect();
             panic!("timed out waiting for {what}; labels on screen:\n{}", labels.join("\n"));
         }
-        test_support::let_threads_run(Duration::from_millis(10));
+        cv_testkit::let_threads_run(Duration::from_millis(10));
     }
 }

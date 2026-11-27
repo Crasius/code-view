@@ -22,7 +22,6 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use super::ReviewApp;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
-use cv_testkit as test_support;
 use cv_testkit::Clicks;
 
 const ID: &str = "log-reuse";
@@ -93,7 +92,7 @@ fn log_reuse_finished_logs_open_from_disk_and_a_cut_download_is_fetched_again() 
 /// A fresh data folder with the scripted connection.
 fn start() -> AppPaths {
     let root = std::env::temp_dir().join(format!("review-{ID}-{}", std::process::id()));
-    test_support::remove_dir(&root);
+    cv_testkit::remove_dir(&root);
     let paths = AppPaths::new(root.join("config"), root.join("cache"));
     let mut store = ConnectionStore::open(&paths).expect("empty store");
     store
@@ -177,7 +176,7 @@ fn wait_for(
     what: &str,
     is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
 ) {
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
+    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
     for _ in 0..10 {
         harness.step();
     }

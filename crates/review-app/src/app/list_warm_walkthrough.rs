@@ -14,12 +14,11 @@ use wiremock::matchers::{body_string_contains, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 use super::ReviewApp;
-use super::action_e2e::{app, wait_until};
 use super::github_mock::{GitHubHost, NUMBER, OWNER, REPOSITORY, TITLE, search_row};
-use super::request_budget::wait_idle;
+use super::walkthrough::{app, wait_idle, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 /// Longer than any test runs: the detail never arrives while the header is checked.
 const DETAIL_DELAY: Duration = Duration::from_secs(120);
@@ -86,7 +85,7 @@ impl SlowDetail {
         let started = Instant::now();
         while !self.was_detail_asked() {
             assert!(started.elapsed() < REQUEST_TIMEOUT, "the detail was never asked for");
-            test_support::let_threads_run(Duration::from_millis(10));
+            cv_testkit::let_threads_run(Duration::from_millis(10));
         }
     }
 
@@ -240,7 +239,7 @@ fn a_click_while_the_detail_is_read_ahead_joins_its_request() {
         harness.step();
     }
     // Time for a second request to reach the mock, would the page send one.
-    test_support::let_threads_run(Duration::from_millis(300));
+    cv_testkit::let_threads_run(Duration::from_millis(300));
     harness.step();
     assert!(matches!(harness.state().route, Route::PullRequest(_)), "the click opened the page");
     assert!(harness.query_by_label("Updating…").is_some(), "which waits for the detail");

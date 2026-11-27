@@ -182,6 +182,8 @@ mod ux_files_nav_walkthrough;
 #[cfg(test)]
 mod ux_keys_walkthrough;
 #[cfg(test)]
+mod walkthrough;
+#[cfg(test)]
 mod whitespace_walkthrough;
 
 /// The system clipboard for copied pull request links; tests start without one and set a fake.

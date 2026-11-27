@@ -12,7 +12,6 @@ use review_store::AppPaths;
 use super::ReviewApp;
 use cv_base::platform;
 use cv_runtime::route::Route;
-use cv_testkit as test_support;
 
 const STEP: f32 = 1.0 / 60.0;
 /// The page the walkthrough starts on: its trail is the app's name (a link) and itself.
@@ -28,7 +27,6 @@ struct Gesture {
 fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
     let mut harness = Harness::builder()
         .with_size([1200.0, 480.0])
-        .with_pixels_per_point(1.0)
         .with_step_dt(STEP)
         .build_eframe(|creation| ReviewApp::new(creation, paths, cv_providers::create_provider));
     harness.state_mut().navigator.go(Route::Repositories);
@@ -102,7 +100,7 @@ fn current_crumb(harness: &Harness<'_, ReviewApp>) -> Pos2 {
 #[test]
 fn long_press_on_a_breadcrumb_moves_the_window_instead_of_navigating() {
     let scratch = std::env::temp_dir().join(format!("review-crumb-drag-{}", std::process::id()));
-    test_support::remove_dir(&scratch);
+    cv_testkit::remove_dir(&scratch);
     let mut harness = harness(AppPaths::new(scratch.join("config"), scratch.join("cache")));
     let long = platform::LONG_PRESS.as_secs_f32();
 
@@ -142,5 +140,5 @@ fn long_press_on_a_breadcrumb_moves_the_window_instead_of_navigating() {
     assert_eq!(harness.state().route, Route::MyPullRequests, "the next click navigates again");
 
     drop(harness);
-    test_support::remove_dir(&scratch);
+    cv_testkit::remove_dir(&scratch);
 }

@@ -13,10 +13,10 @@ use review_store::AppSettings;
 use review_store::checkouts::WhenFinished;
 
 use super::ReviewApp;
-use super::action_e2e::{app, wait_until};
 use super::checkout_walkthrough::{
     Setup, click_last, open_form, shows, start, tap, wait_ready, worktree_of,
 };
+use super::walkthrough::{app, wait_until};
 use cv_runtime::route::Route;
 use cv_testkit::Clicks;
 

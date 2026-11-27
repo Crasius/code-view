@@ -9,8 +9,8 @@ use egui_kittest::kittest::Queryable;
 use review_store::{AppPaths, AppSettings, LastPlace, LastTab, PullRequestStart, ViewedFiles};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, shows_file_view, shows_folder_view, wait_until};
-use super::github_mock::{ExtraFile, GitHubHost};
+use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
+use super::walkthrough::{app, shows_file_view, shows_folder_view, wait_until};
 use cv_runtime::route::{PullRequestTab, Route};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -131,7 +131,7 @@ fn open_resume_a_vanished_file_falls_back_to_the_first_file() {
     // The first app's background work (the mirror it opens for the page, a git process that
     // outlives the app) ends before the second app opens the same mirror: two at once fail on
     // git's config lock ("could not lock config file ... File exists").
-    super::request_budget::wait_idle(&mut harness);
+    super::walkthrough::wait_idle(&mut harness);
     drop(harness);
 
     let paths = paths(&scratch);

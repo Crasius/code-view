@@ -14,7 +14,6 @@ use cv_base::platform;
 use cv_runtime::route::{Landing, PullRequestKey, Route};
 use cv_runtime::trail::Trail;
 use cv_shell::top_bar;
-use cv_testkit as test_support;
 use cv_testkit::Clicks;
 use cv_widgets::focus;
 
@@ -64,7 +63,6 @@ fn enter_pull_request(harness: &mut Harness<'_, ReviewApp>) {
 fn harness(paths: AppPaths, width: f32) -> Harness<'static, ReviewApp> {
     let mut harness = Harness::builder()
         .with_size([width, 360.0])
-        .with_pixels_per_point(1.0)
         .with_step_dt(1.0 / 60.0)
         .build_eframe(|creation| ReviewApp::new(creation, paths, cv_providers::create_provider));
     harness.state_mut().title_bar.integrate_for_test();
@@ -169,7 +167,7 @@ fn open_overflow(harness: &mut Harness<'_, ReviewApp>) {
 #[test]
 fn breadcrumbs_fold_into_an_overflow_list_and_stay_clear_of_the_caption() {
     let scratch = std::env::temp_dir().join(format!("review-breadcrumbs-{}", std::process::id()));
-    test_support::remove_dir(&scratch);
+    cv_testkit::remove_dir(&scratch);
 
     for (width, tag) in [(1440.0, "1440"), (960.0, "960")] {
         let paths =
@@ -248,13 +246,13 @@ fn breadcrumbs_fold_into_an_overflow_list_and_stay_clear_of_the_caption() {
         );
         drop(harness);
     }
-    test_support::remove_dir(&scratch);
+    cv_testkit::remove_dir(&scratch);
 }
 
 #[test]
 fn the_files_trail_ends_at_the_pull_request_whose_crumb_leads_to_all_files() {
     let scratch = std::env::temp_dir().join(format!("review-files-crumb-{}", std::process::id()));
-    test_support::remove_dir(&scratch);
+    cv_testkit::remove_dir(&scratch);
     let paths = AppPaths::new(scratch.join("config"), scratch.join("cache"));
     let mut harness = harness(paths, 1440.0);
     // A file is open: the Files tab names no folders, only the way back to all files.
@@ -276,5 +274,5 @@ fn the_files_trail_ends_at_the_pull_request_whose_crumb_leads_to_all_files() {
     settle(&mut harness);
     assert!(harness.query_by_role_and_label(Role::Link, PULL_REQUEST).is_none());
     drop(harness);
-    test_support::remove_dir(&scratch);
+    cv_testkit::remove_dir(&scratch);
 }

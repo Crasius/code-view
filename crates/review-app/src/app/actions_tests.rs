@@ -24,7 +24,7 @@ use cv_runtime::route::PullRequestKey;
 use cv_services::Services;
 use cv_services::self_review::Identities;
 use cv_services::writes::Effect;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 mod overview;
 
@@ -256,7 +256,7 @@ fn wait(what: &str, mut is_done: impl FnMut() -> bool) {
     let started = Instant::now();
     while !is_done() {
         assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        test_support::let_threads_run(Duration::from_millis(5));
+        cv_testkit::let_threads_run(Duration::from_millis(5));
     }
 }
 

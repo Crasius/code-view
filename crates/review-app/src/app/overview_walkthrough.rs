@@ -18,7 +18,6 @@ use cv_lists::pull_request_list::{GROUP_BY_REPOSITORY, LIST_INTERVAL, SEARCH_TOO
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
-use cv_testkit as test_support;
 use cv_testkit::Clicks;
 
 const TOKEN: &str = "glpat-mock-only";
@@ -385,7 +384,7 @@ fn overview_header_is_one_row_at_wide_and_narrow_widths() {
     store.upsert(host.connection("header-row", "Mock GitLab")).expect("store the connection");
     let mut harness = start_app(&paths);
     // Whether the row fits at 960 is the fonts' width; the bundled ones are the same everywhere.
-    test_support::use_bundled_fonts(&harness.ctx);
+    cv_testkit::use_bundled_fonts(&harness.ctx);
     wait_until(&mut harness, "the rows", |harness| has(harness, "Change 4"));
     let filter_field =
         harness.query_by(|node| node.placeholder().is_some_and(|hint| hint.contains("Filter by")));
@@ -666,7 +665,7 @@ impl Responder {
 
 fn isolated_paths(name: &str) -> AppPaths {
     let root = std::env::temp_dir().join(format!("review-overview-{name}-{}", std::process::id()));
-    test_support::remove_dir(&root);
+    cv_testkit::remove_dir(&root);
     AppPaths::new(root.join("config"), root.join("cache"))
 }
 
@@ -705,7 +704,7 @@ fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
     let end = harness.ctx.input(|input| input.time) + seconds;
     while harness.ctx.input(|input| input.time) < end {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(2));
+        cv_testkit::let_threads_run(Duration::from_millis(2));
     }
 }
 
@@ -714,7 +713,7 @@ fn wait_until(
     what: &str,
     is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
 ) {
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
+    super::walkthrough::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
 }
 
 /// The key of pull request `number` of the mock project.

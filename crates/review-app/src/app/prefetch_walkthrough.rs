@@ -11,10 +11,10 @@ use egui_kittest::kittest::Queryable;
 use review_store::FilesStart;
 
 use super::ReviewApp;
-use super::action_e2e::{app, has_cached_diff, open_pull_request, settle_background, wait_until};
-use super::github_mock::{ExtraFile, GitHubHost};
+use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
+use super::walkthrough::{app, has_cached_diff, settle_background, wait_until};
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 const A: &str = "src/cart/a.rs";
 const B: &str = "src/cart/b.rs";
@@ -78,7 +78,7 @@ fn pump(harness: &mut Harness<'_, ReviewApp>, duration: Duration) {
     let started = Instant::now();
     while started.elapsed() < duration {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(5));
+        cv_testkit::let_threads_run(Duration::from_millis(5));
     }
 }
 
@@ -95,7 +95,7 @@ fn switch_to(harness: &mut Harness<'_, ReviewApp>, path: &str) -> (Duration, usi
             return (started.elapsed(), frames);
         }
         assert!(started.elapsed() < Duration::from_secs(60), "{path} never showed");
-        test_support::let_threads_run(Duration::from_millis(1));
+        cv_testkit::let_threads_run(Duration::from_millis(1));
     }
 }
 
@@ -159,7 +159,7 @@ fn prefetch_latency() {
     let hosted = scratch.path().join("hosted/acme/widgets.git");
     for path in [B, HUGE] {
         let started = Instant::now();
-        test_support::git(
+        cv_testkit::git(
             &hosted,
             &["diff", "--no-color", "-M", "-U3", "main", "feature", "--", path],
         );

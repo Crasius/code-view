@@ -17,7 +17,7 @@ use cv_lists::pull_request_list::{ListSource, PullRequestListPage};
 use cv_runtime::route::Navigator;
 use cv_services::Services;
 use cv_services::writes::Effect;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 const ROW: &str = "7 Speed up login";
 const PENDING: &str = "Pending on #7: Merging…";
@@ -82,7 +82,7 @@ fn pump_until(
             return;
         }
         assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        test_support::let_threads_run(std::time::Duration::from_millis(5));
+        cv_testkit::let_threads_run(std::time::Duration::from_millis(5));
     }
 }
 

@@ -38,12 +38,15 @@ use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
-use super::request_budget::{
-    Text, diff_stats_summaries, harness_builder, harness_from, has, loading_harness_from, pump,
-    user, wait_idle, wait_until,
-};
 #[cfg(feature = "measurements")]
-use super::request_budget::{click_first, scroll_list};
+use super::request_budget::scroll_list;
+use super::request_budget::{
+    Text, diff_stats_summaries, harness_builder, user, wait_until, with_cli_tools,
+};
+use super::startup;
+#[cfg(feature = "measurements")]
+use super::walkthrough::click_first;
+use super::walkthrough::{self, has, pump, wait_idle};
 use cv_base::platform::heap::live_bytes;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::agents::FakeCli;
@@ -52,7 +55,7 @@ use cv_syntax::code_colors;
 #[cfg(any(windows, feature = "measurements"))]
 use cv_syntax::{grammar, highlight};
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, git_in};
+use cv_testkit::git_in;
 
 const PROJECT: &str = "group/app";
 const PROJECT_ID: u64 = 42;
@@ -175,7 +178,7 @@ fn memory_stays_flat_while_the_overview_idles() {
             harness.input_mut().time = Some(time);
             harness.step();
             causes.extend(harness.ctx.repaint_causes().iter().map(|cause| cause.file.to_owned()));
-            test_support::let_threads_run(Duration::from_millis(3));
+            cv_testkit::let_threads_run(Duration::from_millis(3));
         }
         fixture.forget_requests();
         curve.measure(&mut harness, &format!("idle {} min", round * IDLE_FRAMES / 120));
@@ -233,7 +236,7 @@ fn a_closed_app_frees_its_context() {
             started.elapsed() < Duration::from_secs(10),
             "the closed app's context stays alive"
         );
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 
@@ -288,7 +291,7 @@ fn memory_owner_session() {
             for cause in harness.ctx.repaint_causes() {
                 *causes.entry(format!("{}:{}", cause.file, cause.line)).or_default() += 1;
             }
-            test_support::let_threads_run(Duration::from_millis(3));
+            cv_testkit::let_threads_run(Duration::from_millis(3));
         }
         fixture.forget_requests();
         curve.measure(&mut harness, &format!("round {round}: {simulated:.0} s idle"));
@@ -425,7 +428,7 @@ fn adopted_checkout(fixture: &Fixture, projects: &Path, iid: u64) {
     drop(child.stdin.take());
     assert!(child.wait().expect("fast-import exit").success(), "fast-import failed");
     let worktree = projects.join("app-invoicing");
-    test_support::git(
+    cv_testkit::git(
         &clone,
         &["worktree", "add", "-q", &worktree.display().to_string(), "feat/invoicing"],
     );
@@ -456,7 +459,7 @@ fn saved_pages_show_at_once_after_a_restart() {
         // The list, the overview and its threads, written on the cold tier's own thread.
         while std::fs::read_dir(&saved).map_or(0, Iterator::count) < 3 {
             assert!(started.elapsed() < Duration::from_secs(30), "the pages reach the disk tier");
-            test_support::let_threads_run(Duration::from_millis(20));
+            cv_testkit::let_threads_run(Duration::from_millis(20));
         }
     }
     // Every answer of the restarted app's host comes this long after its request, and no request
@@ -473,7 +476,7 @@ fn saved_pages_show_at_once_after_a_restart() {
                 "the saved page shows before the host can answer"
             );
             harness.step();
-            test_support::let_threads_run(Duration::from_millis(10));
+            cv_testkit::let_threads_run(Duration::from_millis(10));
         }
     };
     shows(&mut harness, &|harness| has(harness, "Change 30") && has(harness, "Updating…"));
@@ -532,7 +535,7 @@ fn assistant(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
     wait_until(harness, "the assistant's card", |harness| {
         harness.query_by_label("Ask about this PR").is_some()
     });
-    super::action_e2e::type_into(harness, "Ask anything about this pull request", "Explain it.");
+    super::walkthrough::type_into(harness, "Ask anything about this pull request", "Explain it.");
     harness.key_press(egui::Key::Enter);
     harness.step();
     let started = Instant::now();
@@ -542,7 +545,7 @@ fn assistant(harness: &mut Harness<'_, ReviewApp>, curve: &mut Curve) {
         }
         assert!(started.elapsed() < Duration::from_secs(60), "no assistant session");
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(10));
+        cv_testkit::let_threads_run(Duration::from_millis(10));
     };
     agent.emit(AgentEvent::Started { session_id: "s-1".into(), model: "claude-haiku".into() });
     let answer: String = (0..400).fold(String::new(), |mut answer, line| {
@@ -586,7 +589,7 @@ fn release_grammars(harness: &mut Harness<'_, ReviewApp>) {
         }
         assert!(started.elapsed() < Duration::from_secs(120), "a coloring never ended");
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(100));
+        cv_testkit::let_threads_run(Duration::from_millis(100));
     }
 }
 
@@ -724,7 +727,7 @@ fn settled_bytes(harness: &mut Harness<'_, ReviewApp>) -> usize {
     let mut samples: Vec<usize> = Vec::new();
     loop {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(100));
+        cv_testkit::let_threads_run(Duration::from_millis(100));
         samples.push(live_bytes());
         let recent = &samples[samples.len().saturating_sub(10)..];
         let spread = recent.iter().max().unwrap_or(&0) - recent.iter().min().unwrap_or(&0);
@@ -790,7 +793,7 @@ impl Fixture {
     fn build(name: &str, heavy: bool) -> Self {
         let root =
             std::env::temp_dir().join(format!("review-memory-{name}-{}", std::process::id()));
-        test_support::remove_dir(&root);
+        cv_testkit::remove_dir(&root);
         std::fs::create_dir_all(&root).expect("fixture folder");
         let repository = root.join("remote.git");
         let (base, heads) = build_repository(&repository);
@@ -854,7 +857,10 @@ impl Fixture {
     /// The app in its first frames after a restart, the refresh of the list still running.
     fn restarted(&self) -> Harness<'static, ReviewApp> {
         let builder = harness_builder().renderer(GpuTextures::default());
-        Self::prepared(loading_harness_from(builder, self.paths.clone()))
+        let paths = self.paths.clone();
+        Self::prepared(with_cli_tools(startup::first_frames(builder, |creation| {
+            ReviewApp::new(creation, paths, cv_providers::create_provider)
+        })))
     }
 
     /// The app from `builder`, once its start settled.
@@ -862,7 +868,9 @@ impl Fixture {
         &self,
         builder: egui_kittest::HarnessBuilder<ReviewApp>,
     ) -> Harness<'static, ReviewApp> {
-        Self::prepared(harness_from(builder, self.paths.clone()))
+        let harness =
+            walkthrough::app_with(builder, self.paths.clone(), cv_providers::create_provider);
+        Self::prepared(with_cli_tools(harness))
     }
 
     /// `harness` with the first file opening and a signed-in coding agent.
@@ -891,7 +899,7 @@ impl Fixture {
 
 impl Drop for Fixture {
     fn drop(&mut self) {
-        test_support::remove_dir(&self.root);
+        cv_testkit::remove_dir(&self.root);
     }
 }
 
@@ -1349,7 +1357,7 @@ fn memory_of_eight_languages_grammars_stays_small() {
         std::thread::spawn(move || {
             while !is_done.load(Ordering::Relaxed) {
                 peak.fetch_max(live_bytes(), Ordering::Relaxed);
-                test_support::let_threads_run(Duration::from_millis(1));
+                cv_testkit::let_threads_run(Duration::from_millis(1));
             }
         })
     };
@@ -1365,7 +1373,7 @@ fn memory_of_eight_languages_grammars_stays_small() {
         code_colors::colors(&ctx, language, text);
         while code_colors::computed_count(language, text) == 0 {
             assert!(started.elapsed() < Duration::from_secs(120), "{language} never colored");
-            test_support::let_threads_run(Duration::from_millis(5));
+            cv_testkit::let_threads_run(Duration::from_millis(5));
         }
     }
     let colored = live_bytes();
@@ -1414,7 +1422,7 @@ fn an_unfocused_overview_holds_its_skeletons_still() {
         harness.input_mut().time = Some(time);
         harness.step();
         causes.extend(harness.ctx.repaint_causes().iter().map(|cause| cause.file.to_owned()));
-        test_support::let_threads_run(Duration::from_millis(3));
+        cv_testkit::let_threads_run(Duration::from_millis(3));
     }
     let sweeps: Vec<_> = causes
         .iter()
@@ -1518,7 +1526,7 @@ fn churn(with_diffs: bool) {
             }
         }
         grammar::release_unused();
-        test_support::let_threads_run(Duration::from_millis(50));
+        cv_testkit::let_threads_run(Duration::from_millis(50));
         let (live, private) =
             (live_bytes(), private_bytes().expect("the process's memory counters read"));
         println!(

@@ -25,7 +25,7 @@ use super::navigation_walkthrough::{Fixture, create_origin};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -253,7 +253,7 @@ fn title(kind: ProviderKind, number: u64) -> String {
 
 fn isolated_paths() -> AppPaths {
     let root = std::env::temp_dir().join(format!("review-provider-icons-{}", std::process::id()));
-    test_support::remove_dir(&root);
+    cv_testkit::remove_dir(&root);
     AppPaths::new(root.join("config"), root.join("cache"))
 }
 
@@ -277,7 +277,7 @@ fn wait_for(
             let tree: String = format!("{:?}", harness.root()).chars().take(6000).collect();
             panic!("timed out waiting for {what}; screen:\n{tree}");
         }
-        test_support::let_threads_run(Duration::from_millis(10));
+        cv_testkit::let_threads_run(Duration::from_millis(10));
     }
 }
 

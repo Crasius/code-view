@@ -15,8 +15,8 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
-use super::action_e2e::{self, open_pull_request, wait_until};
-use super::github_mock::{ExtraFile, FILE, GitHubHost};
+use super::github_mock::{ExtraFile, FILE, GitHubHost, open_pull_request};
+use super::walkthrough::{self, wait_until};
 use cv_base::platform::{self, hit_test, shortcut};
 use cv_shell::focus_mode::{self, ENTER_HINT, EXIT_HINT, Surface, strip};
 use cv_testkit::Clicks;
@@ -66,7 +66,7 @@ fn app(name: &str) -> (ScratchDir, GitHubHost, Harness<'static, ReviewApp>) {
     let scratch = ScratchDir::new(name);
     let host = GitHubHost::with_pull_request_files(scratch.path(), &[long_file()]);
     host.add_workflow_job(JOB, &long_log());
-    let mut harness = action_e2e::app(&scratch, &[host.connection("gh", "Acme")]);
+    let mut harness = walkthrough::app(&scratch, &[host.connection("gh", "Acme")]);
     harness.state_mut().title_bar.integrate_for_test();
     // Alt+V keeps the open file, so its place can be checked after it.
     harness.state_mut().services.settings.open_next_unviewed = false;
@@ -196,7 +196,7 @@ fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, LONG_FILE).rect());
     wait_until(&mut harness, "the long diff", |harness| {
-        action_e2e::shows_file_view(harness, LONG_FILE)
+        walkthrough::shows_file_view(harness, LONG_FILE)
     });
     // N steps through the changes: the diff scrolls well into the file.
     for _ in 0..20 {
@@ -412,7 +412,7 @@ fn focus_mode_folds_the_original_versions_banner_into_its_strip() {
         true,
     );
     let banner = format!("Showing the version from {}", &replaced[..7]);
-    let mut harness = action_e2e::app(&scratch, &[host.connection("gh", "Acme")]);
+    let mut harness = walkthrough::app(&scratch, &[host.connection("gh", "Acme")]);
     harness.state_mut().title_bar.integrate_for_test();
     open_pull_request(&mut harness);
     harness.click_at(

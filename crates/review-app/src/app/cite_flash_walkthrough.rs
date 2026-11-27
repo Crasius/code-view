@@ -13,10 +13,8 @@ use review_agent::{AgentEvent, AgentKind, FakeAgent, ModelInfo, Usage};
 use review_store::DiffLayout;
 
 use super::ReviewApp;
-use super::action_e2e::{
-    app, open_pull_request, shows_file_view, type_into, wait_for, wait_for_link,
-};
-use super::github_mock::{ExtraFile, GitHubHost};
+use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
+use super::walkthrough::{app, shows_file_view, type_into, wait_for, wait_for_link};
 use cv_code::diff_paint::{flash_asks_for_frames, flashed_lines};
 use cv_code::line_source::Pane;
 use cv_services::agents::FakeCli;

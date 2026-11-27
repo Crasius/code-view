@@ -33,7 +33,7 @@ use self::hosts::{FILE, Released, State, TestPullRequest};
 use super::ReviewApp;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(300);
 const LINE_COMMENT: &str = "Live check: does the first line read well?";
@@ -124,7 +124,7 @@ impl Drop for WritesReport {
 /// The scratch folders, holding only the released connection as the owner saved it: its token
 /// stays protected by the system's store, which these folders use.
 fn released_paths(scratch: &ScratchDir, released: &Released) -> AppPaths {
-    test_support::allow_system_token_vault();
+    cv_testkit::allow_system_token_vault();
     let owner = AppPaths::from_environment().connections_file();
     let text = std::fs::read_to_string(&owner).expect("the owner's connections file");
     let saved: Value = serde_json::from_str(&text).expect("connections JSON");
@@ -541,7 +541,7 @@ fn wait_for_label(
 {}",
             screen(harness)
         );
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 
@@ -572,7 +572,7 @@ fn wait_until(
             "timed out waiting for {what}; screen:\n{}",
             screen(harness)
         );
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 
@@ -581,7 +581,7 @@ fn settle(harness: &mut Harness<'_, ReviewApp>, duration: Duration) {
     let started = Instant::now();
     while started.elapsed() < duration {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 

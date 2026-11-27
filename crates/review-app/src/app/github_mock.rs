@@ -12,12 +12,18 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, LazyLock, Mutex, PoisonError};
 
-use cv_testkit::{ScratchDir, git};
+use cv_testkit::{Clicks, ScratchDir, git};
+use egui::Role;
+use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
 use review_core::{Connection, ProviderKind};
 use serde_json::{Value, json};
 use tokio::runtime::Runtime;
 use wiremock::matchers::{body_string_contains, header, method, path, path_regex};
 use wiremock::{Mock, MockBuilder, MockServer, Request, Respond, ResponseTemplate};
+
+use super::ReviewApp;
+use super::walkthrough::{shows_file_view, wait_until};
 
 pub const TOKEN: &str = "test-token";
 /// `Basic base64("x-access-token:test-token")`, how the provider hands the token to git.
@@ -33,6 +39,38 @@ pub const THREAD_TEXT: &str = "Should this stay public?";
 /// The current thread's line and text after [`GitHubHost::force_push_outdating_the_thread`].
 pub const CURRENT_LINE: u32 = 20;
 pub const CURRENT_TEXT: &str = "Is this line still needed?";
+
+/// Opens the pull request from its row in "My pull requests" and waits for its tabs.
+pub fn open_pull_request(harness: &mut Harness<'_, ReviewApp>) {
+    let row = format!("{NUMBER} {TITLE}");
+    wait_until(harness, "the pull request row", |harness| harness.query_by_label(&row).is_some());
+    harness.click_at(harness.get_by_label(&row).rect());
+    wait_until(harness, "the pull request", |harness| {
+        harness.query_by_role_and_label(Role::Tab, "Overview").is_some()
+    });
+}
+
+/// Opens [`FILE`] in the Files tab once the mirror fetched it; returns the diff's area.
+pub fn open_diff(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
+    // "Files" gains its count once the file list is in.
+    harness.click_at(
+        harness
+            .get_by(|node| {
+                node.role() == Role::Tab
+                    && node.label().is_some_and(|label| label.starts_with("Files"))
+            })
+            .rect(),
+    );
+    wait_until(harness, "the file tree", |harness| {
+        harness.query_by_role_and_label(Role::TreeItem, FILE).is_some()
+    });
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, FILE).rect());
+    // The existing thread's card sits under line 3 once the diff rows are built.
+    wait_until(harness, "the diff", |harness| {
+        shows_file_view(harness, FILE) && harness.query_by_label(THREAD_TEXT).is_some()
+    });
+    harness.get_by_label(&format!("Diff of {FILE}")).rect()
+}
 
 const TIMESTAMP: &str = "2026-10-01T10:00:00Z";
 const BASE_TEXT: &str = "pub fn greet() -> &'static str {\n    \"Hello\"\n}\n\npub fn farewell() -> &'static str {\n    \"Bye\"\n}\n";

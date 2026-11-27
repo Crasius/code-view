@@ -3,30 +3,23 @@
 //! pointer events like a user. Each test asserts the request that reached the host. Runs with
 //! `cargo test`; needs `git` on PATH, no network.
 
-use std::time::{Duration, Instant};
-
-use egui::{CursorIcon, PointerButton, Pos2, Role, pos2};
+use egui::{Role, pos2};
 use egui_kittest::Harness;
-use egui_kittest::kittest::{AccessKitNode, NodeT, Queryable};
-use review_core::Connection;
-use review_store::{AppPaths, ConnectionStore, DiffLayout, FilesStart};
+use egui_kittest::kittest::Queryable;
+use review_store::FilesStart;
 use serde_json::{Value, json};
 
 use super::ReviewApp;
 use super::github_mock::{
-    self, FILE, GitHubHost, NUMBER, REPOSITORY, THREAD_ID, THREAD_TEXT, TITLE,
+    self, FILE, GitHubHost, NUMBER, REPOSITORY, THREAD_ID, THREAD_TEXT, open_diff,
+    open_pull_request,
+};
+use super::walkthrough::{
+    app, press, press_button, secondary_click, settle_background, shows_file_view,
+    shows_folder_view, type_into, wait_until, wait_until_found,
 };
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
-
-/// How long a wait may go on while nothing is in flight in the background: the app is idle, and
-/// what it waits for did not come.
-const TIMEOUT: Duration = Duration::from_secs(60);
-/// How long a wait may go on at all. Work in flight counts only here: it goes at the pace of git
-/// and the machine, which the whole suite and whatever else runs there share (a git start took
-/// 1 s at the median while another project's tests kept the machine 83 % busy). Below the
-/// watchdog's limit, so a task that never ends fails its own test, not the test binary.
-pub(super) const LIMIT: Duration = Duration::from_secs(180);
+use cv_testkit::ScratchDir;
 
 #[test]
 fn action_line_comment_via_hover_button() {
@@ -381,174 +374,6 @@ fn action_a_comment_link_wins_over_the_first_file() {
     });
 }
 
-/// The app with `connections` saved, a side-by-side diff and the "My pull requests" start page.
-pub(super) fn app(scratch: &ScratchDir, connections: &[Connection]) -> Harness<'static, ReviewApp> {
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    for connection in connections {
-        store.upsert(connection.clone()).expect("store the connection");
-    }
-    let mut harness =
-        super::startup::start(Harness::builder().with_size([1440.0, 900.0]), |creation| {
-            ReviewApp::new(creation, paths, cv_providers::create_provider)
-        });
-    harness.state_mut().services.settings.diff_layout = DiffLayout::SideBySide;
-    harness
-}
-
-/// Opens the pull request from its row in "My pull requests" and waits for its tabs.
-pub(super) fn open_pull_request(harness: &mut Harness<'_, ReviewApp>) {
-    let row = format!("{NUMBER} {TITLE}");
-    wait_until(harness, "the pull request row", |harness| harness.query_by_label(&row).is_some());
-    harness.click_at(harness.get_by_label(&row).rect());
-    wait_until(harness, "the pull request", |harness| {
-        harness.query_by_role_and_label(Role::Tab, "Overview").is_some()
-    });
-}
-
-/// Opens [`FILE`] in the Files tab once the mirror fetched it; returns the diff's area.
-pub(super) fn open_diff(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
-    // "Files" gains its count once the file list is in.
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
-    wait_until(harness, "the file tree", |harness| {
-        harness.query_by_role_and_label(Role::TreeItem, FILE).is_some()
-    });
-    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, FILE).rect());
-    // The existing thread's card sits under line 3 once the diff rows are built.
-    wait_until(harness, "the diff", |harness| {
-        shows_file_view(harness, FILE) && harness.query_by_label(THREAD_TEXT).is_some()
-    });
-    harness.get_by_label(&format!("Diff of {FILE}")).rect()
-}
-
-/// The file view shows `path`'s diff. Its label alone does not tell: a card of the folder view
-/// draws its code with the same diff view, so once the card's code is in, "Diff of {path}" is
-/// there while no file is open. The two views never show in one frame.
-pub(super) fn shows_file_view(harness: &Harness<'_, ReviewApp>, path: &str) -> bool {
-    !shows_folder_view(harness) && harness.query_by_label(&format!("Diff of {path}")).is_some()
-}
-
-/// The folder view shows: its header, drawn in every frame it shows, ends the folder's trail at
-/// "{folder} (current folder)".
-pub(super) fn shows_folder_view(harness: &Harness<'_, ReviewApp>) -> bool {
-    harness.query_all_by_label_contains(" (current folder)").next().is_some()
-}
-
-/// A right click at `position`, the pointer resting there first: the menu is the hovered line's.
-fn secondary_click(harness: &mut Harness<'_, ReviewApp>, position: Pos2) {
-    harness.hover_at(position);
-    harness.step();
-    harness.click_point(position, PointerButton::Secondary);
-    harness.step();
-}
-
-/// Types into the text field whose hint starts with `placeholder` and returns once the field holds
-/// the text: a field takes typed text only while it has the focus, so a step that follows (a
-/// submit button that is enabled only with text) never runs on a field that missed it.
-pub(super) fn type_into(harness: &mut Harness<'_, ReviewApp>, placeholder: &str, text: &str) {
-    let is_field = |node: &AccessKitNode<'_>| {
-        node.placeholder().is_some_and(|hint| hint.starts_with(placeholder))
-    };
-    wait_until(harness, placeholder, |harness| harness.query_by(is_field).is_some());
-    harness.get_by(is_field).focus();
-    harness.step();
-    let field = harness.get_by(is_field);
-    field.type_text(text);
-    // Found by its id: a field with text may drop its hint.
-    let id = field.accesskit_node().id();
-    wait_until(harness, &format!("{placeholder} holding {text:?}"), |harness| {
-        harness
-            .query_by(|node| node.id() == id)
-            .is_some_and(|field| field.value().is_some_and(|value| value.contains(text)))
-    });
-}
-
-/// Scrolls the labelled widget into view, then clicks it like a pointer would (see
-/// [`click_when_ready`]).
-pub(super) fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    click_when_ready(harness, label, None);
-}
-
-/// [`press`] for the button labelled `label`: for a submit button that is enabled only with text,
-/// and where another widget carries the same label (a composer's text area is named after its
-/// submit button).
-pub(super) fn press_button(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    click_when_ready(harness, label, Some(Role::Button));
-}
-
-/// The widget labelled `label`, of `role` where one is given.
-fn labelled<'h>(
-    harness: &'h Harness<'_, ReviewApp>,
-    label: &'h str,
-    role: Option<Role>,
-) -> Option<egui_kittest::Node<'h>> {
-    match role {
-        Some(role) => harness.query_by_role_and_label(role, label),
-        None => harness.query_by_label(label),
-    }
-}
-
-/// Scrolls the widget labelled `label` into view, waits until it is enabled with its centre inside
-/// the window (scrolling again where late content pushed it out), then clicks it at its place in
-/// that frame ([`Clicks::click_at`]). A fixed number of frames after the scroll proves none of
-/// that: the click would land on a disabled button, or past the window's edge where nothing takes
-/// it, and the test would wait for a request that never comes.
-fn click_when_ready(harness: &mut Harness<'_, ReviewApp>, label: &str, role: Option<Role>) {
-    wait_until(harness, label, |harness| labelled(harness, label, role).is_some());
-    labelled(harness, label, role).expect("just found").scroll_to_me();
-    settle(harness);
-    let window = harness.ctx.content_rect();
-    let rect = wait_for(
-        harness,
-        &format!("{label} to take a click"),
-        |harness| {
-            let node = labelled(harness, label, role)?;
-            let rect = node.rect();
-            let is_enabled = !node.accesskit_node().is_disabled();
-            (is_enabled && window.contains(rect.center())).then_some(rect)
-        },
-        |harness| {
-            if let Some(node) = labelled(harness, label, role)
-                && !window.contains(node.rect().center())
-            {
-                node.scroll_to_me();
-            }
-        },
-    );
-    harness.click_at(rect);
-    harness.step();
-}
-
-/// Waits until the text labelled `label` is a link where it is drawn: the pointer resting on it
-/// turns into a hand, and the text stays in place. An answer's citations become links only once
-/// the background checked them against the checkout, and their icons then move the text; a click
-/// before that lands on plain text. Returns the point to click.
-pub(super) fn wait_for_link(harness: &mut Harness<'_, ReviewApp>, label: &str) -> Pos2 {
-    let _step = test_support::step(format!("waiting for {label} to become a link"));
-    let started = Instant::now();
-    loop {
-        let center = harness.query_by_label(label).map(|node| node.rect().center());
-        if let Some(center) = center {
-            harness.hover_at(center);
-        }
-        harness.step();
-        let is_link = harness.output().platform_output.cursor_icon == CursorIcon::PointingHand;
-        let now = harness.query_by_label(label).map(|node| node.rect().center());
-        if let Some(center) = center.filter(|center| is_link && now == Some(*center)) {
-            return center;
-        }
-        assert!(started.elapsed() < TIMEOUT, "{label} did not become a link");
-        test_support::let_threads_run(Duration::from_millis(20));
-    }
-}
-
 /// Waits for the request and returns its JSON body.
 fn wait_for_request(
     harness: &mut Harness<'_, ReviewApp>,
@@ -558,93 +383,4 @@ fn wait_for_request(
 ) -> Value {
     let request = wait_until_found(harness, request_path, |_| host.find(verb, request_path));
     request.body_json().expect("a JSON body")
-}
-
-/// Whether an open pull request holds `path`'s diff in its cache.
-pub(super) fn has_cached_diff(harness: &Harness<'_, ReviewApp>, path: &str) -> bool {
-    harness.state().pull_requests.iter().any(|(_, page)| page.has_cached_diff(path))
-}
-
-/// Steps until no background work (git, the provider) is left for a few frames: what was on its
-/// way has landed, and the frame after it took it in. A late answer can still change the layout
-/// (a card above growing), so a test reads a place to click only after this. Each step moves
-/// egui's clock on by a quarter second, past the dwell of a hover.
-pub(super) fn settle_background(harness: &mut Harness<'_, ReviewApp>) {
-    let _step = test_support::step("waiting for the background work to end over 3 frames");
-    let started = Instant::now();
-    let mut idle_frames = 0;
-    while idle_frames < 3 {
-        harness.step();
-        let is_idle = harness.state().services.background.running() == 0;
-        idle_frames = if is_idle { idle_frames + 1 } else { 0 };
-        assert!(started.elapsed() < LIMIT, "background work never ended");
-        test_support::let_threads_run(Duration::from_millis(5));
-    }
-}
-
-pub(super) fn wait_until(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    wait_until_found(harness, what, |harness| is_done(harness).then_some(()));
-}
-
-fn wait_until_found<T>(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    find: impl Fn(&Harness<'_, ReviewApp>) -> Option<T>,
-) -> T {
-    let found = wait_for(harness, what, find, |_| {});
-    settle(harness);
-    found
-}
-
-/// Steps the app until `find` finds something and returns it on the frame it came, without
-/// settling; `each` runs before every frame (a hover, a click). Fails after [`TIMEOUT`] with
-/// nothing in flight in the background, or after [`LIMIT`].
-pub(super) fn wait_for<T>(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    mut find: impl FnMut(&Harness<'_, ReviewApp>) -> Option<T>,
-    each: impl Fn(&mut Harness<'_, ReviewApp>),
-) -> T {
-    let _step = test_support::step(format!("waiting for {what}"));
-    let (started, mut idle) = (Instant::now(), Duration::ZERO);
-    loop {
-        let (is_busy, frame) = (harness.state().services.background.running() > 0, Instant::now());
-        each(harness);
-        harness.step();
-        if let Some(found) = find(harness) {
-            return found;
-        }
-        if idle > TIMEOUT || started.elapsed() > LIMIT {
-            let labels: Vec<String> = harness
-                .query_all_by(|_| true)
-                .filter_map(|node| {
-                    let node = node.accesskit_node();
-                    let text = match (node.label(), node.value()) {
-                        (Some(label), Some(value)) => Some(format!("{label} = {value:?}")),
-                        (label, value) => label.or(value),
-                    };
-                    let state =
-                        [(node.is_disabled(), " (disabled)"), (node.is_focused(), " (focused)")];
-                    text.map(|text| {
-                        state.iter().filter(|(is, _)| *is).fold(text, |text, (_, tag)| text + tag)
-                    })
-                })
-                .collect();
-            panic!("timed out waiting for {what}; screen: {labels:?}");
-        }
-        test_support::let_threads_run(Duration::from_millis(20));
-        if !is_busy {
-            idle += frame.elapsed();
-        }
-    }
-}
-
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..4 {
-        harness.step();
-    }
 }
