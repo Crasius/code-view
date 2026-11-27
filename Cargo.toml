@@ -159,8 +159,12 @@ codegen-units = 16
 panic = "abort"
 strip = true
 
+[profile.dev]
+debug = "line-tables-only"
+
 [profile.dev.package."*"]
 opt-level = 2
+debug = false
 # The grammar dump deserializes through generic serde code compiled into the crate that calls
 # it: at opt-level 0 the first highlight waited 22 ms instead of 2 (review-grammars, lib.rs).
 [profile.dev.package.review-grammars]
@@ -172,6 +176,14 @@ opt-level = 2
 inherits = "release"
 debug = "line-tables-only"
 strip = false
+
+# Full debug info for a debugger session: `cargo build --profile debugging -p review-app`.
+[profile.debugging]
+inherits = "dev"
+debug = true
+
+[profile.debugging.package."*"]
+debug = true
 
 [patch.crates-io]
 # syntect 5.3.0 with fancy-regex 0.20 and capped lazy DFA caches; its README says why, what
