@@ -5,7 +5,7 @@
 //! second N opens the next file at its first change (so a third N notes its one change is the
 //! last); once every file is viewed the progress line says so and its "Approve" approves.
 //! Needs `git` on PATH, no network.
-//! `cargo test -p review-app --bin CodeView ux_files_nav`
+//! `cargo test -p review-app --bin CodeView app::files_review_loop_walkthrough`
 
 use egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
@@ -36,7 +36,7 @@ fn file(path: &'static str, value: u32) -> ExtraFile {
 }
 
 #[test]
-fn ux_files_nav_steps_through_the_review_to_the_vote() {
+fn steps_through_the_review_to_the_vote() {
     let scratch = ScratchDir::new("ux-files-nav");
     let host =
         GitHubHost::with_pull_request_files(scratch.path(), &[file(A, 1), file(B, 2), file(C, 3)]);

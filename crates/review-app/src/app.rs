@@ -114,7 +114,8 @@ mod image_copy_walkthrough;
 #[cfg(test)]
 mod keyboard_walkthrough;
 // egui's debug options (`show_expand_width`) exist only with debug assertions; release test
-// builds (`cargo test --release`, for the live performance checks) leave the clip audit out.
+// builds (`cargo test --release`, for the live performance checks) leave the layout audit and its
+// `clip_check` out.
 #[cfg(test)]
 #[cfg(debug_assertions)]
 mod layout_audit_walkthrough;

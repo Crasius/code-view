@@ -2,8 +2,9 @@
 //! every request by method and path template, and a local bare git repository as the mirror's
 //! remote. Time is simulated through egui's input time, so minutes pass in seconds.
 //!
-//! `cargo test -p review-app request_budget -- --nocapture --test-threads=1` prints a report per
-//! screen and endpoint. No network, no real token: the token below only ever reaches the mock.
+//! `cargo test -p review-app --bin CodeView app::request_budget -- --nocapture --test-threads=1`
+//! prints a report per screen and endpoint. No network, no real token: the token below only ever
+//! reaches the mock.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -55,7 +56,7 @@ fn browsing_3000_files_fetches_blobs_in_chunks() {
 /// "First file" opens the Files tab on a file's diff, read from the local mirror like the folder
 /// view's: no request beyond the live-update probe and no git fetch.
 #[test]
-fn request_budget_files_tab_opening_on_the_first_file() {
+fn files_tab_opening_on_the_first_file() {
     let fixture = Fixture::new("first-file", 300);
     let mut harness = fixture.harness();
     harness.state_mut().services.settings.files_start = review_store::FilesStart::FirstFile;
@@ -108,7 +109,7 @@ const PROBE_APPROVALS: &str = "GET /api/v4/projects/:project/merge_requests/:id/
 
 /// The coordinator's focus rules: nothing while inactive, one catch-up per due item, user actions pass.
 #[test]
-fn request_budget_unfocused_window_is_silent_and_catches_up_once() {
+fn unfocused_window_is_silent_and_catches_up_once() {
     let fixture = Fixture::new("unfocused", 30);
     let mut harness = fixture.harness();
     open_pipelines(&mut harness, &fixture);
@@ -157,7 +158,7 @@ fn request_budget_unfocused_window_is_silent_and_catches_up_once() {
 /// Coming back after a pause on a merge request page: its probe goes out at once, and the overview,
 /// where the user likely goes next, refreshes in the background, so going there asks nothing more.
 #[test]
-fn request_budget_a_return_after_a_pause_refreshes_ahead() {
+fn a_return_after_a_pause_refreshes_ahead() {
     let listing = "GET /api/v4/groups/group/merge_requests";
     let fixture = Fixture::new("return", 30);
     let mut harness = fixture.harness();
@@ -190,7 +191,7 @@ fn request_budget_a_return_after_a_pause_refreshes_ahead() {
 
 /// A 429 shows a calm banner with a countdown; "Retry now" sends the queued request at once.
 #[test]
-fn request_budget_rate_limit_banner_retries_now() {
+fn rate_limit_banner_retries_now() {
     let fixture = Fixture::new("banner", 30);
     fixture.limit_once("/api/v4/groups/group/merge_requests", 120);
     fixture.recorder.enter("limited");
@@ -236,7 +237,7 @@ fn request_budget_rate_limit_banner_retries_now() {
 /// stage loads ask GraphQL for the jobs' needs) stayed a skeleton until the hour was over. Now the
 /// jobs come at once without their needs, and the banner names GraphQL with a way to a token.
 #[test]
-fn request_budget_graphql_limit_does_not_hold_back_the_pipelines() {
+fn graphql_limit_does_not_hold_back_the_pipelines() {
     let fixture = Fixture::with_token("graphql-limit", 30, None);
     fixture.limit_once("/api/graphql", 2391);
     let mut harness = fixture.harness();
@@ -267,7 +268,7 @@ fn request_budget_graphql_limit_does_not_hold_back_the_pipelines() {
 /// frames in 90 s in a walkthrough), and the banner's countdown woke the app every second although
 /// its text changes once a minute.
 #[test]
-fn request_budget_rows_held_by_a_rate_limit_let_the_app_rest() {
+fn rows_held_by_a_rate_limit_let_the_app_rest() {
     let fixture = Fixture::new("held-rows", 30);
     fixture.limit_row_statuses_once(2391);
     let mut harness = fixture.loading_harness();
@@ -320,7 +321,7 @@ fn repaint_delay(harness: &Harness<'_, ReviewApp>) -> Duration {
 /// took another id in the frame it opened, egui dropped the press of a widget that was gone, and
 /// the click on the Pipelines tab went to nobody (a busy macOS runner, GitHub run 45886166305).
 #[test]
-fn request_budget_a_click_held_while_the_banner_opens_still_counts() {
+fn a_click_held_while_the_banner_opens_still_counts() {
     let fixture = Fixture::with_token("banner-click", 30, None);
     fixture.limit_once_after("/api/graphql", 2391, Duration::from_secs(2));
     let mut harness = fixture.harness();
@@ -358,7 +359,7 @@ fn request_budget_a_click_held_while_the_banner_opens_still_counts() {
 /// 429 until the full hour. The Pipelines tab then says what it waits for, with a token, Retry now
 /// and the merge request on GitLab, instead of a skeleton that lasts up to an hour.
 #[test]
-fn request_budget_rate_limited_jobs_show_a_waiting_state_with_ways_out() {
+fn rate_limited_jobs_show_a_waiting_state_with_ways_out() {
     let fixture = Fixture::with_token("jobs-limit", 30, None);
     fixture
         .limit_once(&format!("/api/v4/projects/{PROJECT_ID}/pipelines/{PIPELINE_ID}/jobs"), 2391);
@@ -386,7 +387,7 @@ fn request_budget_rate_limited_jobs_show_a_waiting_state_with_ways_out() {
 /// older ones, which are rows of the cheap pipeline list. An older pipeline loads its jobs when it
 /// is opened, once: opening it again, or the tab again, costs nothing.
 #[test]
-fn request_budget_pipelines_tab_loads_jobs_of_the_head_run_only() {
+fn pipelines_tab_loads_jobs_of_the_head_run_only() {
     let fixture = Fixture::with_older_pipelines("lazy-pipelines", 9);
     let mut harness = fixture.harness();
     fixture.recorder.enter("open the tab");
@@ -474,7 +475,7 @@ fn request_budget_pipelines_tab_loads_jobs_of_the_head_run_only() {
 /// starred project once; a revisit's background refresh waits while the window is inactive and
 /// goes out once when it is active again. Idle sends nothing.
 #[test]
-fn request_budget_favorites_load_only_while_open_and_focused() {
+fn favorites_load_only_while_open_and_focused() {
     let fixture = Fixture::new("favorites", 30);
     let mut settings = AppSettings::load(&fixture.paths.settings_file()).expect("no settings yet");
     settings.favorites.toggle(&fixture.connection_id, PROJECT);
@@ -530,7 +531,7 @@ const PROJECT_LISTING: &str = "GET /api/v4/projects/:project/merge_requests";
 /// there asks only the cards on screen (before: 4 again).
 /// `--nocapture` prints the listings of each phase.
 #[test]
-fn request_budget_the_overview_asks_only_for_cards_on_screen() {
+fn the_overview_asks_only_for_cards_on_screen() {
     let fixture = Fixture::new("on-screen", 30);
     fixture.add_connection("2");
     fixture.add_connection("3");
@@ -627,7 +628,7 @@ fn request_budget_the_overview_asks_only_for_cards_on_screen() {
 /// freshness window asks again. Before, the list took the answer in only at the revisit, counted
 /// it as new there and asked nothing; on a busy runner Refresh's own answer came that late.
 #[test]
-fn request_budget_an_answer_that_lands_on_another_page_ages_from_its_arrival() {
+fn an_answer_that_lands_on_another_page_ages_from_its_arrival() {
     let fixture = Fixture::new("hidden-answer", 30);
     let mut harness = fixture.harness();
     wait_until_unsettled(&mut harness, "the pull request list", |harness| {
@@ -663,7 +664,7 @@ fn request_budget_an_answer_that_lands_on_another_page_ages_from_its_arrival() {
 /// once, however short the minimize, and its rows ask for their checks and votes again, which a
 /// GitLab approval may not show in the listing.
 #[test]
-fn request_budget_a_return_to_the_window_refreshes_the_overview() {
+fn a_return_to_the_window_refreshes_the_overview() {
     let fixture = Fixture::new("overview-return", 30);
     let mut harness = fixture.harness();
     wait_until_unsettled(&mut harness, "the pull request list", |harness| {
@@ -696,7 +697,7 @@ const STATUSES: &str = "POST /api/graphql statuses";
 /// project, held back while the window is inactive. Scrolling and a revisit ask nothing more for
 /// merge requests whose head did not move.
 #[test]
-fn request_budget_line_counts_are_one_graphql_request_per_project() {
+fn line_counts_are_one_graphql_request_per_project() {
     let fixture = Fixture::new("line-counts", 30);
     let graphql =
         |phase: &str| fixture.recorder.endpoints(phase).get(GRAPHQL).copied().unwrap_or(0);
@@ -762,7 +763,7 @@ fn request_budget_line_counts_are_one_graphql_request_per_project() {
 /// is inactive. 25 changed files are more than are counted from git on their own, so the rows
 /// show their files and "Count lines", and no mirror is made.
 #[test]
-fn request_budget_azure_devops_sizes_are_asked_for_the_rows_on_screen() {
+fn azure_devops_sizes_are_asked_for_the_rows_on_screen() {
     let fixture = AzureFixture::new("azure-sizes");
     fixture.recorder.enter("listed");
     let mut harness = harness_for(fixture.paths.clone());
@@ -849,7 +850,7 @@ fn request_budget_azure_devops_sizes_are_asked_for_the_rows_on_screen() {
 /// nothing is starred), and are counted from git all the same, without asking for their iterations:
 /// the mirror's file list counts the files too. Only rows on screen are counted.
 #[test]
-fn request_budget_favorites_always_count_their_lines() {
+fn favorites_always_count_their_lines() {
     let fixture = AzureFixture::with_git("azure-favorites");
     fixture.star_the_repository();
     fixture.recorder.enter("listed");

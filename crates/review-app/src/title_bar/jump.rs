@@ -712,7 +712,7 @@ mod tests {
     }
 
     #[test]
-    fn jump_results_reopened_after_fewer_rows_show_every_row() {
+    fn results_reopened_after_fewer_rows_show_every_row() {
         // First opened before the list loaded: one row, "Show your pull requests".
         let mut harness = scene("reopen", 0, 900.0);
         open_box(&mut harness);
@@ -729,7 +729,7 @@ mod tests {
     }
 
     #[test]
-    fn jump_results_grow_in_the_frame_rows_arrive() {
+    fn results_grow_in_the_frame_rows_arrive() {
         let mut harness = scene("grow", 2, 900.0);
         open_box(&mut harness);
         assert_height(&harness, 2);
@@ -748,7 +748,7 @@ mod tests {
     }
 
     #[test]
-    fn jump_results_reopen_at_the_top_with_the_first_row_selected() {
+    fn results_reopen_at_the_top_with_the_first_row_selected() {
         let mut harness = scene("top", 20, 900.0);
         open_box(&mut harness);
         // Up from the first row wraps to the last one and scrolls it into view.
@@ -773,7 +773,7 @@ mod tests {
     }
 
     #[test]
-    fn jump_results_list_a_pull_request_once_when_favorites_list_it_too() {
+    fn results_list_a_pull_request_once_when_favorites_list_it_too() {
         let mut harness = scene("favorites", 0, 900.0);
         // #499 is in a starred repository: the Favorites card and the connection's card both list it.
         let favorites = vec![row(499), row(42)];
@@ -793,7 +793,7 @@ mod tests {
     }
 
     #[test]
-    fn jump_hands_the_picked_pull_request_its_loaded_row() {
+    fn hands_the_picked_pull_request_its_loaded_row() {
         let mut harness = scene("pick", 3, 900.0);
         open_box(&mut harness);
         harness.key_press(Key::ArrowDown);
@@ -809,7 +809,7 @@ mod tests {
 
     /// Self-hosted platforms on plain http are pasted too; their links open, not a failed search.
     #[test]
-    fn jump_offers_to_open_pasted_http_and_https_links() {
+    fn offers_to_open_pasted_http_and_https_links() {
         let harness = scene("links", 0, 900.0);
         let lists = [&harness.state().page];
         for url in [
@@ -829,7 +829,7 @@ mod tests {
     }
 
     #[test]
-    fn jump_results_stop_at_the_window_bottom() {
+    fn results_stop_at_the_window_bottom() {
         let height = 300.0;
         let mut harness = scene("short", 20, height);
         open_box(&mut harness);

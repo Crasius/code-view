@@ -5,7 +5,7 @@
 //! Settings at Keyboard and mouse with the page's shortcuts in view, while in a text field it is
 //! typed. On a long list J and K move the keyboard focus from row to row, scrolling the row into
 //! view, and Enter opens it.
-//! `cargo test -p review-app ux_keys`
+//! `cargo test -p review-app --bin CodeView app::keyboard_walkthrough`
 
 use egui::{Event, Key, Modifiers, Role, Vec2};
 use egui_kittest::Harness;
@@ -19,7 +19,7 @@ use cv_runtime::route::{PullRequestTab, Route};
 use cv_testkit::ScratchDir;
 
 #[test]
-fn ux_keys_pick_tabs_and_open_the_shortcuts() {
+fn pick_tabs_and_open_the_shortcuts() {
     let scratch = ScratchDir::new("ux-keys-tabs");
     let host = GitHubHost::with_pull_request(scratch.path());
     let connection = host.connection("gh", "Acme");
@@ -79,7 +79,7 @@ fn ux_keys_pick_tabs_and_open_the_shortcuts() {
 }
 
 #[test]
-fn ux_keys_move_through_the_list_rows() {
+fn move_through_the_list_rows() {
     let scratch = ScratchDir::new("ux-keys-list");
     let rows: Vec<_> = (1..=30)
         .map(|number| search_row(number, &format!("Change {number}"), REPOSITORY))

@@ -94,7 +94,7 @@ struct Fixture {
 }
 
 #[test]
-fn clip_audit_every_screen_keeps_its_text_and_controls_inside() {
+fn every_screen_keeps_its_text_and_controls_inside() {
     let scratch = ScratchDir::new("clip-audit");
     let fixture = create_origin(&scratch.path().join("origin"));
     let paths = saved_paths(&scratch, &connections());
@@ -393,7 +393,7 @@ impl Audit {
         harness.key_press(egui::Key::Escape);
         settle(harness);
         let services = &mut harness.state_mut().services;
-        let retry = cv_runtime::toasts::ToastAction::retry(egui::Id::unique("clip_audit.retry"));
+        let retry = cv_runtime::toasts::ToastAction::retry(egui::Id::unique("layout_audit.retry"));
         services.toasts.error(format!("Could not reach {REPOSITORY}: the connection to dev.azure.com was reset while the request was in flight."), retry);
         services.toasts.success(format!("Rerun of {RETRIED_JOB} started."));
         settle(harness);

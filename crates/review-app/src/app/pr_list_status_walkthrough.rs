@@ -8,7 +8,7 @@
 //! a check. A refresh after the running checks
 //! finished shows their outcome, and asks again only for what was running or failed.
 //!
-//! `cargo test -p review-app pr_list_status -- --nocapture` prints the requests of each listing.
+//! `cargo test -p review-app --bin CodeView app::pr_list_status_walkthrough -- --nocapture` prints the requests of each listing.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -33,7 +33,7 @@ const ROWS: u64 = 50;
 const STEP_SECONDS: f32 = 0.25;
 
 #[test]
-fn pr_list_status_github_search_rows_bring_their_checks_and_votes() {
+fn github_search_rows_bring_their_checks_and_votes() {
     let host = Host::start("github", ProviderKind::GitHub, github);
     host.enter("listed");
     let mut harness = host.harness(1440.0);
@@ -115,7 +115,7 @@ fn pr_list_status_github_search_rows_bring_their_checks_and_votes() {
 }
 
 #[test]
-fn pr_list_status_gitlab_asks_the_rows_on_screen_in_one_request() {
+fn gitlab_asks_the_rows_on_screen_in_one_request() {
     let host = Host::start("gitlab", ProviderKind::GitLab, gitlab);
     host.enter("listed");
     let mut harness = host.harness(1440.0);
@@ -181,7 +181,7 @@ fn pr_list_status_gitlab_asks_the_rows_on_screen_in_one_request() {
 }
 
 #[test]
-fn pr_list_status_azure_devops_policies_votes_and_a_denied_policy() {
+fn azure_devops_policies_votes_and_a_denied_policy() {
     let host = Host::start("azure", ProviderKind::AzureDevOps, azure);
     host.enter("listed");
     let mut harness = host.harness(1440.0);
@@ -298,7 +298,7 @@ fn assert_github_status_pills(harness: &Harness<'_, ReviewApp>) {
 /// reachable, and nothing in the rows is cut or overlaps.
 #[cfg(debug_assertions)]
 #[test]
-fn pr_list_status_indicators_fit_a_narrow_window() {
+fn indicators_fit_a_narrow_window() {
     let host = Host::start("narrow", ProviderKind::GitHub, github);
     let mut harness = host.harness(1440.0);
     super::clip_check::install(&harness.ctx);

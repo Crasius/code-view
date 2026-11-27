@@ -8,7 +8,7 @@
 //! token showing the button off with the reason and the way to a token; and a refused request
 //! keeping the button with the reason under it and a retry that works. The header offers none.
 //! While an add runs, a skeleton row of the new row's size stands where it lands.
-//! `cargo test -p review-app self_review`
+//! `cargo test -p review-app --bin CodeView app::self_review_walkthrough`
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -48,7 +48,7 @@ struct Calls {
 }
 
 #[test]
-fn self_review_adds_me_from_the_reviewers_card_once() {
+fn adds_me_from_the_reviewers_card_once() {
     let scratch = ScratchDir::new("self-review-card");
     let (mut harness, calls) = start(&scratch, "card", true);
     // Whether field and button fit side by side is the fonts' width; the bundled ones are the
@@ -94,7 +94,7 @@ fn self_review_adds_me_from_the_reviewers_card_once() {
 }
 
 #[test]
-fn self_review_from_a_list_row_marks_the_row_without_opening_it() {
+fn from_a_list_row_marks_the_row_without_opening_it() {
     let scratch = ScratchDir::new("self-review-list");
     let (mut harness, calls) = start(&scratch, "list", true);
     wait_until(&mut harness, "the list", |harness| has(harness, "Fourth change"));
@@ -120,7 +120,7 @@ fn self_review_from_a_list_row_marks_the_row_without_opening_it() {
 }
 
 #[test]
-fn self_review_is_off_with_its_reason_without_a_token() {
+fn is_off_with_its_reason_without_a_token() {
     let scratch = ScratchDir::new("self-review-read-only");
     let (mut harness, calls) = start(&scratch, "read-only", false);
     open(&mut harness, "read-only", 1);
@@ -159,7 +159,7 @@ fn self_review_is_off_with_its_reason_without_a_token() {
 }
 
 #[test]
-fn self_review_keeps_a_refused_request_retryable_with_its_reason() {
+fn keeps_a_refused_request_retryable_with_its_reason() {
     let scratch = ScratchDir::new("self-review-refused");
     let (mut harness, calls) = start(&scratch, "refused", true);
     calls.refuses_next.store(true, Ordering::SeqCst);
@@ -186,7 +186,7 @@ fn self_review_keeps_a_refused_request_retryable_with_its_reason() {
 /// Regression: a refused add from a list row ended in a toast with no way out. Its toast now
 /// offers Retry, which sends the same add once more, and the pull request on GitHub.
 #[test]
-fn self_review_refused_row_request_retries_from_its_toast() {
+fn refused_row_request_retries_from_its_toast() {
     let scratch = ScratchDir::new("self-review-row-refused");
     let (mut harness, calls) = start(&scratch, "row-refused", true);
     calls.refuses_next.store(true, Ordering::SeqCst);
@@ -215,7 +215,7 @@ fn self_review_refused_row_request_retries_from_its_toast() {
 /// skeleton row stands where Grace lands, exactly as large as her row, which then takes its place
 /// without moving anything below.
 #[test]
-fn self_review_holds_the_new_row_with_a_skeleton_of_its_size() {
+fn holds_the_new_row_with_a_skeleton_of_its_size() {
     let scratch = ScratchDir::new("self-review-skeleton");
     let (mut harness, calls) = start(&scratch, "skeleton", true);
     calls.holds_adds.send_replace(true);

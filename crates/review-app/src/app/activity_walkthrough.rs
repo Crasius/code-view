@@ -50,7 +50,7 @@ fn finish(agent: &FakeAgent) {
 /// with the spinner. Done: the summary line alone, closed; a click opens it with the failed
 /// command, Enter on the focused line closes it again.
 #[test]
-fn activity_shows_the_running_steps_then_folds_into_the_summary() {
+fn shows_the_running_steps_then_folds_into_the_summary() {
     let scratch = ScratchDir::new("activity-running");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -100,7 +100,7 @@ fn activity_shows_the_running_steps_then_folds_into_the_summary() {
 /// A chat saved before steps kept a kind, a duration or an outcome loads: its step counts by its
 /// tool's name and shows as done.
 #[test]
-fn activity_of_an_older_chat_shows_its_summary() {
+fn of_an_older_chat_shows_its_summary() {
     let scratch = ScratchDir::new("activity-older");
     let host = GitHubHost::with_pull_request(scratch.path());
     let dir = {

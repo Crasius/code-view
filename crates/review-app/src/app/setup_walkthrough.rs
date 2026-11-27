@@ -26,7 +26,7 @@ const LIMITED_TOKEN: &str = "glpat-walkthrough-fine-grained";
 const COMPLETE_TOKEN: &str = "glpat-walkthrough-complete";
 
 #[test]
-fn setup_wizard_first_run_to_saved_connection() {
+fn wizard_first_run_to_saved_connection() {
     let scratch = ScratchDir::new("setup-first-run");
     let paths = scratch.app_paths();
     let mut harness = harness(paths.clone());
@@ -71,7 +71,7 @@ fn setup_wizard_first_run_to_saved_connection() {
 /// A save that fails (here: a file where the config folder belongs) keeps the wizard on its step
 /// with the cause, the file it tried, and "Try again"; nothing is a silent no-op.
 #[test]
-fn setup_save_failure_stays_on_the_step_with_its_cause() {
+fn save_failure_stays_on_the_step_with_its_cause() {
     let scratch = ScratchDir::new("setup-save-failure");
     let paths = scratch.app_paths();
     let mut harness = harness(paths.clone());
@@ -108,7 +108,7 @@ fn setup_save_failure_stays_on_the_step_with_its_cause() {
 /// token step and again before the save, which then fails with that fix and offers to save the
 /// connection without its token.
 #[test]
-fn setup_missing_keyring_offers_a_tokenless_save() {
+fn missing_keyring_offers_a_tokenless_save() {
     let problem: &'static VaultProblem = Box::leak(Box::new(VaultProblem {
         title: "No keyring answers on this desktop session".to_owned(),
         fix: "Install GNOME Keyring, start it, then check again.".to_owned(),
@@ -155,7 +155,7 @@ fn setup_missing_keyring_offers_a_tokenless_save() {
 }
 
 #[test]
-fn setup_token_pages_offer_cli_and_checklists() {
+fn token_pages_offer_cli_and_checklists() {
     let scratch = ScratchDir::new("setup-token-pages");
     let mut harness = harness(scratch.app_paths());
 
@@ -194,7 +194,7 @@ fn setup_token_pages_offer_cli_and_checklists() {
 }
 
 #[test]
-fn setup_fix_token_from_a_denied_request() {
+fn fix_token_from_a_denied_request() {
     let scratch = ScratchDir::new("setup-fix-token");
     let connection = Connection {
         name: "Tabletop".into(),

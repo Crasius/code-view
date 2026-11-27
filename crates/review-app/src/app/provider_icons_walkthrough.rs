@@ -2,7 +2,7 @@
 //! GitLab connection answered by a scripted provider. Checks that every mark carries the platform
 //! and host as its accessible name: on the overview, each connection's breadcrumb and list, and
 //! a pull request header, whose mark links to the pull request.
-//! `cargo test -p review-app provider_icons`
+//! `cargo test -p review-app --bin CodeView app::provider_icons_walkthrough`
 
 use egui::Role;
 use egui_kittest::Harness;
