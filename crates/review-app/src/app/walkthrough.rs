@@ -2,7 +2,8 @@
 //!
 //! The waits differ in when they return. [`wait_until`] runs four more frames after its condition
 //! held, so what the frame that met it started has landed. [`wait_until_unsettled`] returns on the
-//! frame the condition held. [`wait_for`] returns a value, also on that frame. The other ways to
+//! frame the condition held. [`wait_for`] returns a value, also on that frame, and
+//! [`wait_until_still`] a value that two frames in a row gave (a place at rest). The other ways to
 //! let time pass: [`settle_background`] (three frames without background work, before a place is
 //! read), [`wait_idle`] (twenty such frames, for chains of work), [`pump`] (simulated seconds) and
 //! `harness.run_steps(n)` (only after pure UI input on data already loaded).
@@ -143,6 +144,29 @@ pub(super) fn wait_until_found<T>(
     let found = wait_for(harness, what, find, |_| {});
     settle(harness);
     found
+}
+
+/// Steps the app until `measure` gives the same value in two frames in a row and returns it: a
+/// smooth scroll, a popup or a resized window has come to rest. `what` names what is measured.
+pub(super) fn wait_until_still<T: PartialEq>(
+    harness: &mut Harness<'_, ReviewApp>,
+    what: &str,
+    measure: impl Fn(&Harness<'_, ReviewApp>) -> Option<T>,
+) -> T {
+    let mut last = None;
+    wait_for(
+        harness,
+        &format!("{what} to hold still"),
+        |harness| {
+            let now = measure(harness);
+            if now.is_some() && now == last {
+                return now;
+            }
+            last = now;
+            None
+        },
+        |_| {},
+    )
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

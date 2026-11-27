@@ -15,7 +15,9 @@ use super::ReviewApp;
 use super::github_mock::{
     CURRENT_TEXT, FILE, GitHubHost, ReplacedHead, THREAD_TEXT, open_pull_request,
 };
-use super::walkthrough::{app, files_tab, press, shows_file_view, wait_until, wheel};
+use super::walkthrough::{
+    app, files_tab, press, settle_background, shows_file_view, wait_until, wait_until_still, wheel,
+};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -25,6 +27,9 @@ const BACK_LABEL: &str = "Back to latest";
 const MARKER: &str = "Thread by cy, click to collapse it";
 /// The latest diff keeps outdated threads above the code, collapsed.
 const DETACHED: &str = "1 comment on lines not shown in this diff";
+/// The frames the original version must hold still for: long enough for a layout that drifts or
+/// springs back to move.
+const STILL_FRAMES: usize = 30;
 
 /// The rewritten head: the renamed greeting under a long doc comment, so line 1 is a new line now
 /// and the diff is long enough to scroll.
@@ -60,14 +65,14 @@ fn comment_origin_shows_the_version_an_outdated_thread_was_written_on() {
     });
     assert!(shows_file_view(&harness, FILE), "the Files tab shows it");
     harness.key_press(egui::Key::Escape);
-    settle(&mut harness);
-    assert!(harness.query_by_label_contains(&banner).is_none(), "Esc goes back");
+    wait_until(&mut harness, "Esc going back", |harness| {
+        harness.query_by_label_contains(&banner).is_none()
+    });
 
     // The latest diff: the outdated thread waits above the code with its pill and the action.
     open_latest_diff(&mut harness);
-    settle(&mut harness);
-    scroll(&mut harness, 300.0);
-    let latest_card = rect_of(&harness, CURRENT_TEXT);
+    settle_background(&mut harness);
+    let latest_card = scroll(&mut harness, 300.0, CURRENT_TEXT);
     let latest_diff = rect_of_diff(&harness);
     assert!(
         latest_diff.contains_rect(latest_card),
@@ -112,7 +117,7 @@ fn comment_origin_shows_the_version_an_outdated_thread_was_written_on() {
         ]
     };
     let before = stable(&harness);
-    harness.run_steps(30);
+    harness.run_steps(STILL_FRAMES);
     assert_eq!(stable(&harness), before, "the banner, the marker and the card stay put");
 
     // Back to latest: the latest diff where it was left, scrolled as before.
@@ -175,16 +180,17 @@ fn open_latest_diff(harness: &mut Harness<'_, ReviewApp>) {
     assert!(harness.query_by_label("Outdated").is_some(), "the card is marked outdated");
 }
 
-/// Wheel-scrolls the diff down by `points` and lets the smooth scroll arrive.
-fn scroll(harness: &mut Harness<'_, ReviewApp>, points: f32) {
+/// Wheel-scrolls the diff down by `points` and returns where the text labelled `follow` rests once
+/// the smooth scroll arrived.
+fn scroll(harness: &mut Harness<'_, ReviewApp>, points: f32, follow: &str) -> Rect {
     let mouse = |delta: f32, phase| wheel(delta, phase, egui::MouseWheelSource::Wheel);
     harness.hover_at(rect_of_diff(harness).center());
     harness.event(mouse(0.0, TouchPhase::Start));
     harness.event(mouse(-points, TouchPhase::Move));
     harness.event(mouse(0.0, TouchPhase::End));
-    for _ in 0..60 {
-        harness.step();
-    }
+    wait_until_still(harness, &format!("{follow} after the scroll"), |harness| {
+        harness.query_by_label_contains(follow).map(|node| node.rect())
+    })
 }
 
 fn rect_of(harness: &Harness<'_, ReviewApp>, label: &str) -> Rect {
@@ -193,10 +199,4 @@ fn rect_of(harness: &Harness<'_, ReviewApp>, label: &str) -> Rect {
 
 fn rect_of_diff(harness: &Harness<'_, ReviewApp>) -> Rect {
     harness.get_by_label(&format!("Diff of {FILE}")).rect()
-}
-
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..20 {
-        harness.step();
-    }
 }

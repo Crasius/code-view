@@ -9,12 +9,12 @@
 
 use egui::{Event, Key, Modifiers, Role, Vec2};
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use review_store::PullRequestTab;
 
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, OWNER, REPOSITORY, open_pull_request, search_row};
-use super::walkthrough::{app, type_into, wait_until};
+use super::walkthrough::{app, hover_until, type_into, wait_until, wait_until_still};
 use cv_base::platform::shortcut;
 use cv_runtime::route::Route;
 use cv_testkit::ScratchDir;
@@ -32,35 +32,32 @@ fn pick_tabs_and_open_the_shortcuts() {
         "a pull request opens on the Overview"
     );
 
-    harness.key_press_modifiers(Modifiers::COMMAND, Key::Num2);
-    harness.run_steps(4);
-    assert_eq!(tab(&harness), Some(PullRequestTab::Files), "Ctrl+2 shows the Files tab");
-    harness.key_press_modifiers(Modifiers::COMMAND, Key::Num4);
-    harness.run_steps(4);
-    assert_eq!(tab(&harness), Some(PullRequestTab::Pipelines), "Ctrl+4 shows the Pipelines tab");
+    pick_tab(&mut harness, Key::Num2, PullRequestTab::Files);
+    pick_tab(&mut harness, Key::Num4, PullRequestTab::Pipelines);
 
     // The tooltip names the key.
-    harness
+    let commits = harness
         .get_by(|node| {
             node.role() == Role::Tab
                 && node.label().is_some_and(|label| label.starts_with("Commits"))
         })
-        .hover();
+        .accesskit_node()
+        .label()
+        .expect("the Commits tab's label");
     let tooltip = concat!("Commits (", shortcut!(command "3"), ")");
-    wait_until(&mut harness, "the tab's tooltip", |harness| {
+    hover_until(&mut harness, Role::Tab, &commits, "the tab's tooltip", |harness| {
         harness.query_by_label(tooltip).is_some()
     });
-    harness.key_press_modifiers(Modifiers::COMMAND, Key::Num1);
-    harness.run_steps(4);
-    assert_eq!(tab(&harness), Some(PullRequestTab::Overview), "Ctrl+1 goes back to the Overview");
+    pick_tab(&mut harness, Key::Num1, PullRequestTab::Overview);
 
     // `?` opens the one list of shortcuts, at the pull request's.
     harness.event(Event::Text("?".to_owned()));
     wait_until(&mut harness, "Keyboard and mouse", |harness| {
         harness.state().route == Route::Settings && harness.query_by_label("Pull request").is_some()
     });
-    harness.run_steps(40);
-    let heading = harness.get_by_label("Pull request").rect();
+    let heading = wait_until_still(&mut harness, "the pull request's shortcuts", |harness| {
+        harness.query_by_label("Pull request").map(|node| node.rect())
+    });
     let window = harness.ctx.content_rect();
     assert!(
         heading.top() > window.top() && heading.top() < window.top() + 200.0,
@@ -73,7 +70,6 @@ fn pick_tabs_and_open_the_shortcuts() {
         matches!(harness.state().route, Route::PullRequest(_))
     });
     type_into(&mut harness, "Search", "?");
-    harness.run_steps(4);
     assert!(matches!(harness.state().route, Route::PullRequest(_)), "the page stays");
     let field = harness.get_by_role(Role::SearchInput);
     assert_eq!(field.value().as_deref(), Some("?"), "the field took the question mark");
@@ -91,23 +87,21 @@ fn move_through_the_list_rows() {
     harness.set_size(Vec2::new(1440.0, 600.0));
     wait_until(&mut harness, "the rows", |harness| harness.query_by_label("1 Change 1").is_some());
 
-    press(&mut harness, Key::J);
-    assert!(is_focused(&harness, 1), "the first J focuses the first row");
-    press(&mut harness, Key::J);
-    assert!(is_focused(&harness, 2), "J moves to the next row");
-    press(&mut harness, Key::K);
-    assert!(is_focused(&harness, 1), "K moves back");
+    press(&mut harness, Key::J, 1, "the first J focusing the first row");
+    press(&mut harness, Key::J, 2, "J moving to the next row");
+    press(&mut harness, Key::K, 1, "K moving back");
 
     // Far below the window: the list scrolls the row into view and it takes the keys.
-    for _ in 0..19 {
-        press(&mut harness, Key::J);
+    for number in 2..=20 {
+        press(&mut harness, Key::J, number, "J reaching a row that was off screen");
     }
-    assert!(is_focused(&harness, 20), "J reaches a row that was off screen");
-    let row = harness.get_by_label("20 Change 20").rect();
+    let row = wait_until_still(&mut harness, "row 20 scrolled into view", |harness| {
+        harness.query_by_label("20 Change 20").map(|node| node.rect())
+    });
     let window = harness.ctx.content_rect();
     assert!(row.bottom() <= window.bottom() && row.top() >= window.top(), "{row:?} in view");
 
-    press(&mut harness, Key::Enter);
+    harness.key_press(Key::Enter);
     wait_until(
         &mut harness,
         "the pull request",
@@ -115,9 +109,18 @@ fn move_through_the_list_rows() {
     );
 }
 
-fn press(harness: &mut Harness<'_, ReviewApp>, key: Key) {
+/// Ctrl+`key` (⌘ on macOS) and the wait for the pull request's tab `shown`.
+fn pick_tab(harness: &mut Harness<'_, ReviewApp>, key: Key, shown: PullRequestTab) {
+    harness.key_press_modifiers(Modifiers::COMMAND, key);
+    wait_until(harness, &format!("Ctrl+{key:?} to show the {shown:?} tab"), |harness| {
+        tab(harness) == Some(shown)
+    });
+}
+
+/// Presses `key` and waits until the row of pull request `number` has the keyboard focus (`what`).
+fn press(harness: &mut Harness<'_, ReviewApp>, key: Key, number: u64, what: &str) {
     harness.key_press(key);
-    harness.run_steps(6);
+    wait_until(harness, what, |harness| is_focused(harness, number));
 }
 
 fn is_focused(harness: &Harness<'_, ReviewApp>, number: u64) -> bool {

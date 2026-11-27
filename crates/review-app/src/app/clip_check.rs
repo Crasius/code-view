@@ -28,6 +28,7 @@ use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
 use super::a11y_check::is_icon_glyph;
+use super::walkthrough::wait_until_unsettled;
 use cv_pr_diff::find::bar::painted_now as find_widget_now;
 use cv_widgets::surfaces;
 
@@ -481,8 +482,13 @@ fn stray_controls(
     findings
 }
 
+/// How many tooltip delays the pointer rests on a cut text before the audit takes it as having no
+/// tooltip: egui shows one after one delay.
+const TOOLTIP_DELAYS: f64 = 2.0;
+
 /// Texts cut with "…" whose full wording does not appear in a tooltip on hover: hovers each one
-/// and waits past the tooltip delay. Returns one line per text.
+/// for [`TOOLTIP_DELAYS`] of simulated time, and lets its tooltip close before the next. Returns
+/// one line per text.
 pub fn untold_elisions(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
     let captured = frame(harness);
     // An open popup takes the pointer; its own texts are checked once it is the page.
@@ -501,19 +507,17 @@ pub fn untold_elisions(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
         .collect();
     elided.sort_by(|a, b| a.text.cmp(&b.text));
     elided.dedup_by(|a, b| a.text == b.text);
+    let time = |harness: &Harness<'_, ReviewApp>| harness.ctx.input(|input| input.time);
+    let patience = TOOLTIP_DELAYS * f64::from(harness.ctx.global_style().interaction.tooltip_delay);
     let mut findings = Vec::new();
     for text in elided {
         harness.hover_at(text.visible().center());
+        let deadline = time(harness) + patience;
         let mut is_told = false;
-        for _ in 0..40 {
-            harness.step();
-            let shown = frame(harness);
-            if shown.texts.iter().any(|tip| {
+        while !is_told && time(harness) <= deadline {
+            is_told = frame(harness).texts.iter().any(|tip| {
                 tip.layer.order == Order::Tooltip && !tip.is_elided && tells(&tip.text, &text.text)
-            }) {
-                is_told = true;
-                break;
-            }
+            });
         }
         if !is_told {
             findings.push(format!(
@@ -523,9 +527,15 @@ pub fn untold_elisions(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
             ));
         }
         harness.event(egui::Event::PointerGone);
-        for _ in 0..3 {
-            harness.step();
-        }
+        wait_until_unsettled(harness, "the tooltip to close", |harness| {
+            harness.ctx.memory(|memory| {
+                !memory
+                    .areas()
+                    .visible_layer_ids()
+                    .iter()
+                    .any(|layer| layer.order == Order::Tooltip)
+            })
+        });
     }
     findings
 }

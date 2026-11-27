@@ -11,7 +11,9 @@ use review_store::FrameRateLimit;
 
 use super::ReviewApp;
 use super::scripted_platforms::platforms;
-use super::walkthrough::{app_with, hover_until, saved_paths, saved_settings, wait_until};
+use super::walkthrough::{
+    app_with, hover_until, press_role, saved_paths, saved_settings, wait_until, wait_until_still,
+};
 use cv_runtime::route::Route;
 use cv_testkit::{Clicks, ScratchDir, samples};
 
@@ -30,12 +32,14 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
     let builder = Harness::builder().with_size([1280.0, 1000.0]).with_step_dt(1.0 / 60.0);
     let mut harness = app_with(builder, saved_paths(&scratch, &[connection]), platforms(None));
     harness.state_mut().navigator.go(Route::Settings);
-    settle(&mut harness);
-    harness.click_at(harness.get_by_role_and_label(Role::Tab, "Appearance").rect());
+    press_role(&mut harness, Role::Tab, "Appearance");
     wait_until(&mut harness, "the frame rate row", |harness| harness.query_by_label(ROW).is_some());
     // The row sits below the fold of Appearance.
     harness.get_by_label(NEXT_ROW).scroll_to_me();
-    settle(&mut harness);
+    let window = harness.ctx.content_rect();
+    wait_until_still(&mut harness, "the row below the control in view", |harness| {
+        Some(rect_of(harness, NEXT_ROW)).filter(|row| window.contains_rect(*row))
+    });
 
     // Users without a saved limit get 45, and the control shows it.
     assert_eq!(harness.state().services.settings.frame_rate, FrameRateLimit::DEFAULT);
@@ -58,9 +62,10 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
         ("30", FrameRateLimit::Fps(30)),
     ] {
         harness.click_at(harness.get_by_role_and_label(Role::RadioButton, label).rect());
-        settle(&mut harness);
-        assert_eq!(harness.state().services.settings.frame_rate, limit, "{label} applies live");
-        assert_eq!(saved_settings(&harness).frame_rate, limit, "{label} is saved");
+        wait_until(&mut harness, &format!("{label} to apply live and be saved"), |harness| {
+            harness.state().services.settings.frame_rate == limit
+                && saved_settings(harness).frame_rate == limit
+        });
         assert!(is_selected(&harness, label), "{label} shows as selected");
         assert_eq!(rect_of(&harness, NEXT_ROW), next_row, "choosing {label} moves nothing below");
         assert_eq!(segments_rect(&harness), control, "choosing {label} keeps the control's size");
@@ -75,8 +80,9 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
 
     // Back to the default, as the next start would load it.
     harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "45").rect());
-    settle(&mut harness);
-    assert_eq!(saved_settings(&harness).frame_rate, FrameRateLimit::DEFAULT);
+    wait_until(&mut harness, "45 to be saved", |harness| {
+        saved_settings(harness).frame_rate == FrameRateLimit::DEFAULT
+    });
 }
 
 fn is_selected(harness: &Harness<'_, ReviewApp>, label: &str) -> bool {
@@ -92,10 +98,4 @@ fn rect_of(harness: &Harness<'_, ReviewApp>, label: &str) -> Rect {
 fn segments_rect(harness: &Harness<'_, ReviewApp>) -> Rect {
     rect_of(harness, "30")
         .union(harness.get_by_role_and_label(Role::RadioButton, "Match display").rect())
-}
-
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..30 {
-        harness.step();
-    }
 }
