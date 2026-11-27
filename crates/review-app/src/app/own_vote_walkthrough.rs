@@ -11,7 +11,8 @@ use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, open_pull_request};
-use super::walkthrough::{app, press, wait_until};
+use super::walkthrough::{app, press, settle_background, wait_until};
+use cv_services::self_review::Identities;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -53,7 +54,7 @@ fn own_vote_author_on_github_cannot_vote_and_sees_why() {
         harness.click_at(harness.get_by_role_and_label(Role::MenuItem, label).rect());
         harness.run_steps(2);
     }
-    harness.run_steps(20);
+    settle_background(&mut harness);
     assert!(
         harness.query_by_role_and_label(Role::Button, "Request changes").is_none(),
         "no composer opens"
@@ -70,8 +71,9 @@ fn own_vote_reviewer_on_github_keeps_both_votes() {
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
 
-    wait_until(&mut harness, "who the user is", |_| host.find("GET", "/api/v3/user").is_some());
-    harness.run_steps(20);
+    wait_until(&mut harness, "who the user is", |harness| {
+        Identities::of(&harness.ctx).known("gh").is_some()
+    });
     wait_until(&mut harness, "Approve on for a reviewer", |harness| {
         approve_buttons(harness).is_some_and(|enabled| enabled.iter().all(|is_on| *is_on))
     });

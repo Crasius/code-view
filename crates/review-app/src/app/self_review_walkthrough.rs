@@ -8,7 +8,7 @@
 //! token showing the button off with the reason and the way to a token; and a refused request
 //! keeping the button with the reason under it and a retry that works. The header offers none.
 //! While an add runs, a skeleton row of the new row's size stands where it lands.
-//! `cargo test -p review-app self_review`
+//! `cargo test -p review-app --bin CodeView app::self_review_walkthrough`
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,14 +20,13 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{
     Capabilities, Connection, MergeStrategy, ProviderError, ProviderKind, PullRequestDetail,
-    PullRequestQuery, PullRequestState, PullRequestSummary, Result, ReviewVote, Reviewer,
-    UserIdentity,
+    PullRequestQuery, PullRequestSummary, Result, ReviewVote, Reviewer, UserIdentity,
 };
 use tokio::sync::watch;
 
 use super::ReviewApp;
 use super::walkthrough::{
-    app_with, has, press_button, pump, saved_paths, secondary_press, wait_until,
+    app_with, has, press_button, pump, saved_paths, secondary_press, settle_background, wait_until,
 };
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::self_review;
@@ -49,7 +48,7 @@ struct Calls {
 }
 
 #[test]
-fn self_review_adds_me_from_the_reviewers_card_once() {
+fn adds_me_from_the_reviewers_card_once() {
     let scratch = ScratchDir::new("self-review-card");
     let (mut harness, calls) = start(&scratch, "card", true);
     // Whether field and button fit side by side is the fonts' width; the bundled ones are the
@@ -89,13 +88,13 @@ fn self_review_adds_me_from_the_reviewers_card_once() {
     // The author is not offered a review of their own pull request.
     open(&mut harness, "card", 3);
     wait_until(&mut harness, "Grace's own pull request", |harness| has(harness, "Grace's change"));
-    harness.run_steps(10);
+    settle_background(&mut harness);
     assert!(!button(&harness, self_review::LABEL));
     assert_eq!(calls.adds.lock().unwrap().len(), 2, "nothing asked for the author");
 }
 
 #[test]
-fn self_review_from_a_list_row_marks_the_row_without_opening_it() {
+fn from_a_list_row_marks_the_row_without_opening_it() {
     let scratch = ScratchDir::new("self-review-list");
     let (mut harness, calls) = start(&scratch, "list", true);
     wait_until(&mut harness, "the list", |harness| has(harness, "Fourth change"));
@@ -121,7 +120,7 @@ fn self_review_from_a_list_row_marks_the_row_without_opening_it() {
 }
 
 #[test]
-fn self_review_is_off_with_its_reason_without_a_token() {
+fn is_off_with_its_reason_without_a_token() {
     let scratch = ScratchDir::new("self-review-read-only");
     let (mut harness, calls) = start(&scratch, "read-only", false);
     open(&mut harness, "read-only", 1);
@@ -136,7 +135,7 @@ fn self_review_is_off_with_its_reason_without_a_token() {
     );
     assert!(button(&harness, "Add a token"), "with the way to a token beside it");
     harness.key_press_modifiers(egui::Modifiers::ALT, egui::Key::R);
-    harness.run_steps(5);
+    settle_background(&mut harness);
     assert!(calls.adds.lock().unwrap().is_empty(), "Alt+R asks nothing either");
     press_button(&mut harness, "Add a token");
     wait_until(&mut harness, "the connection's setup", |harness| {
@@ -160,7 +159,7 @@ fn self_review_is_off_with_its_reason_without_a_token() {
 }
 
 #[test]
-fn self_review_keeps_a_refused_request_retryable_with_its_reason() {
+fn keeps_a_refused_request_retryable_with_its_reason() {
     let scratch = ScratchDir::new("self-review-refused");
     let (mut harness, calls) = start(&scratch, "refused", true);
     calls.refuses_next.store(true, Ordering::SeqCst);
@@ -187,7 +186,7 @@ fn self_review_keeps_a_refused_request_retryable_with_its_reason() {
 /// Regression: a refused add from a list row ended in a toast with no way out. Its toast now
 /// offers Retry, which sends the same add once more, and the pull request on GitHub.
 #[test]
-fn self_review_refused_row_request_retries_from_its_toast() {
+fn refused_row_request_retries_from_its_toast() {
     let scratch = ScratchDir::new("self-review-row-refused");
     let (mut harness, calls) = start(&scratch, "row-refused", true);
     calls.refuses_next.store(true, Ordering::SeqCst);
@@ -203,7 +202,7 @@ fn self_review_refused_row_request_retries_from_its_toast() {
 
     press_button(&mut harness, "Retry");
     wait_until(&mut harness, "the retried add", |harness| has(harness, self_review::DONE));
-    harness.run_steps(10);
+    settle_background(&mut harness);
     assert_eq!(
         *calls.adds.lock().unwrap(),
         [(4, GRACE.to_owned()), (4, GRACE.to_owned())],
@@ -216,7 +215,7 @@ fn self_review_refused_row_request_retries_from_its_toast() {
 /// skeleton row stands where Grace lands, exactly as large as her row, which then takes its place
 /// without moving anything below.
 #[test]
-fn self_review_holds_the_new_row_with_a_skeleton_of_its_size() {
+fn holds_the_new_row_with_a_skeleton_of_its_size() {
     let scratch = ScratchDir::new("self-review-skeleton");
     let (mut harness, calls) = start(&scratch, "skeleton", true);
     calls.holds_adds.send_replace(true);
@@ -331,24 +330,12 @@ fn summary(number: u64, reviewers: Vec<Reviewer>) -> PullRequestSummary {
         _ => ("Fourth change", samples::author()),
     };
     PullRequestSummary {
-        repository_key: REPOSITORY.to_owned(),
-        repository_name: "site".to_owned(),
-        number,
         title: title.to_owned(),
         author,
-        state: PullRequestState::Open,
-        is_draft: false,
-        source_branch: format!("feature/{number}"),
-        target_branch: "main".to_owned(),
-        created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
         updated_at: Some(time::macros::datetime!(2026-10-18 15:00 UTC)),
         web_url: format!("https://github.com/{REPOSITORY}/pull/{number}"),
-        labels: Vec::new(),
         reviewers,
-        checks: None,
-        diff_stat: review_core::DiffStat::default(),
-        head_sha: None,
-        target_sha: None,
+        ..samples::summary(REPOSITORY, number)
     }
 }
 

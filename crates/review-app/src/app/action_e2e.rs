@@ -22,7 +22,7 @@ use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 #[test]
-fn action_line_comment_via_hover_button() {
+fn line_comment_via_hover_button() {
     let scratch = ScratchDir::new("action-hover-comment");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -54,7 +54,7 @@ fn action_line_comment_via_hover_button() {
 }
 
 #[test]
-fn action_line_comment_via_context_menu() {
+fn line_comment_via_context_menu() {
     let scratch = ScratchDir::new("action-menu-comment");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -95,7 +95,7 @@ fn action_line_comment_via_context_menu() {
 }
 
 #[test]
-fn action_reply_to_a_thread_in_the_overview() {
+fn reply_to_a_thread_in_the_overview() {
     let scratch = ScratchDir::new("action-reply");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -121,7 +121,7 @@ fn action_reply_to_a_thread_in_the_overview() {
 }
 
 #[test]
-fn action_approve_from_the_header() {
+fn approve_from_the_header() {
     let scratch = ScratchDir::new("action-approve");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -148,7 +148,7 @@ fn action_approve_from_the_header() {
 /// After an approval the way often leads back to the list: it refreshes in the background at
 /// once, so the rows are current before the user gets there.
 #[test]
-fn action_an_approval_refreshes_the_list_ahead() {
+fn an_approval_refreshes_the_list_ahead() {
     let scratch = ScratchDir::new("action-approve-ahead");
     let host = GitHubHost::with_pull_request(scratch.path());
     host.sign_in_as_me();
@@ -185,7 +185,7 @@ fn is_listing(request: &wiremock::Request) -> bool {
 }
 
 #[test]
-fn action_add_a_label_from_the_catalog() {
+fn add_a_label_from_the_catalog() {
     let scratch = ScratchDir::new("action-labels");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -216,7 +216,7 @@ fn action_add_a_label_from_the_catalog() {
 }
 
 #[test]
-fn action_my_pull_requests_lists_every_host() {
+fn my_pull_requests_lists_every_host() {
     let scratch = ScratchDir::new("action-hosts");
     let acme =
         GitHubHost::start("acme", &[github_mock::search_row(11, "Tidy the build", "acme/widgets")]);
@@ -248,7 +248,7 @@ fn action_my_pull_requests_lists_every_host() {
 /// The Files tab opens on the summary of every changed file; a card's View opens the file view.
 /// The breadcrumb ends at the pull request, whose crumb leads back to the summary of all files.
 #[test]
-fn action_folder_summary_opens_the_file_view_and_the_trail_leads_back() {
+fn folder_summary_opens_the_file_view_and_the_trail_leads_back() {
     let scratch = ScratchDir::new("action-folder-summary");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -301,7 +301,7 @@ fn with_first_file(scratch: &ScratchDir) -> GitHubHost {
 /// folder view never shows on the way. The trail's pull request crumb still leads to the folder
 /// view of all files, and a click on a folder in the tree to that folder's.
 #[test]
-fn action_files_tab_opens_on_the_first_file_when_chosen() {
+fn files_tab_opens_on_the_first_file_when_chosen() {
     let scratch = ScratchDir::new("action-first-file");
     let host = with_first_file(&scratch);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -333,7 +333,7 @@ fn action_files_tab_opens_on_the_first_file_when_chosen() {
 
 /// A comment's link opens its own file, also when the Files tab would open on the first file.
 #[test]
-fn action_a_comment_link_wins_over_the_first_file() {
+fn a_comment_link_wins_over_the_first_file() {
     let scratch = ScratchDir::new("action-first-file-link");
     let host = with_first_file(&scratch);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);

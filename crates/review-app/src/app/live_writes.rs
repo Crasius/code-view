@@ -22,6 +22,7 @@ mod hosts;
 
 use std::time::{Duration, Instant};
 
+use egui::accesskit::Toggled;
 use egui::{Rect, Role};
 use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::{Harness, Node};
@@ -31,7 +32,9 @@ use serde_json::{Value, json};
 
 use self::hosts::{FILE, Released, State, TestPullRequest};
 use super::ReviewApp;
-use super::walkthrough::{files_tab, has, hover_until_add_comment, set_focus, wheel};
+use super::walkthrough::{
+    self, files_tab, has, hover_until_add_comment, set_focus, settle_background, wheel,
+};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -78,6 +81,7 @@ fn walkthrough(released: &Released) {
     let builder = Harness::builder()
         .with_size([1440.0, 900.0])
         .with_step_dt(1.0 / 60.0)
+        // Real hosts' text may hold characters no font of the app draws.
         .allow_missing_glyphs();
     let mut harness = super::startup::start(builder, move |creation| {
         ReviewApp::new(creation, paths, cv_providers::create_provider)
@@ -155,7 +159,6 @@ fn comment_on_a_line(harness: &mut Harness<'_, ReviewApp>) {
     wait_until(harness, "the diff", |harness| {
         harness.query_all_by_label_contains(&diff_label).next().is_some()
     });
-    settle(harness, Duration::from_millis(500));
     let diff = harness.query_all_by_label_contains(&diff_label).next().expect("the diff").rect();
     hover_until_add_comment(harness, diff, &[0.5, 0.75, 0.25]);
     harness.click_at(harness.get_by_label("Add comment").rect());
@@ -204,7 +207,10 @@ fn reply_edit_resolve_and_reopen(harness: &mut Harness<'_, ReviewApp>) {
     wait_for_toast(harness, "Thread resolved.");
     wait_until(harness, "Reopen", |harness| harness.query_by_label("Reopen").is_some());
     harness.get_by_label("Reopen").scroll_to_me();
-    settle(harness, Duration::from_millis(200));
+    let window = harness.ctx.content_rect();
+    wait_until(harness, "Reopen in the window", |harness| {
+        harness.query_by_label("Reopen").is_some_and(|node| window.contains(node.rect().center()))
+    });
     harness.click_at(harness.get_by_label("Reopen").rect());
     wait_for_toast(harness, "Thread reopened.");
 }
@@ -243,17 +249,15 @@ fn votes_off_for_the_author(harness: &mut Harness<'_, ReviewApp>, released: &Rel
         !approve.is_empty() && approve.iter().all(|is_off| *is_off)
     });
     // A banner arriving meanwhile moves the header, so the pointer follows the button.
-    let started = Instant::now();
-    while !has(harness, AUTHOR_CANNOT_VOTE) {
-        assert!(
-            started.elapsed() < Duration::from_secs(30),
-            "no reason in the tooltip; screen:\n{}",
-            screen(harness)
-        );
-        let approve = harness.get_by_role_and_label(Role::Button, "Approve").rect();
-        harness.hover_at(approve.center());
-        settle(harness, Duration::from_millis(500));
-    }
+    walkthrough::wait_for(
+        harness,
+        "the reason in the tooltip",
+        |harness| has(harness, AUTHOR_CANNOT_VOTE).then_some(()),
+        |harness| {
+            let approve = harness.get_by_role_and_label(Role::Button, "Approve").rect();
+            harness.hover_at(approve.center());
+        },
+    );
     assert!(has(harness, "Comments and replies still work"), "the tooltip says what still works");
     let approve = harness.get_by_role_and_label(Role::Button, "Approve").rect();
     click(harness, approve);
@@ -273,12 +277,13 @@ fn votes_off_for_the_author(harness: &mut Harness<'_, ReviewApp>, released: &Rel
             harness.step();
         }
     }
-    settle(harness, Duration::from_secs(2));
+    settle_background(harness);
     assert!(
         harness.query_by_role_and_label(Role::Button, "Request changes").is_none(),
         "no composer opens"
     );
-    let traffic = review_core::http::traffic::of(&released.connection_id).unwrap_or_default();
+    let traffic = review_core::http::traffic::of(&released.connection_id)
+        .expect("the walkthrough's connection sent requests");
     let reviews: Vec<_> = traffic
         .endpoints
         .iter()
@@ -380,12 +385,15 @@ fn show_header(harness: &mut Harness<'_, ReviewApp>) {
         harness.event(wheel(4000.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
         harness.step();
     }
-    settle(harness, Duration::from_secs(1));
 }
 
 fn tab(harness: &mut Harness<'_, ReviewApp>, label: &str) {
     harness.click_at(harness.get_by_role_and_label(Role::Tab, label).rect());
-    settle(harness, Duration::from_millis(500));
+    wait_until(harness, &format!("the {label} tab"), |harness| {
+        harness
+            .query_by_role_and_label(Role::Tab, label)
+            .is_some_and(|tab| tab.accesskit_node().toggled() == Some(Toggled::True))
+    });
 }
 
 /// Scrolls the overview until the text `text` shows inside the window; returns where it is.
@@ -431,10 +439,11 @@ fn nearest_below(harness: &Harness<'_, ReviewApp>, role: Role, label: &str, anch
         .unwrap_or_else(|| panic!("no {label} below {anchor:?}; screen:\n{}", screen(harness)))
 }
 
-/// Clicks at the middle of `rect` like a pointer.
+/// Clicks at the middle of `rect` like a pointer, then runs the frames of the press, the release
+/// and the accessibility tree showing what it did, as [`walkthrough::press`] does.
 fn click(harness: &mut Harness<'_, ReviewApp>, rect: Rect) {
     harness.click_at(rect);
-    settle(harness, Duration::from_millis(200));
+    harness.run_steps(4);
 }
 
 /// The multiline text field holding `text`.
@@ -444,30 +453,32 @@ fn text_field<'h>(harness: &'h Harness<'_, ReviewApp>, text: &'static str) -> No
             node.role() == Role::MultilineTextInput
                 && node.value().is_some_and(|value| value == text)
         })
-        .unwrap_or_else(|| {
-            panic!(
-                "no text field holds {text:?}; screen:
-{}",
-                screen(harness)
-            )
-        })
+        .unwrap_or_else(|| panic!("no text field holds {text:?}; screen:\n{}", screen(harness)))
 }
 
 /// Ctrl+Enter in the focused composer posts or saves it.
 fn submit(harness: &mut Harness<'_, ReviewApp>) {
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Enter);
-    settle(harness, Duration::from_millis(200));
+    harness.step();
 }
 
-/// Types into the text field whose hint starts with `placeholder`.
+/// Types into the text field whose hint starts with `placeholder`, scrolled into view first, and
+/// returns once the field holds the text (see [`walkthrough::type_into`]).
 fn type_into(harness: &mut Harness<'_, ReviewApp>, placeholder: &'static str, text: &str) {
     wait_until(harness, placeholder, |harness| hinted(harness, placeholder).is_some());
     hinted(harness, placeholder).expect("the field").scroll_to_me();
-    settle(harness, Duration::from_millis(200));
+    harness.step();
     hinted(harness, placeholder).expect("the field").focus();
     harness.step();
-    hinted(harness, placeholder).expect("the field").type_text(text);
-    harness.step();
+    let field = hinted(harness, placeholder).expect("the field");
+    field.type_text(text);
+    // Found by its id: a field with text may drop its hint.
+    let id = field.accesskit_node().id();
+    wait_until(harness, &format!("{placeholder} holding {text:?}"), |harness| {
+        harness
+            .query_by(|node| node.id() == id)
+            .is_some_and(|field| field.value().is_some_and(|value| value.contains(text)))
+    });
 }
 
 /// The text field whose hint starts with `placeholder`.
@@ -496,8 +507,7 @@ fn wait_for_label(
         }
         assert!(
             started.elapsed() < NETWORK_TIMEOUT,
-            "timed out waiting for {what}; screen:
-{}",
+            "timed out waiting for {what}; screen:\n{}",
             screen(harness)
         );
         cv_testkit::let_threads_run(Duration::from_millis(20));
@@ -513,7 +523,6 @@ fn wait_until(
     loop {
         harness.step();
         if is_done(harness) {
-            settle(harness, Duration::from_millis(200));
             return;
         }
         // A failed write will not succeed by waiting; only the expected ones may show.
@@ -531,15 +540,6 @@ fn wait_until(
             "timed out waiting for {what}; screen:\n{}",
             screen(harness)
         );
-        cv_testkit::let_threads_run(Duration::from_millis(20));
-    }
-}
-
-/// Keeps stepping so background results that arrive meanwhile get drawn.
-fn settle(harness: &mut Harness<'_, ReviewApp>, duration: Duration) {
-    let started = Instant::now();
-    while started.elapsed() < duration {
-        harness.step();
         cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }

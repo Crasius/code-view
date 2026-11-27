@@ -4,7 +4,7 @@
 //! silently; one with files of the user's stays and the page offers the removal with the reason;
 //! "Ask me first" offers, "Keep worktree" does nothing, and a merge from Code View always asks.
 //! Needs `git` on PATH, no network.
-//! `cargo test -p review-app checkout_finish`
+//! `cargo test -p review-app --bin CodeView app::checkout_finish_walkthrough`
 
 use egui::Role;
 use egui_kittest::Harness;
@@ -45,7 +45,7 @@ fn silent(harness: &Harness<'_, ReviewApp>) -> bool {
 }
 
 #[test]
-fn checkout_finish_removes_a_clean_worktree_silently_by_default() {
+fn removes_a_clean_worktree_silently_by_default() {
     let mut setup = checked_out("finish-auto", WhenFinished::RemoveAutomatically);
     let worktree = worktree_of(&setup.clone);
     merged_elsewhere(&mut setup);
@@ -57,7 +57,7 @@ fn checkout_finish_removes_a_clean_worktree_silently_by_default() {
 }
 
 #[test]
-fn checkout_finish_offers_the_removal_in_ask_mode_and_does_nothing_in_keep_mode() {
+fn offers_the_removal_in_ask_mode_and_does_nothing_in_keep_mode() {
     let mut ask = checked_out("finish-ask", WhenFinished::Ask);
     merged_elsewhere(&mut ask);
     wait_until(&mut ask.harness, "the offer", |harness| has(harness, REMOVE_LINK));
@@ -73,7 +73,7 @@ fn checkout_finish_offers_the_removal_in_ask_mode_and_does_nothing_in_keep_mode(
 }
 
 #[test]
-fn checkout_finish_keeps_a_worktree_with_untracked_files_and_says_why() {
+fn keeps_a_worktree_with_untracked_files_and_says_why() {
     let mut setup = checked_out("finish-dirty", WhenFinished::RemoveAutomatically);
     let worktree = worktree_of(&setup.clone);
     std::fs::write(worktree.join("notes.txt"), "mine\n").expect("untracked file");
@@ -89,7 +89,7 @@ fn checkout_finish_keeps_a_worktree_with_untracked_files_and_says_why() {
 }
 
 #[test]
-fn checkout_finish_asks_after_a_merge_from_code_view() {
+fn asks_after_a_merge_from_code_view() {
     let mut setup = checked_out("finish-here", WhenFinished::RemoveAutomatically);
     setup.host.accept_merge();
     press(&mut setup.harness, "Merge commit");
@@ -104,7 +104,7 @@ fn checkout_finish_asks_after_a_merge_from_code_view() {
 }
 
 #[test]
-fn checkout_finish_applies_at_the_next_start() {
+fn applies_at_the_next_start() {
     let Setup { scratch, host, harness, clone } =
         checked_out("finish-start", WhenFinished::RemoveAutomatically);
     drop(harness);
@@ -116,7 +116,7 @@ fn checkout_finish_applies_at_the_next_start() {
 }
 
 #[test]
-fn checkout_finish_setting_is_a_select_that_saves() {
+fn setting_is_a_select_that_saves() {
     let Setup { scratch: _scratch, host: _host, mut harness, clone: _clone } =
         start("finish-select");
     harness.state_mut().navigator.go(Route::Settings);

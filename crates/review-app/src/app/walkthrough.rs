@@ -218,7 +218,13 @@ pub(super) fn press(harness: &mut Harness<'_, ReviewApp>, label: &str) {
 /// and where another widget carries the same label (a composer's text area is named after its
 /// submit button).
 pub(super) fn press_button(harness: &mut Harness<'_, ReviewApp>, label: &str) {
-    let rect = when_ready(harness, label, Some(Role::Button));
+    press_role(harness, Role::Button, label);
+}
+
+/// [`press`] for the widget of `role` labelled `label` (a radio button among labels of the same
+/// text).
+pub(super) fn press_role(harness: &mut Harness<'_, ReviewApp>, role: Role, label: &str) {
+    let rect = when_ready(harness, label, Some(role));
     harness.click_at(rect);
     settle(harness);
 }

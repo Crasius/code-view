@@ -58,7 +58,6 @@ pub(super) fn answered(
     wait_for_prompts(&mut harness, &mut agent);
     answer_text(&agent, ANSWER);
     wait_for_link(&mut harness, FIRST);
-    harness.run_steps(10);
     (harness, agent, scratch)
 }
 

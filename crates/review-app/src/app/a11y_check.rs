@@ -85,7 +85,7 @@ mod tests {
     use cv_testkit::ScratchDir;
 
     #[test]
-    fn a11y_pull_request_header_and_files_tab_name_no_glyph() {
+    fn pull_request_header_and_files_tab_name_no_glyph() {
         let scratch = ScratchDir::new("a11y-labels");
         let host = GitHubHost::with_pull_request(scratch.path());
         let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);

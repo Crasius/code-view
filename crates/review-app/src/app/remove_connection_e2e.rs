@@ -9,7 +9,7 @@ use egui_kittest::kittest::Queryable;
 use review_store::stable_hash;
 
 use super::github_mock::{GitHubHost, open_pull_request};
-use super::walkthrough::{app, press, wait_until};
+use super::walkthrough::{app, press, settle_background, wait_until};
 use cv_runtime::route::Route;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -58,9 +58,7 @@ fn removing_a_connection_closes_its_pages_before_its_data_goes() {
     harness.step();
     assert_eq!(harness.state().route, Route::MyPullRequests, "the pull request is refused");
     assert!(harness.state().pull_requests.is_empty(), "no page opened for it");
-    for _ in 0..30 {
-        harness.step();
-    }
+    settle_background(&mut harness);
     assert!(!threads.exists() && !viewed.exists(), "nothing was written for it");
 
     drop(harness);
