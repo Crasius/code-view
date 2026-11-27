@@ -283,7 +283,7 @@ mod tests {
         let refused = "fatal: unable to access https://ci:ghp_secret123@github.com/acme/app";
         let error = CheckoutError::Git(refused.into());
         let mut finish = Finish::default();
-        finish.removals.insert(key.clone(), background.spawn(async move { Err(error) }));
+        finish.removals.insert(key, background.spawn(async move { Err(error) }));
         let mut changes = Vec::new();
         poll_until("the removal's end", || {
             changes.extend(finish.poll());
