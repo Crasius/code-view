@@ -17,9 +17,11 @@ use super::ReviewApp;
 use cv_settings::onboarding::CliTools;
 use cv_testkit::provider::{Script, Scripted};
 
-/// Scripted tokens; they only ever reach the fake provider below.
-pub(super) const LIMITED_TOKEN: &str = "glpat-walkthrough-fine-grained";
-pub(super) const COMPLETE_TOKEN: &str = "glpat-walkthrough-complete";
+/// Scripted tokens; they only ever reach the fake provider below. Shorter than a real token, so
+/// the secret scan reads none here: a token-shaped one is a new finding whenever its line moves
+/// (`.gitleaksignore`).
+pub(super) const LIMITED_TOKEN: &str = "glpat-scripted-limited";
+pub(super) const COMPLETE_TOKEN: &str = "glpat-scripted-complete";
 
 /// The app on `paths` with every connection's provider the scripted GitLab, both sign-in tools as
 /// if installed.

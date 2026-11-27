@@ -116,7 +116,7 @@ The jobs run on the GitLab instance's shared runner, as pods of the Kubernetes e
 
 ## Secret scan
 
-Job `secret-scan` reads the full history with gitleaks. `.gitleaksignore` names the four findings that are no secrets, each by commit, file, rule and line, so a new finding still fails the job.
+Job `secret-scan` reads the full history with gitleaks. `.gitleaksignore` names the findings that are no secrets, each by commit, file, rule and line, so a new finding still fails the job. A finding stays in the history: a token-shaped test value that moves to another file is a new one, so test tokens stay shorter than a real token.
 
 ## Public mirror
 
