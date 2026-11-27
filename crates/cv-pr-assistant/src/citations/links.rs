@@ -185,8 +185,7 @@ mod tests {
 
     use super::*;
 
-    /// A new file list gets its own paths, even when it sits where a dropped list was: the paths
-    /// were once kept by the list's address alone, which a later list can reuse.
+    /// A new file list gets its own paths, even when it is allocated where a dropped list was.
     #[test]
     fn a_new_file_list_never_gets_the_paths_of_a_dropped_one() {
         let mut links = Links::default();
