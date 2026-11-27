@@ -16,6 +16,7 @@
 //! [`app_with`] on providers of the test's own.
 
 use std::cell::Cell;
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -467,6 +468,64 @@ pub(super) fn opened_urls(harness: &Harness<'_, ReviewApp>) -> Vec<String> {
         .collect()
 }
 
+/// The stretch of a walkthrough in which a request count rests on GETs joining one in flight.
+/// `review_core::http` shares identical GETs only while no write finished in the process since
+/// the shared one started, and `cargo test` runs the walkthroughs on threads of one process: a
+/// write a neighbour finishes inside the window ends the sharing there, and the page sends its own
+/// request. The window tells the two cases apart; a write of the test's own host fails it, since
+/// then the app ended the sharing itself.
+pub(super) struct SharingWindow {
+    epoch: u64,
+    own_writes: usize,
+}
+
+impl SharingWindow {
+    /// Opens it before the first request that others join starts; `own_writes`: the writes the
+    /// test's host received so far.
+    pub(super) fn open(own_writes: usize) -> Self {
+        Self { epoch: review_core::http::write_epoch(), own_writes }
+    }
+
+    /// Closes it once the joins happened, with the host's writes by then: none may have come in
+    /// meanwhile.
+    pub(super) fn close(self, own_writes: usize) -> NeighbourWrites {
+        assert_eq!(
+            own_writes, self.own_writes,
+            "the app wrote to its host inside the window, which ends the sharing the count rests on"
+        );
+        NeighbourWrites(review_core::http::write_epoch() - self.epoch)
+    }
+}
+
+/// The writes other tests finished in the process while a [`SharingWindow`] was open.
+pub(super) struct NeighbourWrites(u64);
+
+impl NeighbourWrites {
+    /// The request counts that hold when `joined` requests go out while every GET joins, of which
+    /// `may_join` GETs join one request in flight under one key. Without a neighbour's write the
+    /// count is exact. With one, each GET that did not join started a request of its own, which
+    /// the later ones join unless another write finished: so every extra request takes a write of
+    /// its own, and the count lies between `joined` and `joined` plus the fewer of the writes and
+    /// `may_join`.
+    fn allowed(&self, joined: usize, may_join: usize) -> RangeInclusive<usize> {
+        let extra = usize::try_from(self.0).map_or(may_join, |writes| writes.min(may_join));
+        joined..=joined + extra
+    }
+
+    /// Asserts that `counted` requests went out; `joined` and `may_join` as in [`Self::allowed`].
+    pub(super) fn assert_count(&self, counted: usize, joined: usize, may_join: usize, what: &str) {
+        let allowed = self.allowed(joined, may_join);
+        assert!(
+            allowed.contains(&counted),
+            "{what}: {counted} requests, {} to {} expected; other tests finished {} writes inside \
+             the window",
+            allowed.start(),
+            allowed.end(),
+            self.0
+        );
+    }
+}
+
 /// The settings file the app saved below its data folders.
 pub(super) fn saved_settings(harness: &Harness<'_, ReviewApp>) -> AppSettings {
     AppSettings::load(&harness.state().services.paths.settings_file()).expect("saved settings")
@@ -475,4 +534,25 @@ pub(super) fn saved_settings(harness: &Harness<'_, ReviewApp>) -> AppSettings {
 /// Whether an open pull request holds `path`'s diff in its cache.
 pub(super) fn has_cached_diff(harness: &Harness<'_, ReviewApp>, path: &str) -> bool {
     harness.state().pull_requests.iter().any(|(_, page)| page.has_cached_diff(path))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{NeighbourWrites, SharingWindow};
+
+    /// Without a neighbour's write the count is exact; each write lets one more GET miss its join,
+    /// up to the GETs that join, and never fewer requests are sent.
+    #[test]
+    fn a_neighbours_write_allows_one_request_more_each_up_to_the_joins() {
+        assert_eq!(NeighbourWrites(0).allowed(1, 2), 1..=1);
+        assert_eq!(NeighbourWrites(1).allowed(1, 2), 1..=2);
+        assert_eq!(NeighbourWrites(5).allowed(1, 2), 1..=3);
+    }
+
+    /// A write of the test's own app is never taken for a neighbour's.
+    #[test]
+    #[should_panic(expected = "the app wrote to its host inside the window")]
+    fn a_write_to_the_own_host_inside_the_window_fails() {
+        SharingWindow::open(0).close(1);
+    }
 }
