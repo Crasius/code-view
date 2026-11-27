@@ -21,9 +21,12 @@
 //!
 //! It also holds the few things every test that waits or builds files needs, so each has one
 //! reason written down instead of a copy per test module: [`let_threads_run`] (the one way a test
-//! gives real threads time), [`git`] (fixture repositories), [`ScratchDir`] and [`remove_dir`],
-//! and [`use_bundled_fonts`] (the same text widths on every machine). [`Clicks`] is the one way a
-//! kittest test clicks. [`frame_bench`] holds the headless frame-budget benchmarks.
+//! gives real threads time), [`poll_until`] and [`poll_for`] (the one way a unit test waits for
+//! another thread, bounded by [`WAIT_LIMIT`]), [`git`], [`fast_import`] and [`file_url`] (fixture
+//! repositories), [`ScratchDir`] and [`remove_dir`], [`samples`] (model values a test fills in by
+//! struct update) and [`use_bundled_fonts`] (the same text widths on every machine). [`Clicks`]
+//! is the one way a kittest test clicks. [`frame_bench`] holds the headless frame-budget
+//! benchmarks.
 //!
 //! A dev-only crate: the crates above `cv-widgets` take it as a dev-dependency, `cv-services` also as an
 //! optional dependency under its `test-support` feature (for its watchdog and hermetic checks).
@@ -35,6 +38,7 @@
 
 mod clicks;
 pub mod frame_bench;
+pub mod samples;
 mod trace;
 
 pub use clicks::Clicks;
@@ -44,6 +48,7 @@ use std::cell::{Cell, OnceCell};
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -236,6 +241,37 @@ pub fn let_threads_run(duration: Duration) {
     std::thread::sleep(duration);
 }
 
+/// How long any wait of a test may go on; our own budget. Below the watchdog's limit (300 s), so a
+/// wait that never ends fails its own test and not the test binary. `review-app`'s walkthrough
+/// waits use the same number.
+pub const WAIT_LIMIT: Duration = Duration::from_secs(180);
+
+/// The real time [`poll_for`] gives other threads between two checks.
+const POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+/// Calls `is_done` until it holds, giving real threads 5 ms between checks ([`let_threads_run`]).
+/// Panics with `what` after [`WAIT_LIMIT`]. Labelled for the watchdog's trace ([`step`]).
+pub fn poll_until(what: &str, mut is_done: impl FnMut() -> bool) {
+    poll_for(what, || is_done().then_some(()));
+}
+
+/// [`poll_until`] for a wait that hands something back: the first `Some` of `find`.
+pub fn poll_for<T>(what: &str, mut find: impl FnMut() -> Option<T>) -> T {
+    let _step = step(format!("waiting for {what}"));
+    let deadline = Instant::now() + WAIT_LIMIT;
+    loop {
+        if let Some(found) = find() {
+            return found;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{what} did not happen within {} s",
+            WAIT_LIMIT.as_secs()
+        );
+        let_threads_run(POLL_INTERVAL);
+    }
+}
+
 /// Swaps the machine's fonts for the app's bundled ones, for a test that asserts what fits beside
 /// what: the system fonts differ in width between machines (DejaVu Sans, a common Linux UI font,
 /// runs wider than Segoe UI), the bundled ones are the same everywhere.
@@ -276,6 +312,35 @@ fn git_output(command: &mut std::process::Command, args: &[&str]) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }
 
+/// Feeds `stream` to `git fast-import` in the repository `git_dir`. Panics with git's message.
+pub fn fast_import(git_dir: &Path, stream: &[u8]) {
+    take_process_slot();
+    let mut child = Command::new("git")
+        .arg("--git-dir")
+        .arg(git_dir)
+        .args(["fast-import", "--quiet"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("git fast-import runs");
+    // A git that stops early closes its input: its own message says why, not the failed write.
+    let fed = child.stdin.take().expect("git fast-import's input").write_all(stream);
+    let output = child.wait_with_output().expect("git fast-import ends");
+    assert!(
+        output.status.success(),
+        "git fast-import: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    fed.expect("feed git fast-import");
+}
+
+/// `path` as a `file:///` URL git clones from, with forward slashes on every system.
+pub fn file_url(path: &Path) -> String {
+    let path = path.to_string_lossy().replace('\\', "/");
+    format!("file:///{}", path.trim_start_matches('/'))
+}
+
 /// A test's own folder under the system temp folder (`review-<name>-<process id>`): emptied when
 /// made, removed when dropped.
 pub struct ScratchDir(PathBuf);
@@ -290,6 +355,11 @@ impl ScratchDir {
 
     pub fn path(&self) -> &Path {
         &self.0
+    }
+
+    /// The app's data folders below this one: `config` and `cache`.
+    pub fn app_paths(&self) -> AppPaths {
+        AppPaths::new(self.0.join("config"), self.0.join("cache"))
     }
 }
 
@@ -316,11 +386,45 @@ pub fn remove_dir(path: &Path) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     use review_store::{AppPaths, TokenVault};
 
-    use super::{assert_hermetic, http_client};
+    use super::{
+        ScratchDir, assert_hermetic, fast_import, file_url, git_in, http_client, poll_for,
+    };
+
+    #[test]
+    fn poll_for_returns_what_another_thread_hands_over() {
+        let answer = Arc::new(Mutex::new(None));
+        let writer = Arc::clone(&answer);
+        let worker = std::thread::spawn(move || {
+            super::let_threads_run(Duration::from_millis(20));
+            *writer.lock().unwrap() = Some(42);
+        });
+        assert_eq!(poll_for("the worker's answer", || *answer.lock().unwrap()), 42);
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn fast_import_writes_the_branch_of_a_two_commit_stream() {
+        let scratch = ScratchDir::new("fast-import");
+        let git_dir = scratch.path().join("origin.git");
+        git_in(None, &["init", "--bare", "--quiet", &git_dir.display().to_string()]);
+        let stream = b"commit refs/heads/main\nmark :1\ncommitter Test <test@example.org> 1700000001 +0000\n\
+            data 5\nfirst\nM 100644 inline a.txt\ndata 2\na\n\n\
+            commit refs/heads/main\nmark :2\ncommitter Test <test@example.org> 1700000002 +0000\n\
+            data 6\nsecond\nfrom :1\nM 100644 inline a.txt\ndata 2\nb\n\n";
+        fast_import(&git_dir, stream);
+
+        let head = git_in(Some(&git_dir), &["rev-parse", "refs/heads/main"]);
+        let parent = git_in(Some(&git_dir), &["rev-parse", "refs/heads/main~1"]);
+        assert_eq!(head.len(), 40, "rev-parse names the branch's commit: {head}");
+        assert_ne!(head, parent, "the branch holds both commits");
+        let listed = git_in(None, &["ls-remote", &file_url(&git_dir), "refs/heads/main"]);
+        assert!(listed.starts_with(&head), "git reaches the repository by its URL: {listed}");
+    }
 
     #[test]
     #[should_panic(expected = "a test reached for the system's token store")]
