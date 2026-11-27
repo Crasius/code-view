@@ -10,9 +10,9 @@
 use egui::Role;
 use egui::accesskit::Toggled;
 use egui_kittest::Harness;
-use egui_kittest::kittest::{NodeT, Queryable};
+use egui_kittest::kittest::{AccessKitNode, NodeT, Queryable};
 use review_store::CommentEditor;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, OwnComment, REPOSITORY, THREAD_TEXT, open_pull_request};
@@ -30,13 +30,11 @@ fn own_comments_can_be_edited_and_deleted() {
     let scratch = ScratchDir::new("comment-edit");
     let host = GitHubHost::with_pull_request(scratch.path());
     host.sign_in_as_me();
-    host.add_own_comments(
-        &[
-            OwnComment { thread_id: "PRRT_kept", comment_id: 701, line: 2, text: KEPT },
-            OwnComment { thread_id: "PRRT_gone", comment_id: 702, line: 6, text: GONE },
-        ],
-        true,
-    );
+    host.add_own_comments(&[
+        OwnComment { thread_id: "PRRT_kept", comment_id: 701, line: 2, text: KEPT },
+        OwnComment { thread_id: "PRRT_gone", comment_id: 702, line: 6, text: GONE },
+    ]);
+    host.refuse_next_comment_edit();
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
     wait_until(&mut harness, "the threads", |harness| {
@@ -81,7 +79,7 @@ fn own_comments_can_be_edited_and_deleted() {
     wait_until(&mut harness, "the update toast", |harness| {
         harness.query_by_label_contains("Comment updated.").is_some()
     });
-    let patches = requests(&host, "PATCH", 701);
+    let patches = host.bodies("PATCH", &comment_path(701));
     assert_eq!(patches, vec![json!({ "body": edited }), json!({ "body": edited })]);
 
     // Delete: asked inside the card, then the thread of the last comment leaves the overview.
@@ -90,14 +88,14 @@ fn own_comments_can_be_edited_and_deleted() {
     wait_until(&mut harness, "the delete question", |harness| {
         harness.query_by_label("Delete this comment? This cannot be undone.").is_some()
     });
-    assert!(requests(&host, "DELETE", 702).is_empty(), "nothing is deleted before the answer");
+    assert_eq!(host.count("DELETE", &comment_path(702)), 0, "nothing is deleted before the answer");
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Delete").rect());
     wait_until(&mut harness, "the deleted thread gone", |harness| {
         harness.query_by_label("All 2").is_some()
             && harness.query_by_label(GONE).is_none()
             && harness.query_by_label_contains("Comment deleted.").is_some()
     });
-    assert_eq!(requests(&host, "DELETE", 702).len(), 1);
+    assert_eq!(host.count("DELETE", &comment_path(702)), 1);
     reveal(&mut harness, &edited);
     assert!(menu_above(&harness, &edited).is_some(), "the edited comment keeps its menu");
 }
@@ -203,28 +201,23 @@ fn mode_tab<'h>(harness: &'h Harness<'_, ReviewApp>, mode: &'h str) -> egui_kitt
         .expect("the edit composer's mode tab")
 }
 
+/// Whether `node` is a text field holding `text`: the edit composer's while it does.
+fn is_editor(text: &str) -> impl Fn(&AccessKitNode<'_>) -> bool {
+    move |node| {
+        node.role() == Role::MultilineTextInput && node.value().is_some_and(|value| value == text)
+    }
+}
+
 /// The edit composer's text field while it holds `text`.
 fn editor<'h>(harness: &'h Harness<'_, ReviewApp>, text: &'static str) -> egui_kittest::Node<'h> {
-    harness.get_by(move |node| {
-        node.role() == Role::MultilineTextInput && node.value().is_some_and(|value| value == text)
-    })
+    harness.get_by(is_editor(text))
 }
 
 fn has_editor(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness
-        .query_by(|node| {
-            node.role() == Role::MultilineTextInput
-                && node.value().is_some_and(|value| value == text)
-        })
-        .is_some()
+    harness.query_by(is_editor(text)).is_some()
 }
 
-/// The JSON bodies of the `verb` requests to review comment `id`, in order.
-fn requests(host: &GitHubHost, verb: &str, id: u64) -> Vec<Value> {
-    let comment_path = format!("/api/v3/repos/{REPOSITORY}/pulls/comments/{id}");
-    host.requests()
-        .into_iter()
-        .filter(|request| request.method.as_str() == verb && request.url.path() == comment_path)
-        .map(|request| request.body_json::<Value>().unwrap_or(Value::Null))
-        .collect()
+/// The REST path of review comment `id`, below the server root.
+fn comment_path(id: u64) -> String {
+    format!("/api/v3/repos/{REPOSITORY}/pulls/comments/{id}")
 }

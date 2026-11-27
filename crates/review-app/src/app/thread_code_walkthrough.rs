@@ -10,7 +10,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::github_mock::{CURRENT_LINE, GitHubHost, open_pull_request};
+use super::github_mock::{CURRENT_LINE, GitHubHost, ReplacedHead, open_pull_request};
 use super::walkthrough::{app, press, wait_until};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -30,7 +30,7 @@ fn rewritten_file() -> String {
 fn thread_cards_show_their_code_from_the_mirror() {
     let scratch = ScratchDir::new("thread-code");
     let mut host = GitHubHost::with_pull_request(scratch.path());
-    let replaced = host.force_push_outdating_the_thread(&rewritten_file(), true);
+    let replaced = host.force_push_outdating_the_thread(&rewritten_file(), ReplacedHead::Kept);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
 
