@@ -254,6 +254,58 @@ fn request_budget_graphql_limit_does_not_hold_back_the_pipelines() {
     assert!(has(&harness, "test-3-1"), "the jobs stay on screen");
 }
 
+/// A GraphQL pause holds the list rows' checks back for as long as it lasts (gitlab.com's
+/// anonymous one up to the full hour): the rows say they wait for GitLab, quietly, and the app
+/// rests meanwhile. Before, their updating edge asked for every frame for the whole pause (83353
+/// frames in 90 s in a walkthrough), and the banner's countdown woke the app every second although
+/// its text changes once a minute.
+#[test]
+fn request_budget_rows_held_by_a_rate_limit_let_the_app_rest() {
+    let fixture = Fixture::new("held-rows", 30);
+    fixture.limit_row_statuses_once(2391);
+    let mut harness = fixture.loading_harness();
+    wait_until(&mut harness, "the GraphQL rate-limit banner", |harness| {
+        has(harness, "rate-limiting this connection's GraphQL requests — retrying in 40 min")
+    });
+    wait_until(&mut harness, "the pull request list", |harness| has(harness, "Change 27"));
+    // The banner and the rows fade in; then nothing changes until the countdown's next minute.
+    pump(&mut harness, 5.0);
+    let mut soon = Vec::new();
+    for _ in 0..40 {
+        harness.step();
+        let delay = repaint_delay(&harness);
+        if delay <= Duration::from_secs(1) {
+            let causes: Vec<String> =
+                harness.ctx.repaint_causes().iter().map(ToString::to_string).collect();
+            soon.push(format!("{delay:?} for {causes:?}"));
+        }
+    }
+    assert!(
+        soon.is_empty(),
+        "{} of 40 frames without input asked for the next within a second: {soon:?}",
+        soon.len()
+    );
+    let held = "!27 waits for GitLab to accept requests again";
+    assert!(has(&harness, held), "the rows say what they wait for");
+    assert!(!has(&harness, "Updating the checks and approvals"), "nothing is under way");
+
+    harness.click_at(harness.get_by_label("Retry now").rect());
+    wait_until(&mut harness, "the banner gone and the rows' checks in", |harness| {
+        !has(harness, "is rate-limiting")
+            && !has(harness, held)
+            && !has(harness, "Updating the checks and approvals")
+    });
+}
+
+/// The delay after which the last frame asked for the next one.
+fn repaint_delay(harness: &Harness<'_, ReviewApp>) -> Duration {
+    harness
+        .output()
+        .viewport_output
+        .get(&egui::ViewportId::ROOT)
+        .map_or(Duration::MAX, |viewport| viewport.repaint_delay)
+}
+
 /// A click held while the rate-limit banner opens above the page still counts at its release:
 /// the banner moves the page down but renames none of its widgets. Before, every widget under it
 /// took another id in the frame it opened, egui dropped the press of a widget that was gone, and
@@ -1279,6 +1331,14 @@ impl Fixture {
         harness
     }
 
+    /// [`Self::harness`] after its first frames only ([`loading_harness_from`]): for a start that
+    /// need not settle.
+    fn loading_harness(&self) -> Harness<'static, ReviewApp> {
+        let mut harness = loading_harness_from(harness_builder(), self.paths.clone());
+        harness.state_mut().attention = Attention::without_pauses();
+        harness
+    }
+
     /// Another connection with a token to the same mock, `{connection_id}-{suffix}`: its card lists
     /// group `group-{suffix}`, with the same merge requests, below the fixture's.
     fn add_connection(&self, suffix: &str) {
@@ -1303,6 +1363,19 @@ impl Fixture {
     /// The next request to `path` gets a 429 with `Retry-After` (not counted by the recorder).
     fn limit_once(&self, path: &str, retry_after_secs: u64) {
         self.limit_once_after(path, retry_after_secs, Duration::ZERO);
+    }
+
+    /// The next GraphQL request for the list rows' checks gets a 429 with `Retry-After`.
+    fn limit_row_statuses_once(&self, retry_after_secs: u64) {
+        let limited = ResponseTemplate::new(429)
+            .insert_header("Retry-After", retry_after_secs.to_string().as_str())
+            .set_body_string("Retry later");
+        let mock = wiremock::Mock::given(wiremock::matchers::path("/api/graphql"))
+            .and(wiremock::matchers::body_string_contains("headPipeline"))
+            .respond_with(limited)
+            .up_to_n_times(1)
+            .with_priority(1);
+        self.runtime.block_on(mock.mount(&self.server));
     }
 
     /// [`Self::limit_once`] with the 429 arriving `delay` after the request.

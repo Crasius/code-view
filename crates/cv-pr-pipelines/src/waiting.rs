@@ -2,15 +2,13 @@
 //! comes, or, while a rate limit holds the requests back, how long it lasts and the ways forward.
 //! Also what a run page shows in place of stages that did not load, or that the run has none of.
 
-use std::time::Duration;
-
 use cv_base::theme::{icons, style};
 use cv_pr_session::session::PullRequestSession;
 use cv_runtime::intents;
 use cv_runtime::load::Live;
 use cv_services::Services;
 use cv_services::connection::traffic::retry_now;
-use cv_shell::rate_limit_banner::countdown;
+use cv_shell::rate_limit_banner::{countdown, until_next_tick};
 use cv_widgets::provider_icon;
 use cv_widgets::skeleton;
 use cv_widgets::states::{self, Action};
@@ -39,8 +37,8 @@ fn rate_limit_wait(ui: &mut Ui, session: &PullRequestSession, services: &Service
     else {
         return false;
     };
-    // The countdown ticks once a second.
-    ui.ctx().request_repaint_after(Duration::from_secs(1));
+    // The countdown wakes the page when its text changes: once a minute while it counts minutes.
+    ui.ctx().request_repaint_after(until_next_tick(limit.resumes_in));
     let platform = session.kind.label();
     let open_label = states::open_on_platform(session.kind);
     let web_url = session.detail.ready().map(|detail| detail.summary.web_url.clone());

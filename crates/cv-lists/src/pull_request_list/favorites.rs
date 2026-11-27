@@ -19,6 +19,7 @@ use cv_runtime::cache::page_cache;
 use cv_services::Services;
 use review_core::{PullRequestQuery, PullRequestScope, PullRequestSummary, StateFilter};
 
+use super::pauses::Pauses;
 use super::queries::{self, ConnectionResult, ListRequest, PAGE_SIZE};
 
 /// What the results were built for; a change rebuilds them.
@@ -199,8 +200,9 @@ impl FavoriteQueries {
         queries::poll_results(&mut self.results, services);
     }
 
-    pub fn is_refreshing(&self) -> bool {
-        self.results.iter().any(|result| result.load.is_refreshing())
+    /// A starred repository's newer listing is under way ([`ConnectionResult::is_refreshing`]).
+    pub fn is_refreshing(&self, pauses: &Pauses) -> bool {
+        self.results.iter().any(|result| result.is_refreshing(pauses))
     }
 
     pub fn refresh_error(&self) -> Option<&str> {

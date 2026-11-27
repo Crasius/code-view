@@ -8,6 +8,7 @@ use cv_runtime::load::Live;
 use cv_runtime::refresh::{ANONYMOUS_PIPELINE_INTERVAL, WhenInactive};
 use cv_runtime::route::PullRequestKey;
 use cv_services::Services;
+use review_core::http::Api;
 use review_core::{
     Connection, ProviderKind, PullRequestQuery, PullRequestScope, PullRequestState,
     PullRequestSummary, StateFilter,
@@ -15,6 +16,7 @@ use review_core::{
 
 use super::ListSource;
 use super::changes::RowChanges;
+use super::pauses::Pauses;
 use super::spread::spread;
 
 /// The page size of every listing, per repository where a request names several.
@@ -245,8 +247,9 @@ impl ConnectionQueries {
         self.collapsible
     }
 
-    pub fn is_refreshing(&self) -> bool {
-        self.results.iter().any(|result| result.load.is_refreshing())
+    /// A card's newer listing is under way ([`ConnectionResult::is_refreshing`]).
+    pub fn is_refreshing(&self, pauses: &Pauses) -> bool {
+        self.results.iter().any(|result| result.is_refreshing(pauses))
     }
 
     /// The first failed refresh whose older rows stayed on screen.
@@ -270,6 +273,13 @@ impl ConnectionQueries {
 }
 
 impl ConnectionResult {
+    /// A newer listing is under way: not while the host's REST pause, which every listing goes
+    /// through, holds it back. Then it waits, which the rows' edges and the banner say, and a
+    /// spinner would turn for the whole pause.
+    pub fn is_refreshing(&self, pauses: &Pauses) -> bool {
+        self.load.is_refreshing() && !pauses.holds(&self.connection_id, Api::Rest)
+    }
+
     /// One connection's rows as if they had loaded.
     #[cfg(any(test, feature = "test-support"))]
     pub fn loaded_for_test(

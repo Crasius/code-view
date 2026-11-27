@@ -21,6 +21,9 @@
 //! (GitLab's, say). So a refresh of the page (the scheduler's beat, a return to the window, a warm)
 //! renews the answers ([`RowStatuses::renew`]): rows of those platforms ask again once their
 //! listing answered after it. Azure DevOps lists the votes, so its rows keep the rule above.
+//!
+//! A request the host's rate-limit pause holds back ([`RowStatuses::is_held`]) waits at the
+//! budget until the pause ends and stays running meanwhile; the row shows it as waiting.
 
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -29,9 +32,12 @@ use cv_base::platform::is_window_active;
 use cv_runtime::load::Load;
 use cv_services::Services;
 use cv_services::writes::Writes;
+use review_core::http::Api;
 use review_core::{
     Check, CheckState, ProviderKind, PullRequestSummary, Reviewer, RowStatus, RunStatus,
 };
+
+use super::pauses::Pauses;
 
 /// Requests in flight at once; further rows wait their turn.
 const MAX_RUNNING: usize = 4;
@@ -128,6 +134,18 @@ fn plan(row: &StatusRow) -> Plan {
     }
 }
 
+impl Plan {
+    /// The kind of request the row's checks go out with (see the module doc), whose rate-limit
+    /// pause holds them back.
+    fn api(self) -> Option<Api> {
+        match self {
+            Plan::Batch => Some(Api::GraphQl),
+            Plan::Single => Some(Api::Rest),
+            Plan::NotOffered(_) => None,
+        }
+    }
+}
+
 /// The platform's listing carries every reviewer's vote, so a vote changes the row's fingerprint.
 fn lists_votes(kind: ProviderKind) -> bool {
     match kind {
@@ -212,6 +230,13 @@ impl RowStatuses {
         self.entries
             .get(&row.storage_key)
             .is_some_and(|entry| matches!(entry.phase, Phase::Running))
+    }
+
+    /// A request for `row`'s checks and votes is on its way, but a rate-limit pause on its kind of
+    /// request holds it back: it waits, for up to an hour, and goes out on its own after.
+    pub fn is_held(&self, row: &StatusRow, pauses: &Pauses) -> bool {
+        self.is_running(row)
+            && plan(row).api().is_some_and(|api| pauses.holds(&row.connection_id, api))
     }
 
     /// Why the last request for `row`'s checks and votes failed.
@@ -501,6 +526,28 @@ mod tests {
         assert!(writes.logged_for_test(&key(8), added, Some(me), 2.0));
         statuses.poll(&writes, 2.0);
         assert_eq!(statuses.reviewers(&other, &[]), []);
+    }
+
+    /// A pause holds a row's request back only where it pauses the kind the request goes out with:
+    /// GraphQL for the batched platforms, REST for Azure DevOps' policy evaluations.
+    #[test]
+    fn a_running_request_is_held_by_the_pause_of_its_kind_only() {
+        for (kind, held_by, goes_on_under) in [
+            (ProviderKind::GitLab, Api::GraphQl, Api::Rest),
+            (ProviderKind::GitHub, Api::GraphQl, Api::Rest),
+            (ProviderKind::AzureDevOps, Api::Rest, Api::GraphQl),
+        ] {
+            let mut statuses = RowStatuses::default();
+            let listed = row(kind, true);
+            assert!(!statuses.is_held(&listed, &Pauses::of_test("c", held_by)), "{kind:?}: idle");
+            statuses.running_for_test(&listed);
+            assert!(statuses.is_held(&listed, &Pauses::of_test("c", held_by)), "{kind:?}");
+            assert!(!statuses.is_held(&listed, &Pauses::of_test("c", goes_on_under)), "{kind:?}");
+            assert!(
+                !statuses.is_held(&listed, &Pauses::of_test("other", held_by)),
+                "{kind:?}: another connection's pause"
+            );
+        }
     }
 
     #[test]

@@ -52,8 +52,9 @@ use cv_runtime::load::Live;
 use cv_runtime::route::{Navigator, PullRequestKey, PullRequestTab as Tab, Route};
 use cv_services::Services;
 use cv_shell::{focus_mode, top_bar};
-use cv_widgets::provider_icon;
 use cv_widgets::states::{self, Action};
+use cv_widgets::{provider_icon, skeleton};
+use review_core::http::Api;
 
 pub struct PullRequestPage {
     key: PullRequestKey,
@@ -166,7 +167,17 @@ impl PullRequestPage {
         }
     }
 
+    /// While the connection's REST requests wait out a rate-limit pause, up to an hour, what the
+    /// page loads waits with them: its placeholders hold still, as the banner above says why.
     pub fn show(&mut self, ui: &mut egui::Ui, services: &mut Services, navigator: &mut Navigator) {
+        if is_held(services, &self.key) {
+            skeleton::still(ui, |ui| self.show_page(ui, services, navigator));
+        } else {
+            self.show_page(ui, services, navigator);
+        }
+    }
+
+    fn show_page(&mut self, ui: &mut egui::Ui, services: &mut Services, navigator: &mut Navigator) {
         let Self {
             key,
             session,
@@ -253,6 +264,15 @@ impl PullRequestPage {
         }
         files.remember_place(services, stored_tab(*tab));
     }
+}
+
+/// The connection of `key` has its REST requests, which load the page, held back by a rate-limit
+/// pause ([`review_core::http::rate_limits`]).
+pub(crate) fn is_held(services: &Services, key: &PullRequestKey) -> bool {
+    services
+        .rate_limited()
+        .iter()
+        .any(|limited| limited.connection.id == key.connection_id && limited.api == Api::Rest)
 }
 
 /// The tab a pull request the user never left anywhere opens on: Settings' "Pull requests open on".

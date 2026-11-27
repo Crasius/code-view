@@ -4,6 +4,9 @@
 //!   the edge's hit area retries;
 //! - updating (a short light travels down a faint track): the row's checks and votes are on their
 //!   way ([`super::super::statuses`]);
+//! - held (dotted, as waiting): the row's checks and votes are asked for, but the host's rate-limit
+//!   pause holds the request back ([`super::super::pauses`]). The light is for work under way; a
+//!   pause lasts up to an hour, and the light would draw every frame of it;
 //! - waiting (dotted, quiet): the card's listing is refreshing, so the row shows the last known state;
 //! - changed (accent): the host changed the row since the user last saw it
 //!   ([`super::super::changes`]).
@@ -13,8 +16,9 @@
 
 use cv_base::theme::{self, motion, style};
 use egui::{Color32, Id, Rect, Sense, Shape, Ui, pos2};
-use review_core::PullRequestSummary;
+use review_core::{ProviderKind, PullRequestSummary};
 
+use super::super::pauses::Pauses;
 use super::super::queries::ConnectionResult;
 use super::super::statuses::{RowStatuses, StatusRow};
 
@@ -34,19 +38,24 @@ pub enum Edge<'a> {
     Fresh,
     Changed,
     Waiting,
+    /// Held by the rate-limit pause of the row's platform.
+    Held(ProviderKind),
     Updating,
     Failed(&'a str),
 }
 
-/// The edge of `pull_request`'s row in `result`'s card.
+/// The edge of `pull_request`'s row in `result`'s card, while `pauses` hold requests back.
 pub fn of<'a>(
     result: &'a ConnectionResult,
     statuses: &'a RowStatuses,
+    pauses: &Pauses,
     row: &StatusRow,
     pull_request: &PullRequestSummary,
 ) -> Edge<'a> {
     if let Some(message) = statuses.failure(row).or_else(|| result.load.refresh_error()) {
         Edge::Failed(message)
+    } else if statuses.is_held(row, pauses) {
+        Edge::Held(row.kind)
     } else if statuses.is_running(row) {
         Edge::Updating
     } else if result.load.is_refreshing() {
@@ -96,6 +105,17 @@ pub fn paint(ui: &Ui, place: &Place<'_>, edge: Edge<'_>) -> bool {
             paint_dots(&painter, strip, palette.border_strong);
             (
                 format!("{number} waits for the list's refresh and shows the last known state"),
+                Sense::hover(),
+            )
+        }
+        Edge::Held(kind) => {
+            paint_dots(&painter, strip, palette.border_strong);
+            (
+                format!(
+                    "{number} waits for {} to accept requests again; its checks and approvals \
+                     update on their own",
+                    kind.label()
+                ),
                 Sense::hover(),
             )
         }
