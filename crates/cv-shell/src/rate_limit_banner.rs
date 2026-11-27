@@ -171,7 +171,7 @@ mod tests {
     fn wakes_when_the_text_changes() {
         for (remaining, wake) in [
             (Duration::from_millis(2_390_400), Duration::from_millis(50_400)),
-            (Duration::from_secs(660), Duration::from_secs(60)),
+            (Duration::from_mins(11), Duration::from_mins(1)),
             (Duration::from_secs(600), Duration::from_secs(1)),
             (Duration::from_millis(185_500), Duration::from_millis(500)),
             (Duration::from_secs(120), Duration::from_secs(1)),
@@ -180,10 +180,11 @@ mod tests {
         ] {
             assert_eq!(until_next_tick(remaining), wake, "{remaining:?}");
             let text = countdown(remaining);
-            let before = remaining - wake + Duration::from_millis(1);
+            let at_wake = remaining.saturating_sub(wake);
+            let before = at_wake + Duration::from_millis(1);
             assert_eq!(countdown(before), text, "{remaining:?}: unchanged until the wake");
-            if wake < remaining {
-                assert_ne!(countdown(remaining - wake), text, "{remaining:?}: changed at it");
+            if !at_wake.is_zero() {
+                assert_ne!(countdown(at_wake), text, "{remaining:?}: changed at it");
             }
         }
     }

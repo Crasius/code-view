@@ -58,9 +58,9 @@ use review_core::{ProviderKind, PullRequestScope, PullRequestSummary, StateFilte
 use review_store::{AppSettings, ListFilters};
 
 use self::favorites::FavoriteQueries;
-use self::pauses::Pauses;
 use self::filters::{STAR_GAP, narrows, overview_scope};
 use self::list_rows::{EmptyOffer, FavoritesLane, ListAction, ListInput, RowFilter, SIDE_MARGIN};
+use self::pauses::Pauses;
 use self::queries::ConnectionQueries;
 pub use self::queries::{ANONYMOUS_LIST_INTERVAL, LIST_INTERVAL, cache_stamp};
 use self::statuses::RowStatuses;
@@ -376,12 +376,7 @@ impl PullRequestListPage {
 
     /// The header: title (with the repository's star), filters and tools, on one row or with the
     /// filters on a second one; returns what it asked for.
-    fn header(
-        &self,
-        ui: &mut egui::Ui,
-        settings: &mut AppSettings,
-        pauses: &Pauses,
-    ) -> HeaderAsks {
+    fn header(&self, ui: &mut egui::Ui, settings: &mut AppSettings, pauses: &Pauses) -> HeaderAsks {
         let palette = theme::palette(ui.ctx());
         let mut asks = HeaderAsks::default();
         egui::Frame::new()

@@ -290,8 +290,11 @@ fn request_budget_rows_held_by_a_rate_limit_let_the_app_rest() {
     assert!(!has(&harness, "Updating the checks and approvals"), "nothing is under way");
 
     harness.click_at(harness.get_by_label("Retry now").rect());
-    wait_until(&mut harness, "the rows' checks after Retry now", |harness| !has(harness, held));
-    assert!(!has(&harness, "is rate-limiting"), "the banner is gone once the host answers");
+    wait_until(&mut harness, "the banner gone and the rows' checks in", |harness| {
+        !has(harness, "is rate-limiting")
+            && !has(harness, held)
+            && !has(harness, "Updating the checks and approvals")
+    });
 }
 
 /// The delay after which the last frame asked for the next one.

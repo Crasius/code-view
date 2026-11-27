@@ -270,14 +270,17 @@ pub fn thread_cards(ui: &mut Ui, count: usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::{GRACE_SECONDS, SHIMMER_REPAINT, bar, reveal_after, still};
+    use super::{GRACE_SECONDS, bar, reveal_after, still};
 
-    /// The skeletons a frame paints ask for the next frame (`None`: none asked for one soon).
-    fn sweep_delay(add: impl FnMut(&mut egui::Ui)) -> Option<std::time::Duration> {
+    /// The skeletons a frame paints asked for the next frame to move their sweep: egui names what
+    /// asked for a frame while it runs that frame, so a second one tells.
+    fn sweeps(mut add: impl FnMut(&mut egui::Ui)) -> bool {
         let ctx = egui::Context::default();
-        let output = ctx.run_ui(egui::RawInput::default(), add);
-        let delay = output.viewport_output[&egui::ViewportId::ROOT].repaint_delay;
-        (delay <= SHIMMER_REPAINT).then_some(delay)
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), &mut add);
+            output.textures_delta.clear();
+        }
+        ctx.repaint_causes().iter().any(|cause| cause.file.ends_with("skeleton.rs"))
     }
 
     /// A page that waits out a rate-limit pause holds every placeholder still, also those after a
@@ -285,19 +288,19 @@ mod tests {
     /// page swept on at the full frame rate.
     #[test]
     fn a_still_inside_another_leaves_the_outer_still() {
-        assert!(sweep_delay(|ui| bar(ui, 40.0, 10.0)).is_some(), "a skeleton sweeps");
-        let nested = sweep_delay(|ui| {
+        assert!(sweeps(|ui| bar(ui, 40.0, 10.0)), "a skeleton sweeps");
+        let nested = sweeps(|ui| {
             still(ui, |ui| {
                 still(ui, |ui| bar(ui, 40.0, 10.0));
                 bar(ui, 40.0, 10.0);
             });
         });
-        assert_eq!(nested, None);
-        let after = sweep_delay(|ui| {
+        assert!(!nested, "the outer still holds after the inner one");
+        let after = sweeps(|ui| {
             still(ui, |ui| bar(ui, 40.0, 10.0));
             bar(ui, 40.0, 10.0);
         });
-        assert!(after.is_some(), "past the still, skeletons sweep again");
+        assert!(after, "past the still, skeletons sweep again");
     }
 
     #[test]
