@@ -55,22 +55,11 @@ pub fn message_with_actions(
     actions: &[Action<'_>],
 ) -> Option<usize> {
     let icon_color = theme::palette(ui.ctx()).text_secondary;
-    centered_message(ui, icon, icon_color, title, detail, actions)
+    notice(ui, icon, icon_color, title, detail, actions)
 }
 
 /// [`message_with_actions`] with the icon in `icon_color` (a warning, a failure).
 pub fn notice(
-    ui: &mut Ui,
-    icon: &str,
-    icon_color: Color32,
-    title: &str,
-    detail: &str,
-    actions: &[Action<'_>],
-) -> Option<usize> {
-    centered_message(ui, icon, icon_color, title, detail, actions)
-}
-
-fn centered_message(
     ui: &mut Ui,
     icon: &str,
     icon_color: Color32,

@@ -1,8 +1,8 @@
 //! How counts, sizes and pull request numbers read: thousands grouped, huge counts compacted, a
 //! count with its noun, byte sizes, the widest text a count column needs, and each platform's
-//! number prefix. The widgets, the page, the lists,
-//! the tree and the title bar all print numbers this way, so the formatting lives at the bottom of
-//! the crate graph, where every one of them can reach it.
+//! number prefix. The widgets, the page, the lists, the tree and the title bar all print numbers
+//! this way, so the formatting lives at the bottom of the crate graph, where every one of them can
+//! reach it.
 
 use review_core::ProviderKind;
 
