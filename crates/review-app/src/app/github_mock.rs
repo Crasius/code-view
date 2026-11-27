@@ -42,12 +42,17 @@ pub const CURRENT_TEXT: &str = "Is this line still needed?";
 
 /// Opens the pull request from its row in "My pull requests" and waits for its tabs.
 pub fn open_pull_request(harness: &mut Harness<'_, ReviewApp>) {
-    let row = format!("{NUMBER} {TITLE}");
-    wait_until(harness, "the pull request row", |harness| harness.query_by_label(&row).is_some());
-    harness.click_at(harness.get_by_label(&row).rect());
+    click_pull_request_row(harness);
     wait_until(harness, "the pull request", |harness| {
         harness.query_by_role_and_label(Role::Tab, "Overview").is_some()
     });
+}
+
+/// Clicks the pull request's row in "My pull requests" once it shows.
+pub fn click_pull_request_row(harness: &mut Harness<'_, ReviewApp>) {
+    let row = format!("{NUMBER} {TITLE}");
+    wait_until(harness, "the pull request row", |harness| harness.query_by_label(&row).is_some());
+    harness.click_at(harness.get_by_label(&row).rect());
 }
 
 /// Opens [`FILE`] in the Files tab once the mirror fetched it; returns the diff's area.
