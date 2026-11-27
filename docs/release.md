@@ -7,8 +7,9 @@ This page is the maintainer's runbook. Building on your own machine is on the pl
 ## Cut a release
 
 1. In a worktree, set `version` in `[workspace.package]` of the root `Cargo.toml`, run `cargo update --workspace` so that `Cargo.lock` follows, merge into `main` and push `main`.
-2. When that commit's pipeline is green, tag it and push the tag: `git tag vX.Y.Z <commit>`, `git push origin vX.Y.Z`.
-3. The tag's pipeline runs the checks and builds again, then job `creative-downloads` publishes. Its artifacts `publish.json` and `release-notes.md` show what went out.
+2. When that commit's pipeline is green, run the pipeline by hand on it: `glab ci run -b main`. It builds the five platforms and publishes nothing. A push to `main` builds nothing, so the tag's pipeline would otherwise be the first to build what the merges since the last release changed [observed 2026-11-27, pipeline 4933: both Windows builds stopped on a variable name that a merge had brought in].
+3. When that pipeline is green, tag the commit and push the tag: `git tag vX.Y.Z <commit>`, `git push origin vX.Y.Z`.
+4. The tag's pipeline runs the checks and builds again, then job `creative-downloads` publishes. Its artifacts `publish.json` and `release-notes.md` show what went out.
 
 The tag must equal the version in `Cargo.toml`: every build job stops otherwise (`ci/build-release.sh`). Only a protected tag publishes; `v*` tags are protected, so only Maintainers can create one. The release notes are the commit subjects since the previous tag; the first tag of the public history has no list and says so (`ci/release-notes.sh`).
 
