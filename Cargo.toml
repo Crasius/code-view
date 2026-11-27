@@ -108,6 +108,8 @@ eframe = { version = "0.37", default-features = false, features = ["glow", "acce
 # fonts have no symbols or emoji (Linux without DejaVu or Noto, the tests' bundled-only setup).
 egui = { version = "0.37", features = ["monochrome_emoji_fonts"] }
 egui_kittest = "0.37"
+# try_join_all over a provider's parallel requests; the combinators only, no executor.
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
 # Mermaid diagrams in rendered Markdown, to SVG in pure Rust (no browser, no network); resvg draws
 # the SVG. Without its CLI and its own resvg (an older one).

@@ -13,6 +13,11 @@ workspace = true
 [lib]
 doctest = false
 
+[features]
+# `ChangedFile::sample` for other crates' tests (src/changed_files.rs); enabled only from
+# [dev-dependencies].
+test-support = []
+
 [dependencies]
 review-core.workspace = true
 tokio.workspace = true

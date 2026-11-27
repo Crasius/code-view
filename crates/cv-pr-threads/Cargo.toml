@@ -58,3 +58,4 @@ cv-testkit.workspace = true
 egui_kittest.workspace = true
 provider-github.workspace = true
 reqwest.workspace = true
+review-git = { workspace = true, features = ["test-support"] }

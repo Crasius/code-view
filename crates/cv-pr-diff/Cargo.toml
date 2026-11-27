@@ -66,4 +66,5 @@ cv-syntax = { workspace = true, features = ["test-support"] }
 cv-testkit.workspace = true
 cv-widgets = { workspace = true, features = ["test-support"] }
 egui_kittest.workspace = true
+review-git = { workspace = true, features = ["test-support"] }
 time.workspace = true

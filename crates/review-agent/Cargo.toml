@@ -30,4 +30,5 @@ harness = false
 
 [target."cfg(windows)".dependencies]
 # The registry's current PATH: a CLI installed after the app (or Explorer) started is found too.
-windows-sys = { workspace = true, features = ["Win32_System_Registry"] }
+# CREATE_NO_WINDOW keeps the CLI's console hidden.
+windows-sys = { workspace = true, features = ["Win32_System_Registry", "Win32_System_Threading"] }

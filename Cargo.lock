@@ -1204,6 +1204,7 @@ dependencies = [
  "cv-pr-diff",
  "cv-pr-session",
  "cv-pr-threads",
+ "cv-providers",
  "cv-runtime",
  "cv-services",
  "cv-testkit",
@@ -1231,6 +1232,7 @@ dependencies = [
  "cv-testkit",
  "cv-widgets",
  "egui",
+ "egui_kittest",
  "reqwest",
  "review-core",
  "review-git",
@@ -1398,10 +1400,12 @@ dependencies = [
  "reqwest",
  "review-core",
  "review-store",
+ "serde",
  "serde_json",
  "time",
  "tokio",
  "windows-sys 0.61.2",
+ "wiremock",
 ]
 
 [[package]]
@@ -1419,12 +1423,14 @@ dependencies = [
 name = "cv-testkit"
 version = "0.1.2"
 dependencies = [
+ "async-trait",
  "cv-base",
  "egui",
  "egui_kittest",
  "reqwest",
  "review-core",
  "review-store",
+ "time",
  "tokio",
 ]
 
@@ -3927,6 +3933,7 @@ version = "0.1.2"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
+ "futures-util",
  "reqwest",
  "review-core",
  "serde",

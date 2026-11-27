@@ -37,6 +37,7 @@ egui.workspace = true
 # clipboard (the same crate) only answers a paste.
 arboard.workspace = true
 reqwest.workspace = true
+serde.workspace = true
 # The browser extension's native messaging host speaks JSON (browser/).
 serde_json.workspace = true
 tokio.workspace = true
@@ -64,3 +65,4 @@ cv-providers.workspace = true
 egui_kittest.workspace = true
 # The fixture of links/access_writes_check.rs dates its summary with time::macros::datetime!.
 time.workspace = true
+wiremock.workspace = true
