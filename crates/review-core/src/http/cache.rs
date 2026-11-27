@@ -11,15 +11,23 @@
 //! no header value is stored.
 //!
 //! A write ends the sharing: every request that is neither a GET nor a GraphQL query bumps a
-//! process-wide write epoch when it finishes, answered or failed ([`Write`]), and a GET joins a request in flight only when that
-//! one started in the current epoch. Otherwise the request in flight may have been answered before
-//! the write landed, and the refresh after a merge would show the pull request still open; the GET
-//! then sends its own request, which later identical GETs join.
+//! process-wide write epoch when it finishes, answered or failed ([`Write`]), and a GET joins a
+//! request in flight only when that one started in the current epoch. Otherwise the request in
+//! flight may have been answered before the write landed, and the refresh after a merge would show
+//! the pull request still open; the GET then sends its own request, which later identical GETs
+//! join.
+//!
+//! The write epoch, the requests in flight and the kept answers live in a [`Cache`]. The app has
+//! one, [`Cache::shared`]: every GET of `http::fetch` and every write go through it, which is what
+//! makes the epoch process-wide. A test that expects a GET to join one in flight asks through a
+//! `Cache` of its own: `cargo test` runs the tests of a binary on threads of one process, so a
+//! write that any other test finishes between two calls ends their sharing in the shared cache,
+//! as it would in the app.
 
 use std::collections::HashMap;
 use std::hash::{BuildHasher, Hash, Hasher, RandomState};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use reqwest::header::{ETAG, HeaderValue, IF_NONE_MATCH};
 use reqwest::{Client, Request, Response, StatusCode};
@@ -35,18 +43,29 @@ const KEY_HEADERS: [&str; 4] = ["authorization", "private-token", "accept", "x-g
 
 type Shared = Option<Result<Fetched>>;
 
-/// Bumped by every finished write; see the module doc.
-static WRITE_EPOCH: AtomicU64 = AtomicU64::new(0);
-/// Tells the requests in flight under one key apart, so an older one ending leaves a newer one be.
-static NEXT_FLIGHT: AtomicU64 = AtomicU64::new(0);
+/// The sharing and revalidation state; see the module doc. Cloning hands out the same state: the
+/// task that sends a request keeps it until the request ends.
+#[derive(Clone, Default)]
+pub(crate) struct Cache(Arc<State>);
 
-/// A write (a request neither a GET nor a GraphQL query), while it runs: dropping it (answered, failed or cancelled) bumps
-/// the write epoch, so GETs sent from then on never join one that may predate the write.
-pub(crate) struct Write;
+#[derive(Default)]
+struct State {
+    /// Bumped by every finished write.
+    write_epoch: AtomicU64,
+    /// Tells the requests in flight under one key apart, so an older one ending leaves a newer one be.
+    next_flight: AtomicU64,
+    in_flight: Mutex<HashMap<u64, Flight>>,
+    store: Mutex<Store>,
+}
+
+/// A write (a request neither a GET nor a GraphQL query), while it runs: dropping it (answered,
+/// failed or cancelled) bumps the write epoch of its cache, so GETs sent from then on never join
+/// one that may predate the write.
+pub(crate) struct Write(Cache);
 
 impl Drop for Write {
     fn drop(&mut self) {
-        WRITE_EPOCH.fetch_add(1, Ordering::SeqCst);
+        self.0.0.write_epoch.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -57,40 +76,62 @@ struct Flight {
     receiver: watch::Receiver<Shared>,
 }
 
-/// The first caller starts the request; callers asking the same while it is in flight, with no
-/// write finished since it started, wait for the same answer. The request runs on its own task, so
-/// it is answered even when the caller that started it goes away first (its screen dropped or
-/// restarted the load) while others still wait.
-pub(crate) async fn fetch(client: Client, request: Request) -> Result<Fetched> {
-    // A caller that waits out rate limits never shares the answer of one that does not.
-    let may_wait = budget::may_wait();
-    let key = key_of(&request, may_wait);
-    let label = traffic::current_connection().unwrap_or_else(|| super::origin(request.url()));
-    let (mut receiver, is_shared) = {
-        let mut in_flight = in_flight();
-        let epoch = WRITE_EPOCH.load(Ordering::SeqCst);
-        if let Some(flight) = in_flight.get(&key).filter(|flight| flight.epoch == epoch) {
-            (flight.receiver.clone(), true)
-        } else {
-            let (sender, receiver) = watch::channel(None);
-            let id = NEXT_FLIGHT.fetch_add(1, Ordering::Relaxed);
-            in_flight.insert(key, Flight { id, epoch, receiver: receiver.clone() });
-            let scope = Scope { connection: traffic::current_connection(), may_wait };
-            tokio::spawn(send(client, request, Leader { key, id }, sender, scope));
-            (receiver, false)
-        }
-    };
-    match receiver.wait_for(Option::is_some).await {
-        Ok(answer) => {
-            if is_shared {
-                traffic::record_shared(&label);
+impl Cache {
+    /// The app's one cache, behind `http::fetch` and every write.
+    pub(crate) fn shared() -> &'static Self {
+        static SHARED: OnceLock<Cache> = OnceLock::new();
+        SHARED.get_or_init(Cache::default)
+    }
+
+    /// The guard of a write that runs now; see [`Write`].
+    pub(crate) fn write(&self) -> Write {
+        Write(self.clone())
+    }
+
+    /// The first caller starts the request; callers asking the same while it is in flight, with
+    /// no write finished since it started, wait for the same answer. The request runs on its own
+    /// task, so it is answered even when the caller that started it goes away first (its screen
+    /// dropped or restarted the load) while others still wait.
+    pub(crate) async fn fetch(&self, client: Client, request: Request) -> Result<Fetched> {
+        // A caller that waits out rate limits never shares the answer of one that does not.
+        let may_wait = budget::may_wait();
+        let key = key_of(&request, may_wait);
+        let label = traffic::current_connection().unwrap_or_else(|| super::origin(request.url()));
+        let (mut receiver, is_shared) = {
+            let mut in_flight = self.in_flight();
+            let epoch = self.0.write_epoch.load(Ordering::SeqCst);
+            if let Some(flight) = in_flight.get(&key).filter(|flight| flight.epoch == epoch) {
+                (flight.receiver.clone(), true)
+            } else {
+                let (sender, receiver) = watch::channel(None);
+                let id = self.0.next_flight.fetch_add(1, Ordering::Relaxed);
+                in_flight.insert(key, Flight { id, epoch, receiver: receiver.clone() });
+                let scope = Scope { connection: traffic::current_connection(), may_wait };
+                let leader = Leader { cache: self.clone(), key, id };
+                tokio::spawn(send(client, request, leader, sender, scope));
+                (receiver, false)
             }
-            answer.clone().expect("waited for a value")
+        };
+        match receiver.wait_for(Option::is_some).await {
+            Ok(answer) => {
+                if is_shared {
+                    traffic::record_shared(&label);
+                }
+                answer.clone().expect("waited for a value")
+            }
+            // Only a panic inside `send` drops the sender without an answer.
+            Err(_) => {
+                Err(ProviderError::Network("the request stopped before it was answered".to_owned()))
+            }
         }
-        // Only a panic inside `send` drops the sender without an answer.
-        Err(_) => {
-            Err(ProviderError::Network("the request stopped before it was answered".to_owned()))
-        }
+    }
+
+    fn in_flight(&self) -> MutexGuard<'_, HashMap<u64, Flight>> {
+        self.0.in_flight.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn store(&self) -> MutexGuard<'_, Store> {
+        self.0.store.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -108,14 +149,15 @@ async fn send(
     sender: watch::Sender<Shared>,
     scope: Scope,
 ) {
+    let cache = &leader.cache;
     let key = leader.key;
     // Boxed: the request future holds the whole budget and revalidation state (about 17 KB),
     // which would otherwise sit inline in every task this spawns and move with it.
     let request = Box::pin(async {
         if scope.may_wait {
-            revalidate(&client, request, key).await
+            revalidate(cache, &client, request, key).await
         } else {
-            budget::without_waiting(revalidate(&client, request, key)).await
+            budget::without_waiting(revalidate(cache, &client, request, key)).await
         }
     });
     let result = match scope.connection {
@@ -128,54 +170,60 @@ async fn send(
 /// Removes the in-flight entry when the request ends, answered or not, unless a request started
 /// after a write replaced it meanwhile.
 struct Leader {
+    cache: Cache,
     key: u64,
     id: u64,
 }
 
 impl Drop for Leader {
     fn drop(&mut self) {
-        let mut in_flight = in_flight();
+        let mut in_flight = self.cache.in_flight();
         if in_flight.get(&self.key).is_some_and(|flight| flight.id == self.id) {
             in_flight.remove(&self.key);
         }
     }
 }
 
-async fn revalidate(client: &Client, mut request: Request, key: u64) -> Result<Fetched> {
+async fn revalidate(
+    cache: &Cache,
+    client: &Client,
+    mut request: Request,
+    key: u64,
+) -> Result<Fetched> {
     let label = traffic::current_connection().unwrap_or_else(|| super::origin(request.url()));
-    let validator = store().etag(key);
+    let validator = cache.store().etag(key);
     let unconditional = validator.as_ref().and_then(|_| request.try_clone());
     if let Some(etag) = validator {
         request.headers_mut().insert(IF_NONE_MATCH, etag);
     }
     let response = budget::execute(client, request).await?;
     if response.status() != StatusCode::NOT_MODIFIED {
-        return keep(key, response).await;
+        return keep(cache, key, response).await;
     }
     traffic::record_not_modified(&label);
-    if let Some(cached) = store().hit(key) {
+    if let Some(cached) = cache.store().hit(key) {
         return Ok(cached);
     }
     // Evicted meanwhile: ask once more without the validator.
     let request = unconditional.ok_or_else(|| {
         ProviderError::Decode("304 Not Modified without a cached copy".to_owned())
     })?;
-    keep(key, budget::execute(client, request).await?).await
+    keep(cache, key, budget::execute(client, request).await?).await
 }
 
-async fn keep(key: u64, response: Response) -> Result<Fetched> {
+async fn keep(cache: &Cache, key: u64, response: Response) -> Result<Fetched> {
     let etag = response.headers().get(ETAG).cloned();
     let fetched = Fetched::read(response).await?;
     match etag {
-        Some(etag) => store().put(key, etag, fetched.clone()),
-        None => store().remove(key),
+        Some(etag) => cache.store().put(key, etag, fetched.clone()),
+        None => cache.store().remove(key),
     }
     Ok(fetched)
 }
 
 /// Bytes of the answers kept for revalidation, at most [`MAX_CACHED_BYTES`].
 pub fn cached_bytes() -> usize {
-    store().bytes
+    Cache::shared().store().bytes
 }
 
 fn key_of(request: &Request, may_wait: bool) -> u64 {
@@ -190,16 +238,6 @@ fn key_of(request: &Request, may_wait: bool) -> u64 {
         }
     }
     hasher.finish()
-}
-
-fn in_flight() -> std::sync::MutexGuard<'static, HashMap<u64, Flight>> {
-    static IN_FLIGHT: OnceLock<Mutex<HashMap<u64, Flight>>> = OnceLock::new();
-    IN_FLIGHT.get_or_init(Mutex::default).lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-fn store() -> std::sync::MutexGuard<'static, Store> {
-    static STORE: OnceLock<Mutex<Store>> = OnceLock::new();
-    STORE.get_or_init(Mutex::default).lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 #[derive(Default)]
@@ -253,6 +291,9 @@ impl Store {
     }
 }
 
+/// Tests that expect a GET to join one in flight ask through a [`Cache`] of their own (module
+/// doc); tests that expect a GET not to join may use the shared one, since another test's write
+/// only ends more sharing.
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -261,10 +302,12 @@ mod tests {
     use reqwest::header::HeaderValue;
     use reqwest::{Client, Url};
     use serde_json::{Value, json};
+    use tokio::task::JoinHandle;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::{Fetched, MAX_CACHED_BYTES, MAX_ENTRY_BYTES, Store};
+    use super::{Cache, Fetched, MAX_CACHED_BYTES, MAX_ENTRY_BYTES, Store};
+    use crate::error::Result;
     use crate::http;
 
     fn fetched(bytes: usize) -> Fetched {
@@ -278,6 +321,30 @@ mod tests {
     /// The keys in `1..=last` the store can revalidate (it holds their etag).
     fn kept(store: &Store, last: u64) -> Vec<u64> {
         (1..=last).filter(|key| store.etag(*key).is_some()).collect()
+    }
+
+    /// A GET of `url` through `cache`, on a task of its own.
+    fn spawn_get(cache: &Cache, client: &Client, url: &str) -> JoinHandle<Result<Fetched>> {
+        let cache = cache.clone();
+        let client = client.clone();
+        let request = client.get(url).build().expect("request");
+        tokio::spawn(async move { cache.fetch(client, request).await })
+    }
+
+    /// A host whose `/pipelines` answers after 300 ms and expects to be asked once.
+    async fn slow_pipelines_once() -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pipelines"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!([{ "id": 1 }]))
+                    .set_delay(Duration::from_millis(300)),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        server
     }
 
     /// The cache stays under its byte budget by dropping the answer used longest ago; an answer
@@ -305,7 +372,8 @@ mod tests {
     }
 
     /// A refresh after a merge asks the host itself: it never joins the probe that went out before
-    /// the merge and comes back with the pull request still open.
+    /// the merge and comes back with the pull request still open. Through the shared cache, so the
+    /// write is the app's own `http::unit`.
     #[tokio::test]
     async fn a_get_after_a_write_never_joins_one_sent_before_it() {
         let server = MockServer::start().await;
@@ -354,22 +422,13 @@ mod tests {
     /// before the starter is aborted.
     #[tokio::test]
     async fn a_waiting_caller_gets_the_answer_when_the_starting_caller_goes_away() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/pipelines"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(json!([{ "id": 1 }]))
-                    .set_delay(Duration::from_millis(300)),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
+        let server = slow_pipelines_once().await;
+        let cache = Cache::default();
         let client = Client::new();
         let url = format!("{}/pipelines", server.uri());
-        let starter = tokio::spawn(http::fetch(client.get(&url)));
+        let starter = spawn_get(&cache, &client, &url);
         tokio::task::yield_now().await;
-        let waiter = tokio::spawn(http::fetch(client.get(&url)));
+        let waiter = spawn_get(&cache, &client, &url);
         tokio::task::yield_now().await;
         starter.abort();
         let fetched = waiter
@@ -377,5 +436,27 @@ mod tests {
             .expect("the waiting task ran")
             .expect("an answer, not a stopped shared request");
         assert_eq!(fetched.json::<Value>().expect("json"), json!([{ "id": 1 }]));
+    }
+
+    /// Regression: a write that another test of the binary finished between the starter's and the
+    /// waiter's fetch moved the one process-wide epoch, so the waiter sent a request of its own and
+    /// the host counted two (`a_waiting_caller_gets_the_answer...`, once in a full workspace run).
+    /// Here such a write lands in that window every time, from another thread as another test's
+    /// would; a cache of the test's own still sends once.
+    #[tokio::test]
+    async fn a_write_in_the_shared_cache_leaves_a_test_cache_sharing() {
+        let server = slow_pipelines_once().await;
+        let cache = Cache::default();
+        let client = Client::new();
+        let url = format!("{}/pipelines", server.uri());
+        let starter = spawn_get(&cache, &client, &url);
+        tokio::task::yield_now().await;
+        std::thread::spawn(|| drop(Cache::shared().write())).join().expect("the write finished");
+        let waiter = spawn_get(&cache, &client, &url);
+        let (started, waited) = (starter.await, waiter.await);
+        assert_eq!(
+            started.expect("ran").expect("answer").bytes,
+            waited.expect("ran").expect("answer").bytes
+        );
     }
 }
