@@ -8,7 +8,7 @@ pub fn relative(moment: OffsetDateTime) -> String {
     relative_to(moment, OffsetDateTime::now_utc())
 }
 
-pub fn relative_to(moment: OffsetDateTime, now: OffsetDateTime) -> String {
+pub(crate) fn relative_to(moment: OffsetDateTime, now: OffsetDateTime) -> String {
     let seconds = (now - moment).whole_seconds();
     match seconds {
         ..60 => "just now".into(),

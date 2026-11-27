@@ -11,7 +11,7 @@ use cv_syntax::highlight::Span;
 use cv_widgets::mono_text;
 use cv_widgets::text_selection::{self, LineGrid};
 
-pub const TAB_WIDTH: usize = 4;
+pub(crate) const TAB_WIDTH: usize = 4;
 /// Changed-word bands reach one point past their glyphs, like egui's text backgrounds.
 const WORD_EXPAND: f32 = 1.0;
 
@@ -98,7 +98,7 @@ pub fn layout_job(
 /// Paints one code line with its top-left at `origin` and returns how many visual rows it took
 /// (more than one when wrapped). ASCII lines are stamped from cached glyphs, only the columns
 /// inside the clip rect; anything else goes through egui's text layout.
-pub fn paint(
+pub(crate) fn paint(
     painter: &Painter,
     origin: Pos2,
     text: &str,
@@ -198,7 +198,7 @@ pub(crate) fn tab_stop(column: usize) -> usize {
 /// visual row the row's index and the x-range from the text's left edge. A selection that runs on
 /// into the next line (`newline` set) also covers that many points after the end of the text, so
 /// an empty line in the middle of a selection still shows.
-pub fn selected_spans(
+pub(crate) fn selected_spans(
     painter: &Painter,
     text: &str,
     spans: &[Span],
@@ -263,7 +263,7 @@ pub fn columns(text: &str) -> usize {
 }
 
 /// Laid-out character index (tabs expanded) where character `index` of `text` starts.
-pub fn expanded_index(text: &str, index: usize) -> usize {
+pub(crate) fn expanded_index(text: &str, index: usize) -> usize {
     if !text.contains('\t') {
         return index;
     }

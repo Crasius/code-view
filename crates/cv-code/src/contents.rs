@@ -17,8 +17,8 @@ use cv_syntax::grammar;
 use cv_syntax::highlight::{self, LineSpans, Span};
 
 /// Files above either limit stay plain unless the user asks for colors.
-pub const AUTO_HIGHLIGHT_MAX_BYTES: usize = 8 * 1024 * 1024;
-pub const AUTO_HIGHLIGHT_MAX_LINES: usize = 150_000;
+pub(crate) const AUTO_HIGHLIGHT_MAX_BYTES: usize = 8 * 1024 * 1024;
+pub(crate) const AUTO_HIGHLIGHT_MAX_LINES: usize = 150_000;
 /// Finished file sides kept per pull request: our number, the texts and colors of the files shown
 /// last, so going back to one is instant. Half of it (12 MB) is the largest side kept, above the
 /// largest file colored without asking; one further away loads and colors again in the background.
@@ -32,7 +32,7 @@ pub struct SideContents {
 
 impl SideContents {
     /// Spans for line `index` when that line reads `text` (a diff line must match the blob line).
-    pub fn spans_for(&self, index: usize, text: &str) -> Option<&[Span]> {
+    pub(crate) fn spans_for(&self, index: usize, text: &str) -> Option<&[Span]> {
         let matches = self.text.line(index) == Some(text);
         if matches { self.spans.line(index) } else { None }
     }
@@ -65,7 +65,7 @@ pub struct FileContents {
 }
 
 impl FileContents {
-    pub fn side(&self, side: DiffSide) -> Option<&SideContents> {
+    pub(crate) fn side(&self, side: DiffSide) -> Option<&SideContents> {
         match side {
             DiffSide::Old => self.old.as_ref(),
             DiffSide::New => self.new.as_ref(),

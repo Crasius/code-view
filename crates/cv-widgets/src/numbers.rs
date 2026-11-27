@@ -43,7 +43,7 @@ pub fn zeroed(value: u64) -> String {
 }
 
 /// `one` for a count of 1, else `many`.
-pub fn noun<'a>(count: usize, one: &'a str, many: &'a str) -> &'a str {
+pub(crate) fn noun<'a>(count: usize, one: &'a str, many: &'a str) -> &'a str {
     if count == 1 { one } else { many }
 }
 

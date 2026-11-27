@@ -57,7 +57,7 @@ pub fn mark_pan(ui: &Ui, rect: Rect) {
 }
 
 /// `rect` (clipped to what `ui` shows) is a control that takes the middle click itself.
-pub fn mark_middle_click(ui: &Ui, rect: Rect) {
+pub(crate) fn mark_middle_click(ui: &Ui, rect: Rect) {
     mark(ui, Kind::MiddleClick, rect);
 }
 

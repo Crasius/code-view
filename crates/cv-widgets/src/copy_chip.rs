@@ -13,7 +13,7 @@ use egui::{Align2, Context, CursorIcon, FontId, Id, Response, Sense, Ui, WidgetI
 use super::{elide, focus, row};
 
 /// Height of a chip: room above and below the text, inside a 28 px line.
-pub const HEIGHT: f32 = 24.0;
+pub(crate) const HEIGHT: f32 = 24.0;
 /// The text's size, as inline code next to body text.
 const TEXT_SIZE: f32 = style::BODY_SIZE - 1.0;
 const ICON_GAP: f32 = 6.0;

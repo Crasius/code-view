@@ -23,7 +23,7 @@ pub const LONG_PRESS: Duration = Duration::from_millis(350);
 
 /// The bar's pointer sense, from before its widgets were laid out until they are known.
 #[cfg(any(target_os = "macos", test))]
-pub struct DragArea {
+pub(crate) struct DragArea {
     response: Response,
 }
 
@@ -42,7 +42,7 @@ impl DragArea {
     /// Moves or zooms the window, unless the press began on one of `holes` (the widgets on the bar:
     /// egui hands a drag that starts on a click-only widget to the area below it). Returns the
     /// command sent to the window.
-    pub fn apply(self, holes: &[Rect]) -> Option<ViewportCommand> {
+    pub(crate) fn apply(self, holes: &[Rect]) -> Option<ViewportCommand> {
         let ctx = &self.response.ctx;
         // A release (the second click) has no press origin left; the pointer is still where it was.
         let origin =
@@ -69,7 +69,7 @@ fn drag_area_mark(id: Id) -> Id {
 
 /// `id` is a [`DragArea`]: it senses clicks for the double click that zooms, but it is the title
 /// bar, no control, so it keeps the arrow cursor instead of the pointing hand.
-pub fn is_drag_area(ctx: &egui::Context, id: Id) -> bool {
+pub(crate) fn is_drag_area(ctx: &egui::Context, id: Id) -> bool {
     ctx.data(|data| data.get_temp::<bool>(drag_area_mark(id))).unwrap_or(false)
 }
 

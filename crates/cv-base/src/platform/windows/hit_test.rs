@@ -5,7 +5,7 @@
 use egui::Rect;
 
 /// Most interactive widgets (breadcrumb trail, search box) the caption carves out of its drag area.
-pub const MAX_HOLES: usize = 8;
+pub(crate) const MAX_HOLES: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CaptionButton {
@@ -15,7 +15,7 @@ pub enum CaptionButton {
 }
 
 impl CaptionButton {
-    pub const ALL: [CaptionButton; 3] =
+    pub(crate) const ALL: [CaptionButton; 3] =
         [CaptionButton::Minimize, CaptionButton::Maximize, CaptionButton::Close];
 }
 
@@ -45,7 +45,7 @@ pub struct PxRect {
 
 impl PxRect {
     /// `rect` in egui points, rounded to the pixel grid egui paints on.
-    pub fn from_points(rect: Rect, pixels_per_point: f32) -> Self {
+    pub(crate) fn from_points(rect: Rect, pixels_per_point: f32) -> Self {
         let px = |value: f32| (value * pixels_per_point).round() as i32;
         Self {
             left: px(rect.left()),
@@ -55,7 +55,7 @@ impl PxRect {
         }
     }
 
-    pub fn contains(self, x: i32, y: i32) -> bool {
+    pub(crate) fn contains(self, x: i32, y: i32) -> bool {
         (self.left..self.right).contains(&x) && (self.top..self.bottom).contains(&y)
     }
 }
@@ -74,7 +74,7 @@ pub struct CaptionRegions {
 
 impl CaptionRegions {
     /// Regions from egui rects in points. Holes beyond [`MAX_HOLES`] are dropped (stay draggable).
-    pub fn from_points(
+    pub(crate) fn from_points(
         caption: Rect,
         icon: Rect,
         buttons: [Rect; 3],

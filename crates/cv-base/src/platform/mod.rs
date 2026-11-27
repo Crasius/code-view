@@ -63,13 +63,14 @@ use windows as system;
 pub use macos::page_swipe;
 pub use system::{
     AZURE_CLI, Caption, EXAMPLE_CLONE, FrameHold, HAS_SAVE_DIALOG, PlacedWindow, TERMINALS,
-    ask_folder, ask_save_path, dialog_owner, downloads_dir, font_sources, hide_console,
-    hide_std_console, integrate_title_bar, monitor_refresh_hz, open_folder, open_shell,
-    open_terminal, prefers_reduced_motion, register_chrome_fonts, viewport,
+    ask_folder, ask_save_path, dialog_owner, downloads_dir, hide_console, hide_std_console,
+    integrate_title_bar, monitor_refresh_hz, open_folder, open_shell, open_terminal, viewport,
 };
+pub(crate) use system::{font_sources, prefers_reduced_motion, register_chrome_fonts};
 #[cfg(any(test, feature = "test-support"))]
 pub use window_drag::LONG_PRESS;
-pub use window_drag::{is_drag_area as is_window_drag_area, long_press_moves_window};
+pub(crate) use window_drag::is_drag_area as is_window_drag_area;
+pub use window_drag::long_press_moves_window;
 /// The Windows title bar's state for the tests of the integrated bar.
 #[cfg(all(windows, any(test, feature = "test-support")))]
 pub use windows::{hit_test, published_caption};
