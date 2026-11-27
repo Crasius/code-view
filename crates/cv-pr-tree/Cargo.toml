@@ -27,5 +27,6 @@ review-store.workspace = true
 
 [dev-dependencies]
 cv-base = { workspace = true, features = ["test-support"] }
+cv-testkit.workspace = true
 cv-widgets = { workspace = true, features = ["test-support"] }
 egui_kittest.workspace = true

@@ -8,6 +8,7 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use cv_testkit::Clicks;
 use egui::{
     Event, Key, Modifiers, MouseWheelSource, MouseWheelUnit, TouchPhase, ViewportId, pos2, vec2,
 };
@@ -429,11 +430,11 @@ fn folder_summary_walkthrough() {
     );
 
     key(&mut harness, Key::Home);
-    harness.get_by_label("Collapse src/app/cart.rs").click();
+    harness.click_at(harness.get_by_label("Collapse src/app/cart.rs").rect());
     settle(&mut harness);
     assert!(harness.query_by_label("Expand src/app/cart.rs").is_some());
 
-    harness.get_by_label("View src/app/checkout.rs").click();
+    harness.click_at(harness.get_by_label("View src/app/checkout.rs").rect());
     harness.run_steps(2);
     let checkout = harness.state().files.iter().position(|file| file.path == "src/app/checkout.rs");
     assert!(
@@ -441,11 +442,11 @@ fn folder_summary_walkthrough() {
         "View opens the file view"
     );
 
-    harness.get_by_label("All files").click();
+    harness.click_at(harness.get_by_label("All files").rect());
     harness.run_steps(2);
     harness.state_mut().open("data");
     settle(&mut harness);
-    harness.get_by_label("Show here data/fixtures.json").click();
+    harness.click_at(harness.get_by_label("Show here data/fixtures.json").rect());
     settle(&mut harness);
     assert!(
         harness.state().source.started.iter().any(|path| path == "data/fixtures.json"),
@@ -457,7 +458,7 @@ fn folder_summary_walkthrough() {
 fn collapse_lasts_for_the_session_and_is_exactly_the_header() {
     let mut harness = harness(Scene::new(shop_files(), ThemePreference::Light), [1180.0, 860.0]);
     settle(&mut harness);
-    harness.get_by_label("Collapse src/app/cart.rs").click();
+    harness.click_at(harness.get_by_label("Collapse src/app/cart.rs").rect());
     harness.run_steps(3);
     let card = card_of(harness.state(), "src/app/cart.rs");
     let summary = &harness.state().summary;

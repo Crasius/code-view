@@ -11,9 +11,9 @@ use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
 use super::action_e2e::wait_until;
-use super::clicks::Clicks;
 use super::mini_chat_walkthrough::{FIRST, answered, primary_click};
 use cv_pr_assistant::mini::SHRINK;
+use cv_testkit::Clicks;
 
 const CHIP: &str = "Claude · ";
 const NEW: &str = "New conversation (";

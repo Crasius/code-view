@@ -29,10 +29,10 @@ use review_store::{AppPaths, AppSettings, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit as test_support;
+use cv_testkit::Clicks;
 
 const REPOSITORY: &str = "contoso/Web/site";
 const POLICIES: &str = "https://dev.azure.com/contoso/Web/_settings/repositories?_a=policiesMid";

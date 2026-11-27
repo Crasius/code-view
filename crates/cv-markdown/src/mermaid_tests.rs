@@ -4,6 +4,7 @@
 use std::time::{Duration, Instant};
 
 use cv_base::theme;
+use cv_testkit::Clicks;
 use egui::accesskit::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
@@ -91,11 +92,11 @@ fn a_mermaid_fence_shows_its_diagram_and_toggles_to_its_source() {
         "the diagram, not its source"
     );
 
-    harness.get_by_role_and_label(Role::Button, "Show source").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Show source").rect());
     harness.run_steps(3);
     harness.get_by_label_contains("A[Start] --> B{Choice}");
     assert!(!has_diagram(&harness));
-    harness.get_by_role_and_label(Role::Button, "Show diagram").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Show diagram").rect());
     harness.run_steps(3);
     assert!(has_diagram(&harness), "back to the diagram");
 }
@@ -118,7 +119,7 @@ fn an_azure_devops_container_shows_its_diagram_like_a_fence() {
             harness.query_by_label_contains(":::").is_none(),
             "{platform:?}: the markers are not text"
         );
-        harness.get_by_role_and_label(Role::Button, "Show source").click();
+        harness.click_at(harness.get_by_role_and_label(Role::Button, "Show source").rect());
         harness.run_steps(3);
         harness.get_by_label_contains("Christie->>Josh: Hello Josh, how are you?");
         assert!(
@@ -135,7 +136,7 @@ fn a_source_that_cannot_be_drawn_shows_with_its_cause_and_actions() {
     let note = "Diagram not drawn: Unsupported diagram type \u{201C}fooDiagram\u{201D}, line 1.";
     run_until(&mut harness, "the failure note", |harness| harness.query_by_label(note).is_some());
     harness.get_by_label_contains("a --> b");
-    harness.get_by_role_and_label(Role::Button, "Copy source").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Copy source").rect());
     harness.run_steps(2);
     assert!(
         harness.query_by_role_and_label(Role::Button, "Retry").is_none(),
@@ -162,7 +163,7 @@ fn a_wide_diagram_shrinks_to_the_text_and_enlarges_in_the_lightbox() {
     let mut harness = harness(wide.to_owned(), None, [360.0, 500.0]);
     run_until(&mut harness, "the diagram", has_diagram);
     assert!(harness.get_by_role_and_label(Role::Image, "Mermaid diagram").rect().width() <= 360.0);
-    harness.get_by_role_and_label(Role::Button, "Enlarge").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Enlarge").rect());
     harness.run_steps(3);
     harness.get_by_role_and_label(Role::Button, "Close (Esc)");
     harness.key_press(egui::Key::Escape);

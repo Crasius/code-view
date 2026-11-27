@@ -13,10 +13,10 @@ use review_store::{AppPaths, ConnectionStore, DiffLayout, FilesStart};
 use serde_json::{Value, json};
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use super::github_mock::{
     self, FILE, GitHubHost, NUMBER, REPOSITORY, THREAD_ID, THREAD_TEXT, TITLE,
 };
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
 
 /// How long a wait may go on while nothing is in flight in the background: the app is idle, and

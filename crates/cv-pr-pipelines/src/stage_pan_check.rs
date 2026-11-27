@@ -3,6 +3,7 @@
 //! clicks; the middle button pans too; a fling coasts and then stops asking for frames.
 
 use cv_base::theme;
+use cv_testkit::Clicks;
 use egui::{CursorIcon, Event, Modifiers, PointerButton, Pos2, Vec2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -147,7 +148,7 @@ fn a_drag_starting_on_a_card_pans_and_does_not_click_it() {
 fn a_plain_click_on_a_card_still_clicks() {
     let mut harness = harness();
     harness.run();
-    harness.get_by_label("Stage Build").click();
+    harness.click_at(harness.get_by_label("Stage Build").rect());
     harness.run();
     assert_eq!(harness.state().last.as_deref(), Some("log Build and Tag Images 1:8"));
 }

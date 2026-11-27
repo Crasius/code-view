@@ -6,9 +6,9 @@ use egui_kittest::kittest::Queryable;
 use review_core::{Connection, ProviderKind};
 use review_store::{ConnectionStore, stable_hash};
 
-use super::clicks::Clicks;
 use super::setup_walkthrough::{harness, isolated_paths, press, wait_for};
 use cv_runtime::route::Route;
+use cv_testkit::Clicks;
 
 #[test]
 fn storage_measures_clears_after_asking_and_forgets_removed_connections() {

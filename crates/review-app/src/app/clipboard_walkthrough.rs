@@ -14,7 +14,6 @@ use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, press, type_into, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{
     FAILING_NUMBER, FORBIDDEN_NUMBER, GitHubHost, HIDDEN_NUMBER, NUMBER, READABLE_NUMBER,
     REPOSITORY, SLOW_NUMBER, TITLE,
@@ -22,6 +21,7 @@ use super::github_mock::{
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_shell::links::clipboard_links::ClipboardSource;
 use cv_shell::links::link_access::BUDGET;
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
 
 const CONNECTION_ID: &str = "gh";

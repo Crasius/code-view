@@ -20,8 +20,8 @@ use review_store::{AppPaths, FilesStart};
 
 use super::ReviewApp;
 use super::action_e2e::{app, has_cached_diff, open_pull_request, settle_background, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread, REPOSITORY, THREAD_TEXT};
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
 
 /// Changed files in `src/m00/` to `src/m19/`, counted in tree order before `zz/`: more than the

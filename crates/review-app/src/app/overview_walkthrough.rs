@@ -14,12 +14,12 @@ use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use cv_lists::pull_request_list::{GROUP_BY_REPOSITORY, LIST_INTERVAL, SEARCH_TOOLTIP};
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit as test_support;
+use cv_testkit::Clicks;
 
 const TOKEN: &str = "glpat-mock-only";
 const GROUP: &str = "team";

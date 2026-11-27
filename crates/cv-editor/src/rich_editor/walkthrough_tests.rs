@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use cv_base::theme;
+use cv_testkit::Clicks;
 use egui::accesskit::Role;
 use egui::{Event, ImeEvent, Key, Modifiers};
 use egui_kittest::Harness;
@@ -90,7 +91,7 @@ fn typing_formatting_lists_and_undo_write_markdown() {
     assert!(harness.state().changes > 0, "the output reports the edits");
     assert_eq!(harness.state().text, "Hello **world**", "the input rule bolds the word");
 
-    harness.get_by_label("Italic").click();
+    harness.click_at(harness.get_by_label("Italic").rect());
     harness.run_steps(2);
     type_text(&mut harness, "slanted");
     assert_eq!(harness.state().text, "Hello **world** *slanted*");
@@ -144,7 +145,7 @@ fn shortcuts_toolbar_and_platform_html() {
     assert_eq!(harness.state().text, "<u>under</u>", "Azure DevOps keeps <u>, not <ins>");
 
     press(&mut harness, Modifiers::NONE, Key::Enter);
-    harness.get_by_label("Numbered list").click();
+    harness.click_at(harness.get_by_label("Numbered list").rect());
     harness.run_steps(2);
     type_text(&mut harness, "first");
     press(&mut harness, Modifiers::NONE, Key::Enter);

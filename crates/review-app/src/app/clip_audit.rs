@@ -30,12 +30,12 @@ use review_store::{AppPaths, ConnectionStore};
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use super::clicks::Clicks;
 use super::{ReviewApp, clip_check};
 use cv_base::platform::FOCUS_MODE_KEY;
 use cv_pr_diff::find::bar::last_bar as last_find_bar;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir, git};
 
 const CONNECTION: &str = "clip-audit";

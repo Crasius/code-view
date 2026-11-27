@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 use cv_base::theme;
+use cv_testkit::Clicks;
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -33,7 +34,7 @@ fn harness(ways_out: WaysOut) -> Harness<'static, Toasts> {
 
 /// Clicks the toast's `label` and checks the toast left with it.
 fn click(harness: &mut Harness<'static, Toasts>, label: &str) {
-    harness.get_by_role_and_label(Role::Button, label).click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, label).rect());
     harness.run_steps(2);
     assert!(harness.query_by_label(FAILURE).is_none(), "the click dismissed the toast");
 }
@@ -49,7 +50,7 @@ fn toast_error_stays_until_dismissed_and_replaces_the_same_error() {
     harness.run_steps(2);
     assert_eq!(harness.query_all_by_label(FAILURE).count(), 1, "the same error shows once");
     assert_eq!(harness.state().toasts[0].lifetime(), None, "an error waits to be dismissed");
-    harness.get_by_role_and_label(Role::Button, "Dismiss").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Dismiss").rect());
     harness.run_steps(2);
     assert!(harness.query_by_label(FAILURE).is_none());
 }
@@ -77,7 +78,7 @@ fn toast_open_on_platform_opens_the_page() {
         WaysOut::new(ToastAction::open_on_platform(ProviderKind::GitHub, url))
             .and(ToastAction::open_in_browser("https://example.com/pr/7")),
     );
-    harness.get_by_role_and_label(Role::Button, "Open on GitHub").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Open on GitHub").rect());
     harness.step();
     let opened: Vec<String> = output_commands(&harness)
         .into_iter()
@@ -100,7 +101,7 @@ fn toast_open_folder_shows_the_folder() {
 #[test]
 fn toast_copy_puts_the_text_on_the_clipboard() {
     let mut harness = harness(ToastAction::copy("Copy command", "claude --resume 42").into());
-    harness.get_by_role_and_label(Role::Button, "Copy command").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Copy command").rect());
     harness.step();
     let copied = output_commands(&harness).into_iter().find_map(|command| match command {
         egui::OutputCommand::CopyText(text) => Some(text),

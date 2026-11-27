@@ -3,6 +3,7 @@
 //! loaded once, no diff asked for), each card exactly as tall as its blocks, folding its unchanged
 //! runs as the line cards do, and switching it off brings the lines back.
 
+use cv_testkit::Clicks;
 use egui_kittest::kittest::Queryable;
 use review_git::{ChangeKind, ChangedFile};
 use review_store::ThemePreference;
@@ -37,7 +38,7 @@ fn preview_renders_the_markdown_cards_and_off_brings_their_lines_back() {
     assert!(harness.state().summary.bodies.get(README).is_some(), "off: the lines show");
     assert!(harness.state().source.rendered.is_empty(), "off: no versions load");
 
-    harness.get_by_label("Preview").click();
+    harness.click_at(harness.get_by_label("Preview").rect());
     harness.run_steps(2);
     settle(&mut harness);
     let scene = harness.state();
@@ -56,7 +57,7 @@ fn preview_renders_the_markdown_cards_and_off_brings_their_lines_back() {
     );
     let code_height = body_height(scene, CODE);
 
-    harness.get_by_label("Preview").click();
+    harness.click_at(harness.get_by_label("Preview").rect());
     harness.run_steps(2);
     settle(&mut harness);
     let scene = harness.state();

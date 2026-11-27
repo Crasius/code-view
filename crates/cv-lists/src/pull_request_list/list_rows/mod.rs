@@ -605,6 +605,7 @@ pub(super) mod tests {
     use cv_services::diff_stats::DiffStats;
     use cv_services::self_review::{Identities, RowRequests};
     use cv_services::writes::flights::Flights;
+    use cv_testkit::Clicks;
     use egui::accesskit::Role;
     use egui::{Rect, pos2, vec2};
     use egui_kittest::Harness;
@@ -810,7 +811,7 @@ pub(super) mod tests {
             "anonymous GitLab rows wait to be asked"
         );
         assert!(harness.query_by_label("Lines of !1 not counted").is_some());
-        harness.get_by_label("Count lines of !1").click();
+        harness.click_at(harness.get_by_label("Count lines of !1").rect());
         harness.run();
         assert!(harness.state().asked_to_count, "the link asks the page to count");
     }
@@ -844,7 +845,9 @@ pub(super) mod tests {
         assert_eq!(api.height(), super::cards::sections::SECTION_HEIGHT);
         assert_eq!(link(2).height(), ROW_HEIGHT, "rows keep their height under a header");
 
-        harness.get_by_role_and_label(Role::Link, "Pull requests of group/api").click();
+        harness.click_at(
+            harness.get_by_role_and_label(Role::Link, "Pull requests of group/api").rect(),
+        );
         harness.run();
         let (asked, _) = harness.state_mut().navigator.take();
         let expected = Route::RepositoryPullRequests {
@@ -859,7 +862,7 @@ pub(super) mod tests {
     fn a_closed_section_keeps_its_header_and_count_and_drops_its_rows() {
         let mut harness = harness(1300.0, sectioned());
         harness.run();
-        harness.get_by_label("group/app, 2 pull requests, expanded").click();
+        harness.click_at(harness.get_by_label("group/app, 2 pull requests, expanded").rect());
         harness.run();
         let key = SectionKey {
             card: SectionCard::Connection,
@@ -914,7 +917,7 @@ Click to try again";
             harness.query_by_label_contains("!2 changed since").is_none(),
             "a failure outweighs a change"
         );
-        harness.get_by_label(failed).click();
+        harness.click_at(harness.get_by_label(failed).rect());
         harness.run_steps(3);
         assert_eq!(harness.state().retries, 1, "the failed edge tries again");
         assert_eq!(

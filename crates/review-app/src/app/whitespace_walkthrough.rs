@@ -11,8 +11,8 @@ use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost};
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
 
 const EOL: &str = "src/eol.rs";

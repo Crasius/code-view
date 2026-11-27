@@ -31,8 +31,8 @@ use serde_json::{Value, json};
 
 use self::hosts::{FILE, Released, State, TestPullRequest};
 use super::ReviewApp;
-use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
 
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(300);

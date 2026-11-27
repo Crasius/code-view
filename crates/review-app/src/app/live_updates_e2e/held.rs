@@ -8,9 +8,9 @@ use egui_kittest::kittest::Queryable;
 
 use super::super::ReviewApp;
 use super::super::action_e2e::{app, open_diff, open_pull_request, press, type_into, wait_until};
-use super::super::clicks::Clicks;
 use super::super::github_mock::{ExtraFile, GitHubHost};
 use super::{commits_tab, reload_button, shows};
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 /// Changed besides the file the pushes of these tests change.

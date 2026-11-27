@@ -21,7 +21,6 @@ use review_store::DiffLayout;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost};
 use cv_base::theme::{self, icons};
 use cv_code::find_paint::{HitSide, last_current as last_current_find};
@@ -30,6 +29,7 @@ use cv_pr_diff::find::bar::{
     BarNote as FindBarNote, has_keyboard as find_has_keyboard, last_bar as last_find_bar,
 };
 use cv_pr_rendered::markdown_diff::last_layers as last_find_layers;
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 const CODE: &str = "src/needle.rs";

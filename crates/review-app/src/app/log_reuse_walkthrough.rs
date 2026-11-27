@@ -20,10 +20,10 @@ use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_testkit as test_support;
+use cv_testkit::Clicks;
 
 const ID: &str = "log-reuse";
 const REPOSITORY: &str = "erika/billing";
