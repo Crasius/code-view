@@ -64,7 +64,7 @@ const CODE: &[Item] = &[
 ];
 const LINK_QUOTE: &[Item] = &[
     item(Action::Link, icons::LINK, "Link", shortcut!(command "K")),
-    item(Action::Quote, icons::QUOTES, "Quote", shortcut!(command shift "B")),
+    item(Action::Quote, icons::QUOTES, "Quote", shortcut!(command shift ".")),
 ];
 const MENTION: Item = item(Action::Mention, icons::AT, "Mention someone", "@");
 const HEADINGS: &[Item] = &[

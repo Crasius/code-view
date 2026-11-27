@@ -12,9 +12,9 @@ use egui::{
 };
 
 use super::caret::{self, Placed};
-use super::input::{self, Command, Frame, link_at};
-use super::layout::{ChipKind, ITEM_INDENT, Marker, QUOTE_INDENT, indent};
-use super::model::{Container, Kind, Pos, Selection};
+use super::input::{self, Command, CommandContext, link_at};
+use super::layout::{ChipKind, ITEM_INDENT, Marker, Offsets, container_indent, indent};
+use super::model::{Container, Document, Kind, Pos, Selection};
 use super::{Popup, RichOptions, State};
 use crate::markdown_editor::PullRequestContext;
 use crate::markdown_editor::toolbar_layout::TEXT_MARGIN;
@@ -96,7 +96,7 @@ fn visible(state: &mut State, origin: Pos2, clip: Rect) -> std::ops::Range<usize
     // The block starting above the top may reach into view.
     let first = offsets.tops.partition_point(|block_top| *block_top < top).saturating_sub(1);
     let end = offsets.tops.partition_point(|block_top| *block_top <= bottom);
-    first.min(end)..end.max(first)
+    first..end
 }
 
 /// Paints the visible blocks, the selection, the caret and the placeholder.
@@ -113,10 +113,10 @@ pub fn paint(ui: &Ui, state: &mut State, origin: Pos2, has_focus: bool, hint: &s
         range = corrected;
         ui.ctx().request_repaint();
     }
-    let width = ui.max_rect().width() - 2.0 * (origin.x - ui.max_rect().left());
     for index in range {
         let placed = caret::place(&mut state.layout, ui.ctx(), &state.doc, origin, index);
-        decorations(ui, state, &palette, origin, width, index, &placed);
+        let offsets = state.layout.offsets(&state.doc);
+        decorations(ui, &state.doc, offsets, &palette, origin, index, &placed);
         selection(ui, state, &palette, index, &placed);
         ui.painter().galley(placed.galley_origin, placed.laid.galley.clone(), palette.text);
         chips(ui, &palette, &placed);
@@ -144,27 +144,26 @@ pub fn paint(ui: &Ui, state: &mut State, origin: Pos2, has_focus: bool, hint: &s
 /// Quote bars, list markers, code panels and rules of block `index`.
 fn decorations(
     ui: &Ui,
-    state: &mut State,
+    doc: &Document,
+    offsets: &Offsets,
     palette: &Palette,
     origin: Pos2,
-    width: f32,
     index: usize,
     placed: &Placed,
 ) {
     let painter = ui.painter();
-    let block = state.doc.block(index).clone();
-    let offsets = state.layout.offsets(&state.doc);
+    let block = doc.block(index);
     let top = origin.y + placed.top;
     let bottom = top + placed.laid.height;
     let previous_bottom = index
         .checked_sub(1)
         .map(|before| origin.y + offsets.tops[before] + offsets.heights[before]);
-    let previous = index.checked_sub(1).map(|before| state.doc.block(before).nesting.clone());
-    let markers = offsets.markers.get(index).cloned().unwrap_or_default();
+    let previous = index.checked_sub(1).map(|before| &doc.block(before).nesting);
+    let markers = offsets.markers.get(index).map_or(&[][..], Vec::as_slice);
     let mut x = origin.x;
     let mut continues = true;
     for (depth, container) in block.nesting.iter().enumerate() {
-        let before = previous.as_ref().and_then(|nesting| nesting.get(depth));
+        let before = previous.and_then(|nesting| nesting.get(depth));
         continues = continues && before.is_some_and(|before| container.continues(before));
         if let Container::Quote(alert) = container {
             let start = if continues { previous_bottom.unwrap_or(top) } else { top };
@@ -172,16 +171,13 @@ fn decorations(
             let bar = Rect::from_min_max(pos2(x, start), pos2(x + QUOTE_BAR_WIDTH, bottom));
             painter.rect_filled(bar, CornerRadius::same(1), color);
         }
-        x += match container {
-            Container::Quote(_) => QUOTE_INDENT,
-            Container::Item { .. } => ITEM_INDENT,
-        };
+        x += container_indent(container);
     }
-    for (column, marker) in markers {
+    for &(column, marker) in markers {
         list_marker(ui, palette, marker_rect(placed, origin, column), marker, placed);
     }
     let left = origin.x + indent(&block.nesting);
-    let right = origin.x + width;
+    let right = ui.max_rect().right() - (origin.x - ui.max_rect().left());
     match &block.kind {
         Kind::Code(_) | Kind::Html | Kind::Table => {
             let panel = Rect::from_min_max(pos2(left, top), pos2(right, bottom));
@@ -351,8 +347,12 @@ impl Body<'_> {
         let sense = if self.options.is_enabled { Sense::click_and_drag() } else { Sense::hover() };
         let response = ui.interact(rect, self.text_id, sense);
         let origin = rect.min + TEXT_MARGIN.left_top();
-        let frame =
-            Frame { ui, origin, page_height: self.page_height, now: ui.input(|input| input.time) };
+        let context = CommandContext {
+            ui,
+            origin,
+            page_height: self.page_height,
+            now: ui.input(|input| input.time),
+        };
 
         let mut commands: Vec<Command> = clicked.into_iter().collect();
         commands.extend(pointer(ui, &response, state, origin));
@@ -361,7 +361,7 @@ impl Body<'_> {
             mark_as_text_edit(&ctx, self.text_id);
             commands.extend(input::take_commands(ui, state));
         }
-        let ran = input::run(state, &frame, commands);
+        let ran = input::run(state, &context, commands);
         if takes_input {
             // For the next frame's keys, so it follows where this frame's input left the caret.
             // Tab stays in the text where it nests, indents or takes the open mention list's pick.

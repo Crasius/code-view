@@ -28,6 +28,10 @@ struct Probe {
     people: Option<Arc<Vec<Person>>>,
 }
 
+fn editor_id() -> egui::Id {
+    egui::Id::unique("rich")
+}
+
 fn harness(text: &str, platform: ProviderKind) -> Harness<'static, Probe> {
     let probe = Probe {
         text: text.to_owned(),
@@ -55,7 +59,7 @@ fn harness(text: &str, platform: ProviderKind) -> Harness<'static, Probe> {
                     grab_focus: probe.grab_focus,
                     ..RichOptions::default()
                 };
-                let id = egui::Id::unique("rich");
+                let id = editor_id();
                 let output = show_with(ui, id, &mut probe.text, &options, |_| {});
                 probe.changes += usize::from(output.is_changed);
                 probe.has_focus = output.has_focus;
@@ -81,7 +85,7 @@ fn press(harness: &mut Harness<'_, Probe>, modifiers: Modifiers, key: Key) {
 #[test]
 fn typing_formatting_lists_and_undo_write_markdown() {
     let mut harness = harness("", ProviderKind::GitHub);
-    let focused = harness.ctx.memory(|memory| memory.has_focus(text_id(egui::Id::unique("rich"))));
+    let focused = harness.ctx.memory(|memory| memory.has_focus(text_id(editor_id())));
     assert!(focused, "grab_focus focuses the text area");
     // The app's single-key shortcuts ask egui whether a text edit has the keys.
     assert!(harness.ctx.text_edit_focused(), "the focused area counts as a text edit");
@@ -160,6 +164,22 @@ fn shortcuts_toolbar_and_platform_html() {
     assert_eq!(harness.state().text, "<u>under</u>\n\n1. first\n2. second");
 }
 
+/// A Tab the first item of a list refuses records no undo step: the next Ctrl+Z undoes the last
+/// typed text, and a refused Tab after it leaves the redo in place.
+#[test]
+fn a_refused_tab_leaves_undo_to_the_last_real_edit() {
+    let mut harness = harness("", ProviderKind::GitHub);
+    type_text(&mut harness, "- one");
+    assert_eq!(harness.state().text, "- one");
+    press(&mut harness, Modifiers::NONE, Key::Tab);
+    assert_eq!(harness.state().text, "- one", "the first item has nothing to nest under");
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert_eq!(harness.state().text, "-", "Ctrl+Z undoes the typed word, not the refused Tab");
+    press(&mut harness, Modifiers::NONE, Key::Tab);
+    press(&mut harness, Modifiers::COMMAND, Key::Y);
+    assert_eq!(harness.state().text, "- one", "the redo survives a refused Tab");
+}
+
 /// Tab takes the mention list's pick (as Enter does) in a paragraph too, where Tab otherwise moves
 /// the focus on: the text keeps the focus and the next words land after the mention.
 #[test]
@@ -169,7 +189,7 @@ fn tab_takes_a_mention_and_keeps_the_focus() {
         Person { id: "1".into(), display_name: "Ada Lovelace".into(), login: Some("ada".into()) };
     harness.state_mut().grab_focus = false;
     harness.state_mut().people = Some(Arc::new(vec![ada]));
-    let text_area = text_id(egui::Id::unique("rich"));
+    let text_area = text_id(editor_id());
     harness.ctx.memory_mut(|memory| memory.request_focus(text_area));
     harness.run_steps(2);
     type_text(&mut harness, "hi @ad");
@@ -211,7 +231,7 @@ fn reload_reads_a_same_length_change_in_the_middle() {
     let mut harness = harness("one two three", ProviderKind::GitHub);
     // A caller that rewrites the text in place asks for a fresh read; the undo history goes.
     harness.state_mut().text = "one TWO three".to_owned();
-    super::reload(&harness.ctx, egui::Id::unique("rich"));
+    super::reload(&harness.ctx, editor_id());
     harness.run_steps(2);
     type_text(&mut harness, "!");
     assert_eq!(harness.state().text, "one TWO three!");
@@ -223,16 +243,9 @@ fn reload_reads_a_same_length_change_in_the_middle() {
 fn a_long_comment_lays_out_only_what_is_visible() {
     let long: Vec<String> =
         (0..5_000).map(|line| format!("Line {line} of a long comment")).collect();
-    let mut harness = harness(
-        &long.join(
-            "
-
-",
-        ),
-        ProviderKind::GitHub,
-    );
+    let mut harness = harness(&long.join("\n\n"), ProviderKind::GitHub);
     let cached = |harness: &Harness<'_, Probe>| {
-        let id = egui::Id::unique("rich").with("rich_state");
+        let id = editor_id().with("rich_state");
         let handle = harness.ctx.data(|data| data.get_temp::<super::Handle>(id)).expect("state");
         handle.lock().layout.cached()
     };
