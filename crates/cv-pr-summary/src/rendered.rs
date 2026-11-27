@@ -18,7 +18,6 @@ use review_store::{AppSettings, DiffLayout};
 use super::code::{self, CodeOutput, ThreadsByPath};
 use super::layout::{self, Geometry};
 use super::{FolderSummary, SummaryInputs};
-use cv_code::compaction::SUMMARY_CONTEXT;
 use cv_pr_rendered::markdown_diff::embedded::{self, Embedding};
 use cv_pr_rendered::markdown_diff::{MarkdownDiff, MarkdownModel, RenderedInputs};
 use cv_pr_rendered::preview;
@@ -47,6 +46,8 @@ pub struct RenderedFrame<'a> {
     pub is_split: bool,
     /// The old side's share side by side.
     pub split: f32,
+    /// The folder's compact context, as its line cards keep, whatever the file view keeps.
+    pub context: u32,
 }
 
 #[derive(Default)]
@@ -224,8 +225,7 @@ fn inputs<'a>(model: &'a Arc<MarkdownModel>, frame: &RenderedFrame<'a>) -> Rende
         model,
         platform: inputs.platform,
         layout: if frame.is_split { DiffLayout::SideBySide } else { DiffLayout::Inline },
-        // The folder's compact context, as its line cards keep, whatever the file view keeps.
-        context: SUMMARY_CONTEXT.min(inputs.compare.2.context),
+        context: frame.context,
         // The rendered file follows the code zoom, like the cards' code.
         scale: inputs.font_size / AppSettings::DEFAULT_CODE_FONT_SIZE,
         can_comment: inputs.can_comment,
@@ -263,6 +263,7 @@ pub fn lay_out_rendered(
     if summary.width <= 0.0 || summary.index.len() != summary.slots.len() {
         return requests;
     }
+    let context = summary.context();
     for &card in summary.loads.wanted() {
         let file = &inputs.files[summary.slots[card].file];
         if summary.collapsed.contains(&file.path) || !inputs.renders(file) {
@@ -277,6 +278,7 @@ pub fn lay_out_rendered(
             threads: code::threads_of(threads, file),
             is_split: summary.split,
             split,
+            context,
         };
         let origin = pos2(0.0, summary.index.top(card) + geometry.header);
         let (height, scroll) =

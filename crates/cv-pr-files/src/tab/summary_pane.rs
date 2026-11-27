@@ -11,7 +11,7 @@ use review_git::ChangedFile;
 use super::super::Env;
 use super::file_diffs::FileDiffs;
 use super::source;
-use cv_pr_summary::{FolderSummary, SummaryEvent, SummaryInputs};
+use cv_pr_summary::{Compare, FolderSummary, SummaryEvent, SummaryInputs};
 use cv_pr_tree::{FileFilter, FileTree};
 
 #[derive(Default)]
@@ -64,7 +64,7 @@ impl SummaryPane {
             order: &self.order,
             order_version: self.order_version,
             folder: &self.folder,
-            compare: (base, head, options),
+            compare: Compare { base, head, options },
             font_size: settings.code_font_size,
             thread_counts,
             threads: &threads,
