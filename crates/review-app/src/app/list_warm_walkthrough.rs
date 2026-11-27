@@ -12,7 +12,7 @@ use serde_json::json;
 
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, NUMBER, OWNER, REPOSITORY, TITLE, pull_path, search_row};
-use super::walkthrough::{app, wait_idle, wait_until};
+use super::walkthrough::{SharingWindow, app, wait_idle, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::{Clicks, ScratchDir};
 
@@ -159,13 +159,15 @@ fn a_resting_pointer_warms_the_page_so_the_click_fetches_nothing_again() {
 }
 
 /// The page a click opens while the read ahead of its detail is on its way joins that request
-/// instead of sending its own (the HTTP layer shares identical requests in flight).
+/// instead of sending its own (the HTTP layer shares identical requests in flight): the page asks
+/// for the detail twice (three requests when nothing joins), both on the read ahead's key.
 #[test]
 fn a_click_while_the_detail_is_read_ahead_joins_its_request() {
     let scratch = ScratchDir::new("list-warm-join");
     let host = slow_detail();
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     let row = row_rect(&mut harness);
+    let window = SharingWindow::open(host.writes());
     harness.hover_at(on_title(row));
     wait_until(&mut harness, "the read ahead of the rested row", |_| was_detail_asked(&host));
     harness.click_at(harness.get_by_label(&format!("{NUMBER} {TITLE}")).rect());
@@ -177,7 +179,12 @@ fn a_click_while_the_detail_is_read_ahead_joins_its_request() {
     harness.step();
     assert!(matches!(harness.state().route, Route::PullRequest(_)), "the click opened the page");
     assert!(harness.query_by_label("Updating…").is_some(), "which waits for the detail");
-    assert_eq!(detail_requests(&host, NUMBER), 1, "on the request the list sent");
+    window.close(host.writes()).assert_count(
+        detail_requests(&host, NUMBER),
+        1,
+        2,
+        "on the request the list sent",
+    );
 }
 
 #[test]

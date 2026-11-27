@@ -467,6 +467,60 @@ pub(super) fn opened_urls(harness: &Harness<'_, ReviewApp>) -> Vec<String> {
         .collect()
 }
 
+/// The stretch of a walkthrough in which a request count rests on GETs joining one in flight.
+/// `review_core::http` shares identical GETs only while no write finished in the process since
+/// the shared one started, and `cargo test` runs the walkthroughs on threads of one process: a
+/// write a neighbour finishes inside the window ends the sharing there, and the page sends its own
+/// request. The window tells the two cases apart; a write of the test's own host fails it, since
+/// then the app ended the sharing itself.
+pub(super) struct SharingWindow {
+    epoch: u64,
+    own_writes: usize,
+}
+
+impl SharingWindow {
+    /// Opens it before the first request that others join starts; `own_writes`: the writes the
+    /// test's host received so far.
+    pub(super) fn open(own_writes: usize) -> Self {
+        Self { epoch: review_core::http::write_epoch(), own_writes }
+    }
+
+    /// Closes it once the joins happened, with the host's writes by then: none may have come in
+    /// meanwhile.
+    pub(super) fn close(self, own_writes: usize) -> NeighbourWrites {
+        assert_eq!(
+            own_writes, self.own_writes,
+            "the app wrote to its host inside the window, which ends the sharing the count rests on"
+        );
+        NeighbourWrites(review_core::http::write_epoch() - self.epoch)
+    }
+}
+
+/// The writes other tests finished in the process while a [`SharingWindow`] was open.
+pub(super) struct NeighbourWrites(u64);
+
+impl NeighbourWrites {
+    /// Asserts a count of `joined` requests when every GET joined, of which `may_join` GETs joined
+    /// one request in flight under one key. Without a neighbour's write the count is exact. With
+    /// one, each GET that did not join started a request of its own, which the later ones join
+    /// unless another write finished: so every extra request takes a write of its own, and the
+    /// count lies between `joined` and `joined` plus the fewer of the writes and `may_join`.
+    pub(super) fn assert_count(&self, counted: usize, joined: usize, may_join: usize, what: &str) {
+        if self.0 == 0 {
+            assert_eq!(counted, joined, "{what}");
+            return;
+        }
+        let extra = usize::try_from(self.0).map_or(may_join, |writes| writes.min(may_join));
+        assert!(
+            (joined..=joined + extra).contains(&counted),
+            "{what}: {counted} requests, {joined} to {} expected, since {} writes of other tests \
+             ended the sharing inside the window",
+            joined + extra,
+            self.0
+        );
+    }
+}
+
 /// The settings file the app saved below its data folders.
 pub(super) fn saved_settings(harness: &Harness<'_, ReviewApp>) -> AppSettings {
     AppSettings::load(&harness.state().services.paths.settings_file()).expect("saved settings")
@@ -475,4 +529,29 @@ pub(super) fn saved_settings(harness: &Harness<'_, ReviewApp>) -> AppSettings {
 /// Whether an open pull request holds `path`'s diff in its cache.
 pub(super) fn has_cached_diff(harness: &Harness<'_, ReviewApp>, path: &str) -> bool {
     harness.state().pull_requests.iter().any(|(_, page)| page.has_cached_diff(path))
+}
+
+mod tests {
+    use super::NeighbourWrites;
+
+    /// The counts of 0 to 4 requests that pass, for 1 request when all 2 GETs joined.
+    fn passing_counts(writes: u64) -> Vec<usize> {
+        (0..5)
+            .filter(|counted| {
+                std::panic::catch_unwind(|| {
+                    NeighbourWrites(writes).assert_count(*counted, 1, 2, "the detail");
+                })
+                .is_ok()
+            })
+            .collect()
+    }
+
+    /// Without a neighbour's write the count is exact; each write lets one more GET miss its join,
+    /// up to the GETs that join, and never fewer requests are sent.
+    #[test]
+    fn a_neighbours_write_allows_one_request_more_each_up_to_the_joins() {
+        assert_eq!(passing_counts(0), [1]);
+        assert_eq!(passing_counts(1), [1, 2]);
+        assert_eq!(passing_counts(5), [1, 2, 3]);
+    }
 }

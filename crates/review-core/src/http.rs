@@ -30,7 +30,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use crate::error::Result;
 
 pub use budget::{Api, RateLimitNotice, rate_limits, resume, without_waiting};
-pub use cache::cached_bytes;
+pub use cache::{cached_bytes, write_epoch};
 pub use traffic::{ConnectionTraffic, EndpointCount, for_connection};
 
 const USER_AGENT: &str = concat!("CodeView/", env!("CARGO_PKG_VERSION"));
