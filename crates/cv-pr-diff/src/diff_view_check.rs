@@ -6,7 +6,7 @@
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
 use cv_pr_threads::samples;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, poll_until};
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -63,7 +63,10 @@ fn new_only_marks_removals_and_shows_them_on_demand() {
     // Resting on a wedge opens the popover with the removed lines.
     let loop_label = format!("Show 5 removed lines (base lines {loop_start}–{})", loop_start + 4);
     harness.get_by_label(&loop_label).hover();
-    settle(&mut harness);
+    poll_until("the popover with the removed lines", || {
+        harness.step();
+        harness.query_by_label_contains("Removed lines:").is_some()
+    });
     let popover = harness.get_by_label_contains("Removed lines:");
     let text = popover.accesskit_node().label().unwrap_or_default();
     assert!(

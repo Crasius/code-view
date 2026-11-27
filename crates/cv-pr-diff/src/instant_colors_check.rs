@@ -16,9 +16,9 @@ use crate::diff_cache::DiffKey;
 use crate::diff_view::{DiffInputs, DiffView};
 use crate::find::FindInputs;
 use crate::patch_colors::PatchColors;
-use crate::testing::{NEW, OLD, PATH, diff_of, side};
+use crate::testing::{NEW, OLD, PATH, diff_of, settle, side};
 use cv_base::theme::syntax::{self, TokenKind};
-use cv_base::theme::{self, Palette};
+use cv_base::theme::{self, Palette, motion};
 use cv_code::contents::{Coloring, FileContents};
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::{self, Pane};
@@ -30,6 +30,10 @@ use cv_testkit::{WAIT_LIMIT, poll_until};
 
 /// Frames the rows show before the held file versions arrive.
 const FRAMES_BEFORE_CONTENTS: usize = 3;
+/// One frame of [`late_colors_fade_in_instead_of_flashing`], at 60 Hz.
+const FRAME: f32 = 1.0 / 60.0;
+/// Frames the late colors' fade may take: its own plus the frame it starts in and one to land.
+const FADE_FRAMES: u64 = (motion::FAST / FRAME) as u64 + 2;
 
 fn key() -> DiffKey {
     key_for(PATH)
@@ -248,7 +252,8 @@ fn late_colors_arrive(is_reduced: bool) {
     let (state, diff_sender, _contents_sender) = opening(Layout::Inline);
     let mut harness = Harness::builder()
         .with_size([1180.0, 760.0])
-        .with_step_dt(1.0 / 60.0)
+        .with_step_dt(FRAME)
+        .with_max_steps(FADE_FRAMES)
         .with_context_setup(move |ctx| {
             theme::fonts::install(ctx);
             theme::motion::set_reduced(ctx, is_reduced);
@@ -256,7 +261,10 @@ fn late_colors_arrive(is_reduced: bool) {
         .build_ui_state(show, state);
     let diff = fixture_diff();
     diff_sender.send(diff.clone()).expect("the view listens");
-    harness.run_steps(3);
+    poll_until("the rows show", || {
+        harness.step();
+        !glyph_colors(&harness).is_empty()
+    });
     let keyword = syntax::color(TokenKind::Keyword, &Palette::LIGHT);
     assert!(!glyph_colors(&harness).contains(&keyword), "no colors yet");
     let ctx = harness.ctx.clone();
@@ -266,7 +274,7 @@ fn late_colors_arrive(is_reduced: bool) {
     assert!(colors.wait_finished(&repaints, &key()).is_some(), "the diff was colored");
     harness.step();
     let first = glyph_colors(&harness);
-    harness.run_steps(20);
+    settle(&mut harness);
     assert!(glyph_colors(&harness).contains(&keyword), "the colors are fully there after the fade");
     if is_reduced {
         assert!(first.contains(&keyword), "reduced motion: at once");

@@ -66,28 +66,15 @@ fn services_in(scratch: &ScratchDir) -> Services {
     Services::new(egui::Context::default(), scratch.app_paths(), cv_providers::create_provider)
 }
 
-/// The one version an added or deleted file has: the new one of an added file, the old one of a
-/// deleted.
-fn whole_file_side(file: &ChangedFile) -> Option<DiffSide> {
-    match file.kind {
-        ChangeKind::Added => Some(DiffSide::New),
-        ChangeKind::Deleted => Some(DiffSide::Old),
-        ChangeKind::Modified
-        | ChangeKind::Renamed
-        | ChangeKind::Copied
-        | ChangeKind::TypeChanged => None,
-    }
-}
-
+/// `file` with both versions shown; a case of an added or deleted file sets `whole_file` itself.
 fn scene(file: ChangedFile, changes: Option<ChangePosition>, services: Services) -> Scene {
-    let whole_file = whole_file_side(&file);
     Scene {
         services,
         preview: Preview::default(),
         file,
         is_viewed: false,
         changes,
-        whole_file,
+        whole_file: None,
         is_rendered: false,
         area: Rect::NOTHING,
     }
@@ -186,16 +173,17 @@ fn controls(harness: &Harness<'_, Scene>) -> Vec<(String, Rect)> {
         .collect()
 }
 
-/// Draws `file` with `changes` (`None` while loading or for a preview), then returns the bar's
-/// controls after checking that none overlap.
+/// Draws `file` with `changes` (`None` while loading or for a preview) and the one version
+/// `whole_file` names, then returns the bar's controls after checking that none overlap.
 fn show_file(
     harness: &mut Harness<'static, Scene>,
     width: f32,
     file: ChangedFile,
     changes: Option<ChangePosition>,
+    whole_file: Option<DiffSide>,
 ) -> Vec<(String, Rect)> {
     let scene = harness.state_mut();
-    scene.whole_file = whole_file_side(&file);
+    scene.whole_file = whole_file;
     scene.file = file;
     scene.changes = changes;
     redraw(harness, width)
@@ -269,9 +257,16 @@ fn assert_whole_files_keep_the_bar(
     width: f32,
     reference: &[(String, Rect)],
 ) {
-    for kind in [ChangeKind::Added, ChangeKind::Deleted] {
-        let found =
-            show_file(harness, width, file(LONG_PATH, kind, None, (40, 0)), Some(unfocused(1)));
+    for (kind, whole_file) in
+        [(ChangeKind::Added, DiffSide::New), (ChangeKind::Deleted, DiffSide::Old)]
+    {
+        let found = show_file(
+            harness,
+            width,
+            file(LONG_PATH, kind, None, (40, 0)),
+            Some(unfocused(1)),
+            Some(whole_file),
+        );
         assert_eq!(
             around_layout_slot(&found),
             around_layout_slot(reference),
@@ -296,8 +291,8 @@ fn switching_files_moves_nothing_but_the_path() {
         let code = file(LONG_PATH, ChangeKind::Modified, None, (5, 0));
         let mut harness = harness(scene(code.clone(), None, services_in(&scratch)), width);
         // Loading, then shown: the diff's controls switch from disabled to enabled in place.
-        let reference = show_file(&mut harness, width, code.clone(), None);
-        let found = show_file(&mut harness, width, code.clone(), Some(focused(0, 4)));
+        let reference = show_file(&mut harness, width, code.clone(), None, None);
+        let found = show_file(&mut harness, width, code.clone(), Some(focused(0, 4)), None);
         assert_eq!(
             rects(&found),
             rects(&reference),
@@ -317,7 +312,7 @@ fn switching_files_moves_nothing_but_the_path() {
         ];
         for (file, changes) in files {
             let path = file.path.clone();
-            let found = show_file(&mut harness, width, file, changes);
+            let found = show_file(&mut harness, width, file, changes, None);
             assert_eq!(
                 rects(&found),
                 rects(&reference),
@@ -412,11 +407,17 @@ fn long_paths_never_overlap_the_controls() {
         "renamed-markdown",
     );
     check_widths(
-        || fresh(file(LONG_PATH, ChangeKind::Added, None, (1_234, 0)), Some(unfocused(1))),
+        || Scene {
+            whole_file: Some(DiffSide::New),
+            ..fresh(file(LONG_PATH, ChangeKind::Added, None, (1_234, 0)), Some(unfocused(1)))
+        },
         "added",
     );
     check_widths(
-        || fresh(file(LONG_PATH, ChangeKind::Deleted, None, (0, 87)), Some(unfocused(1))),
+        || Scene {
+            whole_file: Some(DiffSide::Old),
+            ..fresh(file(LONG_PATH, ChangeKind::Deleted, None, (0, 87)), Some(unfocused(1)))
+        },
         "deleted",
     );
     check_widths(|| fresh(file(LONG_PATH, ChangeKind::Modified, None, (5, 0)), None), "loading");

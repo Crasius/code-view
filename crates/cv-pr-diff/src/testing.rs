@@ -12,10 +12,11 @@ use cv_pr_threads::{ThreadsUi, samples};
 use cv_syntax::blob_text::BlobText;
 use cv_syntax::grammar;
 use cv_syntax::highlight::{self, LineSpans};
-use egui::{Event, Modifiers, PointerButton, Pos2};
+use egui::{Event, Modifiers, PointerButton, Pos2, Role};
 use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
 use review_core::{
-    DiffSide, ProviderKind, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus,
+    DiffSide, NewThread, ProviderKind, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus,
 };
 use review_git::FileDiff;
 use review_store::{PaneSizes, ThemePreference};
@@ -316,6 +317,23 @@ pub fn click_with<State>(harness: &mut Harness<'_, State>, pos: Pos2, modifiers:
     harness.event(button(false));
     harness.event(Event::ModifiersChanged(Modifiers::NONE));
     harness.step();
+}
+
+/// The comments the view asked to create, in order.
+pub fn new_threads(events: &[DiffEvent]) -> impl Iterator<Item = &NewThread> {
+    events.iter().filter_map(|event| match event {
+        DiffEvent::Create { thread, .. } => Some(thread),
+        _ => None,
+    })
+}
+
+/// Writes `body` into the open comment and posts it.
+pub fn post_comment<State>(harness: &mut Harness<'_, State>, body: &str) {
+    harness.event(Event::Text(body.to_owned()));
+    harness.step();
+    let button = harness.get_by_role_and_label(Role::Button, "Comment").rect().center();
+    click_with(harness, button, Modifiers::NONE);
+    settle(harness);
 }
 
 /// 1-based line of `needle` in `text`.

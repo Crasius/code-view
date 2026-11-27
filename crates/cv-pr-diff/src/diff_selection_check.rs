@@ -1,16 +1,17 @@
 //! Selecting, copying and commenting on several lines in the diff, driven with the pointer and
 //! keyboard like a user.
 
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, poll_until};
 use egui::{Event, Key, Modifiers, PointerButton, Pos2, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{DiffSide, LineRange, NewThread, ReviewThread, ThreadAnchor, ThreadStatus};
 use review_git::LineKind;
 
-use crate::diff_view::{COMMENT_SHORTCUT, DiffEvent, TextArea};
+use crate::diff_view::{COMMENT_SHORTCUT, TextArea};
 use crate::testing::{
-    self as check, Fixture, NEW, OLD, PATH, click_with, fixture, harness, line_of, settle, side,
+    self as check, Fixture, NEW, OLD, PATH, click_with, fixture, harness, line_of, new_threads,
+    post_comment, settle, side,
 };
 use cv_base::theme;
 use cv_code::diff_rows::{Layout, RangeOwner, RangeRows};
@@ -20,14 +21,6 @@ use cv_widgets::text_selection;
 
 fn button(pos: Pos2, button: PointerButton, pressed: bool, modifiers: Modifiers) -> Event {
     Event::PointerButton { pos, button, pressed, modifiers }
-}
-
-/// The comments the view asked to create, in order.
-fn new_threads(events: &[DiffEvent]) -> impl Iterator<Item = &NewThread> {
-    events.iter().filter_map(|event| match event {
-        DiffEvent::Create { thread, .. } => Some(thread),
-        _ => None,
-    })
 }
 
 /// Clicks `count` times at `pos` within one frame: the harness advances a quarter second per
@@ -86,14 +79,6 @@ fn diff_label<State>(harness: &Harness<'_, State>) -> String {
         .filter_map(|node| node.accesskit_node().label())
         .find(|label| label.starts_with("Diff of"))
         .expect("the diff area")
-}
-
-/// Writes `body` into the open comment and posts it.
-fn post_comment<State>(harness: &mut Harness<'_, State>, body: &str) {
-    harness.event(Event::Text(body.to_owned()));
-    harness.step();
-    harness.click_at(harness.get_by_role_and_label(Role::Button, "Comment").rect());
-    settle(harness);
 }
 
 /// 1-based line `number` of `text`.
@@ -394,11 +379,10 @@ fn github_ranges_stay_within_one_block_of_changes() {
     let plus = harness.get_by_label(&label);
     assert!(plus.accesskit_node().is_disabled(), "GitHub takes no comment across collapsed lines");
     plus.hover();
-    settle(&mut harness);
-    assert!(
-        harness.query_by_label_contains("only within one block of changes").is_some(),
-        "the muted + says what to select instead"
-    );
+    poll_until("the muted + says what to select instead", || {
+        harness.step();
+        harness.query_by_label_contains("only within one block of changes").is_some()
+    });
 
     harness.key_press_modifiers(Modifiers::ALT, Key::C);
     settle(&mut harness);
@@ -999,7 +983,7 @@ fn the_comment_card_opens_in_place_without_moving() {
         harness.step();
         harness.state_mut().is_recording = true;
         harness.event(button(to, PointerButton::Primary, false, Modifiers::NONE));
-        harness.run_steps(12);
+        settle(&mut harness);
 
         let picked = rows(&harness);
         assert_card_steady(&harness, picked, &drag_case);
