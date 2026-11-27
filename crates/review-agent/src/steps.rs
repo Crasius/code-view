@@ -44,24 +44,6 @@ impl StepKind {
             _ => Self::Run,
         }
     }
-
-    /// The name the kind is stored under.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Read => "read",
-            Self::Search => "search",
-            Self::Run => "run",
-            Self::Edit => "edit",
-            Self::Other => "other",
-        }
-    }
-
-    /// The kind stored as `name` ([`StepKind::as_str`]); `None` for anything else.
-    pub fn from_name(name: &str) -> Option<Self> {
-        [Self::Read, Self::Search, Self::Run, Self::Edit, Self::Other]
-            .into_iter()
-            .find(|kind| kind.as_str() == name)
-    }
 }
 
 #[cfg(test)]
@@ -80,13 +62,5 @@ mod tests {
         let commands = [Some("read"), Some("listFiles"), Some("search"), Some("unknown"), None];
         let kinds: Vec<StepKind> = commands.into_iter().map(StepKind::of_command).collect();
         assert_eq!(kinds, [Read, Read, Search, Run, Run]);
-    }
-
-    #[test]
-    fn a_kind_reads_back_from_its_stored_name() {
-        for kind in [Read, Search, Run, Edit, Other] {
-            assert_eq!(StepKind::from_name(kind.as_str()), Some(kind));
-        }
-        assert_eq!(StepKind::from_name(""), None, "chats saved before kinds");
     }
 }

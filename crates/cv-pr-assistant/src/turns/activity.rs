@@ -20,9 +20,9 @@ use egui::{
     Align2, Color32, FontId, Id, Rect, Response, RichText, Sense, Ui, WidgetInfo, pos2, vec2,
 };
 use review_agent::StepKind;
-use review_store::ChatStep;
+use review_store::{ChatStep, ChatStepKind};
 
-use super::super::transcript::{self, THINKING};
+use super::super::transcript;
 
 /// Whether the agent still works on the turn.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -55,7 +55,7 @@ pub fn show(ui: &mut Ui, id: Id, steps: &[ChatStep], phase: Phase) -> bool {
             None => return false,
         },
     };
-    let has_rows = steps.iter().any(|step| step.kind != THINKING);
+    let has_rows = steps.iter().any(|step| step.kind != Some(ChatStepKind::Thinking));
     let can_open = phase == Phase::Working || has_rows;
     let mut state = CollapsingState::load_with_default_open(ui.ctx(), id, phase == Phase::Working);
     let phase_id = id.with("phase");
@@ -78,7 +78,7 @@ pub fn show(ui: &mut Ui, id: Id, steps: &[ChatStep], phase: Phase) -> bool {
 pub fn working_summary(ctx: &egui::Context, id: Id, steps: &[ChatStep]) -> String {
     let elapsed = elapsed_ms(ctx, id, steps, transcript::now_ms());
     let mut text = format!("Working · {}", seconds(elapsed));
-    if let Some(step) = steps.iter().rev().find(|step| step.kind != THINKING) {
+    if let Some(step) = steps.iter().rev().find(|step| step.kind != Some(ChatStepKind::Thinking)) {
         let verb = verb(kind_of(step), &step.tool, status(step, Phase::Working) == Status::Running);
         // Writing to a String cannot fail.
         let _infallible = write!(text, " · {verb} {}", step.detail);
@@ -145,7 +145,7 @@ fn body(ui: &mut Ui, steps: &[ChatStep], phase: Phase) {
             if phase == Phase::Working {
                 excerpt(ui, steps);
             }
-            for step in steps.iter().filter(|step| step.kind != THINKING) {
+            for step in steps.iter().filter(|step| step.kind != Some(ChatStepKind::Thinking)) {
                 step_row(ui, step, status(step, phase));
             }
             ui.add_space(style::SPACE_XS);
@@ -155,7 +155,7 @@ fn body(ui: &mut Ui, steps: &[ChatStep], phase: Phase) {
 
 /// The end of the latest thinking, italic and muted, cut at its start.
 fn excerpt(ui: &mut Ui, steps: &[ChatStep]) {
-    let latest = steps.iter().rev().find(|step| step.kind == THINKING);
+    let latest = steps.iter().rev().find(|step| step.kind == Some(ChatStepKind::Thinking));
     let Some(text) = latest.map(|step| tail(&step.thinking, EXCERPT_CHARS)) else {
         return;
     };
@@ -239,7 +239,14 @@ fn status(step: &ChatStep, phase: Phase) -> Status {
 
 /// The kind of a tool step; chats saved before kinds take it from the tool's name.
 fn kind_of(step: &ChatStep) -> StepKind {
-    StepKind::from_name(&step.kind).unwrap_or_else(|| StepKind::of_tool(&step.tool))
+    match step.kind {
+        Some(ChatStepKind::Read) => StepKind::Read,
+        Some(ChatStepKind::Search) => StepKind::Search,
+        Some(ChatStepKind::Run) => StepKind::Run,
+        Some(ChatStepKind::Edit) => StepKind::Edit,
+        Some(ChatStepKind::Other) => StepKind::Other,
+        Some(ChatStepKind::Thinking) | None => StepKind::of_tool(&step.tool),
+    }
 }
 
 /// "Read" or "Reading", ...; other tools by their own name.
@@ -260,7 +267,7 @@ fn verb(kind: StepKind, tool: &str, is_running: bool) -> &str {
 /// "Working · 9 s · 3 steps"; the steps are tool calls.
 fn working_line(elapsed_ms: u64, steps: &[ChatStep]) -> String {
     let mut text = format!("Working · {}", seconds(elapsed_ms));
-    let count = steps.iter().filter(|step| step.kind != THINKING).count();
+    let count = steps.iter().filter(|step| step.kind != Some(ChatStepKind::Thinking)).count();
     if count > 0 {
         // Writing to a String cannot fail.
         let _infallible = write!(text, " · {}", counted(count, "step", "steps"));
@@ -272,7 +279,8 @@ fn working_line(elapsed_ms: u64, steps: &[ChatStep]) -> String {
 /// tool call that happened; `None` without either.
 fn finished_line(steps: &[ChatStep]) -> Option<String> {
     let mut parts = Vec::new();
-    let thinking: Vec<&ChatStep> = steps.iter().filter(|step| step.kind == THINKING).collect();
+    let thinking: Vec<&ChatStep> =
+        steps.iter().filter(|step| step.kind == Some(ChatStepKind::Thinking)).collect();
     if !thinking.is_empty() {
         let durations = thinking.iter().filter_map(|step| step.duration_ms);
         let total = durations.reduce(|sum, duration| sum + duration);
@@ -280,8 +288,11 @@ fn finished_line(steps: &[ChatStep]) -> Option<String> {
             total.map_or_else(|| "Thought".to_owned(), |ms| format!("Thought {}", seconds(ms))),
         );
     }
-    let kinds: Vec<StepKind> =
-        steps.iter().filter(|step| step.kind != THINKING).map(kind_of).collect();
+    let kinds: Vec<StepKind> = steps
+        .iter()
+        .filter(|step| step.kind != Some(ChatStepKind::Thinking))
+        .map(kind_of)
+        .collect();
     let count = |kind: StepKind| kinds.iter().filter(|seen| **seen == kind).count();
     let kinds_shown = [
         (StepKind::Read, "read", "file", "files"),
@@ -357,47 +368,50 @@ fn fit_middle(text: &str, width: f32, measure: impl Fn(&str) -> f32) -> String {
 #[cfg(test)]
 mod tests {
     use review_store::ChatStep;
+    use review_store::ChatStepKind::{self, Edit, Other, Read, Run, Search, Thinking};
 
-    use super::{THINKING, finished_line, fit_middle, seconds, tail, working_line};
+    use super::{finished_line, fit_middle, seconds, tail, working_line};
 
-    fn tool(tool: &str, kind: &str) -> ChatStep {
-        ChatStep { tool: tool.into(), kind: kind.into(), ..ChatStep::default() }
+    fn tool(tool: &str, kind: Option<ChatStepKind>) -> ChatStep {
+        ChatStep { tool: tool.into(), kind, ..ChatStep::default() }
     }
 
     fn thought(duration_ms: Option<u64>) -> ChatStep {
-        ChatStep { kind: THINKING.into(), duration_ms, ..ChatStep::default() }
+        ChatStep { kind: Some(Thinking), duration_ms, ..ChatStep::default() }
     }
 
     #[test]
     fn the_finished_line_counts_each_kind_and_leaves_out_the_rest() {
         let steps = [
             thought(Some(2_400)),
-            tool("Read", "read"),
-            tool("Grep", "search"),
+            tool("Read", Some(Read)),
+            tool("Grep", Some(Search)),
             thought(Some(3_700)),
-            tool("Read", "read"),
-            tool("commandExecution", "read"),
-            tool("Bash", "run"),
+            tool("Read", Some(Read)),
+            tool("commandExecution", Some(Read)),
+            tool("Bash", Some(Run)),
         ];
         let line = finished_line(&steps);
         assert_eq!(line.as_deref(), Some("Thought 6 s · read 3 files · 1 search · ran 1 command"));
-        let steps = [tool("Bash", "run"), tool("Bash", "run"), tool("Edit", "edit")];
+        let steps = [tool("Bash", Some(Run)), tool("Bash", Some(Run)), tool("Edit", Some(Edit))];
         assert_eq!(finished_line(&steps).as_deref(), Some("Ran 2 commands · edited 1 file"));
-        let steps = [tool("Grep", "search"), tool("Glob", "search"), tool("mcp/x", "other")];
+        let steps =
+            [tool("Grep", Some(Search)), tool("Glob", Some(Search)), tool("mcp/x", Some(Other))];
         assert_eq!(finished_line(&steps).as_deref(), Some("2 searches · used 1 tool"));
         assert_eq!(finished_line(&[]), None, "no activity, no line");
     }
 
     #[test]
     fn older_steps_count_by_their_tool_name_and_thinking_without_time_is_just_thought() {
-        let steps = [thought(None), tool("Read", ""), tool("Grep", "")];
+        let steps = [thought(None), tool("Read", None), tool("Grep", None)];
         assert_eq!(finished_line(&steps).as_deref(), Some("Thought · read 1 file · 1 search"));
     }
 
     #[test]
     fn the_working_line_shows_seconds_and_tool_steps() {
         assert_eq!(working_line(9_200, &[thought(None)]), "Working · 9 s");
-        let steps = [thought(None), tool("Read", "read"), tool("Bash", "run"), tool("Grep", "")];
+        let steps =
+            [thought(None), tool("Read", Some(Read)), tool("Bash", Some(Run)), tool("Grep", None)];
         assert_eq!(working_line(9_200, &steps), "Working · 9 s · 3 steps");
         assert_eq!(working_line(0, &steps[..2]), "Working · 1 s · 1 step");
     }

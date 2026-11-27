@@ -17,9 +17,9 @@ use cv_services::agent_names::{cli_name, install_url};
 use cv_widgets::splitter::Splitter;
 use cv_widgets::states::{self, Action as StateAction};
 use cv_widgets::{buttons, glyph, row};
-use egui::{Event, Id, Key, KeyboardShortcut, Modifiers, RichText, TextEdit, Ui};
+use egui::{Event, Id, Key, KeyboardShortcut, Modifiers, Response, RichText, TextEdit, Ui};
 
-use super::title::{self, NEW_KEY, TitleClick};
+use super::title::{self, NEW_KEY, TitleClick, TitleOutput};
 use super::{Action, Assistant, Block, chip, turns};
 
 /// The card's conversation is never shorter than this, however little room the side column has:
@@ -43,8 +43,7 @@ enum Room {
     Panel,
 }
 
-/// The card's content below its title; `title` is what the title line's buttons were clicked for
-/// this frame.
+/// The card's content below its title; `title` is what its title line gave this frame.
 /// `column_bottom` is where the side column's visible room ends with the page scrolled to the top,
 /// in the same coordinates as `ui` (it scrolls with the card).
 pub fn card(
@@ -52,12 +51,12 @@ pub fn card(
     assistant: &mut Assistant,
     session: &PullRequestSession,
     services: &mut Services,
-    title: Option<TitleClick>,
+    title: &TitleOutput,
     column_bottom: f32,
 ) {
     assistant.wheel.begin(ui.ctx());
-    let mut action = title.map(TitleClick::action);
-    let mut picked = head(ui, assistant, session, services);
+    let mut action = title.click.map(TitleClick::action);
+    let mut picked = head(ui, assistant, session, services, &title.chip);
     let below_id = ui.scope_id().with("assistant_card_below");
     let below = ui.data(|data| data.get_temp::<f32>(below_id)).unwrap_or(0.0);
     let conversation_top = ui.min_rect().bottom();
@@ -146,14 +145,22 @@ pub fn panel(
         ui.set_min_height(ui.available_height());
         // The title line is one button tall; its buttons sit at its right end.
         let line = egui::vec2(ui.available_width(), buttons::icon_width());
-        ui.allocate_ui_with_layout(line, egui::Layout::left_to_right(egui::Align::Center), |ui| {
-            ui.label(RichText::new(TITLE).font(theme::fonts::semibold_font(style::SECTION_SIZE)));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                action = title::panel_action(ui, &title_line).map(TitleClick::action);
-            });
-        });
+        let title = ui.allocate_ui_with_layout(
+            line,
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                let font = theme::fonts::semibold_font(style::SECTION_SIZE);
+                ui.label(RichText::new(TITLE).font(font));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    title::panel_action(ui, &title_line)
+                })
+                .inner
+            },
+        );
+        let title = title.inner;
+        action = title.click.map(TitleClick::action);
         ui.add_space(style::SPACE_S);
-        if let Some(picked) = panel_body(ui, assistant, session, services) {
+        if let Some(picked) = panel_body(ui, assistant, session, services, &title.chip) {
             action = Some(picked);
         }
     });
@@ -171,6 +178,7 @@ fn panel_body(
     assistant: &mut Assistant,
     session: &PullRequestSession,
     services: &mut Services,
+    chip: &Response,
 ) -> Option<Action> {
     let area = ui.available_rect_before_wrap();
     let id = ui.scope_id().with("assistant_composer_height");
@@ -187,7 +195,7 @@ fn panel_body(
             .max_rect(conversation_rect)
             .layout(layout),
     );
-    let mut action = head(&mut top, assistant, session, services);
+    let mut action = head(&mut top, assistant, session, services, chip);
     let height = top.available_height().max(0.0);
     action = action.or(conversation(&mut top, assistant, session, Room::Panel, height));
     let composer_rect = egui::Rect::from_min_max(egui::pos2(area.left(), composer_top), area.max);
@@ -242,8 +250,9 @@ fn head(
     assistant: &mut Assistant,
     session: &PullRequestSession,
     services: &mut Services,
+    chip: &Response,
 ) -> Option<Action> {
-    let mut action = chip::title_menu(ui.ctx(), chip::Line::Conversation, assistant, services);
+    let mut action = chip::menu(chip, assistant, services);
     if let Some(block) = assistant.block.clone() {
         action = action.or(block_state(ui, &block));
         ui.add_space(style::SPACE_S);

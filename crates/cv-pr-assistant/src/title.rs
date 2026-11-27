@@ -9,9 +9,9 @@ use cv_base::theme::icons;
 use cv_pr_session::assistant_link::OPEN_SHORTCUT;
 use cv_services::Services;
 use cv_widgets::buttons;
-use egui::{Key, KeyboardShortcut, Modifiers, Ui};
+use egui::{Key, KeyboardShortcut, Modifiers, Response, Ui};
 
-use super::chip::{self, Line};
+use super::chip;
 use super::{Action, Assistant};
 
 /// Starts a new conversation while the assistant has the keys: the panel is open, or the card is
@@ -55,28 +55,40 @@ impl TitleLine {
     }
 }
 
+/// What the title line gave this frame: the button clicked, and the chip, whose menu the
+/// conversation's head opens.
+pub struct TitleOutput {
+    pub(super) click: Option<TitleClick>,
+    pub(super) chip: Response,
+}
+
 /// The card's title-line controls.
-pub fn card_action(ui: &mut Ui, line: &TitleLine) -> Option<TitleClick> {
+pub fn card_action(ui: &mut Ui, line: &TitleLine) -> TitleOutput {
     let tooltip = format!("Expand ({OPEN_SHORTCUT})");
     let expand = buttons::icon(ui, icons::ARROWS_OUT_SIMPLE, &tooltip).clicked();
     let others = terminal_new_and_chip(ui, line);
-    if expand { Some(TitleClick::Expand) } else { others }
+    if expand { TitleOutput { click: Some(TitleClick::Expand), ..others } } else { others }
 }
 
 /// The panel's title-line controls, as the card's with collapse in place of expand.
-pub(super) fn panel_action(ui: &mut Ui, line: &TitleLine) -> Option<TitleClick> {
+pub(super) fn panel_action(ui: &mut Ui, line: &TitleLine) -> TitleOutput {
     let collapse = buttons::icon(ui, icons::ARROWS_IN_SIMPLE, "Collapse (Esc)").clicked();
     let others = terminal_new_and_chip(ui, line);
-    if collapse { Some(TitleClick::Collapse) } else { others }
+    if collapse { TitleOutput { click: Some(TitleClick::Collapse), ..others } } else { others }
 }
 
 /// "Continue in terminal", then "New conversation" left of it, then the chip.
-fn terminal_new_and_chip(ui: &mut Ui, line: &TitleLine) -> Option<TitleClick> {
+fn terminal_new_and_chip(ui: &mut Ui, line: &TitleLine) -> TitleOutput {
     let terminal = terminal_button(ui, line.terminal_block);
     let tooltip = format!("New conversation ({NEW_SHORTCUT})");
     let new = buttons::icon(ui, icons::PLUS, &tooltip).clicked();
-    chip::in_title(ui, &line.chip, Line::Conversation);
-    if terminal { Some(TitleClick::Terminal) } else { new.then_some(TitleClick::NewConversation) }
+    let chip = chip::in_title(ui, &line.chip);
+    let click = if terminal {
+        Some(TitleClick::Terminal)
+    } else {
+        new.then_some(TitleClick::NewConversation)
+    };
+    TitleOutput { click, chip }
 }
 
 /// "Continue in terminal": the agent's CLI in the pull request's checkout, resuming this

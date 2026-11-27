@@ -57,7 +57,7 @@ use review_agent::{AgentError, AgentKind, ModelChoice, SessionConfig};
 use review_store::{AssistantChats, Chat, ChatQuote, TurnEnd, chats_dir};
 
 use self::checkout::Checkout;
-use self::citations::links;
+use self::citations::{CitedLines, links};
 use self::runner::{Runner, RunnerEvent};
 use self::transcript::Applied;
 use self::transcript::saver::Saver;
@@ -66,14 +66,6 @@ pub use self::title::{TitleLine, card_action};
 #[cfg(any(test, feature = "test-support"))]
 pub use self::view::CARD_LABEL;
 pub use self::view::{TITLE, card, card_drawn, panel};
-
-/// The command that signs the agent's CLI in, run in a terminal.
-fn sign_in_command(kind: AgentKind) -> (String, Vec<String>) {
-    match kind {
-        AgentKind::Claude => ("claude".to_owned(), Vec::new()),
-        AgentKind::Codex => ("codex".to_owned(), vec!["login".to_owned()]),
-    }
-}
 
 /// Why the conversation cannot go on, each with its own fix in the card.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -462,8 +454,8 @@ impl Assistant {
     }
 
     /// A citation was followed into the Files tab: the [`mini`] chat shows its answer there.
-    pub fn follow_citation(&mut self, path: &str, start: u32, end: u32) {
-        mini::follow(self, path, start, end);
+    pub fn follow_citation(&mut self, lines: &CitedLines) {
+        mini::follow(self, lines);
     }
 
     /// The [`mini`] chat over the Files tab, drawn after the tab; the lines it asks the diff for.
@@ -472,7 +464,7 @@ impl Assistant {
         ui: &egui::Ui,
         session: &PullRequestSession,
         services: &mut Services,
-    ) -> Option<mini::Jump> {
+    ) -> Option<CitedLines> {
         mini::show(self, ui.ctx(), session, services)
     }
 
