@@ -122,15 +122,15 @@ impl CodeFile {
             return;
         }
         let (file, path, ctx) = (self.clone(), path.to_owned(), ctx.clone());
-        color_worker::submit(move |warm| {
+        color_worker::submit(move || {
             let first_line = file.head.line(0).or_else(|| file.removed.line(0));
             let Some(grammar) = grammar::for_path(&path, first_line.unwrap_or_default()) else {
                 return;
             };
-            let working = warm.for_grammar(grammar);
+            let working = grammar::compiled(grammar);
             let spans = |text: &BlobText| {
                 let mut spans = LineSpans::default();
-                highlight::highlight(text, grammar.syntax, working, |chunk| {
+                highlight::highlight(text, grammar.syntax, &working, |chunk| {
                     spans.append(chunk);
                     true
                 });

@@ -4,6 +4,8 @@
 //! repository opens it there, and a search that finds nothing offers the full list, so it never
 //! ends without a way forward.
 
+use std::ops::Range;
+
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, Palette, icons, style};
 use cv_lists::pull_request_list::{LoadedPullRequest, PullRequestListPage};
@@ -15,7 +17,7 @@ use cv_widgets::numbers::number_prefix;
 use egui::text::{LayoutJob, TextWrapping};
 use egui::{
     Align2, Color32, FontId, Id, Key, Modifiers, Order, Rect, Sense, Stroke, StrokeKind, TextEdit,
-    Ui, pos2, vec2,
+    Ui, Vec2, pos2, vec2,
 };
 use review_core::PullRequestSummary;
 
@@ -31,6 +33,15 @@ const POPUP_STROKE: f32 = 1.0;
 const NUMBER_WIDTH: f32 = 56.0;
 const PADDING: f32 = 10.0;
 const TEXT_NUDGE: f32 = 1.5;
+/// The room of the magnifier and of an action row's arrow.
+const ICON_SLOT: f32 = 14.0;
+/// A key cap: room beside its letter, half its height, its corners, and the gap to the next cap.
+const CAP_PADDING_X: f32 = 10.0;
+const CAP_HALF_HEIGHT: f32 = 9.0;
+const CAP_RADIUS: u8 = 3;
+const CAP_GAP: f32 = 3.0;
+/// How far the highlight of a result row stays inside the row.
+const HIGHLIGHT_INSET: Vec2 = vec2(style::SPACE_XS, 1.0);
 const LABEL: &str = "Search pull requests";
 const HINT: &str = "Search pull requests…";
 const SHORT_HINT: &str = "Search…";
@@ -162,7 +173,7 @@ impl JumpBox {
             .then(|| entries.get(self.selected).map(|entry| entry.action.clone()))
             .flatten();
         let clicked = self.show_results(&ctx, rect, &entries, is_opening, moves, &palette);
-        let picked = clicked.or(entered);
+        let picked = clicked.or(entered).map(|action| with_listed_row(action, lists));
         if picked.is_some() {
             self.query.clear();
             self.popup_rect = None;
@@ -181,7 +192,7 @@ impl JumpBox {
         };
         let fill = if has_focus { palette.surface } else { palette.surface_subtle };
         ui.painter().rect(rect, style::RADIUS_CONTROL, fill, border, StrokeKind::Inside);
-        let icon_center = pos2(rect.left() + PADDING + 7.0, rect.center().y);
+        let icon_center = pos2(rect.left() + PADDING + ICON_SLOT / 2.0, rect.center().y);
         ui.painter().text(
             icon_center,
             Align2::CENTER_CENTER,
@@ -193,7 +204,7 @@ impl JumpBox {
             if has_focus || !self.query.is_empty() { 0.0 } else { paint_shortcut(ui, rect) };
         // Segoe UI's line box sits low; a point and a half up centers the text on the icon.
         let text_rect = Rect::from_min_max(
-            pos2(icon_center.x + 12.0, rect.top()),
+            pos2(icon_center.x + style::SPACE_M, rect.top()),
             pos2(rect.right() - PADDING - shortcut_width, rect.bottom()),
         )
         .translate(vec2(0.0, -TEXT_NUDGE));
@@ -253,11 +264,12 @@ impl JumpBox {
                         // While results are scrolled out of view the bar shows at rest too.
                         let scroll = &mut ui.spacing_mut().scroll;
                         scroll.dormant_handle_opacity = scroll.active_handle_opacity;
-                        // Every match is listed; past a screenful the results scroll, and the
-                        // arrow keys keep the highlighted one in view. The height is set for this
-                        // frame's results: an area hands its content the size it had last frame,
-                        // so a height left to the space available would stay at whatever the
-                        // results first opened with (two rows after an opening with one).
+                        // Every match is listed; past a screenful the results scroll, only the rows
+                        // in view are laid out, and the arrow keys keep the highlighted one in
+                        // view. The height is set for this frame's results: an area hands its
+                        // content the size it had last frame, so a height left to the space
+                        // available would stay at whatever the results first opened with (two
+                        // rows after an opening with one).
                         let mut results = egui::ScrollArea::vertical()
                             .id_salt("title_bar_jump_results")
                             .min_scrolled_height(height)
@@ -265,7 +277,11 @@ impl JumpBox {
                         if is_opening {
                             results = results.vertical_scroll_offset(0.0);
                         }
-                        results.show(ui, |ui| self.rows(ui, entries, moves)).inner
+                        results
+                            .show_rows(ui, ROW_HEIGHT, entries.len(), |ui, range| {
+                                self.rows(ui, entries, range, moves)
+                            })
+                            .inner
                     })
                     .inner
             });
@@ -273,18 +289,31 @@ impl JumpBox {
         popup.inner
     }
 
-    /// The result rows: a moving pointer highlights, the arrow keys scroll the highlighted one into
-    /// view; the one clicked, if any.
-    fn rows(&mut self, ui: &mut Ui, entries: &[Entry], moves: i32) -> Option<JumpAction> {
-        let is_pointer_moving = ui.ctx().input(|input| input.pointer.delta() != egui::Vec2::ZERO);
+    /// The result rows in `range`, the ones in view: a moving pointer highlights, the arrow keys
+    /// scroll the highlighted one into view; the one clicked, if any.
+    fn rows(
+        &mut self,
+        ui: &mut Ui,
+        entries: &[Entry],
+        range: Range<usize>,
+        moves: i32,
+    ) -> Option<JumpAction> {
+        if moves != 0 {
+            // The highlighted row may lie outside `range`: its place follows from the row height.
+            let top =
+                ui.max_rect().top() + (self.selected as f32 - range.start as f32) * ROW_HEIGHT;
+            let row = Rect::from_min_size(
+                pos2(ui.max_rect().left(), top),
+                vec2(ui.available_width(), ROW_HEIGHT),
+            );
+            ui.scroll_to_rect(row, None);
+        }
+        let is_pointer_moving = ui.ctx().input(|input| input.pointer.delta() != Vec2::ZERO);
         let mut clicked = None;
-        for (index, entry) in entries.iter().enumerate() {
+        for (index, entry) in entries.iter().enumerate().take(range.end).skip(range.start) {
             let row = result_row(ui, entry, index == self.selected);
             if row.hovered() && is_pointer_moving {
                 self.selected = index;
-            }
-            if moves != 0 && index == self.selected {
-                row.scroll_to_me(None);
             }
             if row.clicked() {
                 clicked = Some(entry.action.clone());
@@ -298,23 +327,23 @@ impl JumpBox {
 fn paint_shortcut(ui: &Ui, rect: Rect) -> f32 {
     let palette = theme::palette(ui.ctx());
     let font = FontId::proportional(style::SMALL_SIZE - 1.0);
-    let mut right = rect.right() - PADDING + 4.0;
+    let mut right = rect.right() - PADDING + style::SPACE_XS;
     for key in SHORTCUT_CAPS.iter().rev() {
         let galley =
             ui.painter().layout_no_wrap((*key).to_owned(), font.clone(), palette.text_secondary);
         let cap = Rect::from_min_max(
-            pos2(right - galley.size().x - 10.0, rect.center().y - 9.0),
-            pos2(right, rect.center().y + 9.0),
+            pos2(right - galley.size().x - CAP_PADDING_X, rect.center().y - CAP_HALF_HEIGHT),
+            pos2(right, rect.center().y + CAP_HALF_HEIGHT),
         );
         ui.painter().rect(
             cap,
-            3,
+            CAP_RADIUS,
             palette.surface,
             Stroke::new(1.0, palette.border),
             StrokeKind::Inside,
         );
         ui.painter().galley(cap.center() - galley.size() / 2.0, galley, palette.text_secondary);
-        right = cap.left() - 3.0;
+        right = cap.left() - CAP_GAP;
     }
     rect.right() - PADDING - right
 }
@@ -359,20 +388,20 @@ fn result_row(ui: &mut Ui, entry: &Entry, is_selected: bool) -> egui::Response {
         Color32::TRANSPARENT
     };
     if fill != Color32::TRANSPARENT {
-        ui.painter().rect_filled(rect.shrink2(vec2(4.0, 1.0)), style::RADIUS_CONTROL, fill);
+        ui.painter().rect_filled(rect.shrink2(HIGHLIGHT_INSET), style::RADIUS_CONTROL, fill);
     }
-    let left = rect.left() + PADDING + 2.0;
+    let left = rect.left() + style::SPACE_M;
     let body = FontId::proportional(style::BODY_SIZE);
     let small = FontId::proportional(style::SMALL_SIZE);
     let title_left = if entry.badge.is_empty() {
         ui.painter().text(
-            pos2(left + 7.0, rect.center().y),
+            pos2(left + ICON_SLOT / 2.0, rect.center().y),
             Align2::CENTER_CENTER,
             icons::ARROW_RIGHT,
             icons::rest_font(&palette, icons::SIZE_SMALL),
             palette.accent_text,
         );
-        left + 22.0
+        left + ICON_SLOT + style::SPACE_S
     } else {
         ui.painter().text(
             pos2(left, rect.center().y),
@@ -493,7 +522,7 @@ fn entries(
     entries
 }
 
-/// A loaded pull request's result: opening it hands its row to the page.
+/// A loaded pull request's result; [`with_listed_row`] hands its row to the page once picked.
 fn loaded_entry(loaded: &LoadedPullRequest<'_>) -> Entry {
     let pull_request = loaded.pull_request;
     Entry {
@@ -506,8 +535,28 @@ fn loaded_entry(loaded: &LoadedPullRequest<'_>) -> Entry {
                 repository_key: pull_request.repository_key.clone(),
                 number: pull_request.number,
             },
-            listed: Some(Box::new(pull_request.clone())),
+            listed: None,
         },
+    }
+}
+
+/// `action` with the loaded list row of the pull request it opens, which the page's header paints
+/// until the detail is in. Looked up once, for the picked result, so the results copy no row.
+fn with_listed_row(action: JumpAction, lists: &[&PullRequestListPage]) -> JumpAction {
+    match action {
+        JumpAction::Open { key, listed: None } => {
+            let listed = lists
+                .iter()
+                .flat_map(|list| list.loaded_matching(""))
+                .find(|loaded| {
+                    loaded.connection_id == key.connection_id
+                        && loaded.pull_request.repository_key == key.repository_key
+                        && loaded.pull_request.number == key.number
+                })
+                .map(|loaded| Box::new(loaded.pull_request.clone()));
+            JumpAction::Open { key, listed }
+        }
+        other => other,
     }
 }
 
@@ -532,7 +581,7 @@ mod tests {
     use egui::{Key, Rect, Role, pos2, vec2};
     use egui_kittest::Harness;
     use egui_kittest::kittest::{NodeT, Queryable};
-    use review_core::{PullRequestState, PullRequestSummary, UserIdentity};
+    use review_core::{PullRequestSummary, UserIdentity};
     use review_store::ThemePreference;
 
     use cv_base::theme::{self, style};
@@ -540,7 +589,7 @@ mod tests {
     use cv_runtime::intents::open_search;
     use cv_runtime::route::Route;
     use cv_services::Services;
-    use cv_testkit::ScratchDir;
+    use cv_testkit::{ScratchDir, samples};
 
     use super::{BOX_HEIGHT, JumpAction, JumpBox, MAX_VISIBLE_RESULTS, ROW_HEIGHT, popup_chrome};
 
@@ -559,24 +608,8 @@ mod tests {
 
     fn row(number: u64) -> PullRequestSummary {
         PullRequestSummary {
-            repository_key: "acme/shop".into(),
-            repository_name: "shop".into(),
-            number,
-            title: format!("Change {number}"),
             author: UserIdentity::default(),
-            state: PullRequestState::Open,
-            is_draft: false,
-            source_branch: "feature".into(),
-            target_branch: "main".into(),
-            created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
-            updated_at: None,
-            web_url: String::new(),
-            labels: Vec::new(),
-            reviewers: Vec::new(),
-            checks: None,
-            diff_stat: review_core::DiffStat::default(),
-            head_sha: None,
-            target_sha: None,
+            ..samples::summary("acme/shop", number)
         }
     }
 
@@ -679,7 +712,7 @@ mod tests {
     }
 
     #[test]
-    fn jump_results_reopened_after_fewer_rows_show_every_row() {
+    fn results_reopened_after_fewer_rows_show_every_row() {
         // First opened before the list loaded: one row, "Show your pull requests".
         let mut harness = scene("reopen", 0, 900.0);
         open_box(&mut harness);
@@ -696,7 +729,7 @@ mod tests {
     }
 
     #[test]
-    fn jump_results_grow_in_the_frame_rows_arrive() {
+    fn results_grow_in_the_frame_rows_arrive() {
         let mut harness = scene("grow", 2, 900.0);
         open_box(&mut harness);
         assert_height(&harness, 2);
@@ -715,7 +748,7 @@ mod tests {
     }
 
     #[test]
-    fn jump_results_reopen_at_the_top_with_the_first_row_selected() {
+    fn results_reopen_at_the_top_with_the_first_row_selected() {
         let mut harness = scene("top", 20, 900.0);
         open_box(&mut harness);
         // Up from the first row wraps to the last one and scrolls it into view.
@@ -740,7 +773,7 @@ mod tests {
     }
 
     #[test]
-    fn jump_results_list_a_pull_request_once_when_favorites_list_it_too() {
+    fn results_list_a_pull_request_once_when_favorites_list_it_too() {
         let mut harness = scene("favorites", 0, 900.0);
         // #499 is in a starred repository: the Favorites card and the connection's card both list it.
         let favorites = vec![row(499), row(42)];
@@ -759,9 +792,24 @@ mod tests {
         assert_height(&harness, 3);
     }
 
+    #[test]
+    fn hands_the_picked_pull_request_its_loaded_row() {
+        let mut harness = scene("pick", 3, 900.0);
+        open_box(&mut harness);
+        harness.key_press(Key::ArrowDown);
+        harness.run();
+        harness.key_press(Key::Enter);
+        harness.run();
+        let Some(JumpAction::Open { key, listed }) = &harness.state().picked else {
+            panic!("Enter opens a pull request: {:?}", harness.state().picked);
+        };
+        assert_eq!(key.number, 499, "the highlighted row is the one opened");
+        assert_eq!(listed.as_deref(), Some(&row(499)), "the page gets the row the list loaded");
+    }
+
     /// Self-hosted platforms on plain http are pasted too; their links open, not a failed search.
     #[test]
-    fn jump_offers_to_open_pasted_http_and_https_links() {
+    fn offers_to_open_pasted_http_and_https_links() {
         let harness = scene("links", 0, 900.0);
         let lists = [&harness.state().page];
         for url in [
@@ -781,7 +829,7 @@ mod tests {
     }
 
     #[test]
-    fn jump_results_stop_at_the_window_bottom() {
+    fn results_stop_at_the_window_bottom() {
         let height = 300.0;
         let mut harness = scene("short", 20, height);
         open_box(&mut harness);

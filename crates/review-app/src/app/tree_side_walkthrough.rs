@@ -60,7 +60,6 @@ pub(super) fn assert_tree_at(harness: &Harness<'_, ReviewApp>, expected: TreeSid
         TreeSide::Left => assert!(row.right() <= diff.left() + 1.0, "{row:?} left of {diff:?}"),
         TreeSide::Right => assert!(row.left() >= diff.right() - 1.0, "{row:?} right of {diff:?}"),
     }
-    assert_marks_line_up(harness);
 }
 
 /// The folder's viewed mark sits in the viewed column, left of its glyph: one indent left of its
@@ -97,6 +96,7 @@ fn the_file_tree_moves_sides_and_keeps_the_open_file() {
 
     // The tree starts on the left, as before the setting existed.
     assert_tree_at(&harness, TreeSide::Left);
+    assert_marks_line_up(&harness);
     let top = focus_mode::top_line(&harness.ctx, Surface::Files).expect("the diff's top line");
     assert!(top.0 > 50, "the diff scrolled into the file: {top:?}");
     let width = tree_width_on_screen(&harness);

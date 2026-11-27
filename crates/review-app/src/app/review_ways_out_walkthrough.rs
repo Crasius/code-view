@@ -1,10 +1,10 @@
-//! Review actions that used to end in a dead end, against the GitHub mock ([`super::github_mock`]):
+//! Review actions offer their way out, against the GitHub mock ([`super::github_mock`]):
 //! "Request changes" needs a comment and posts it as the review's body; a refused merge keeps its
 //! failure on the button and in a toast with Retry (which runs the merge once more), "Fix token"
 //! and "Open on GitHub"; the user's own vote shows on the vote button, whose click then opens the
 //! menu instead of approving again; a pull request that failed to load offers Retry and the
 //! platform in the header, and F5 loads it.
-//! `cargo test -p review-app --bin CodeView bug_actions`
+//! `cargo test -p review-app --bin CodeView app::review_ways_out_walkthrough`
 
 use egui::Role;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -18,7 +18,7 @@ use cv_testkit::ScratchDir;
 const REQUEST_CHANGES: &str = "Request changes";
 
 #[test]
-fn bug_actions_request_changes_needs_a_comment_and_posts_it() {
+fn request_changes_needs_a_comment_and_posts_it() {
     let scratch = ScratchDir::new("bug-actions-request-changes");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -54,7 +54,7 @@ fn bug_actions_request_changes_needs_a_comment_and_posts_it() {
 }
 
 #[test]
-fn bug_actions_failed_merge_keeps_its_way_out_and_retries_once() {
+fn failed_merge_keeps_its_way_out_and_retries_once() {
     let scratch = ScratchDir::new("bug-actions-merge");
     let host = GitHubHost::with_pull_request(scratch.path());
     host.refuse_merge();
@@ -120,7 +120,7 @@ fn bug_actions_failed_merge_keeps_its_way_out_and_retries_once() {
 }
 
 #[test]
-fn bug_actions_own_vote_shows_and_a_click_opens_the_menu() {
+fn own_vote_shows_and_a_click_opens_the_menu() {
     let scratch = ScratchDir::new("bug-actions-own-vote");
     let host = GitHubHost::with_pull_request(scratch.path());
     host.sign_in_as_me();
@@ -140,7 +140,7 @@ fn bug_actions_own_vote_shows_and_a_click_opens_the_menu() {
 }
 
 #[test]
-fn bug_actions_header_load_error_offers_retry_and_f5_loads() {
+fn header_load_error_offers_retry_and_f5_loads() {
     let scratch = ScratchDir::new("bug-actions-load-error");
     let host = GitHubHost::with_pull_request(scratch.path());
     host.fail_pull_request();

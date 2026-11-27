@@ -2,17 +2,18 @@
 //! checkout, right-aligned before the window's own parts. A click opens the pull request with the
 //! checkout's progress, so a checkout whose popover was closed stays in reach from any page.
 
-use egui::{Align2, Rect, Sense, Stroke, Ui, pos2, vec2};
+use egui::{Rect, Sense, Stroke, Ui, pos2, vec2};
 
 use cv_base::theme::{self, icons, style};
 use cv_pr_page::checkout;
 use cv_services::Services;
-use cv_widgets::{focus, row};
+use cv_widgets::{focus, row, states};
 
 use super::JumpAction;
 
 const CHIP_HEIGHT: f32 = 26.0;
-const GAP: f32 = 8.0;
+/// From the spinner to the chip's text.
+const ICON_GAP: f32 = 6.0;
 
 /// The chips between `after` and `before`, right-aligned; returns the rect they cover and the
 /// pull request a click opens.
@@ -37,7 +38,8 @@ pub(super) fn show(
             egui::FontId::proportional(style::SMALL_SIZE),
             palette.text,
         );
-        let width = style::SPACE_S + icons::SIZE_SMALL + 6.0 + galley.size().x + style::SPACE_S;
+        let width =
+            style::SPACE_S + icons::SIZE_SMALL + ICON_GAP + galley.size().x + style::SPACE_S;
         if right - width < after {
             break;
         }
@@ -65,21 +67,8 @@ pub(super) fn show(
             pos2(rect.left() + style::SPACE_S + icons::SIZE_SMALL / 2.0, rect.center().y),
             vec2(icons::SIZE_SMALL, icons::SIZE_SMALL),
         );
-        if theme::motion::is_reduced(ui.ctx()) {
-            ui.painter().text(
-                slot.center(),
-                Align2::CENTER_CENTER,
-                icons::CIRCLE_NOTCH,
-                icons::rest_font(&palette, icons::SIZE_SMALL),
-                palette.accent,
-            );
-        } else {
-            egui::Spinner::new()
-                .size(icons::SIZE_SMALL - 2.0)
-                .color(palette.accent)
-                .paint_at(ui, slot);
-        }
-        let text_left = slot.right() + 6.0;
+        states::spinner(ui, slot, palette.accent);
+        let text_left = slot.right() + ICON_GAP;
         ui.painter().galley(
             pos2(text_left, rect.center().y - galley.size().y / 2.0),
             galley,
@@ -91,7 +80,7 @@ pub(super) fn show(
             action = Some(JumpAction::Open { key: key.clone(), listed: None });
         }
         covered = covered.union(rect);
-        right = rect.left() - GAP;
+        right = rect.left() - style::SPACE_S;
     }
     (covered, action)
 }

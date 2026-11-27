@@ -5,11 +5,11 @@
 //! branch chips: a click on the source chip copies it and confirms with a check mark that goes
 //! away again, and Enter on the focused target chip copies the target. Reads the copies from
 //! egui's output, never the real clipboard.
-//! `cargo test -p review-app branch_copy`
+//! `cargo test -p review-app --bin CodeView app::branch_copy_walkthrough::branch_copy_from_the_row_menu_and_the_header_chips`
 //!
 //! The second walkthrough does the same for the link: the row menu's "Copy link", a click on the
 //! header's number and Enter on it, with the check mark that replaces its prefix for a moment.
-//! `cargo test -p review-app number_copy`
+//! `cargo test -p review-app --bin CodeView app::branch_copy_walkthrough::number_copy_from_the_row_menu_and_the_header_number`
 
 use egui::{OutputCommand, Role};
 use egui_kittest::Harness;

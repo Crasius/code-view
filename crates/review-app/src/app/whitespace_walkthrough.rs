@@ -132,8 +132,6 @@ fn open_files_tab(harness: &mut Harness<'_, ReviewApp>) {
 fn open_file(harness: &mut Harness<'_, ReviewApp>, path: &str, banner: &str) {
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
     wait_until(harness, banner, |harness| shows_file_view(harness, path) && shows(harness, banner));
-    // Highlighting and the changed-word bands arrive a few frames later.
-    harness.run_steps(30);
 }
 
 fn tree_description(harness: &Harness<'_, ReviewApp>, path: &str) -> String {

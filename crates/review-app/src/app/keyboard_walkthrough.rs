@@ -5,7 +5,7 @@
 //! Settings at Keyboard and mouse with the page's shortcuts in view, while in a text field it is
 //! typed. On a long list J and K move the keyboard focus from row to row, scrolling the row into
 //! view, and Enter opens it.
-//! `cargo test -p review-app ux_keys`
+//! `cargo test -p review-app --bin CodeView app::keyboard_walkthrough`
 
 use egui::{Event, Key, Modifiers, Role, Vec2};
 use egui_kittest::Harness;
@@ -19,23 +19,24 @@ use cv_runtime::route::{PullRequestTab, Route};
 use cv_testkit::ScratchDir;
 
 #[test]
-fn ux_keys_pick_tabs_and_open_the_shortcuts() {
+fn pick_tabs_and_open_the_shortcuts() {
     let scratch = ScratchDir::new("ux-keys-tabs");
     let host = GitHubHost::with_pull_request(scratch.path());
     let connection = host.connection("gh", "Acme");
     let mut harness = app(&scratch, std::slice::from_ref(&connection));
     open_pull_request(&mut harness);
-    assert!(
-        tab(&harness) == Some(PullRequestTab::Overview),
+    assert_eq!(
+        tab(&harness),
+        Some(PullRequestTab::Overview),
         "a pull request opens on the Overview"
     );
 
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Num2);
     harness.run_steps(4);
-    assert!(tab(&harness) == Some(PullRequestTab::Files), "Ctrl+2 shows the Files tab");
+    assert_eq!(tab(&harness), Some(PullRequestTab::Files), "Ctrl+2 shows the Files tab");
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Num4);
     harness.run_steps(4);
-    assert!(tab(&harness) == Some(PullRequestTab::Pipelines), "Ctrl+4 shows the Pipelines tab");
+    assert_eq!(tab(&harness), Some(PullRequestTab::Pipelines), "Ctrl+4 shows the Pipelines tab");
 
     // The tooltip names the key.
     harness
@@ -44,12 +45,13 @@ fn ux_keys_pick_tabs_and_open_the_shortcuts() {
                 && node.label().is_some_and(|label| label.starts_with("Commits"))
         })
         .hover();
-    harness.run_steps(40);
     let tooltip = concat!("Commits (", shortcut!(command "3"), ")");
-    assert!(harness.query_by_label(tooltip).is_some(), "the tab's tooltip: {tooltip}");
+    wait_until(&mut harness, "the tab's tooltip", |harness| {
+        harness.query_by_label(tooltip).is_some()
+    });
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Num1);
     harness.run_steps(4);
-    assert!(tab(&harness) == Some(PullRequestTab::Overview), "Ctrl+1 goes back to the Overview");
+    assert_eq!(tab(&harness), Some(PullRequestTab::Overview), "Ctrl+1 goes back to the Overview");
 
     // `?` opens the one list of shortcuts, at the pull request's.
     harness.event(Event::Text("?".to_owned()));
@@ -77,7 +79,7 @@ fn ux_keys_pick_tabs_and_open_the_shortcuts() {
 }
 
 #[test]
-fn ux_keys_move_through_the_list_rows() {
+fn move_through_the_list_rows() {
     let scratch = ScratchDir::new("ux-keys-list");
     let rows: Vec<_> = (1..=30)
         .map(|number| search_row(number, &format!("Change {number}"), REPOSITORY))

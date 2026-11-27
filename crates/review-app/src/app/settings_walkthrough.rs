@@ -2,8 +2,8 @@
 //! opens it on Connections, each section shows only its own rows, the search finds rows across
 //! sections and offers the way back when nothing matches, the Appearance sample follows the diff
 //! layout, and a connection's row opens its facts. In a 960 px wide window the clip check finds
-//! nothing cut, overlapping or off-window in any section. `cargo test -p review-app
-//! settings_walkthrough`
+//! nothing cut, overlapping or off-window in any section.
+//! `cargo test -p review-app --bin CodeView app::settings_walkthrough`
 
 use egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
@@ -31,7 +31,7 @@ const SECTIONS: [(&str, &str); 7] = [
 ];
 
 #[test]
-fn settings_walkthrough_sections_search_previews_and_connections() {
+fn sections_search_previews_and_connections() {
     let scratch = ScratchDir::new("settings-walk");
     let mut harness = harness(&scratch, 1280.0);
     wait_until(&mut harness, "the pull request list", |harness| {
@@ -102,7 +102,7 @@ fn settings_walkthrough_sections_search_previews_and_connections() {
 /// At 960 px the preview moves above the rows, and no section cuts, overlaps or loses anything.
 #[cfg(debug_assertions)]
 #[test]
-fn settings_walkthrough_sections_fit_a_narrow_window() {
+fn sections_fit_a_narrow_window() {
     let scratch = ScratchDir::new("settings-narrow");
     let mut harness = harness(&scratch, 960.0);
     super::clip_check::install(&harness.ctx);
@@ -127,7 +127,7 @@ fn settings_walkthrough_sections_fit_a_narrow_window() {
 /// At the default code size every sample line shows whole in its pane, in each diff layout, at
 /// 1280 px and at the narrowest window the app allows (`main.rs`, `with_min_inner_size`).
 #[test]
-fn settings_walkthrough_sample_lines_fit_their_panes() {
+fn sample_lines_fit_their_panes() {
     const MIN_WIDTH: f32 = 960.0;
     let scratch = ScratchDir::new("settings-sample");
     for (width, name) in [(1280.0, "1280"), (MIN_WIDTH, "min")] {
@@ -151,7 +151,7 @@ fn settings_walkthrough_sample_lines_fit_their_panes() {
 /// "File tree side" in Appearance: Right is saved, and the Files tab then puts the tree right. The
 /// search finds the row by the words people use for it.
 #[test]
-fn settings_walkthrough_file_tree_side_moves_the_tree() {
+fn file_tree_side_moves_the_tree() {
     let scratch = ScratchDir::new("settings-tree-side");
     let host = GitHubHost::with_pull_request_files(scratch.path(), &[tree_side::long_file()]);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
@@ -186,7 +186,7 @@ fn settings_walkthrough_file_tree_side_moves_the_tree() {
 /// Every on/off row's checkbox centers on the row's name and description together. It used to
 /// center on a button's height at the row's top, beside the name only.
 #[test]
-fn settings_walkthrough_checkboxes_center_on_their_rows() {
+fn checkboxes_center_on_their_rows() {
     // Section, the row's name, the start of its description.
     const SWITCHES: [(&str, &str, &str); 3] = [
         ("Appearance", "Wrap long lines", "In the text diff."),

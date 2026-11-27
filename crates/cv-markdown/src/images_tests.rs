@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use cv_base::theme;
 use cv_media::image_clipboard::{self, Original};
-use cv_media::image_state::{ImageFailure, ImageState};
+use cv_media::image_state::{ImageFailure, ImageState, Remedy};
 use cv_media::picture::Picture;
 use cv_media::video;
 use cv_testkit::Clicks;
@@ -93,13 +93,7 @@ fn texture(ctx: &Context, name: &str) -> TextureHandle {
 
 /// A failure that a retry may fix, needing neither a token nor ffmpeg.
 fn failure(reason: &str, place: &str) -> ImageFailure {
-    ImageFailure {
-        reason: reason.into(),
-        place: place.into(),
-        can_retry: true,
-        needs_access: false,
-        needs_ffmpeg: false,
-    }
+    ImageFailure::new(reason.into(), place.into(), true)
 }
 
 /// The body the fake's ready images were decoded from.
@@ -188,7 +182,7 @@ fn a_failed_image_says_why_and_offers_retry_and_the_browser() {
 fn a_private_image_offers_the_token_fix_on_a_card_of_the_usual_size() {
     let mut harness = harness("![Screenshot](shot.png)\n\nBelow".to_owned(), None, [600.0, 300.0]);
     let failure = ImageFailure {
-        needs_access: true,
+        remedy: Remedy::SignIn,
         ..failure("Sign-in needed: this image is private", "github.com")
     };
     harness.state().source.set("shot.png", ImageState::Failed(Arc::new(failure)));
@@ -294,7 +288,8 @@ fn a_video_shows_its_controls_and_plays_in_place() {
 #[test]
 fn a_video_without_ffmpeg_offers_the_install_command() {
     let mut harness = harness("![demo](demo.webm)".to_owned(), None, [600.0, 300.0]);
-    let failure = ImageFailure { needs_ffmpeg: true, ..failure(video::MISSING, "github.com") };
+    let failure =
+        ImageFailure { remedy: Remedy::InstallFfmpeg, ..failure(video::MISSING, "github.com") };
     harness.state().source.set("demo.webm", ImageState::Failed(Arc::new(failure)));
     harness.run_steps(3);
     harness.get_by_role_and_label(Role::Button, "Retry");

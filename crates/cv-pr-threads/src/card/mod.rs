@@ -193,6 +193,12 @@ fn paint_bar(ui: &Ui, card: Rect, color: Color32) {
     ui.painter().rect_filled(bar, CornerRadius { nw: radius, sw: radius, ne: 0, se: 0 }, color);
 }
 
+/// The thread on the pull request's page, once the page and the platform are known.
+fn thread_url(threads: &ThreadsUi, thread: &ReviewThread) -> Option<String> {
+    let page = threads.context.web_url.as_deref()?;
+    links::thread_url(threads.edits.provider()?, page, thread)
+}
+
 fn hairline(ui: &mut Ui, palette: &Palette) {
     let y = ui.cursor().top();
     ui.painter().hline(ui.max_rect().x_range(), y + 0.5, Stroke::new(1.0, palette.border));
@@ -217,11 +223,7 @@ fn header(
     event: &mut Option<ThreadEvent>,
 ) {
     let palette = theme::palette(ui.ctx());
-    let url = threads
-        .context
-        .web_url
-        .as_deref()
-        .and_then(|page| links::thread_url(threads.context.platform, page, thread));
+    let url = thread_url(threads, thread);
     section(ui, Margin { left: 14, right: 8, top: 7, bottom: 7 }, |ui| {
         ui.allocate_ui_with_layout(
             vec2(ui.available_width(), buttons::SUBTLE_HEIGHT),
@@ -467,11 +469,7 @@ fn outdated_note(ui: &mut Ui, thread: &ReviewThread, threads: &ThreadsUi) -> boo
     let palette = theme::palette(ui.ctx());
     let line =
         thread.anchor.as_ref().map_or_else(|| "its line".to_owned(), suggestion::lines_label);
-    let url = threads
-        .context
-        .web_url
-        .as_deref()
-        .and_then(|page| links::thread_url(threads.context.platform, page, thread));
+    let url = thread_url(threads, thread);
     let mut show_origin = false;
     section(ui, Margin::symmetric(14, 10), |ui| {
         ui.horizontal_wrapped(|ui| {
@@ -506,11 +504,44 @@ const ORIGIN_HINT: &str =
 
 #[cfg(test)]
 mod tests {
-    use review_core::ProviderKind;
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+    use review_core::{ProviderKind, ThreadStatus};
 
     use super::super::samples::{self, comment, jonas, minutes_ago};
-    use super::super::{CardOptions, ThreadsUi};
+    use super::super::{CardOptions, ThreadsUi, links};
     use super::show;
+
+    #[test]
+    fn offers_the_thread_link_once_the_provider_is_known() {
+        let thread = samples::thread(
+            "issue-comment:5",
+            ThreadStatus::Active,
+            None,
+            vec![comment("5", &jonas(), 3, "Ship it.")],
+        );
+        for has_provider in [false, true] {
+            let mut threads = ThreadsUi::for_tests(ProviderKind::GitHub);
+            threads.context.web_url = Some("https://code.example/acme/shop/pull/12".into());
+            if has_provider {
+                threads.edits.set_provider(&links::tests::github());
+            }
+            let shown = thread.clone();
+            let mut harness = Harness::builder()
+                .with_size([900.0, 600.0])
+                .with_context_setup(cv_base::theme::fonts::install)
+                .build_ui_state(
+                    move |ui, threads: &mut ThreadsUi| {
+                        cv_base::theme::activate(ui.ctx(), review_store::ThemePreference::Light);
+                        show(ui, &shown, threads, &CardOptions { show_location: false });
+                    },
+                    threads,
+                );
+            harness.run_steps(2);
+            let offered = harness.query_by_label("Copy link to thread").is_some();
+            assert_eq!(offered, has_provider, "with a provider: {has_provider}");
+        }
+    }
 
     /// Frames at `times`, each started as the page starts it (read tracking first), then showing
     /// `thread`'s card or nothing.

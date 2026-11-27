@@ -47,7 +47,7 @@ pub struct Released {
     pub connection_id: String,
     pub kind: ProviderKind,
     /// The host of the clone URL, which the connection's base URL must share.
-    pub host: String,
+    host: String,
     pub repository_key: String,
     clone_url: String,
     default_branch: String,
@@ -77,11 +77,9 @@ impl Released {
         };
         let clone_url = field("clone_url");
         // Azure DevOps hands out clone URLs with the organization as user name.
-        let host = clone_url.split("://").nth(1).and_then(|rest| rest.split('/').next());
-        let host = host.and_then(|host| host.rsplit('@').next()).unwrap_or_default().to_owned();
-        if host.is_empty() {
-            missing(&file, &format!("\"{section}\".\"clone_url\" {clone_url} has no host"));
-        }
+        let host = host_of(&clone_url).unwrap_or_else(|| {
+            missing(&file, &format!("\"{section}\".\"clone_url\" {clone_url} has no host"))
+        });
         let repository_key = field("repository");
         if kind == ProviderKind::AzureDevOps && repository_key.split('/').count() != 3 {
             missing(
@@ -113,8 +111,13 @@ impl Released {
             self.kind.label()
         );
         let base_url = stored["base_url"].as_str().unwrap_or_default();
-        let host = base_url.split("://").nth(1).unwrap_or_default().split('/').next();
-        assert_eq!(host, Some(self.host.as_str()), "{} points at {base_url}", self.connection_id);
+        let host = host_of(base_url);
+        assert_eq!(
+            host.as_deref(),
+            Some(self.host.as_str()),
+            "{} points at {base_url}",
+            self.connection_id
+        );
     }
 
     pub fn has_pipeline(&self) -> bool {
@@ -135,15 +138,19 @@ impl Released {
         let program = if cfg!(windows) { "az.cmd" } else { "az" };
         let [organization, project, _] = self.azure_parts();
         let organization = format!("https://{}/{organization}", self.host);
-        let scope = ["--organization", &organization, "--project", project, "--output", "json"];
+        let mut command = Command::new(program);
+        command.args(args).args(["--organization", &organization, "--output", "json"]);
         // `az repos pr show/update` take no project.
-        let scope = if args.get(2).is_some_and(|verb| *verb == "create") {
-            &scope[..]
-        } else {
-            &[scope[0], scope[1], scope[4], scope[5]][..]
-        };
-        json(&run(Command::new(program).args(args).args(scope))?)
+        if args.get(2).is_some_and(|verb| *verb == "create") {
+            command.args(["--project", project]);
+        }
+        json(&run(&mut command)?)
     }
+}
+
+/// The host `url` names, without a user name.
+fn host_of(url: &str) -> Option<String> {
+    reqwest::Url::parse(url).ok().and_then(|url| url.host_str().map(str::to_owned))
 }
 
 /// The pipeline file the topic branch adds on `kind`, whose one job fails so that it can be rerun.
@@ -211,7 +218,7 @@ impl<'r> TestPullRequest<'r> {
         ])));
         let mut pull_request = Self { released, checkout, base, topic, number: 0 };
         pull_request.git(&["push", "origin", &format!("HEAD:refs/heads/{}", pull_request.base)]);
-        pull_request.git(&["checkout", "-b", &pull_request.topic.clone()]);
+        pull_request.git(&["checkout", "-b", &pull_request.topic]);
         pull_request.write(FILE, FILE_TEXT);
         let mut added = vec![FILE];
         if let Some((path, text)) = released.ci_file {
@@ -220,7 +227,7 @@ impl<'r> TestPullRequest<'r> {
         }
         pull_request.git(&[&["add", "--"], added.as_slice()].concat());
         pull_request.git(&["commit", "-m", "Add the Code View live test file"]);
-        pull_request.git(&["push", "origin", &pull_request.topic.clone()]);
+        pull_request.git(&["push", "origin", &pull_request.topic]);
         pull_request.number = pull_request.create();
         println!("opened {} #{}", released.repository_key, pull_request.number);
         pull_request
@@ -239,7 +246,7 @@ impl<'r> TestPullRequest<'r> {
         loop {
             let status = self.pipeline_status();
             println!("pipeline: {status:?} after {} s", started.elapsed().as_secs());
-            if status.as_deref() == Some("failure") || status.as_deref() == Some("failed") {
+            if matches!(status.as_deref(), Some("failure" | "failed")) {
                 return;
             }
             assert!(started.elapsed() < CI_WAIT, "the pipeline did not fail in time: {status:?}");

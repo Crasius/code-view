@@ -12,7 +12,7 @@ use cv_shell::top_bar;
 use cv_widgets::buttons;
 
 /// The room both arrows take.
-pub fn width() -> f32 {
+fn width() -> f32 {
     buttons::icon_width() * 2.0
 }
 

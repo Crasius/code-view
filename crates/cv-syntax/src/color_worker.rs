@@ -1,30 +1,16 @@
 //! One background thread colors whole files, one at a time. Compiling a grammar is the expensive
-//! part (about 30 MB for TypeScript on the pure-Rust regex engine); the process
-//! keeps the compiled sets (see [`grammar::compiled`]), so a job holds its set only while it runs.
+//! part (about 30 MB for TypeScript on the pure-Rust regex engine); the process keeps the
+//! compiled sets (see [`crate::grammar::compiled`]), so a job holds its set only while it runs.
 
+use std::sync::OnceLock;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, OnceLock};
 
-use crate::grammar::{self, Grammar, WorkingSet};
-
-type Job = Box<dyn FnOnce(&mut WarmSet) + Send>;
+type Job = Box<dyn FnOnce() + Send>;
 
 static JOBS: OnceLock<Sender<Job>> = OnceLock::new();
 
-/// The compiled grammar set the running job colors with.
-#[derive(Default)]
-pub struct WarmSet {
-    current: Option<Arc<WorkingSet>>,
-}
-
-impl WarmSet {
-    pub fn for_grammar(&mut self, grammar: Grammar) -> &Arc<WorkingSet> {
-        self.current.insert(grammar::compiled(grammar))
-    }
-}
-
 /// Queues `job` behind the jobs already waiting. A job whose file is gone should return at once.
-pub fn submit(job: impl FnOnce(&mut WarmSet) + Send + 'static) {
+pub fn submit(job: impl FnOnce() + Send + 'static) {
     let jobs = JOBS.get_or_init(|| {
         let (sender, receiver) = mpsc::channel();
         // If the thread cannot start, the receiver is dropped with the closure and every job is
@@ -39,7 +25,7 @@ pub fn submit(job: impl FnOnce(&mut WarmSet) + Send + 'static) {
 
 fn run(jobs: &Receiver<Job>) {
     while let Ok(job) = jobs.recv() {
-        job(&mut WarmSet::default());
+        job();
     }
 }
 

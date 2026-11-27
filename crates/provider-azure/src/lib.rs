@@ -233,6 +233,10 @@ impl Provider for AzureDevOpsProvider {
         threads::comment_actions(thread)
     }
 
+    fn thread_page_suffix(&self, thread: &ReviewThread) -> Option<String> {
+        threads::page_suffix(thread)
+    }
+
     async fn edit_comment(
         &self,
         repo: &str,

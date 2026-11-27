@@ -47,7 +47,8 @@ pub use self::drafts::{GENERAL_KEY, new_thread_key};
 pub use self::event::{Jump, ThreadEvent};
 pub use self::links::thread_url;
 pub use self::panel::{
-    HIDE_HINT, PanelEvent, PanelInputs, SHOW_HINT, panel_toggle, show as show_panel,
+    HIDE_HINT, PanelEvent, PanelInputs, SHOW_HINT, ToggleCounts, is_listed, panel_toggle,
+    show as show_panel, toggle_counts,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use self::posts::Delivery;
@@ -338,8 +339,13 @@ impl ThreadsUi {
 
     /// The signed-in user, once known. Asking starts the one request that finds out.
     pub fn me(&mut self) -> Option<&UserIdentity> {
-        self.wants_me = true;
+        self.request_me();
         self.me.ready()
+    }
+
+    /// Asks for the signed-in user: the next frame starts the one request that finds out.
+    pub(crate) fn request_me(&mut self) {
+        self.wants_me = true;
     }
 
     fn known_me(&self) -> Option<&UserIdentity> {

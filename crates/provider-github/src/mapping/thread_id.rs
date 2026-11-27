@@ -1,6 +1,8 @@
 //! [`review_core::ReviewThread::id`] encoding. GraphQL review threads keep their bare node id
 //! (what `addPullRequestReviewThreadReply` and `resolveReviewThread` take); everything else is prefixed.
 
+use review_core::ReviewThread;
+
 const REVIEW_COMMENT_PREFIX: &str = "review-comment:";
 const ISSUE_COMMENT_PREFIX: &str = "issue-comment:";
 const REVIEW_BODY_PREFIX: &str = "review:";
@@ -44,9 +46,61 @@ impl<'a> ThreadId<'a> {
     }
 }
 
+/// The comment anchor of `thread` on the pull request's page: review threads and their REST root
+/// comments link to the first comment, general comments to theirs, review bodies to the review.
+pub(crate) fn page_suffix(thread: &ReviewThread) -> Option<String> {
+    let first = thread.comments.first()?;
+    let suffix = match ThreadId::parse(&thread.id)? {
+        ThreadId::ReviewThread(_) | ThreadId::ReviewComment(_) => {
+            format!("#discussion_r{}", first.id)
+        }
+        ThreadId::IssueComment(_) => format!("#issuecomment-{}", first.id),
+        ThreadId::ReviewBody(review) => format!("#pullrequestreview-{review}"),
+    };
+    Some(suffix)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::ThreadId;
+    use review_core::{ReviewThread, ThreadComment, ThreadStatus, UserIdentity};
+
+    use super::{ThreadId, page_suffix};
+
+    fn thread(id: &str, comments: &[&str]) -> ReviewThread {
+        let comment = |comment_id: &&str| ThreadComment {
+            id: (*comment_id).to_owned(),
+            author: UserIdentity::default(),
+            body: String::new(),
+            created_at: time::OffsetDateTime::UNIX_EPOCH,
+            updated_at: None,
+        };
+        ReviewThread {
+            id: id.to_owned(),
+            status: ThreadStatus::Active,
+            anchor: None,
+            is_outdated: false,
+            origin: None,
+            is_system: false,
+            can_reply: true,
+            can_resolve: true,
+            comments: comments.iter().map(comment).collect(),
+        }
+    }
+
+    #[test]
+    fn links_each_kind_of_thread() {
+        let cases = [
+            ("PRRT_kw", &["991"][..], Some("#discussion_r991")),
+            ("review-comment:991", &["991"][..], Some("#discussion_r991")),
+            ("issue-comment:5", &["5"][..], Some("#issuecomment-5")),
+            ("review:7", &["8"][..], Some("#pullrequestreview-7")),
+            ("PRRT_kw", &[][..], None),
+            ("other:1", &["1"][..], None),
+        ];
+        for (id, comments, expected) in cases {
+            assert_eq!(page_suffix(&thread(id, comments)).as_deref(), expected, "{id}");
+        }
+    }
 
     #[test]
     fn round_trips() {
