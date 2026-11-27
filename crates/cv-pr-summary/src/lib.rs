@@ -59,6 +59,8 @@ mod rendered_check;
 #[cfg(test)]
 mod split_check;
 #[cfg(test)]
+mod summary_walkthrough;
+#[cfg(test)]
 mod testing;
 #[cfg(test)]
 mod zoom_check;
