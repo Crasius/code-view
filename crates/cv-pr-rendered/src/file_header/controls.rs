@@ -418,7 +418,7 @@ fn whole_file_chip(ui: &mut Ui, side: DiffSide, slot_width: f32) {
     let chip = Rect::from_center_size(slot.center(), vec2(chip_width, CHIP_HEIGHT));
     let response = ui.interact(chip, ui.scope_id().with("whole_file_chip"), Sense::hover());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, label));
-    ui.painter().rect_filled(chip, 10, chip_fill(&palette, color));
+    ui.painter().rect_filled(chip, style::RADIUS_CHIP, chip_fill(&palette, color));
     ui.painter().text(chip.center(), Align2::CENTER_CENTER, text, font, color);
     response.on_hover_text(hint);
 }
