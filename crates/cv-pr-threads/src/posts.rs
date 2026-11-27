@@ -182,11 +182,7 @@ impl Posts {
                     delivered = true;
                 }
                 Load::Failed(message) => {
-                    post.state = PostState::Failed {
-                        message,
-                        needs_token: issues.get(connection_id).is_some(),
-                    };
-                    news.failed.push(key.clone());
+                    fail(key, post, message, issues.get(connection_id).is_some(), news);
                 }
                 Load::Idle | Load::Loading(_) => {}
             }
@@ -196,10 +192,11 @@ impl Posts {
 
     /// Drops sent posts the threads loaded at `version` show, and says which they were.
     pub fn forget_delivered(&mut self, version: u64) -> Vec<Landed> {
+        let has_landed = |post: &Post| matches!(post.state, PostState::Sent { after_version } if version > after_version);
         let landed: Vec<String> = self
             .by_key
             .iter()
-            .filter(|(_, post)| matches!(post.state, PostState::Sent { after_version } if version > after_version))
+            .filter(|(_, post)| has_landed(post))
             .map(|(key, _)| key.clone())
             .collect();
         landed
@@ -286,15 +283,14 @@ impl Posts {
     /// The platform refused the post under `key`.
     pub fn fail_for_tests(&mut self, key: &str, message: &str, news: &mut PostNews) {
         if let Some(post) = self.by_key.get_mut(key) {
-            post.state = PostState::Failed { message: message.to_owned(), needs_token: false };
-            news.failed.push(key.to_owned());
+            fail(key, post, message.to_owned(), false, news);
         }
     }
 
     #[cfg(any(test, feature = "test-support"))]
     pub fn insert_for_tests(&mut self, key: &str, state: PostState, body: &str) {
         let kind = PostKind::Reply {
-            thread_id: key.strip_prefix("reply:").unwrap_or_default().to_owned(),
+            thread_id: key.strip_prefix(super::drafts::REPLY_PREFIX).unwrap_or_default().to_owned(),
             body: body.to_owned(),
             resolve: false,
         };
@@ -316,6 +312,12 @@ fn deliver(key: &str, post: &mut Post, delivery: Delivery, version: u64, news: &
     news.delivered.push(key.to_owned());
     post.state = PostState::Sent { after_version: version };
     post.delivery = Some(delivery);
+}
+
+/// The platform refused the post: its text stays with the reason and Retry.
+fn fail(key: &str, post: &mut Post, message: String, needs_token: bool, news: &mut PostNews) {
+    post.state = PostState::Failed { message, needs_token };
+    news.failed.push(key.to_owned());
 }
 
 fn send(

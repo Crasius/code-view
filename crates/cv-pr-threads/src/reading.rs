@@ -1,12 +1,28 @@
 //! Read marks from reading: an open card in view for [`READ_DWELL_SECONDS`] counts as read up to
 //! the newest comment it showed once it leaves the view (a collapsed one shows no replies). Cards
 //! report themselves each frame they are in view ([`Reading::note`]); [`Reading::track`] runs once
-//! per frame before any card.
+//! per frame before any card. What is still news after the read marks: [`news`].
 
 use std::collections::HashMap;
 
-use review_core::ReviewThread;
+use review_core::{ReviewThread, ThreadComment};
 use review_store::ThreadStore;
+
+/// Which comments of `thread` are news to the user `me`: other people's, newer than what the user
+/// has seen. `None` when none can be (a platform notice, or no visit yet).
+pub fn news<'a>(
+    store: &ThreadStore,
+    me: Option<&'a str>,
+    thread: &ReviewThread,
+) -> Option<impl Fn(&ThreadComment) -> bool + 'a> {
+    if thread.is_system {
+        return None;
+    }
+    let seen = store.seen_until(&thread.id)?;
+    Some(move |comment: &ThreadComment| {
+        comment.created_at.unix_timestamp() > seen && Some(comment.author.id.as_str()) != me
+    })
+}
 
 /// How long a card has to stay on screen before its comments count as read when it leaves.
 const READ_DWELL_SECONDS: f64 = 1.0;

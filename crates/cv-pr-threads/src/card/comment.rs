@@ -16,16 +16,16 @@ use super::super::edits::View;
 use super::super::suggestion::{self, Part};
 use super::super::{ThreadEvent, ThreadsUi};
 use super::own_comment;
-use super::{AVATAR_GAP, AVATAR_SIZE, NEW_DOT, NewComments, POSTING, hairline, section};
+use super::{AVATAR_GAP, AVATAR_SIZE, NEW_DOT, NewComments, POSTING, Phase, hairline, section};
 
 /// The comments, hairline above each; the user's own carry their menu unless the thread is on its
-/// way (`pending`). Deleted comments are left out until the reloaded threads drop them.
+/// way. Deleted comments are left out until the reloaded threads drop them.
 pub(super) fn comments(
     ui: &mut Ui,
     thread: &ReviewThread,
     threads: &mut ThreadsUi,
     new: Option<&NewComments>,
-    pending: Option<bool>,
+    phase: Phase,
 ) -> Option<ThreadEvent> {
     let palette = theme::palette(ui.ctx());
     let mut event = None;
@@ -37,10 +37,10 @@ pub(super) fn comments(
         }
         hairline(ui, &palette);
         let is_new = new.is_some_and(|new| index >= new.first && is_from_others(threads, comment));
-        let note = (pending == Some(true) && index == last).then_some(POSTING);
-        let actions = match pending {
-            Some(_) => CommentActions::NONE,
-            None => own_actions(threads, thread, comment),
+        let note = (phase == Phase::Sending && index == last).then_some(POSTING);
+        let actions = match phase {
+            Phase::Sending | Phase::Sent => CommentActions::NONE,
+            Phase::Loaded => own_actions(threads, thread, comment),
         };
         let (shown, comment_event) =
             comment_row(ui, thread, comment, threads, is_new, note, actions);
@@ -182,13 +182,13 @@ fn header(
         };
         let after = measure(&when, &small)
             + if is_author {
-                measure(AUTHOR, &egui::FontId::proportional(AUTHOR_SIZE)) + 10.0
+                measure(AUTHOR, &egui::FontId::proportional(style::TINY_SIZE)) + 10.0
             } else {
                 0.0
             }
             + if comment.updated_at.is_some() { measure("edited", &small) } else { 0.0 }
             + if is_new { measure("New", &small) } else { 0.0 }
-            + if has_menu { own_comment::menu_width() + 8.0 } else { 0.0 };
+            + if has_menu { buttons::icon_width() + 8.0 } else { 0.0 };
         ui.scope(|ui| {
             ui.set_max_width((ui.available_width() - after).max(0.0));
             ui.add(
@@ -215,17 +215,16 @@ fn header(
         }
         if has_menu {
             // At the end of the line: a nested right-to-left layout would take the whole height.
-            ui.add_space((ui.available_width() - own_comment::menu_width()).max(0.0));
+            ui.add_space((ui.available_width() - buttons::icon_width()).max(0.0));
             own_comment::menu(ui, thread, comment, threads, actions);
         }
     });
 }
 
 const AUTHOR: &str = "Author";
-const AUTHOR_SIZE: f32 = 11.0;
 
 fn author_badge(ui: &mut Ui, palette: &Palette) {
-    let font = egui::FontId::proportional(AUTHOR_SIZE);
+    let font = egui::FontId::proportional(style::TINY_SIZE);
     let galley = ui.painter().layout_no_wrap(AUTHOR.to_owned(), font, palette.text_secondary);
     let (rect, response) = ui.allocate_exact_size(galley.size() + vec2(10.0, 2.0), Sense::hover());
     ui.painter().rect_stroke(
@@ -301,7 +300,9 @@ fn suggested_change(ui: &mut Ui, salt: impl std::hash::Hash + std::fmt::Debug, c
                 }
                 // Long lines scroll sideways inside the panel instead of running past the card.
                 scroll::sideways(ui, salt, |ui| {
-                    let font = theme::fonts::code_font(12.5);
+                    // The size of the code blocks in the comment's own Markdown.
+                    let font =
+                        theme::fonts::code_font(style::BODY_SIZE - markdown::CODE_SIZE_DELTA);
                     for line in code.lines() {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 10.0;

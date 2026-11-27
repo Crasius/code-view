@@ -27,8 +27,6 @@ mod posts;
 mod reading;
 #[cfg(any(test, feature = "test-support"))]
 pub mod samples;
-#[cfg(test)]
-mod shots;
 pub mod suggestion;
 
 use std::collections::{HashMap, HashSet};
@@ -223,12 +221,9 @@ impl ThreadsUi {
                 page.unwrap_or_else(|| ToastAction::copy("Copy message", warning.clone()));
             services.toasts.error(warning, ways_out);
         }
-        if let Some(threads) = session.threads.ready() {
-            self.on_threads(threads, session.threads.version());
-        }
-        self.settling.retain(|_, until| *until > self.now);
+        let threads = session.threads.ready().map(Vec::as_slice);
+        self.track_frame(threads, session.threads.version());
         self.code.begin_frame(ctx, session, services);
-        self.reading.track(self.now, &mut self.store);
         let is_due = self.now - self.last_save >= SAVE_INTERVAL_SECONDS;
         if self.store.is_dirty() && is_due {
             self.last_save = self.now;
@@ -241,6 +236,16 @@ impl ThreadsUi {
         if self.store.is_dirty() {
             ctx.request_repaint_after(std::time::Duration::from_secs_f64(SAVE_INTERVAL_SECONDS));
         }
+    }
+
+    /// The threads-only part of [`Self::begin_frame`]: the threads loaded at `version` (once they
+    /// are there), the hand-offs that stop easing, and the cards that were read.
+    fn track_frame(&mut self, threads: Option<&[ReviewThread]>, version: u64) {
+        if let Some(threads) = threads {
+            self.on_threads(threads, version);
+        }
+        self.settling.retain(|_, until| *until > self.now);
+        self.reading.track(self.now, &mut self.store);
     }
 
     fn on_threads(&mut self, threads: &[ReviewThread], version: u64) {
@@ -355,29 +360,14 @@ impl ThreadsUi {
 
     /// Comments of other people the user has not seen yet; `None` when there are none.
     pub fn new_comments(&self, thread: &ReviewThread) -> Option<NewComments> {
-        if thread.is_system {
-            return None;
-        }
-        let seen = self.store.seen_until(&thread.id)?;
         let me = self.known_me().map(|me| me.id.as_str());
-        let is_new = |comment: &review_core::ThreadComment| {
-            comment.created_at.unix_timestamp() > seen && Some(comment.author.id.as_str()) != me
-        };
-        let first = thread.comments.iter().position(is_new)?;
-        let mut authors: Vec<String> = Vec::new();
-        let mut count = 0;
-        for comment in thread.comments[first..].iter().filter(|comment| is_new(comment)) {
-            count += 1;
-            let name = first_name(&comment.author.display_name);
-            if !authors.contains(&name) {
-                authors.push(name);
-            }
-        }
-        Some(NewComments { first, count, authors, is_new_thread: first == 0 })
+        NewComments::of(thread, reading::news(&self.store, me, thread)?)
     }
 
     pub fn is_unread(&self, thread: &ReviewThread) -> bool {
-        self.new_comments(thread).is_some()
+        let me = self.known_me().map(|me| me.id.as_str());
+        reading::news(&self.store, me, thread)
+            .is_some_and(|is_new| thread.comments.iter().any(is_new))
     }
 
     /// Marks every comment of `thread` as read now.
@@ -403,9 +393,14 @@ impl ThreadsUi {
 
     /// Writes the working copy of `key` to the store (on disk with the next save).
     pub fn keep_draft(&mut self, key: &str, anchor: Option<&review_core::ThreadAnchor>) {
-        let text = self.texts.get(key).cloned().unwrap_or_default();
-        self.store
-            .set_draft(key, review_store::Draft { text, anchor: anchor.map(drafts::to_stored) });
+        let text = self.texts.get(key).map_or("", String::as_str);
+        if !drafts::is_kept(&self.store, key, text, anchor) {
+            let draft = review_store::Draft {
+                text: text.to_owned(),
+                anchor: anchor.map(drafts::to_stored),
+            };
+            self.store.set_draft(key, draft);
+        }
     }
 
     /// Drops the draft under `key` for good (the user cancelled, or it was posted).
@@ -575,9 +570,7 @@ impl ThreadsUi {
         match event {
             ThreadEvent::Reply { thread_id, body, resolve } => {
                 let key = drafts::reply_key(&thread_id);
-                self.reply_open.remove(&thread_id);
-                self.read_after_reload.insert(thread_id.clone());
-                self.settle(&thread_id);
+                self.note_reply(&thread_id);
                 self.posts.start(
                     &key,
                     PostKind::Reply { thread_id, body, resolve },
@@ -624,6 +617,14 @@ impl ThreadsUi {
                 None
             }
         }
+    }
+
+    /// A reply to `thread_id` goes out: its composer folds into the pending comment, and the
+    /// thread is read up to the reply once the reloaded threads carry it.
+    fn note_reply(&mut self, thread_id: &str) {
+        self.reply_open.remove(thread_id);
+        self.read_after_reload.insert(thread_id.to_owned());
+        self.settle(thread_id);
     }
 
     /// The failed post whose Retry was clicked, now carrying the text its composer shows: the user
@@ -699,8 +700,8 @@ impl ThreadsUi {
         self.me = Load::Ready(me);
     }
     #[cfg(any(test, feature = "test-support"))]
-    pub fn set_post_state(&mut self, key: &str, state: PostState, kind_body: &str) {
-        self.posts.insert_for_tests(key, state, kind_body);
+    pub fn set_post_state(&mut self, key: &str, state: PostState, body: &str) {
+        self.posts.insert_for_tests(key, state, body);
     }
     #[cfg(any(test, feature = "test-support"))]
     /// The start of a frame without a session: the clock, and the threads loaded at `version`.
@@ -711,8 +712,7 @@ impl ThreadsUi {
         version: u64,
     ) {
         self.now = ctx.input(|input| input.time);
-        self.on_threads(threads, version);
-        self.settling.retain(|_, until| *until > self.now);
+        self.track_frame(Some(threads), version);
     }
     #[cfg(any(test, feature = "test-support"))]
     /// What the files tab does with a new thread the diff asked to post, without a platform.
@@ -723,9 +723,7 @@ impl ThreadsUi {
     #[cfg(any(test, feature = "test-support"))]
     /// What a reply does, without a platform.
     pub fn reply_for_tests(&mut self, thread_id: &str, body: &str) {
-        self.reply_open.remove(thread_id);
-        self.read_after_reload.insert(thread_id.to_owned());
-        self.settle(thread_id);
+        self.note_reply(thread_id);
         let kind = PostKind::Reply {
             thread_id: thread_id.to_owned(),
             body: body.to_owned(),
@@ -750,10 +748,11 @@ impl ThreadsUi {
         self.on_post_news(&news);
     }
     #[cfg(any(test, feature = "test-support"))]
-    /// Retry was clicked on the failed post under `key` and it went out again.
+    /// Retry was clicked on the failed post under `key` and the next frame sent it again.
     pub fn retry_for_tests(&mut self, key: &str) {
-        if self.retry_requested.as_deref() == Some(key)
-            && self.take_retry().is_some()
+        self.retry_requested = Some(key.to_owned());
+        if self.take_retry().is_some()
+            && matches!(self.posts.state(key), Some(PostState::Failed { .. }))
             && let Some(kind) = self.posts.kind(key).cloned()
         {
             self.posts.start_for_tests(key, kind);
@@ -784,43 +783,19 @@ fn newest(thread: &ReviewThread) -> Option<i64> {
     thread.comments.iter().map(|comment| comment.created_at.unix_timestamp()).max()
 }
 
-fn first_name(display_name: &str) -> String {
-    display_name.split_whitespace().next().unwrap_or(display_name).to_owned()
-}
-
 #[cfg(test)]
 mod tests {
     use review_core::{ThreadComment, UserIdentity};
-    use time::OffsetDateTime;
 
+    use super::samples::{self, comment_at, lines, person};
     use super::*;
 
-    fn person(id: &str, name: &str) -> UserIdentity {
-        UserIdentity { id: id.into(), display_name: name.into(), login: None, avatar_url: None }
+    fn thread(comments: Vec<ThreadComment>) -> ReviewThread {
+        samples::thread("t1", ThreadStatus::Active, None, comments)
     }
 
     fn comment(id: &str, author: &UserIdentity, unix: i64) -> ThreadComment {
-        ThreadComment {
-            id: id.into(),
-            author: author.clone(),
-            body: "text".into(),
-            created_at: OffsetDateTime::from_unix_timestamp(unix).unwrap(),
-            updated_at: None,
-        }
-    }
-
-    fn thread(comments: Vec<ThreadComment>) -> ReviewThread {
-        ReviewThread {
-            id: "t1".into(),
-            status: ThreadStatus::Active,
-            anchor: None,
-            is_outdated: false,
-            origin: None,
-            is_system: false,
-            can_reply: true,
-            can_resolve: true,
-            comments,
-        }
+        comment_at(id, author, unix, "text")
     }
 
     #[test]
@@ -830,6 +805,7 @@ mod tests {
         let mut ui = ThreadsUi::for_tests(ProviderKind::GitHub);
         let read = thread(vec![comment("a", &jonas, 100)]);
         assert_eq!(ui.new_comments(&read), None, "nothing is new before the first visit");
+        assert!(!ui.is_unread(&read));
         ui.visited_at(150);
         ui.set_me(me.clone());
         let replied = thread(vec![
@@ -840,19 +816,22 @@ mod tests {
         ]);
         let new = ui.new_comments(&replied).expect("two new replies");
         assert_eq!(
-            (new.first, new.count, new.authors.clone(), new.is_new_thread),
+            (new.first, new.count, new.authors.clone(), new.is_new_thread()),
             (2, 2, vec!["Mara".to_owned(), "Jonas".to_owned()], false),
             "my own reply is not new"
         );
+        assert!(ui.is_unread(&replied));
+        let mine = thread(vec![comment("a", &jonas, 100), comment("b", &me, 160)]);
+        assert!(!ui.is_unread(&mine), "my own reply alone is no news");
         ui.mark_read(&replied);
         assert_eq!(ui.new_comments(&replied), None);
+        assert!(!ui.is_unread(&replied));
     }
 
     #[test]
     fn resolved_threads_start_collapsed_until_the_user_opens_them() {
         let mut ui = ThreadsUi::for_tests(ProviderKind::GitLab);
-        let mut resolved = thread(Vec::new());
-        resolved.status = ThreadStatus::Resolved;
+        let resolved = samples::thread("t1", ThreadStatus::Resolved, None, Vec::new());
         assert!(ui.is_collapsed(&resolved));
         ui.toggle_collapsed(&resolved);
         assert!(!ui.is_collapsed(&resolved));
@@ -879,37 +858,30 @@ mod tests {
         ui.reply_for_tests("t1", "Typo hree");
         ui.fail_for_tests(&reply, "Server error");
         *ui.text_mut(&reply) = "Typo here".into();
-        ui.retry_requested = Some(reply.clone());
         ui.retry_for_tests(&reply);
-        assert_eq!(ui.posts.body(&reply), Some("Typo here"), "the reply as the composer shows it");
+        assert_eq!(
+            ui.pending_reply("t1").map(|comment| comment.body),
+            Some("Typo here".to_owned()),
+            "the reply as the composer shows it"
+        );
 
-        let anchor = review_core::ThreadAnchor {
-            path: "src/a.rs".into(),
-            old_path: None,
-            old_line: None,
-            new_line: Some(4),
-            range: None,
-        };
-        let key = new_thread_key(&anchor);
+        let key = new_thread_key(&lines("src/a.rs", 4, 4));
         *ui.text_mut(&key) = "Frist".into();
         ui.post_new_thread_for_tests(&key, NewThread { body: "Frist".into(), anchor: None });
         ui.fail_for_tests(&key, "Server error");
         *ui.text_mut(&key) = "First".into();
-        ui.retry_requested = Some(key.clone());
         ui.retry_for_tests(&key);
-        assert_eq!(ui.posts.body(&key), Some("First"), "the new thread as its composer shows it");
+        assert_eq!(
+            ui.pending_thread(&key).map(|thread| thread.comments[0].body.clone()),
+            Some("First".to_owned()),
+            "the new thread as its composer shows it"
+        );
     }
 
     #[test]
     fn a_draft_moved_by_a_push_keeps_its_text_under_the_new_lines() {
         let mut ui = ThreadsUi::for_tests(ProviderKind::GitHub);
-        let before = review_core::ThreadAnchor {
-            path: "src/a.rs".into(),
-            old_path: None,
-            old_line: None,
-            new_line: Some(12),
-            range: None,
-        };
+        let before = lines("src/a.rs", 12, 12);
         let after = review_core::ThreadAnchor { new_line: Some(15), ..before.clone() };
         let key = new_thread_key(&before);
         ui.text_mut(&key).push_str("Why not a slice?");
@@ -928,13 +900,7 @@ mod tests {
     #[test]
     fn a_draft_moved_onto_another_kept_draft_keeps_both_texts() {
         let mut ui = ThreadsUi::for_tests(ProviderKind::GitHub);
-        let before = review_core::ThreadAnchor {
-            path: "src/a.rs".into(),
-            old_path: None,
-            old_line: None,
-            new_line: Some(12),
-            range: None,
-        };
+        let before = lines("src/a.rs", 12, 12);
         let after = review_core::ThreadAnchor { new_line: Some(15), ..before.clone() };
         let kept = new_thread_key(&after);
         ui.text_mut(&kept).push_str("Rename this.");

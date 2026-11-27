@@ -1,7 +1,7 @@
 //! Draft keys and the storable shape of a new thread's lines.
 
 use review_core::{DiffSide, FilePositions, LineRange, RangeDetail, ThreadAnchor};
-use review_store::{DraftAnchor, DraftRange};
+use review_store::{DraftAnchor, DraftRange, ThreadStore};
 
 /// The general (pull request level) comment, shared by the overview and the threads panel.
 pub const GENERAL_KEY: &str = "general";
@@ -23,6 +23,15 @@ pub fn new_thread_key(anchor: &ThreadAnchor) -> String {
     format!("new:{}:{}/{}{range}", anchor.path, number(anchor.old_line), number(anchor.new_line))
 }
 
+/// Whether `store` already keeps `text` on `anchor` under `key` (no text: keeps nothing), so the
+/// draft need not be written again.
+pub fn is_kept(store: &ThreadStore, key: &str, text: &str, anchor: Option<&ThreadAnchor>) -> bool {
+    match store.draft(key) {
+        Some(draft) => draft.text == text && holds(draft.anchor.as_ref(), anchor),
+        None => text.trim().is_empty(),
+    }
+}
+
 pub fn to_stored(anchor: &ThreadAnchor) -> DraftAnchor {
     DraftAnchor {
         path: anchor.path.clone(),
@@ -33,18 +42,41 @@ pub fn to_stored(anchor: &ThreadAnchor) -> DraftAnchor {
             start_old_line: range.start_old_line,
             start_new_line: range.start_new_line,
             is_new_side: range.side == DiffSide::New,
-            detail: range.detail.map(|detail| {
-                [
-                    detail.start.old,
-                    detail.start.new,
-                    detail.end.old,
-                    detail.end.new,
-                    detail.start_offset,
-                    detail.end_offset,
-                ]
-            }),
+            detail: range.detail.map(stored_detail),
         }),
     }
+}
+
+fn stored_detail(detail: RangeDetail) -> [u32; 6] {
+    [
+        detail.start.old,
+        detail.start.new,
+        detail.end.old,
+        detail.end.new,
+        detail.start_offset,
+        detail.end_offset,
+    ]
+}
+
+/// Whether `stored` is [`to_stored`] of `anchor`, compared field by field without building it.
+pub fn holds(stored: Option<&DraftAnchor>, anchor: Option<&ThreadAnchor>) -> bool {
+    let (Some(stored), Some(anchor)) = (stored, anchor) else {
+        return stored.is_none() && anchor.is_none();
+    };
+    let is_same_range = match (&stored.range, &anchor.range) {
+        (Some(stored), Some(range)) => {
+            stored.start_old_line == range.start_old_line
+                && stored.start_new_line == range.start_new_line
+                && stored.is_new_side == (range.side == DiffSide::New)
+                && stored.detail == range.detail.map(stored_detail)
+        }
+        (stored, range) => stored.is_none() && range.is_none(),
+    };
+    stored.path == anchor.path
+        && stored.old_path == anchor.old_path
+        && stored.old_line == anchor.old_line
+        && stored.new_line == anchor.new_line
+        && is_same_range
 }
 
 pub fn from_stored(anchor: &DraftAnchor) -> ThreadAnchor {
@@ -93,8 +125,11 @@ mod tests {
             }),
         };
         assert_eq!(from_stored(&to_stored(&anchor)), anchor);
+        assert!(holds(Some(&to_stored(&anchor)), Some(&anchor)));
         assert_eq!(new_thread_key(&anchor), "new:src/a.rs:-/12:n7/9");
-        let single = ThreadAnchor { range: None, ..anchor };
+        let single = ThreadAnchor { range: None, ..anchor.clone() };
         assert_eq!(new_thread_key(&single), "new:src/a.rs:-/12");
+        assert!(!holds(Some(&to_stored(&anchor)), Some(&single)), "the range differs");
+        assert!(!holds(Some(&to_stored(&single)), None) && holds(None, None));
     }
 }

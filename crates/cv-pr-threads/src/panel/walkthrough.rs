@@ -1,16 +1,172 @@
-//! The panel with a 500-thread review, driven through the accessibility tree: only the rows near
-//! the view are laid out, a jump to thread 480 (as a step or "Next unread" makes one) shows it,
-//! and N steps on from there.
+//! The panel driven through the accessibility tree like a user, no network, no tokens: a small
+//! review stepped through with the keyboard and filtered, the general comment's composer, and a
+//! 500-thread review where only the rows near the view are laid out, a jump to thread 480 (as a
+//! step or "Next unread" makes one) shows it, and N steps on from there.
 
 use cv_base::theme;
+use cv_testkit::Clicks;
+use cv_widgets::focus;
+use egui::Margin;
 use egui::accesskit::{Role, Toggled};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_core::ReviewThread;
+use review_core::{ReviewThread, ThreadStatus};
 use review_store::{ThemePreference, ThreadFilters};
 
 use super::{Keys, PanelEvent, PanelInputs, show};
-use crate::{ThreadsUi, samples};
+use crate::samples::{comment, erika, jonas, lines, mara, thread};
+use crate::{CardOptions, ThreadsUi, samples, show_card};
+
+struct PanelScene {
+    threads: Vec<ReviewThread>,
+    ui: ThreadsUi,
+    filters: ThreadFilters,
+    revealed: Vec<String>,
+}
+
+fn panel_scene() -> PanelScene {
+    let cart = "src/cart.rs";
+    let payment = "src/checkout/payment.rs";
+    let mut unread = samples::discussion("p-cart-total", lines(cart, 107, 109));
+    unread.comments.push(comment("p-cart-total-4", &jonas(), 8, "Pushed in the latest update."));
+    let mine = thread(
+        "p-payment",
+        ThreadStatus::Active,
+        Some(lines(payment, 31, 31)),
+        vec![
+            comment(
+                "p-payment-1",
+                &erika(),
+                140,
+                "Retrying a declined card here charges twice when the first call timed out.",
+            ),
+            comment(
+                "p-payment-2",
+                &jonas(),
+                120,
+                "The idempotency key covers that, see `charge_once`.",
+            ),
+        ],
+    );
+    let mut outdated = thread(
+        "p-lib",
+        ThreadStatus::Active,
+        Some(lines("src/lib.rs", 12, 12)),
+        vec![comment("p-lib-1", &mara(), 900, "Re-export `Cart` here?")],
+    );
+    outdated.is_outdated = true;
+    let general = thread(
+        "p-general",
+        ThreadStatus::Active,
+        None,
+        vec![
+            comment(
+                "p-general-1",
+                &mara(),
+                50,
+                "Nice cleanup overall. Can we get a test for the discount codes before merging?",
+            ),
+            comment("p-general-2", &jonas(), 4, "Added one in the last push."),
+        ],
+    );
+    PanelScene {
+        threads: vec![
+            general,
+            samples::resolved("p-cart-empty", Some(lines(cart, 116, 116))),
+            unread,
+            mine,
+            outdated,
+        ],
+        ui: samples::page_ui(),
+        filters: ThreadFilters::default(),
+        revealed: Vec::new(),
+    }
+}
+
+fn panel_harness(scene: PanelScene) -> Harness<'static, PanelScene> {
+    let builder = Harness::builder().with_size([1180.0, 800.0]).with_context_setup(|ctx| {
+        theme::fonts::install(ctx);
+        theme::motion::set_reduced(ctx, false);
+    });
+    builder.build_ui_state(
+        |ui, scene: &mut PanelScene| {
+            focus::track_modality(ui.ctx());
+            let palette = theme::activate(ui.ctx(), ThemePreference::Light);
+            ui.painter().rect_filled(ui.max_rect(), 0, palette.ground);
+            let file_order = ["src/cart.rs", "src/checkout/payment.rs", "src/lib.rs"];
+            let inputs = PanelInputs {
+                threads: &scene.threads,
+                file_order: &file_order,
+                filters: &mut scene.filters,
+                width: 380.0,
+            };
+            let (events, _) = show(ui, &mut scene.ui, inputs);
+            for event in events {
+                if let PanelEvent::Reveal { thread_id, .. } = event {
+                    scene.revealed.push(thread_id);
+                }
+            }
+            // The diff beside it: the selected thread's card stands in for it.
+            let selected = scene.ui.panel.selected.clone();
+            egui::Frame::new().inner_margin(Margin::same(24)).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                if let Some(thread) =
+                    scene.threads.iter().find(|thread| Some(&thread.id) == selected.as_ref())
+                {
+                    show_card(ui, thread, &mut scene.ui, &CardOptions { show_location: true });
+                }
+            });
+            focus::paint_for_focused_widget(ui.ctx());
+        },
+        scene,
+    )
+}
+
+#[test]
+fn the_panel_steps_through_threads_with_the_keyboard() {
+    let mut harness = panel_harness(panel_scene());
+    harness.run_steps(2);
+    assert!(harness.query_by_label("Active 4").is_some(), "the chip counts the active threads");
+    assert!(harness.query_by_label("Unread 2").is_some(), "two threads have news");
+    assert!(harness.query_by_label("Mine 2").is_some(), "threads the user wrote in");
+    // A click in the panel hands it the arrow keys.
+    harness.click_at(harness.get_by_label_contains("Mara Lind, lines 107–109").rect());
+    harness.run_steps(2);
+    assert_eq!(harness.state().revealed, ["p-cart-total"]);
+    harness.key_press(egui::Key::ArrowDown);
+    harness.run_steps(2);
+    harness.key_press(egui::Key::N);
+    harness.run_steps(2);
+    assert_eq!(
+        harness.state().revealed,
+        ["p-cart-total", "p-payment", "p-lib"],
+        "files in tree order"
+    );
+    // Unread only.
+    harness.click_at(harness.get_by_label("Unread 2").rect());
+    harness.run_steps(2);
+    assert!(harness.state().filters.unread);
+    assert!(
+        harness.query_by_label_contains("Erika Brandt").is_none(),
+        "read threads leave the list"
+    );
+}
+
+#[test]
+fn general_comment_opens_its_composer() {
+    let mut scene = panel_scene();
+    scene.ui.panel.selected = Some("p-cart-total".into());
+    let mut harness = panel_harness(scene);
+    harness.run_steps(20);
+
+    harness.click_at(harness.get_by_label("General comment").rect());
+    harness.run_steps(10);
+    assert!(harness.state().ui.panel.is_writing_general, "the click opens the composer");
+    assert!(
+        harness.query_by_label("General comment").is_none(),
+        "the composer takes the place of the footer button"
+    );
+}
 
 const HEIGHT: f32 = 800.0;
 
@@ -27,7 +183,7 @@ fn harness() -> Harness<'static, Scene> {
     let scene = Scene {
         ui: samples::review_ui(&threads),
         threads,
-        files: (0..samples::REVIEW_FILES).map(|index| samples::review_file(index).0).collect(),
+        files: (0..samples::REVIEW_FILES).map(samples::review_path).collect(),
         filters: ThreadFilters { active: false, resolved: false, unread: false, mine: false },
         revealed: Vec::new(),
     };

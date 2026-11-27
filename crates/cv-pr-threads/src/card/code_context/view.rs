@@ -111,14 +111,14 @@ pub fn show(ui: &mut Ui, thread: &ReviewThread, threads: &mut ThreadsUi) -> Opti
                     };
                     let shown = Shown::new(&file, mode);
                     let card = code.card(&thread.id);
-                    if excerpt.hidden_above > 0 && show_more(ui, excerpt.hidden_above, true) {
+                    if show_more(ui, excerpt.hidden_above, Edge::Above) {
                         card.extra.above += STEP;
                     }
                     let rows =
                         Rows { file: &file, shown, focus: &focus, mode, font: code.font_size };
                     is_revealed |= rows.show(ui, &excerpt.lines);
                     let card = code.card(&thread.id);
-                    if excerpt.hidden_below > 0 && show_more(ui, excerpt.hidden_below, false) {
+                    if show_more(ui, excerpt.hidden_below, Edge::Below) {
                         card.extra.below += STEP;
                     }
                 }
@@ -403,8 +403,19 @@ fn band<R>(ui: &mut Ui, content: impl FnOnce(&mut Ui) -> R) -> R {
     .inner
 }
 
-/// "Show 10 more lines" above (`is_above`) or below the code; true when clicked.
-fn show_more(ui: &mut Ui, hidden: usize, is_above: bool) -> bool {
+/// The side of the code a "Show more lines" band sits on.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Edge {
+    Above,
+    Below,
+}
+
+/// "Show 10 more lines" on `edge` of the code while lines are `hidden` there; true when clicked.
+fn show_more(ui: &mut Ui, hidden: usize, edge: Edge) -> bool {
+    if hidden == 0 {
+        return false;
+    }
+    let is_above = edge == Edge::Above;
     let palette = theme::palette(ui.ctx());
     let count = hidden.min(STEP);
     let text =
@@ -417,8 +428,8 @@ fn show_more(ui: &mut Ui, hidden: usize, is_above: bool) -> bool {
     });
     let fill = row::state_fill(ui, &response, palette.surface_subtle);
     ui.painter().rect_filled(rect, 0, fill);
-    let edge = if is_above { rect.bottom() - 0.5 } else { rect.top() + 0.5 };
-    ui.painter().hline(rect.x_range(), edge, Stroke::new(1.0, palette.border));
+    let line_y = if is_above { rect.bottom() - 0.5 } else { rect.top() + 0.5 };
+    ui.painter().hline(rect.x_range(), line_y, Stroke::new(1.0, palette.border));
     let hover = row::hover_amount(ui, &response);
     let color = motion::mix(palette.text_secondary, palette.accent_text, hover);
     let icon = if is_above { icons::CARET_UP } else { icons::CARET_DOWN };

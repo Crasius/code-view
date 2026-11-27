@@ -102,7 +102,7 @@ fn collapsed_summary(thread: &ReviewThread) -> String {
     if let Some(first) = thread.comments.first() {
         parts.push(format!(
             "{}: “{}”",
-            super::super::first_name(&first.author.display_name),
+            super::first_name(&first.author.display_name),
             excerpt(&first.body, 80)
         ));
     }

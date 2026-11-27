@@ -24,7 +24,7 @@ struct Scene {
 
 fn bench_panel(pixels_per_point: f32, reports: &mut Vec<Report>) {
     let threads = samples::review(THREADS);
-    let files = (0..samples::REVIEW_FILES).map(|index| samples::review_file(index).0).collect();
+    let files = (0..samples::REVIEW_FILES).map(samples::review_path).collect();
     let scene = Scene {
         ui: samples::review_ui(&threads),
         threads,

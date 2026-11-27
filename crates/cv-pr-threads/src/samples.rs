@@ -1,5 +1,6 @@
 //! Threads shaped like a real review, for the tests of the cards, the panel and the diff, and a
-//! long review for the frame benchmarks. Times are relative to now, so the cards show "12 min ago" and the like.
+//! long review for the frame benchmarks. Times are relative to now, so the cards show "12 min ago"
+//! and the like.
 
 use review_core::{
     DiffSide, LineRange, ProviderKind, ReviewThread, ThreadAnchor, ThreadComment, ThreadStatus,
@@ -39,11 +40,26 @@ pub fn minutes_ago(minutes: i64) -> OffsetDateTime {
 }
 
 pub fn comment(id: &str, author: &UserIdentity, minutes: i64, body: &str) -> ThreadComment {
+    comment_written(id, author, minutes_ago(minutes), body)
+}
+
+/// A comment written at `unix` seconds, for tests that set the visit to a fixed time.
+pub fn comment_at(id: &str, author: &UserIdentity, unix: i64, body: &str) -> ThreadComment {
+    let created_at = OffsetDateTime::from_unix_timestamp(unix).expect("a time in range");
+    comment_written(id, author, created_at, body)
+}
+
+fn comment_written(
+    id: &str,
+    author: &UserIdentity,
+    created_at: OffsetDateTime,
+    body: &str,
+) -> ThreadComment {
     ThreadComment {
         id: id.into(),
         author: author.clone(),
         body: body.into(),
-        created_at: minutes_ago(minutes),
+        created_at,
         updated_at: None,
     }
 }
@@ -109,12 +125,22 @@ pub fn discussion(id: &str, anchor: ThreadAnchor) -> ReviewThread {
 
 /// Files the threads of [`review`] are spread over, and the lines of each.
 pub const REVIEW_FILES: usize = 20;
-pub const REVIEW_FILE_LINES: u32 = 400;
+const REVIEW_FILE_LINES: u32 = 400;
 
-/// The changed file `index` of [`review`]: its path, a diff that replaced line 20 by two lines,
-/// and the head text.
-pub fn review_file(index: usize) -> (String, String, String) {
-    let path = format!("src/module_{}/file_{index}.rs", index / 5);
+/// The path of the changed file `index` of [`review`].
+pub fn review_path(index: usize) -> String {
+    format!("src/module_{}/file_{index}.rs", index / 5)
+}
+
+/// A changed file of [`review`]: a diff that replaced line 20 by two lines, and the head text.
+struct ReviewFile {
+    path: String,
+    diff: String,
+    text: String,
+}
+
+fn review_file(index: usize) -> ReviewFile {
+    let path = review_path(index);
     let diff =
         "@@ -20 +20,2 @@\n-    let total = 0;\n+    let mut total = 0;\n+    total += offset;\n"
             .to_owned();
@@ -130,7 +156,7 @@ pub fn review_file(index: usize) -> (String, String, String) {
         })
         .map(|line| line + "\n")
         .collect();
-    (path, diff, text)
+    ReviewFile { path, diff, text }
 }
 
 /// Comment `index` of thread `thread`: one-liners, prose with inline marks and links, fenced
@@ -179,9 +205,8 @@ pub fn review(count: usize) -> Vec<ReviewThread> {
                 })
                 .collect();
             let anchor = (index % 8 != 7).then(|| {
-                let (path, _, _) = review_file(index % REVIEW_FILES);
                 let line = 1 + (index as u32 * 37) % (REVIEW_FILE_LINES - 1);
-                lines(&path, line, line + (index as u32 % 3))
+                lines(&review_path(index % REVIEW_FILES), line, line + (index as u32 % 3))
             });
             let status = if index % 4 == 3 { ThreadStatus::Resolved } else { ThreadStatus::Active };
             let mut thread = thread(&id, status, anchor, comments);
@@ -191,21 +216,27 @@ pub fn review(count: usize) -> Vec<ReviewThread> {
         .collect()
 }
 
-/// The threads' state of [`review`] as the page has it: Erika signed in, Jonas the author, the
-/// visit 30 minutes ago, and the code of every file loaded for the excerpts.
-pub fn review_ui(threads: &[ReviewThread]) -> ThreadsUi {
+/// The threads' state as the pull request page sets it: Erika signed in, Jonas the author, the
+/// page's link, and the visit 30 minutes ago, so comments of the last half hour are new.
+pub fn page_ui() -> ThreadsUi {
     let mut ui = ThreadsUi::for_tests(ProviderKind::GitHub);
     ui.context.author_id = Some(jonas().id);
     ui.context.web_url = Some(PULL_REQUEST_URL.into());
     ui.set_me(erika());
     ui.visited_at(minutes_ago(30).unix_timestamp());
+    ui
+}
+
+/// [`page_ui`] for [`review`], with the code of every file loaded for the excerpts.
+pub fn review_ui(threads: &[ReviewThread]) -> ThreadsUi {
+    let mut ui = page_ui();
     for index in 0..REVIEW_FILES {
-        let (path, diff, text) = review_file(index);
+        let file = review_file(index);
         let first = threads
             .iter()
-            .find(|thread| thread.anchor.as_ref().is_some_and(|anchor| anchor.path == path));
+            .find(|thread| thread.anchor.as_ref().is_some_and(|anchor| anchor.path == file.path));
         if let Some(thread) = first {
-            ui.insert_code_for_tests(thread, &diff, &text);
+            ui.insert_code_for_tests(thread, &file.diff, &file.text);
         }
     }
     ui
