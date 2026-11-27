@@ -1,14 +1,15 @@
-//! The two versions parsed and lined up ([`Model`]), and what the rows of a layout hold: blocks
-//! ([`Cell`]) marked by how they changed ([`Look`]), folds, removals and comment cards ([`Row`]).
+//! The two versions parsed and lined up ([`MarkdownModel`]), and what the rows of a layout hold:
+//! blocks ([`Cell`]) marked by how they changed ([`Look`]), folds, removals and comment cards
+//! ([`Row`]), and what they were built from ([`RowsKey`]).
 
 use std::collections::BTreeMap;
 use std::ops::Range;
 
 use egui::Color32;
-use review_core::DiffSide;
+use review_core::{DiffSide, ProviderKind};
 use review_store::DiffLayout;
 
-use super::RenderedInputs;
+use super::RenderedImages;
 use super::align::{self, Change, Pair};
 use super::threads::ThreadRow;
 use cv_markdown::{ImageBase, RenderOptions, Units};
@@ -130,33 +131,51 @@ pub(super) struct Counts {
     pub edited: usize,
 }
 
-/// Both versions parsed and lined up.
-pub(super) struct Model {
-    pub key: u64,
-    pub old: Units,
-    pub new: Units,
-    pub has_old: bool,
-    pub has_new: bool,
-    pub pairs: Vec<Pair>,
-    /// The pair holding each unit of the old and of the new text.
-    pub old_pairs: Vec<usize>,
-    pub new_pairs: Vec<usize>,
-    pub counts: Counts,
-    /// Where the relative image paths of the old and of the new version point.
-    pub images: [Option<ImageBase>; 2],
+/// What the rows were built from: the mode, the context, the folds opened and the threads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct RowsKey {
+    pub mode: Mode,
+    pub context: u32,
+    /// The version of the folds the user opened.
+    pub expanded: u64,
+    /// The threads' key ([`super::threads::threads_key`]).
+    pub threads: u64,
 }
 
-impl Model {
-    pub fn new(inputs: &RenderedInputs<'_>) -> Self {
-        let platform = Some(inputs.platform);
+/// Both versions of a Markdown file parsed and lined up. The preview's load builds it in the
+/// background ([`crate::preview::Loaded`]), so the rendered diff never parses on the UI thread.
+pub struct MarkdownModel {
+    pub(super) key: u64,
+    pub(super) old: Units,
+    pub(super) new: Units,
+    pub(super) has_old: bool,
+    pub(super) has_new: bool,
+    pub(super) pairs: Vec<Pair>,
+    /// The pair holding each unit of the old and of the new text.
+    pub(super) old_pairs: Vec<usize>,
+    pub(super) new_pairs: Vec<usize>,
+    pub(super) counts: Counts,
+    /// Where the relative image paths of the old and of the new version point.
+    pub(super) images: [Option<ImageBase>; 2],
+}
+
+impl MarkdownModel {
+    /// `key` changes whenever `old` or `new` does; `None` is a version the file does not have.
+    pub(crate) fn new(
+        key: u64,
+        old: Option<&str>,
+        new: Option<&str>,
+        platform: ProviderKind,
+        images: &RenderedImages,
+    ) -> Self {
         let parse = |text: Option<&str>, content: &BTreeMap<String, String>| {
-            let mut units = Units::parse(text.unwrap_or_default(), platform);
+            let mut units = Units::parse(text.unwrap_or_default(), Some(platform));
             units.distinguish_images(content);
             units
         };
-        let [old_content, new_content] = &inputs.images.content;
-        let (old, new) = (parse(inputs.old, old_content), parse(inputs.new, new_content));
-        let (has_old, has_new) = (inputs.old.is_some(), inputs.new.is_some());
+        let [old_content, new_content] = &images.content;
+        let (has_old, has_new) = (old.is_some(), new.is_some());
+        let (old, new) = (parse(old, old_content), parse(new, new_content));
         let pairs = match (has_old, has_new) {
             (true, true) => align::align(&old, &new),
             (false, _) => (0..new.len())
@@ -182,9 +201,8 @@ impl Model {
                 Change::Equal => {}
             }
         }
-        let images = inputs.images.bases;
         Self {
-            key: inputs.key,
+            key,
             old,
             new,
             has_old,
@@ -193,7 +211,7 @@ impl Model {
             old_pairs,
             new_pairs,
             counts,
-            images,
+            images: images.bases,
         }
     }
 

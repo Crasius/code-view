@@ -20,7 +20,7 @@ use review_core::DiffSide;
 
 use super::align::Change;
 use super::heights::RowHeights;
-use super::model::{Cell, Mode, Model, Row};
+use super::model::{Cell, MarkdownModel, Mode, Row, RowsKey};
 use cv_base::theme::Palette;
 use cv_code::find_paint::{self as paint, HitSide};
 use cv_markdown::Marks;
@@ -28,9 +28,6 @@ use cv_pr_diff::diff_overview::Overview;
 use cv_pr_diff::find::bar::{FindBar, Panes};
 use cv_pr_diff::find::{Entry, Found, Hit, search, spawn};
 use cv_widgets::find_bar::Step;
-
-/// What the rows were built from (the diff's `rows_key`).
-type RowsKey = (Mode, u32, u64, u64);
 
 /// The rendered diff's find widget and where its hits are among the rows.
 #[derive(Default)]
@@ -77,7 +74,7 @@ impl BlockFind {
         ui: &Ui,
         panes: Panes,
         owns_keys: bool,
-        model: &Arc<Model>,
+        model: &Arc<MarkdownModel>,
     ) -> BarFrame {
         let step = self.bar.keys(ui, owns_keys, || None);
         let side = self.bar.follow_focus(ui, &panes, None);
@@ -109,7 +106,7 @@ impl BlockFind {
         &mut self,
         frame: &BarFrame,
         rows: &FindRows<'_>,
-        model: &Model,
+        model: &MarkdownModel,
         overview: &mut Overview,
     ) -> Option<(DiffSide, usize)> {
         if frame.arrived || self.placed_for != rows.key {
@@ -161,7 +158,7 @@ impl BlockFind {
 
     /// Works out the row of every hit: its block's row, or the fold hiding it (New only: the row
     /// after a removed block).
-    fn place(&mut self, rows: &FindRows<'_>, model: &Model) {
+    fn place(&mut self, rows: &FindRows<'_>, model: &MarkdownModel) {
         self.placed_for = rows.key;
         let Some(hits) = self.bar.hits() else {
             self.hit_rows.clear();
@@ -249,7 +246,7 @@ fn block_of(hit: &Hit) -> Option<(DiffSide, usize)> {
 }
 
 /// The blocks of `model` as the search reads them, in the order of the pairs.
-fn entries(model: &Model) -> Vec<Entry<'_>> {
+fn entries(model: &MarkdownModel) -> Vec<Entry<'_>> {
     let text = |side: DiffSide, unit: Option<usize>| {
         let unit = unit?;
         let text = model.units(side).units.get(unit)?.text.as_str();

@@ -3,20 +3,18 @@
 
 use std::collections::BTreeMap;
 use std::ops::Range;
+use std::sync::Arc;
 
 use review_core::{DiffSide, ProviderKind, ReviewThread};
 use review_store::DiffLayout;
 
+use super::MarkdownModel;
 use cv_markdown::{ImageBase, RenderOptions};
 use cv_pr_threads::ThreadEvent;
 
 pub struct RenderedInputs<'a> {
-    /// Changes whenever `old` or `new` does (the versions' blob ids).
-    pub key: u64,
-    /// The old version; `None` for an added file.
-    pub old: Option<&'a str>,
-    /// The new version; `None` for a deleted file.
-    pub new: Option<&'a str>,
+    /// Both versions parsed and lined up, by the load of the file.
+    pub model: &'a Arc<MarkdownModel>,
     pub platform: ProviderKind,
     pub layout: DiffLayout,
     /// Unchanged blocks kept around each change; [`FULL_FILE_CONTEXT`] folds nothing.
@@ -27,7 +25,6 @@ pub struct RenderedInputs<'a> {
     pub scale: f32,
     /// The user may comment: a block's gutter button opens a comment on its source lines.
     pub can_comment: bool,
-    pub images: &'a RenderedImages,
     /// The comment threads on the file.
     pub threads: &'a [&'a ReviewThread],
     /// "Show comments in the diff": the threads' cards show under their blocks. Off, a count in
