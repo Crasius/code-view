@@ -67,18 +67,16 @@ on_base_line() {
 }
 
 # Writes <dir>/.cargo/config.toml with sccache as rustc wrapper; returns 1 without sccache.
+# The bare name: cargo looks it up on PATH, so an upgrade that moves sccache breaks no worktree.
 use_cache() {
-  wrapper=$(command -v sccache) || return 1
-  # Cargo on Windows needs a Windows path; Git Bash prints a POSIX one.
-  if command -v cygpath >/dev/null 2>&1; then wrapper=$(cygpath -m "$wrapper"); fi
+  command -v sccache >/dev/null 2>&1 || return 1
   mkdir -p "$1/.cargo" || return 1
-  printf '# Written by scripts/worktree.sh (git-ignored): dependencies come from the shared sccache.\n[build]\nrustc-wrapper = "%s"\n' \
-    "$wrapper" > "$1/.cargo/config.toml"
+  printf '# Written by scripts/worktree.sh (git-ignored): dependencies come from the shared sccache.\n[build]\nrustc-wrapper = "sccache"\n' \
+    > "$1/.cargo/config.toml"
 }
 
 # Builds the test binaries and the clippy output of <dir> in the background.
 warm() {
-  mkdir -p "$1/tmp" || return 1
   rm -f "$1/tmp/warm.done"
   (
     cd "$1" || exit 1
@@ -102,6 +100,8 @@ cmd_new() {
   git -C "$main" config "branch.$name.worktreebase" "$base"
   git -C "$main" config "branch.$name.worktreestart" "$start"
   use_cache "$path" || printf 'worktree: sccache not found; dependencies build without the shared cache (rule worktrees, Build cache)\n' >&2
+  # Job logs, exit markers and commit messages go there, with or without the warm-up.
+  mkdir -p "$path/tmp" || die "cannot create '$path/tmp'"
   [ "${WORKTREE_WARM:-1}" = 0 ] || warm "$path" || printf 'worktree: warm-up not started\n' >&2
   printf '%s\n' "$path"
 }

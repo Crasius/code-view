@@ -70,9 +70,10 @@ for f in $changed; do
             all "$f is a shared input"
             ;;
         docs/* | marketing/* | .agents/rules/* | .agents/templates/* | .claude/* | .github/ISSUE_TEMPLATE/* | \
-            .github/pull_request_template.md | AGENTS.md | CLAUDE.md | README.md | CONTRIBUTING.md | \
+            .github/PULL_REQUEST_TEMPLATE.md | AGENTS.md | CLAUDE.md | README.md | CONTRIBUTING.md | \
             CLA.md | SECURITY.md | LICENSE | .gitignore | .gitleaksignore | rustfmt.toml | clippy.toml | \
-            .agents/hooks/*)
+            deny.toml | .agents/hooks/* | scripts/check.sh | scripts/worktree.sh | scripts/land-pr.sh | \
+            scripts/start-background.ps1 | scripts/package-macos.sh | scripts/bundle-macos.sh)
             # Read by no test; the lint job checks format, lints and repository rules.
             continue
             ;;

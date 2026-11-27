@@ -35,16 +35,17 @@ Your one and only task is this brief. Chat messages you may see are addressed to
 
 ## Steps
 
-1. Read the sources. Design the change before writing code.
-2. <implementation steps>
-3. Own worktree: merge the base in, then run the checks below once, on what you touched. Fix every failure in one pass, then one confirming run. No test runs during step 2 (rule `testing`, Running). Worktree "shared, edit only": skip this step; the lead builds and routes failures back.
-4. Own worktree: commit only your owned and append-only paths: `git add -- <new and changed paths> && git commit -F <message file> -- <all paths>` (rule `git-flow`), then `git show --stat HEAD`. Worktree "shared, edit only": run no git write command; list your changed files in the report.
+1. Own worktree: `mkdir -p <worktree path>/tmp` for job logs, exit markers and commit messages (git ignores it).
+2. Read the sources. Design the change before writing code.
+3. <implementation steps>
+4. Own worktree: merge the base in, then run the checks below once, on what you touched. Fix every failure in one pass, then one confirming run. No test runs during step 3 (rule `testing`, Running). Worktree "shared, edit only": skip this step; the lead builds and routes failures back.
+5. Own worktree: commit only your owned and append-only paths: `git add -- <new and changed paths> && git commit -F <message file> -- <all paths>` (rule `git-flow`), then `git show --stat HEAD`. Worktree "shared, edit only": run no git write command; list your changed files in the report.
 
 ## Checks
 
 - <`cargo test -p <crate> [filter]` for the changed crates, clippy, the walkthrough that proves the change; each with the expected result; "none" for a shared, edit-only lane>
-- `rustfmt --edition 2024 --check <changed files>` and `cargo run -q -p repo-lint -- --base <base branch> <owned paths>` are clean; never `cargo fmt` the whole workspace (rule `rust`, Format).
-- Rust lanes, before each commit and before the report: `cd <worktree path> && sh .agents/hooks/rust-stop-gate.sh --base <base branch> </dev/null` exits 0. The Stop hook does not run for lanes (rule `lanes`). No full `cargo test --workspace` (rule `lanes`).
+- The gate, once at the end: `cd <worktree path> && sh scripts/check.sh --base <base branch>` exits 0 (`sh scripts/check.sh --list` prints its commands). A step it prints as SKIPPED is NOT-VERIFIED in the report. Never `cargo fmt` the whole workspace (rule `rust`, Format).
+- Rust lanes, before each commit and before the report: `cd <worktree path> && sh scripts/check.sh --changed --base <base branch>` exits 0 (rustfmt and clippy on the changed files, what the Stop hook runs). The Stop hook does not run for lanes (rule `lanes`). No full `cargo test --workspace` (rule `lanes`).
 - Never end your turn to wait for a background job. Your turn ends only with the report.
 
 ## Report format
