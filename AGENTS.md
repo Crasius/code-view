@@ -15,7 +15,7 @@ A native, low-footprint pull request review desktop app for Azure DevOps, GitHub
 - Never print, store or reuse auth tokens. Never read cookies. Never call an API with a browser session. The owner does every interactive login.
 
 ## Done
-- `cargo fmt --all --check`, `cargo run -q -p repo-lint`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo clippy --workspace -- -D warnings` pass: zero errors, zero warnings, zero findings (rule `rust`, RS-AGENT-01). The Stop hook checks the changed files before the main session's turn ends; a lane runs the same gate itself (rule `lanes`).
+- `sh scripts/check.sh` passes (format, hygiene, repo-lint, the clippy passes, the dependency bans; `--list` names the commands): zero errors, zero warnings, zero findings (rule `rust`, RS-AGENT-01). The Stop hook checks the changed files before the main session's turn ends; a lane runs the same gate itself (rule `lanes`).
 - Read the full error first. Fix the root cause. Add no special-case patch and no catch-all that hides a broken path.
 - Rebuild the release binary, stop running instances, start the new one and tell the owner what changed ("Ship" in rule `rust`). "It compiles" is not "done". UI is proven by kittest assertions; agents never take or read screenshots, the owner gives the UI feedback (rule `ui`).
 - Name the evidence for each claim. Mark everything you did not check as NOT-VERIFIED.
@@ -76,9 +76,10 @@ The app talks to the owner's real accounts on GitHub, GitLab and Azure DevOps.
 | `crates/` | The workspace crates: domain crates, the `cv-*` UI crates in layers, the `review-app` bin (rule `rust`, Workspace) |
 | `tools/` | `repo-lint`, the repository rules clippy cannot check (`tools/repo-lint/README.md`) |
 | Root | `README.md` for readers and users, `CONTRIBUTING.md` for contributors, `LICENSE` (Functional Source License 1.1, FSL-1.1-ALv2; source-available, never call it open source), `CLA.md`, `SECURITY.md` |
-| `docs/` | Platform notes: `windows.md`, `linux.md`, `macos.md`, `macos-painpoints.md`; the browser extension's design: `browser-extension.md`; `release.md` for CI and releases |
+| `docs/` | Platform notes: `windows.md`, `linux.md`, `macos.md`; the browser extension's design: `browser-extension.md`; `release.md` for CI and releases |
 | `.github/` | The pull request workflow, the pull request template with the CLA statement, the issue forms |
-| `scripts/` | `worktree.sh`, `land-pr.sh` (a GitHub pull request into its worktree), `package-macos.sh` |
+| `scripts/` | `check.sh` (the one gate), `affected-tests.sh` (the tests a change needs), `worktree.sh`, `land-pr.sh` (a GitHub pull request into its worktree), `bundle-macos.sh` and `package-macos.sh` (the macOS app), `start-background.ps1` and `ship.ps1` (rule `rust`, Ship) |
+| `.config/` | The nextest profiles (`docs/release.md`, Tests) |
 | `ci/` | The scripts of the CI jobs in `.gitlab-ci.yml` (`docs/release.md`) |
 | `marketing/` | Marketing material, not part of the build |
 | `crates/review-grammars/grammars/` | Our syntax grammars and the license text of the one we took (`docs/release.md`, Third-party notices) |
@@ -87,7 +88,7 @@ The app talks to the owner's real accounts on GitHub, GitLab and Azure DevOps.
 | `tmp/` | Scratch, git-ignored. Nothing durable lives only here |
 
 ## Commands
-- Check: `cargo fmt --all --check`, `cargo run -q -p repo-lint`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo clippy --workspace -- -D warnings`, then the tests of the changed crates (rule `testing`, Running). Hygiene: `sh .agents/hooks/repo-check.sh` (runs repo-lint too).
+- Check: `sh scripts/check.sh` (`--list` names the steps and their commands), then the tests of the changed crates (rule `testing`, Running).
 - Format: `rustfmt --edition 2024 <changed files>` (rule `rust`, Format).
 - Start: `cargo run -p review-app --bin CodeView` (debug) or `target/release/CodeView.exe` after a release build.
 

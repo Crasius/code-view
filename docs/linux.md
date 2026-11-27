@@ -13,7 +13,7 @@ You need Rust (rustup) and a C compiler; nothing else from the system at build t
 ```sh
 sudo apt install build-essential        # Fedora: sudo dnf install gcc; Arch: sudo pacman -S base-devel
 cargo run -p review-app --bin CodeView   # debug build, runs from the terminal
-cargo clippy --workspace --all-targets -- -D warnings
+sh scripts/check.sh                      # the checks; --list names their commands
 cargo test --workspace
 ```
 
@@ -43,11 +43,13 @@ cargo test --workspace
 ## Tests in a container
 
 The workspace's checks run in the official Rust image with the pinned toolchain and nothing
-installed on top: Debian 12's git 2.39.5 and its six DejaVu fonts are all the tests need. From the
-repository root (Git Bash on Windows needs `MSYS_NO_PATHCONV=1` in front):
+installed on top: Debian 12's git 2.39.5 and its six DejaVu fonts are all the tests need. The
+command reads the image from `RUST_IMAGE` in `ci/checks.yml` (the CI's test image, pinned by
+digest). From the repository root (Git Bash on Windows needs `MSYS_NO_PATHCONV=1` in
+front):
 
 ```sh
-docker run --rm --cpus 6 -v "$PWD:/src:ro" -v codeview-linux-target:/target   -v codeview-linux-cargo:/usr/local/cargo/registry rust:1.99.1-bookworm bash -c '
+docker run --rm --cpus 6 -v "$PWD:/src:ro" -v codeview-linux-target:/target   -v codeview-linux-cargo:/usr/local/cargo/registry "$(sed -n 's/^ *RUST_IMAGE: //p' ci/checks.yml)" bash -c '
   cd /src && export CARGO_TARGET_DIR=/target RUSTC_WRAPPER= CARGO_BUILD_RUSTC_WRAPPER=
   cargo clippy -j 6 --workspace --all-targets -- -D warnings &&
   cargo test -j 6 --workspace --no-fail-fast'

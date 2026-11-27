@@ -26,7 +26,7 @@ The layer table. A crate depends only on its domain crates and on `cv-*` crates 
 | domain | `provider-github`, `provider-gitlab`, `provider-azure` | One provider each: DTOs, mapping to core types, API calls | core |
 | 0 | `cv-base` | Platform FFI, theme, frame metrics, pointer, window activity; the `#[global_allocator]` | store |
 | 1 | `cv-widgets` | The atom widgets, `progress_log`, `numbers` | core, git, store |
-| 1 | `cv-testkit` | Test support (`Watchdog`, `assert_hermetic`, loopback `http_client`, `PROCESS_SLOTS`, `frame_bench`) | core, store |
+| 1 | `cv-testkit` | Test support (`Watchdog`, `assert_hermetic`, loopback `http_client`, `PROCESS_SLOTS`, `poll_until`, `samples`, `provider::Script`, `frame_bench`) | core, store |
 | 1 | `cv-providers` | `create_provider`, the provider factory | core, the providers |
 | 2 | `cv-runtime` | Background runtime, load, refresh, cache, toasts, route, history, trail, link parsing, intents | core, git, store |
 | 3 | `cv-media` | Images, image clipboard, video, Mermaid, `Picture`, image state | core, git, agent |
@@ -53,11 +53,11 @@ The layer table. A crate depends only on its domain crates and on `cv-*` crates 
 
 - Keep this direction. A provider never depends on another provider, on the store or on the app. Shared types move to `review-core`; shared UI code moves down a layer. Provider-specific behaviour stays in its provider crate; the app speaks to providers only through `review-core`. repo-lint RL005/RL006 check it (RS-DO-03).
 - `cv-base` never uses `cv-testkit`, not even as a dev-dependency: `cv-testkit` depends on `cv-base`, so the test binary of `cv-base` would link a second `cv-base` with a second `#[global_allocator]`. `cv-widgets` cannot use it either, because both sit in layer 1.
-- Test helpers that another crate's tests need sit under `#[cfg(any(test, feature = "test-support"))]`. The feature only adds items; it never removes one that shipped code calls. Only `[dev-dependencies]` and `[features]` turn it on (RL015, rule `testing`).
+- Test helpers that another crate's tests need sit under `#[cfg(any(test, feature = "test-support"))]`. The feature adds test items, and it may swap a system seam (process start, dialog, clipboard, registry, HTTP client, agent CLI) for its fake: one `#[cfg]` pair (or one `if cfg!`) in the module that owns the seam. It never removes an item that shipped code calls. Only `[dev-dependencies]` and `[features]` turn it on (RL015, rule `testing`).
 
 ## Toolchain
-- `rust-toolchain.toml` pins the toolchain with clippy and rustfmt; it is the one place that names the version. rustup picks it in every checkout; install it once with `rustup toolchain install` inside the repository (no argument: the active toolchain; rustup's auto-install is deprecated). CI reads the channel from the same file. `rust-version` in `Cargo.toml` stays the oldest compiler the code claims to build with.
-- Bump the pin only in a change of its own that also fixes the new clippy findings (RS-DO-02).
+- `rust-toolchain.toml` pins the toolchain with clippy and rustfmt. rustup picks it in every checkout and installs it on the first cargo command (`RUSTUP_AUTO_INSTALL`, default on); `rustup toolchain install` inside the repository does it ahead of time. CI reads the channel from the same file. The CI image `rust:<version>-bookworm` is pinned by digest in `ci/checks.yml` (`RUST_IMAGE`) and `.github/workflows/pull-request.yml` and is bumped with the pin. `rust-version` in `Cargo.toml` follows the pin.
+- Bump the pin only in a change of its own that also fixes the new clippy findings and moves `rust-version` and the two image pins with it (RS-DO-02).
 
 ## Dependencies
 - Declare every external dependency once in `[workspace.dependencies]` of the root `Cargo.toml`, with `default-features = false` where the crate allows it and only the features the app uses. Crates use `<dep>.workspace = true` and may add features. repo-lint RL011 checks it.
@@ -65,19 +65,19 @@ The layer table. A crate depends only on its domain crates and on `cv-*` crates 
 - Write one comment above a dependency when its reason or its feature choice is not obvious, as the existing entries do.
 - A new dependency must build on Windows, macOS and Linux without system `-dev` packages (no OpenSSL, no libdbus). Why: `docs/linux.md` promises a build with only a C compiler.
 - Vendor a crate only when no release does what the app needs and the fix is not released upstream (syntect 5.3.0 pins fancy-regex 0.16). The copy lives in a `vendor/<crate>` folder of the crate that needs it, wired in through `[patch.crates-io]` in the root `Cargo.toml`. Vendored code keeps its upstream style: repo-lint and the stop gate skip every `vendor/` folder, and the only edits are the local patches. Its `README.md` names the upstream, the base version, each local patch and when to drop the copy.
+- `deny.toml` holds the dependency graph's bans, sources and advisories: the `deps` step of `sh scripts/check.sh` checks bans and sources on every change, and the CI job `supply-chain` (`ci/checks.yml`) checks the RustSec advisories and the licences when the dependency set changes and on a schedule.
 - Footprint is a feature (about 70 MB idle). Weigh binary size and startup cost before you add a crate; prefer a few lines of our own over a large crate for a small need (RS-AGENT-07).
 
 ## Format
 - The workspace is formatted with rustfmt (`rustfmt.toml`: edition and style edition 2024, `use_small_heuristics = "Max"`). `cargo fmt --all --check` runs in CI and `.agents/hooks/rust-stop-gate.sh` checks the changed files.
 - Format what you touch: `rustfmt --edition 2024 <changed files>` before you commit. Parallel lanes format only their own files, never the whole workspace.
-- The layout-only commit that adopted rustfmt is in `.git-blame-ignore-revs`; `git config blame.ignoreRevsFile .git-blame-ignore-revs` makes local blame skip it. Merging a branch from before that commit: rule `git-flow`.
 
 ## Lints
 The contract lives in two files; never loosen either without the owner (RS-AGENT-03).
 - Root `Cargo.toml`, `[workspace.lints.rust]` and `[workspace.lints.clippy]`; every crate sets `lints.workspace = true`. Levels stay at warn; `-D warnings` on the command line (CI, ship) makes them errors (RS-LINT-01, RS-DONT-07). The stop gate runs clippy without it, so it can tell the warnings in the changed files from those in other files.
 - `clippy.toml` in the root: thresholds, the test exemptions and `disallowed-methods`. Clippy reads only the nearest `clippy.toml`, so a crate-local one would replace the root file; there is none.
 - Cargo refuses a crate `[lints]` table next to `workspace = true`, so crate-level differences are crate-root attributes: `#![forbid(unsafe_code)]` in `review-core`, `review-git`, the providers, `repo-lint` and every `cv-*` crate except `cv-base` and `cv-shell`, whose `platform/` modules carry `#![expect(unsafe_code, reason)]`; `#![expect(clippy::cast_*, reason)]` in a UI crate root for egui pixel math, listing only the cast lints that crate's shipped code fires (lints that fire only in tests go into `#![cfg_attr(test, expect(...))]`).
-- Check: `cargo clippy --workspace --all-targets -- -D warnings`, then `cargo clippy --workspace -- -D warnings`. The first unifies the dev-dependency features, so it lints the libraries with `test-support` on; the second lints the shipped variant and is the only one that sees code under `cfg(not(any(test, feature = "test-support")))`. A lint that is new to the contract lands together with the fixes or `#[expect]` entries for all its findings, so the check stays green.
+- Check: the `clippy` step of `sh scripts/check.sh` runs `cargo clippy --workspace --all-targets -- -D warnings`, then `cargo clippy --workspace -- -D warnings` (and a third pass with the `review-app` feature `measurements`). The first unifies the dev-dependency features, so it lints the libraries with `test-support` on; the second lints the shipped variant and is the only one that sees code under `cfg(not(any(test, feature = "test-support")))`. A lint that is new to the contract lands together with the fixes or `#[expect]` entries for all its findings, so the check stays green.
 
 **RS-LINT-01** Declare lint levels once in `[workspace.lints]`, group entries at `priority = -1` so single lints override them; thresholds go in `clippy.toml`.
 - Why: one place makes the contract visible and diffable instead of living in command-line flags.
@@ -97,9 +97,9 @@ The contract lives in two files; never loosen either without the owner (RS-AGENT
 
 ## Rules for agents
 
-**RS-AGENT-01** Never report done after `cargo check` or `cargo build`. Done is: `cargo fmt --all --check`, both clippy passes (`cargo clippy --workspace --all-targets -- -D warnings` and `cargo clippy --workspace -- -D warnings`, Lints) and repo-lint clean, the tests of the changed crates pass, and the release build was shipped and started (Ship). Mark what you could not check (Linux, macOS) NOT-VERIFIED.
+**RS-AGENT-01** Never report done after `cargo check` or `cargo build`. Done is: `sh scripts/check.sh` clean (format, hygiene, repo-lint, the clippy passes of Lints, the dependency bans), the tests of the changed crates pass, and the release build was shipped and started (Ship). Mark what you could not check (Linux, macOS) NOT-VERIFIED.
 - Why: LLM-written Rust has the most compile and runtime failures of four measured languages (arXiv 2608.00661); runtime failures survive compilation.
-- Enforced by: `.agents/hooks/rust-stop-gate.sh` (the Stop hook of the main session; lanes run it by hand, rule `lanes`), CI, AGENTS.md (Done).
+- Enforced by: `.agents/hooks/rust-stop-gate.sh` (the Stop hook of the main session, over `sh scripts/check.sh --changed`, which lanes run by hand, rule `lanes`), CI, AGENTS.md (Done).
 
 **RS-AGENT-02** Never end a borrow or lifetime error with `.clone()`, `Rc<RefCell<_>>`, `Arc<Mutex<_>>`, a `'static` bound, `Box::leak`, `mem::forget` or `ManuallyDrop`. Restructure: borrow the field instead of `self`, return owned data from the background task, end the borrow before the mutation. When a clone is the right answer, say why in the commit message.
 - Why: these compile but move the bug to runtime (RefCell panics), leak memory or allocate every frame.
@@ -115,7 +115,7 @@ The contract lives in two files; never loosen either without the owner (RS-AGENT
 
 **RS-AGENT-05** Never rely on memory of the egui or eframe API: the workspace pins egui 0.37, and the API changes between minor versions. Read docs.rs for the pinned version or the source in `~/.cargo/registry` before you use a method. Run clippy on the touched crate after each logical edit, not only at the end.
 - Why: a short edit-compile loop catches invented methods early and keeps diffs small.
-- Enforced by: `.agents/hooks/rust-stop-gate.sh` (rustfmt on the changed files, clippy on their crates): the Stop hook of the main session; lanes run it by hand (rule `lanes`).
+- Enforced by: `.agents/hooks/rust-stop-gate.sh` (rustfmt on the changed files, clippy on their crates): the Stop hook of the main session; lanes run `sh scripts/check.sh --changed` by hand (rule `lanes`).
 
 **RS-AGENT-06** Leave no `todo!()`, `unimplemented!()`, `dbg!()`, `println!`/`eprintln!`, `TODO`/`FIXME` comment, commented-out code or parallel old and new code path in a commit.
 - Why: these are agent-loop leftovers; in a GUI app they ship as panics or console noise.
@@ -184,7 +184,7 @@ The contract lives in two files; never loosen either without the owner (RS-AGENT
 ## Errors and platform code
 - Libraries return typed errors (`thiserror`, `review_core::ProviderError`) or `io::Error` with context. `expect` only for true invariants, naming the invariant ("tokio runtime must start").
 - Platform code lives in `platform/` modules behind `cfg(target_os = ...)`, one file per system. Shared code never branches on the OS inline.
-- After a change to platform code or dependencies, also check the other systems: `cargo clippy --workspace --all-targets --target x86_64-unknown-linux-gnu -- -D warnings` (needs the target installed and a C cross compiler, see `docs/linux.md`) and both clippy passes with `--target aarch64-apple-darwin` (needs only `rustup target add aarch64-apple-darwin`; clippy links nothing, so it runs on Windows and Linux too). Where a target is not installed, say NOT-VERIFIED for that system. Why: code behind `cfg(target_os = "macos")` is compiled by no other check on this host, so a finding there stayed unseen until the macOS workflow ran (`ask_folder`, 2026-11-26).
+- After a change to platform code or dependencies, also check the other systems: `cargo clippy --workspace --all-targets --target x86_64-unknown-linux-gnu -- -D warnings` (needs the target installed and a C cross compiler, see `docs/linux.md`) and both clippy passes with `--target aarch64-apple-darwin` (needs only `rustup target add aarch64-apple-darwin`; clippy links nothing, so it runs on Windows and Linux too). Where a target is not installed, say NOT-VERIFIED for that system. Why: code behind `cfg(target_os = "macos")` is compiled by no other check on this host, so a finding there stayed unseen until the macOS workflow ran.
 - Comments say why, not what. Module docs (`//!`) explain the design and its trade-offs; keep them true when you change the behaviour.
 
 ## Readability
@@ -256,13 +256,13 @@ The contract lives in two files; never loosen either without the owner (RS-AGENT
 - Enforced by: review; RS-DONT-06 bans the blocking forms.
 
 ## Analyzer
-`tools/repo-lint` checks the rules above that clippy cannot: file length (RL001/RL002), names (RL003/RL004), crate direction and UI crates (RL005/RL006), unsafe placement (RL007), folder budgets (RL008), `deny(warnings)` (RL009), member profiles (RL010), workspace dependencies (RL011), TODO comments (RL012), `block_on` in app code (RL013), its own waivers (RL014) and the `test-support` feature outside tests (RL015). Each check, its waiver comment and its registry files are documented in `tools/repo-lint/README.md`.
-- Run: `cargo run -q -p repo-lint [-- [--base <rev>] <paths>]`; `sh .agents/hooks/repo-check.sh` and CI run it on the whole repository. On a branch, pass `--base main` (or the branch it forked from): the default `HEAD` misses an allowlist raise once it is committed.
+`tools/repo-lint` checks the rules above that clippy cannot: file length (RL001/RL002), names (RL003/RL004), crate direction and UI crates (RL005/RL006), unsafe placement (RL007), folder budgets (RL008), `deny(warnings)` (RL009), member profiles (RL010), workspace dependencies (RL011), TODO comments (RL012), `block_on` in app code (RL013), its own waivers (RL014), the `test-support` feature outside tests (RL015) and `motion::install` outside the app's start-up (RL016). Each check, its waiver comment and its registry files are documented in `tools/repo-lint/README.md`.
+- Run: `cargo run -q -p repo-lint [-- [--base <rev>] <paths>]`; the repo-lint step of `sh scripts/check.sh` and CI run it on the whole repository. On a branch, pass `--base main` (or the branch it forked from): the default `HEAD` misses an allowlist raise once it is committed.
 
 ## Ship
 After every merge of a feature into `main`:
-1. `cargo fmt --all --check`, `cargo run -q -p repo-lint`, both clippy passes (Lints) and the tests (rule `testing`).
+1. `sh scripts/check.sh` and the tests (rule `testing`).
 2. `cargo build --release -p review-app`. Only `-p review-app`: a `--workspace --all-targets` build unifies `test-support` into the binary, and the release build refuses it (`cv_base::TEST_SUPPORT`).
-3. Stop running instances (`taskkill /IM CodeView.exe /F`; allowed without asking), then copy `target/release/CodeView.exe` to `dist/CodeView.exe`. Retry the copy a few times; the file lock lingers briefly.
-4. Start `dist/CodeView.exe` in the background, never stealing the owner's focus: `pwsh -NoProfile -File scripts/start-background.ps1 -Exe dist/CodeView.exe` (it prints `stole_focus=False`); not `Start-Process`, which activates the window. Then tell the owner what is new and where to find it, so they can give feedback on each change. The owner checks the UI; agents never take or read screenshots (rule `ui`).
+3. `pwsh -NoProfile -File scripts/ship.ps1` (allowed without asking): it stops every running `CodeView.exe` and waits until each is gone, copies `target/release/CodeView.exe` to `dist/CodeView.exe` and starts it through `scripts/start-background.ps1`, which never takes the owner's focus (`stole_focus=False`; not `Start-Process`, which activates the window). Why: a copy right after a kill fails while the file is still locked.
+4. Tell the owner what is new and where to find it, so they can give feedback on each change. The owner checks the UI; agents never take or read screenshots (rule `ui`).
 - macOS bundles come from `scripts/package-macos.sh` (`docs/macos.md`); not runnable on this host.
