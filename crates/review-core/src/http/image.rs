@@ -320,6 +320,22 @@ mod tests {
         assert!(error.to_string().contains("private-user-images.githubusercontent.com/1/2-a.png"));
     }
 
+    /// The cause a failed request now carries never spells the address again, so the redaction
+    /// of reqwest's text leaves the signature out of the whole message.
+    #[tokio::test]
+    async fn the_cause_of_a_failed_request_leaves_the_query_out() {
+        let port = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+            listener.local_addr().expect("bound address").port()
+        };
+        let url = format!("http://127.0.0.1:{port}/1/2-a.png?jwt=signature");
+        let error = get(url, 100, &Anonymous).await.unwrap_err();
+        let ProviderError::Network(message) = &error else { panic!("{error:?}") };
+        assert!(!message.contains("signature") && !message.contains("jwt"), "{message}");
+        assert!(message.contains(&format!("127.0.0.1:{port}/1/2-a.png)")), "{message}");
+        assert!(message.to_lowercase().contains("connection refused"), "{message}");
+    }
+
     /// The own host's sign-in page or refusal means the image is private; elsewhere a refusal is just that.
     #[tokio::test]
     async fn sign_in_pages_and_refusals_of_the_own_host_mean_private() {

@@ -14,7 +14,8 @@ pub enum ProviderError {
     #[error("{} ({status} from {path})", readable_body(.body))]
     Status { status: u16, path: String, body: String },
 
-    /// The request never got an answer (DNS, TLS, timeout, connection reset).
+    /// The request never got an answer (DNS, TLS, timeout, connection reset); the message names
+    /// the cause after reqwest's own text.
     #[error("network error: {0}")]
     Network(String),
 
@@ -121,10 +122,68 @@ fn html_title(body: &str) -> Option<&str> {
 
 impl From<reqwest::Error> for ProviderError {
     fn from(error: reqwest::Error) -> Self {
+        let message = with_cause(&error);
         if error.is_decode() {
-            return ProviderError::Decode(error.to_string());
+            return ProviderError::Decode(message);
         }
-        ProviderError::Network(error.to_string())
+        ProviderError::Network(message)
+    }
+}
+
+/// reqwest's own text, then why the request failed, on one line:
+/// `error sending request for url (http://127.0.0.1:8080/x): tcp connect error: connection refused: …`.
+///
+/// reqwest's `Display` names only its own layer; the reason sits at the bottom of the
+/// [`source`](std::error::Error::source) chain. The innermost level is the reason (the OS error,
+/// the resolver's answer, `operation timed out`); the level just above it names the step that
+/// failed where hyper adds one (`tcp connect error`, `error resolving DNS`, `connection error`).
+/// The levels in between repeat those two (`client error (Connect)`) and are left out. No level
+/// below reqwest's carries the URL, so the message holds no more of it than reqwest's own text.
+fn with_cause(error: &reqwest::Error) -> String {
+    let mut levels = Vec::new();
+    let mut level = std::error::Error::source(error);
+    while let Some(current) = level {
+        levels.push(current);
+        level = current.source();
+    }
+    let Some((innermost, above)) = levels.split_last() else {
+        return error.to_string();
+    };
+    let mut cause = reason(*innermost);
+    if let Some(step) = above.last().map(ToString::to_string)
+        && !cause.to_lowercase().contains(&step.to_lowercase())
+    {
+        cause = format!("{step}: {cause}");
+    }
+    let cause = cause.split_whitespace().collect::<Vec<_>>().join(" ");
+    format!("{error}: {cause}")
+}
+
+/// The innermost level of a request error. An OS error reads in the system's language (Windows
+/// localizes socket errors), so a network [`std::io::ErrorKind`] goes in front in English unless
+/// the text already says it (`Connection refused (os error 111)` on Linux).
+fn reason(level: &(dyn std::error::Error + 'static)) -> String {
+    use std::io::ErrorKind;
+    let text = level.to_string();
+    let kind = level.downcast_ref::<std::io::Error>().map(std::io::Error::kind).filter(|kind| {
+        matches!(
+            kind,
+            ErrorKind::ConnectionRefused
+                | ErrorKind::ConnectionReset
+                | ErrorKind::ConnectionAborted
+                | ErrorKind::NotConnected
+                | ErrorKind::TimedOut
+                | ErrorKind::HostUnreachable
+                | ErrorKind::NetworkUnreachable
+                | ErrorKind::NetworkDown
+                | ErrorKind::AddrNotAvailable
+                | ErrorKind::BrokenPipe
+                | ErrorKind::UnexpectedEof
+        )
+    });
+    match kind {
+        Some(kind) if !text.to_lowercase().contains(&kind.to_string()) => format!("{kind}: {text}"),
+        _ => text,
     }
 }
 
@@ -183,6 +242,52 @@ mod tests {
             body: "<!DOCTYPE html><html><body>down</body></html>".into(),
         };
         assert_eq!(untitled.to_string(), "No details from the server (503 from /x)");
+    }
+
+    /// A port nobody listens on: the listener is bound and dropped, so the port stays free.
+    fn closed_port() -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a loopback port");
+        listener.local_addr().expect("bound address").port()
+    }
+
+    /// The message names the refusal next to reqwest's own text. `connection refused` is the
+    /// English name of `io::ErrorKind::ConnectionRefused`, the same on every system; the OS text
+    /// after it is the system's own (German on a German Windows).
+    #[tokio::test]
+    async fn a_refused_connection_says_it_was_refused() {
+        let url = format!("http://127.0.0.1:{}/repos/acme/site?page=2", closed_port());
+        let client = crate::http::build_client();
+        let error = ProviderError::from(client.get(&url).send().await.unwrap_err());
+        let ProviderError::Network(message) = &error else { panic!("{error:?}") };
+        assert!(
+            message.starts_with(&format!("error sending request for url ({url}): ")),
+            "reqwest's own text stays first: {message}"
+        );
+        assert!(message.to_lowercase().contains("connection refused"), "{message}");
+        assert!(!message.contains('\n'), "one line: {message}");
+        assert_eq!(message.matches(url.as_str()).count(), 1, "the URL once: {message}");
+    }
+
+    /// A request that outlives the client's timeout keeps saying that it timed out.
+    #[tokio::test]
+    async fn a_timeout_says_it_timed_out() {
+        let silent = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let address = silent.local_addr().expect("bound address");
+        let _held = tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((stream, _)) = silent.accept().await {
+                held.push(stream);
+            }
+        });
+        let client = crate::http::client_builder()
+            .timeout(std::time::Duration::from_millis(200))
+            .build()
+            .expect("client");
+        let error = client.get(format!("http://{address}/x")).send().await.unwrap_err();
+        assert!(error.is_timeout(), "{error:?}");
+        let error = ProviderError::from(error);
+        assert!(matches!(&error, ProviderError::Network(_)), "{error:?}");
+        assert!(error.to_string().contains("timed out"), "{error}");
     }
 
     #[test]
