@@ -271,7 +271,7 @@ mod tests {
     }
 
     fn batch(answer: Value) -> BatchData {
-        serde_json::from_value(answer).unwrap_or_else(|error| panic!("answer: {error}"))
+        serde_json::from_value(answer).expect("answer")
     }
 
     fn pull_request(number: u64, rollup: &str) -> Value {

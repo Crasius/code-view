@@ -86,7 +86,7 @@ mod tests {
     }
 
     #[test]
-    fn rollup_states() {
+    fn rollup_states_map_expected_to_queued_and_unknown_to_neutral() {
         let cases = [
             ("SUCCESS", Succeeded),
             ("FAILURE", Failed),

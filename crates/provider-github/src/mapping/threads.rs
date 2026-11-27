@@ -300,7 +300,8 @@ mod tests {
     }
 
     /// A real anonymous `GET /repos/{owner}/{repo}/pulls/{number}/comments` row (trimmed,
-    /// renamed): outdated, so `line` is null and only the original line and commit say where it was written.
+    /// renamed): outdated, so `line` is null and only the original line and commit say where it
+    /// was written.
     #[test]
     fn rest_outdated_comments_keep_their_origin() {
         let comments: Vec<ReviewCommentDto> =
