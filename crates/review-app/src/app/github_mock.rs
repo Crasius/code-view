@@ -1166,8 +1166,7 @@ impl Origin {
         // The clone names its source, a folder that goes with the template.
         git(&bare, &["remote", "remove", "origin"]);
         git(&bare, &["update-ref", &format!("refs/pull/{NUMBER}/head"), "feature"]);
-        git(&bare, &["config", "uploadpack.allowFilter", "true"]);
-        git(&bare, &["config", "uploadpack.allowAnySHA1InWant", "true"]);
+        cv_testkit::serve_partial_clones(&bare);
         Self {
             project_root,
             work,

@@ -559,8 +559,7 @@ impl Origin {
         std::fs::create_dir_all(dir.join("docs")).expect("origin folder");
         let git = |args: &[&str]| cv_testkit::git(dir, args);
         git(&["init", "-q", "-b", "main"]);
-        git(&["config", "uploadpack.allowFilter", "true"]);
-        git(&["config", "uploadpack.allowAnySHA1InWant", "true"]);
+        cv_testkit::serve_partial_clones(dir);
         std::fs::write(dir.join(BIG), big_file(false)).expect("write the big file");
         std::fs::write(dir.join(GUIDE), guide(false)).expect("write the guide");
         for index in 0..SMALL_FILES {

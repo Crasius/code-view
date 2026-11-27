@@ -340,7 +340,7 @@ fn meta_line(
     palette: &Palette,
 ) -> (LayoutJob, String) {
     let small = FontId::proportional(style::SMALL_SIZE);
-    let updated = pull_request.updated_at.unwrap_or(pull_request.created_at);
+    let updated = pull_request.last_activity();
     let verb = if pull_request.updated_at.is_some() { "updated" } else { "created" };
     let mut meta = format!(
         "{}{}  ·  {}  ·  {verb} {}",

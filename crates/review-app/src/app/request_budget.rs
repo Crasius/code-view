@@ -1726,11 +1726,7 @@ fn build_repository(git_dir: &Path, file_count: usize) -> (PathBuf, String, Stri
     commit("refs/heads/main", 1, None, &|index| body(index, false));
     commit(&format!("refs/merge-requests/{IID}/head"), 2, Some(1), &|index| body(index, true));
     fast_import(git_dir, &stream);
-    for (key, value) in
-        [("uploadpack.allowFilter", "true"), ("uploadpack.allowAnySHA1InWant", "true")]
-    {
-        git_in(Some(git_dir), &["config", key, value]);
-    }
+    cv_testkit::serve_partial_clones(git_dir);
     let base = git_in(Some(git_dir), &["rev-parse", "refs/heads/main"]);
     let head = git_in(Some(git_dir), &["rev-parse", &format!("refs/merge-requests/{IID}/head")]);
     (git_dir.to_path_buf(), base, head)

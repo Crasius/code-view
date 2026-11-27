@@ -65,7 +65,7 @@ pub(crate) fn fixed_width(ui: &egui::Ui, source: &ListSource) -> f32 {
         ListSource::Repository { .. } => {
             STAR_GAP + buttons::icon_width() + tabs::pivot_width(ui, &repository_tab_labels())
         }
-        ListSource::Mine => {
+        ListSource::Overview => {
             tabs::segments_width(ui, &ROLE_SCOPES) + style::SPACE_M + STATE_WIDTH + style::SPACE_S
         }
     }
@@ -94,7 +94,7 @@ pub(crate) fn show(
             }
             picked.is_some()
         }
-        ListSource::Mine => {
+        ListSource::Overview => {
             let mut scope = overview_scope(filters.scope);
             let mut changed =
                 tabs::segments(ui, &mut scope, &ROLE_SCOPES) && scope != filters.scope;

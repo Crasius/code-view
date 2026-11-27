@@ -559,8 +559,7 @@ fn handler(changed: bool) -> String {
 fn create_origin(origin: &Path) -> Fixture {
     std::fs::create_dir_all(origin).expect("origin folder");
     git(origin, &["init", "-q", "-b", "main"]);
-    git(origin, &["config", "uploadpack.allowFilter", "true"]);
-    git(origin, &["config", "uploadpack.allowAnySHA1InWant", "true"]);
+    cv_testkit::serve_partial_clones(origin);
     write(origin, LONG_PATH, handler(false).as_bytes());
     let readme = "# Fabrikam Logistics\n\nIssues invoices for every charge.\n\n## Usage\n\nCall `Orchestrator.Start()` once.\n";
     write(origin, "README.md", readme.as_bytes());

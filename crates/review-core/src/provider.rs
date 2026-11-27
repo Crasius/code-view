@@ -92,7 +92,7 @@ pub trait Provider: Send + Sync {
             let query = PullRequestQuery::in_repository(repository.clone(), role, state, top);
             rows.extend(self.list_pull_requests(&query).await?);
         }
-        rows.sort_by_key(|row| std::cmp::Reverse(row.updated_at.unwrap_or(row.created_at)));
+        rows.sort_by_key(|row| std::cmp::Reverse(row.last_activity()));
         Ok(rows)
     }
 

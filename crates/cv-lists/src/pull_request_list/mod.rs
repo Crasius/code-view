@@ -73,14 +73,18 @@ use self::warm::Warming;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ListSource {
-    Mine,
-    Repository { connection_id: String, repository_key: String },
+    /// Every connection's pull requests, one card per connection.
+    Overview,
+    Repository {
+        connection_id: String,
+        repository_key: String,
+    },
 }
 
 impl ListSource {
     /// The overview across every connection, not one repository's list.
     pub(crate) fn is_overview(&self) -> bool {
-        matches!(self, Self::Mine)
+        matches!(self, Self::Overview)
     }
 }
 
@@ -189,7 +193,7 @@ impl PullRequestListPage {
             queries.results.iter().map(|result| result.connection_id.clone()).collect();
         on_screen.insert(list_rows::FAVORITES_KEY.to_owned());
         Self {
-            source: ListSource::Mine,
+            source: ListSource::Overview,
             queries,
             favorites,
             requests: RowRequests::default(),
@@ -319,7 +323,7 @@ impl PullRequestListPage {
 
     fn query(&self, filters: &ListFilters) -> (PullRequestScope, StateFilter) {
         match self.source {
-            ListSource::Mine => (overview_scope(filters.scope), filters.state),
+            ListSource::Overview => (overview_scope(filters.scope), filters.state),
             ListSource::Repository { .. } => {
                 (PullRequestScope::Repository, filters.repository_state)
             }
@@ -401,7 +405,7 @@ impl PullRequestListPage {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 let title = match &self.source {
-                    ListSource::Mine => "Pull requests".to_owned(),
+                    ListSource::Overview => "Pull requests".to_owned(),
                     ListSource::Repository { repository_key, .. } => repository_key.clone(),
                 };
                 let heading = egui::TextStyle::Heading.resolve(ui.style());
@@ -510,8 +514,8 @@ impl PullRequestListPage {
             ListSource::Repository { .. } if filters.repository_state != StateFilter::All => {
                 EmptyOffer::ShowAll
             }
-            ListSource::Mine if narrows(filters) => EmptyOffer::ClearFilters,
-            ListSource::Repository { .. } | ListSource::Mine => EmptyOffer::Nothing,
+            ListSource::Overview if narrows(filters) => EmptyOffer::ClearFilters,
+            ListSource::Repository { .. } | ListSource::Overview => EmptyOffer::Nothing,
         };
         // Repository lists show one repository already; the overview's repository filter is not theirs.
         let repository = filters.repository.as_ref().filter(|_| self.source.is_overview());
@@ -729,7 +733,7 @@ mod tests {
         };
         // A new page (another visit, a restart) starts from what was picked last.
         assert_eq!(
-            PullRequestListPage::new(ListSource::Mine).query(&saved),
+            PullRequestListPage::new(ListSource::Overview).query(&saved),
             (PullRequestScope::CreatedByMe, StateFilter::Merged)
         );
         let repository = ListSource::Repository {
@@ -743,7 +747,7 @@ mod tests {
         // A saved role the overview does not offer falls back to everything visible.
         let odd = ListFilters { scope: PullRequestScope::Repository, ..saved };
         assert_eq!(
-            PullRequestListPage::new(ListSource::Mine).query(&odd).0,
+            PullRequestListPage::new(ListSource::Overview).query(&odd).0,
             PullRequestScope::Visible
         );
     }

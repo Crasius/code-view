@@ -826,10 +826,11 @@ mod tests {
         let (key, ctx) = (key("src/cold.rs"), egui::Context::default());
         let repaints = observe_repaints(&ctx);
         let stored_is = |wanted: &LineSpans| {
-            cv_testkit::poll_until("the colors reach the disk tier", || {
-                let stored = cold.read(COLD_KIND, COLD_VERSION, &cold_key(&key));
-                stored.and_then(|bytes| decode(&bytes)).as_ref() == Some(wanted)
-            });
+            cold.flush();
+            let stored = cold
+                .read(COLD_KIND, COLD_VERSION, &cold_key(&key))
+                .and_then(|bytes| decode(&bytes));
+            assert_eq!(stored.as_ref(), Some(wanted), "the colors reach the disk tier");
         };
         let mut colors = PatchColors::default();
         colors.cold_worthy = Duration::ZERO;

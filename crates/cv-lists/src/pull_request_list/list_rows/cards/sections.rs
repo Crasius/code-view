@@ -127,9 +127,6 @@ fn section<'a>(
     rows: &[Row<'a>],
     sections: &RepositorySections,
 ) -> Section<'a> {
-    let updated = |pull_request: &PullRequestSummary| {
-        pull_request.updated_at.unwrap_or(pull_request.created_at)
-    };
     let mut count = 0;
     let mut newest: Option<&'a PullRequestSummary> = None;
     let mut leaving_left: f32 = 0.0;
@@ -138,7 +135,7 @@ fn section<'a>(
             Row::Item(_, pull_request) => {
                 count += 1;
                 let pull_request: &'a PullRequestSummary = pull_request;
-                if newest.is_none_or(|known| updated(known) < updated(pull_request)) {
+                if newest.is_none_or(|known| known.last_activity() < pull_request.last_activity()) {
                     newest = Some(pull_request);
                 }
             }
@@ -251,8 +248,7 @@ fn paint_text(
     let chip_width = chip_width(&count);
     let updated = section.newest.map(|newest| {
         let small = FontId::proportional(style::SMALL_SIZE);
-        let moment = newest.updated_at.unwrap_or(newest.created_at);
-        let text = format!("Updated {}", time_text::relative(moment));
+        let text = format!("Updated {}", time_text::relative(newest.last_activity()));
         painter.layout_no_wrap(text, small, palette.text_secondary)
     });
     let job = key_job(section.repository_key, palette);

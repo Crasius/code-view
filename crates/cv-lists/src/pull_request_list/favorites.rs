@@ -230,9 +230,7 @@ impl FavoriteQueries {
                 }
             }
         }
-        rows.sort_by_key(|(_, pull_request)| {
-            std::cmp::Reverse(pull_request.updated_at.unwrap_or(pull_request.created_at))
-        });
+        rows.sort_by_key(|(_, pull_request)| std::cmp::Reverse(pull_request.last_activity()));
         rows
     }
 
