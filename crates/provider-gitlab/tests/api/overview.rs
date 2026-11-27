@@ -5,7 +5,7 @@
 
 use provider_gitlab::GitLabProvider;
 use review_core::{
-    Connection, DiffStat, Provider, ProviderKind, PullRequestQuery, PullRequestScope, StateFilter,
+    Connection, DiffStat, Provider, PullRequestQuery, PullRequestScope, StateFilter,
 };
 use serde_json::{Value, json};
 use wiremock::matchers::{
@@ -14,16 +14,14 @@ use wiremock::matchers::{
 };
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn provider(server: &MockServer, organizations: &[&str], token: Option<&str>) -> GitLabProvider {
-    let connection = Connection {
-        id: "overview".to_owned(),
-        name: "Mock GitLab".to_owned(),
-        kind: ProviderKind::GitLab,
-        base_url: server.uri(),
-        organizations: organizations.iter().map(|group| (*group).to_owned()).collect(),
-        token: token.map(str::to_owned),
-    };
-    GitLabProvider::new(connection, reqwest::Client::new())
+use crate::support::{self, TOKEN};
+
+/// The provider on a connection to `groups` (the connection's organizations).
+fn provider(server: &MockServer, groups: &[&str], token: Option<&str>) -> GitLabProvider {
+    support::provider_on(Connection {
+        organizations: groups.iter().map(|group| (*group).to_owned()).collect(),
+        ..support::connection(server, token)
+    })
 }
 
 fn query(scope: PullRequestScope) -> PullRequestQuery {
@@ -112,7 +110,7 @@ async fn without_groups_everything_is_what_involves_the_user() {
         .expect(2)
         .mount(&server)
         .await;
-    let provider = provider(&server, &[], Some("test-token"));
+    let provider = provider(&server, &[], Some(TOKEN));
 
     let rows =
         provider.list_pull_requests(&query(PullRequestScope::Visible)).await.expect("overview");
@@ -140,7 +138,7 @@ async fn assigned_to_me_filters_by_reviewer_id_and_reads_the_user_once() {
         .expect(3)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["team"], Some("test-token"));
+    let provider = provider(&server, &["team"], Some(TOKEN));
     for _ in 0..3 {
         let rows = provider
             .list_pull_requests(&query(PullRequestScope::ReviewRequested))
@@ -160,7 +158,7 @@ async fn created_by_me_lists_per_group_with_its_scope() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["team"], Some("test-token"));
+    let provider = provider(&server, &["team"], Some(TOKEN));
     let rows = provider
         .list_pull_requests(&query(PullRequestScope::CreatedByMe))
         .await
@@ -190,7 +188,7 @@ async fn the_users_part_of_one_project_is_that_projects_listing() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["team"], Some("test-token"));
+    let provider = provider(&server, &["team"], Some(TOKEN));
     for (role, number) in
         [(PullRequestScope::CreatedByMe, 6), (PullRequestScope::ReviewRequested, 5)]
     {
@@ -225,7 +223,7 @@ async fn diff_stats_of_a_project_are_one_graphql_request() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["team"], Some("test-token"));
+    let provider = provider(&server, &["team"], Some(TOKEN));
 
     let stats = provider.diff_stats("team/app", &[5, 6, 9]).await.expect("diff stats");
     assert_eq!(

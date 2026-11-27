@@ -1,22 +1,11 @@
 //! Linked item states against a mock GitLab: one `iids[]` list request per project and kind.
 
-use provider_gitlab::GitLabProvider;
-use review_core::{Connection, ItemKind, ItemRef, LinkedState, Provider, ProviderKind};
+use review_core::{ItemKind, ItemRef, LinkedState, Provider};
 use serde_json::json;
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn provider(server: &MockServer) -> GitLabProvider {
-    let connection = Connection {
-        id: "gitlab-linked".to_owned(),
-        name: "mock".to_owned(),
-        kind: ProviderKind::GitLab,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: Some("test-token".to_owned()),
-    };
-    GitLabProvider::new(connection, reqwest::Client::new())
-}
+use crate::support::{self, TOKEN};
 
 fn reference(kind: ItemKind, repository: &str, number: u64) -> ItemRef {
     ItemRef { kind, repository_key: repository.to_owned(), number }
@@ -60,7 +49,8 @@ async fn batches_merge_requests_and_issues_per_project() {
         reference(ItemKind::Issue, "group/app", 4),
         reference(ItemKind::PullRequest, "group/gone", 1),
     ];
-    let mut items = provider(&server).linked_items(&asked).await.expect("linked items");
+    let mut items =
+        support::provider(&server, Some(TOKEN)).linked_items(&asked).await.expect("linked items");
     items.sort_by_key(|item| item.reference.number);
     let states: Vec<(u64, ItemKind, LinkedState)> =
         items.iter().map(|item| (item.reference.number, item.kind, item.state)).collect();

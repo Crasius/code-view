@@ -1,30 +1,16 @@
 //! Pipeline reads and retries against a mock GitLab: REST v4 jobs, GraphQL `needs` and the
 //! documented retry endpoints (docs.gitlab.com/api/jobs, /api/pipelines, /api/graphql).
 
-use provider_gitlab::GitLabProvider;
-use review_core::{
-    Connection, PipelineJob, Provider, ProviderError, ProviderKind, RerunAction, RerunKind,
-};
+use review_core::{PipelineJob, Provider, ProviderError, RerunAction, RerunKind};
 use serde_json::{Value, json};
 use wiremock::matchers::{
     body_partial_json, body_string_contains, header, method, path, query_param,
 };
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const TOKEN: &str = "test-token";
-const RUN: &str = "pipeline:7:99";
+use crate::support::{self, TOKEN};
 
-fn provider(server: &MockServer, token: Option<&str>) -> GitLabProvider {
-    let connection = Connection {
-        id: "mock".to_owned(),
-        name: "mock".to_owned(),
-        kind: ProviderKind::GitLab,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: token.map(str::to_owned),
-    };
-    GitLabProvider::new(connection, reqwest::Client::new())
-}
+const RUN: &str = "pipeline:7:99";
 
 async fn mount_rest_jobs(server: &MockServer) {
     let jobs = json!([
@@ -80,8 +66,10 @@ async fn jobs_carry_their_needs_from_graphql_and_stages_keep_their_order() {
         .expect(1)
         .mount(&server)
         .await;
-    let stages =
-        provider(&server, Some(TOKEN)).pipeline_jobs("group/project", 1, RUN).await.expect("jobs");
+    let stages = support::provider(&server, Some(TOKEN))
+        .pipeline_jobs("group/project", 1, RUN)
+        .await
+        .expect("jobs");
     let dependencies: Vec<(&str, Vec<&str>)> = stages
         .iter()
         .map(|stage| (stage.name.as_str(), stage.depends_on.iter().map(String::as_str).collect()))
@@ -133,7 +121,7 @@ async fn a_host_without_pipeline_by_id_gets_the_needs_by_iid() {
         .expect(2)
         .mount(&server)
         .await;
-    let provider = provider(&server, Some(TOKEN));
+    let provider = support::provider(&server, Some(TOKEN));
 
     for load in ["first", "second"] {
         let stages = provider.pipeline_jobs("group/project", 1, RUN).await.expect(load);
@@ -152,8 +140,10 @@ async fn stages_run_in_order_when_graphql_fails() {
         ))
         .mount(&server)
         .await;
-    let stages =
-        provider(&server, None).pipeline_jobs("group/project", 1, RUN).await.expect("jobs");
+    let stages = support::provider(&server, None)
+        .pipeline_jobs("group/project", 1, RUN)
+        .await
+        .expect("jobs");
     assert_eq!(
         stage_dependencies(&stages),
         vec![vec![], vec!["stage:99:build"], vec!["stage:99:test"]]
@@ -180,7 +170,7 @@ async fn a_rate_limited_graphql_neither_holds_back_the_jobs_nor_pauses_rest() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, None);
+    let provider = support::provider(&server, None);
     let patience = std::time::Duration::from_secs(10);
 
     let stages = tokio::time::timeout(patience, provider.pipeline_jobs("group/project", 1, RUN))
@@ -226,7 +216,7 @@ async fn retries_a_job_and_a_pipeline() {
             .mount(&server)
             .await;
     }
-    let provider = provider(&server, Some(TOKEN));
+    let provider = support::provider(&server, Some(TOKEN));
     provider
         .rerun("group/project", 1, RUN, &RerunAction::new(RerunKind::Job, "7:3"))
         .await
@@ -245,7 +235,7 @@ async fn retries_a_job_and_a_pipeline() {
 #[tokio::test]
 async fn retries_need_a_token() {
     let server = MockServer::start().await;
-    let result = provider(&server, None)
+    let result = support::provider(&server, None)
         .rerun("group/project", 1, RUN, &RerunAction::new(RerunKind::Job, "7:3"))
         .await;
     assert!(matches!(result, Err(ProviderError::Unsupported(_))), "{result:?}");

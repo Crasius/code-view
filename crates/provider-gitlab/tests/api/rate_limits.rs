@@ -5,23 +5,12 @@
 
 use std::time::{Duration, Instant};
 
-use provider_gitlab::GitLabProvider;
-use review_core::{Connection, Provider, ProviderError, ProviderKind, http};
+use review_core::{Provider, ProviderError, http};
 use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn provider(server: &MockServer) -> GitLabProvider {
-    let connection = Connection {
-        id: "gitlab-rate".to_owned(),
-        name: "mock".to_owned(),
-        kind: ProviderKind::GitLab,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: Some("test-token".to_owned()),
-    };
-    GitLabProvider::new(connection, reqwest::Client::new())
-}
+use crate::support::{self, TOKEN};
 
 fn too_many_requests() -> ResponseTemplate {
     ResponseTemplate::new(429)
@@ -61,7 +50,7 @@ async fn waits_for_retry_after_then_retries_once() {
         )
         .mount(&server)
         .await;
-    let provider = provider(&server);
+    let provider = support::provider(&server, Some(TOKEN));
 
     let started = Instant::now();
     let call = tokio::spawn(http::for_connection("gitlab-rate-retry", async move {
@@ -92,7 +81,8 @@ async fn second_limit_ends_in_rate_limited_error() {
         .mount(&server)
         .await;
 
-    let error = provider(&server).current_user().await.expect_err("still limited");
+    let error =
+        support::provider(&server, Some(TOKEN)).current_user().await.expect_err("still limited");
     assert!(matches!(error, ProviderError::RateLimited { retry_after_secs: 1, .. }), "{error:?}");
     assert!(error.to_string().contains("is rate-limiting this connection"));
     assert_eq!(server.received_requests().await.expect("recorded").len(), 2, "one retry, no loop");
@@ -116,7 +106,7 @@ async fn retry_now_ends_the_pause_early() {
         )
         .mount(&server)
         .await;
-    let provider = provider(&server);
+    let provider = support::provider(&server, Some(TOKEN));
     let call = tokio::spawn(async move { provider.current_user().await });
     paused(&server).await;
 

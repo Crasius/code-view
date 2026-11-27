@@ -3,27 +3,15 @@
 //! deprecated name), `POST …/cancel_auto_merge`, and `cancel_merge_when_pipeline_succeeds` where
 //! the host predates it.
 
-use provider_gitlab::GitLabProvider;
-use review_core::{Connection, MergeOptions, MergeStrategy, Provider, ProviderKind};
+use review_core::{MergeOptions, MergeStrategy, Provider};
 use serde_json::json;
 use wiremock::matchers::{body_partial_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+use crate::support::{self, TOKEN};
+
 const REPO: &str = "group/sub/project";
 const MR: &str = "/api/v4/projects/group%2Fsub%2Fproject/merge_requests/7";
-const TOKEN: &str = "test-token";
-
-fn provider(server: &MockServer) -> GitLabProvider {
-    let connection = Connection {
-        id: "mock".to_owned(),
-        name: "mock".to_owned(),
-        kind: ProviderKind::GitLab,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: Some(TOKEN.to_owned()),
-    };
-    GitLabProvider::new(connection, reqwest::Client::new())
-}
 
 #[tokio::test]
 async fn set_auto_merge_sends_the_merge_with_both_auto_merge_names() {
@@ -53,7 +41,10 @@ async fn set_auto_merge_sends_the_merge_with_both_auto_merge_names() {
         commit_message: Some("Squash it".into()),
         head_sha: "reviewed1".into(),
     };
-    provider(&server).set_auto_complete(REPO, 7, &options).await.expect("auto-merge set");
+    support::provider(&server, Some(TOKEN))
+        .set_auto_complete(REPO, 7, &options)
+        .await
+        .expect("auto-merge set");
 }
 
 #[tokio::test]
@@ -72,7 +63,7 @@ async fn cancel_uses_cancel_auto_merge() {
         .expect(0)
         .mount(&server)
         .await;
-    provider(&server).cancel_auto_complete(REPO, 7).await.expect("cancelled");
+    support::provider(&server, Some(TOKEN)).cancel_auto_complete(REPO, 7).await.expect("cancelled");
 }
 
 /// A host before GitLab 19.5 does not know `cancel_auto_merge`; its older endpoint cancels.
@@ -92,5 +83,5 @@ async fn cancel_falls_back_to_the_older_endpoint() {
         .expect(1)
         .mount(&server)
         .await;
-    provider(&server).cancel_auto_complete(REPO, 7).await.expect("cancelled");
+    support::provider(&server, Some(TOKEN)).cancel_auto_complete(REPO, 7).await.expect("cancelled");
 }

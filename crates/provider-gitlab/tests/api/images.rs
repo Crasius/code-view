@@ -3,26 +3,15 @@
 //! follows a redirect to storage; where the API does not serve them and the web route answers
 //! with the sign-in page, the image is private. Raw repository files load through the files API.
 
-use provider_gitlab::GitLabProvider;
+use review_core::Provider;
 use review_core::http::image::{Body, Validators};
-use review_core::{Connection, Provider, ProviderKind};
 use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
+use crate::support::{self, TOKEN};
+
 const SECRET: &str = "0123456789abcdef0123456789abcdef";
 const PNG: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
-
-fn provider(server: &MockServer) -> GitLabProvider {
-    let connection = Connection {
-        id: "gitlab-images".to_owned(),
-        name: "mock".to_owned(),
-        kind: ProviderKind::GitLab,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: Some("test-token".to_owned()),
-    };
-    GitLabProvider::new(connection, reqwest::Client::new())
-}
 
 #[tokio::test]
 async fn uploads_load_through_the_api_and_the_token_stays_on_gitlab() {
@@ -30,7 +19,7 @@ async fn uploads_load_through_the_api_and_the_token_stays_on_gitlab() {
     let storage = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path(format!("/api/v4/projects/group%2Fapp/uploads/{SECRET}/shot.png")))
-        .and(header("PRIVATE-TOKEN", "test-token"))
+        .and(header("PRIVATE-TOKEN", TOKEN))
         .respond_with(ResponseTemplate::new(302).insert_header(
             "Location",
             format!("{}/objects/shot.png?X-Amz-Signature=x", storage.uri()),
@@ -48,8 +37,10 @@ async fn uploads_load_through_the_api_and_the_token_stays_on_gitlab() {
         .await;
 
     let url = format!("{}/group/app/uploads/{SECRET}/shot.png", gitlab.uri());
-    let body =
-        provider(&gitlab).fetch_image("group/app", &url, 1024, &Validators::NONE).await.unwrap();
+    let body = support::provider(&gitlab, Some(TOKEN))
+        .fetch_image("group/app", &url, 1024, &Validators::NONE)
+        .await
+        .unwrap();
     let Body::Image(image) = body else { panic!("{body:?}") };
     assert_eq!(&image.bytes[..], &PNG);
     let storage_requests: Vec<Request> = storage.received_requests().await.unwrap();
@@ -67,7 +58,7 @@ async fn a_raw_file_on_a_branch_with_slashes_loads_through_the_api() {
     Mock::given(method("GET"))
         .and(path("/api/v4/projects/group%2Fapp/repository/files/a.png/raw"))
         .and(query_param("ref", "feature/docs"))
-        .and(header("PRIVATE-TOKEN", "test-token"))
+        .and(header("PRIVATE-TOKEN", TOKEN))
         .respond_with(
             ResponseTemplate::new(200)
                 .insert_header("Content-Type", "image/png")
@@ -82,8 +73,10 @@ async fn a_raw_file_on_a_branch_with_slashes_loads_through_the_api() {
         .await;
 
     let url = format!("{}/group/app/-/raw/feature/docs/a.png", gitlab.uri());
-    let body =
-        provider(&gitlab).fetch_image("group/app", &url, 1024, &Validators::NONE).await.unwrap();
+    let body = support::provider(&gitlab, Some(TOKEN))
+        .fetch_image("group/app", &url, 1024, &Validators::NONE)
+        .await
+        .unwrap();
     let Body::Image(image) = body else { panic!("{body:?}") };
     assert_eq!(&image.bytes[..], &PNG);
 }
@@ -111,7 +104,7 @@ async fn a_sign_in_page_means_the_image_is_private() {
         .mount(&gitlab)
         .await;
 
-    let body = provider(&gitlab)
+    let body = support::provider(&gitlab, Some(TOKEN))
         .fetch_image("group/app", &format!("{}{upload}", gitlab.uri()), 1024, &Validators::NONE)
         .await
         .unwrap();
