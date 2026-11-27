@@ -5,7 +5,8 @@
 //!   click, so nothing fires. The content then follows the pointer 1:1 from where it was pressed.
 //! * The middle button, and the primary button while Space is held, pan at once.
 //! * Releasing a pan flings it for a short coast (none under reduced motion); a new press, the
-//!   wheel or keyboard focus moving onto a card stops the coast. Repaints are requested only while it moves.
+//!   wheel or keyboard focus moving onto a card stops the coast.
+//!   Repaints are requested only while it moves.
 //! * The wheel scrolls as in a document (Shift for sideways), within the content's own bounds.
 //! * Ctrl+wheel and a trackpad pinch zoom around the pointer, which keeps the point under it in
 //!   place, between [`MIN_ZOOM`] and [`MAX_ZOOM`]. Ctrl+Plus/Minus step through [`ZOOM_STEPS`] and
