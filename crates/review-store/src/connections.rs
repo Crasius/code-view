@@ -107,11 +107,10 @@ impl ConnectionStore {
             ProviderKind::GitLab => "gl",
             ProviderKind::AzureDevOps => "ado",
         };
-        // One more candidate than there are connections: at least one of them is free.
         (1..=self.connections.len() + 1)
             .map(|index| format!("{prefix}-{index}"))
             .find(|candidate| self.find(candidate).is_none())
-            .unwrap_or_else(|| prefix.to_owned())
+            .expect("one of len + 1 candidates is free")
     }
 }
 
@@ -191,7 +190,7 @@ mod tests {
     #[test]
     fn folders_a_caller_picked_keep_their_tokens_in_the_file() {
         let root = TestDir::new("file-vault");
-        let paths = AppPaths::new(root.path().join("config"), root.path().join("cache"));
+        let paths = root.paths();
         assert_eq!(paths.token_vault(), TokenVault::File);
         assert_eq!(
             AppPaths::from_environment().token_vault(),
@@ -211,8 +210,7 @@ mod tests {
     fn a_refused_token_saves_nothing_and_the_connection_saves_without_it() {
         let root = TestDir::new("refusing-vault");
         let problem = no_keyring();
-        let paths = AppPaths::new(root.path().join("config"), root.path().join("cache"))
-            .with_token_vault(TokenVault::Refusing(problem));
+        let paths = root.paths().with_token_vault(TokenVault::Refusing(problem));
         let mut store = ConnectionStore::open(&paths).unwrap();
 
         let error = store.upsert(work("gh-1")).unwrap_err();
@@ -230,7 +228,7 @@ mod tests {
     #[test]
     fn every_saved_change_raises_the_revision_and_a_read_does_not() {
         let root = TestDir::new("revision");
-        let paths = AppPaths::new(root.path().join("config"), root.path().join("cache"));
+        let paths = root.paths();
         let mut store = ConnectionStore::open(&paths).unwrap();
         assert_eq!(store.revision(), 0);
 

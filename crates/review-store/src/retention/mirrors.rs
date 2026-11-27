@@ -1,7 +1,7 @@
 //! Mirrors are deleted whole: `git gc` cannot reclaim the blobs a partial clone fetched on
 //! demand (they sit in promisor packs), so trimming one in place frees little.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use super::mirror_stamp::{self, MirrorStamp};
@@ -17,9 +17,11 @@ pub trait MirrorGuard: Send + Sync {
     fn retire_if_idle(&self, git_dir: &Path, retire: &mut dyn FnMut() -> bool) -> bool;
 }
 
-/// For tools and tests without a registry: nothing is in use.
-pub struct NothingInUse;
+/// For tests: nothing is in use.
+#[cfg(test)]
+pub(crate) struct NothingInUse;
 
+#[cfg(test)]
 impl MirrorGuard for NothingInUse {
     fn retire_if_idle(&self, _git_dir: &Path, retire: &mut dyn FnMut() -> bool) -> bool {
         retire()
@@ -49,6 +51,20 @@ pub fn scan(mirrors_dir: &Path) -> Vec<ScannedMirror> {
                 .unwrap_or(SystemTime::UNIX_EPOCH);
             let last_used = stamp.as_ref().map_or(folder_changed, MirrorStamp::last_used);
             ScannedMirror { entry: Entry { bytes: tree_size(&path), path, last_used }, stamp }
+        })
+        .collect()
+}
+
+/// Mirrors with their stamps, without measuring them: this runs for every finished pull request.
+pub(super) fn stamped(mirrors_dir: &Path) -> Vec<(PathBuf, MirrorStamp)> {
+    let Ok(children) = std::fs::read_dir(mirrors_dir) else {
+        return Vec::new();
+    };
+    children
+        .flatten()
+        .filter_map(|child| {
+            let path = child.path();
+            mirror_stamp::read(&path).map(|stamp| (path, stamp))
         })
         .collect()
 }

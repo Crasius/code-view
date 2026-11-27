@@ -13,10 +13,11 @@
 //! results, never requests. Every call touches the disk, so call it off the UI thread.
 
 use std::io;
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
 
-use crate::{AppPaths, atomic_file, stable_hash};
+use crate::atomic_file::{self, TEMP_EXTENSION};
+use crate::{AppPaths, stable_hash};
 
 /// The cold tier's bytes on disk, for every kind together: our number, the lists and overviews of
 /// about a hundred pull requests and the colors of a few dozen large diffs. Small next to the git
@@ -24,8 +25,10 @@ use crate::{AppPaths, atomic_file, stable_hash};
 pub const BUDGET_BYTES: u64 = 64 * 1024 * 1024;
 /// The container format; a new layout of the header changes it.
 const MAGIC: &[u8; 8] = b"CVCOLD1\n";
-const TEMP_EXTENSION: &str = "tmp";
 const FILE_EXTENSION: &str = "bin";
+/// A temporary file older than this was left by a write that did not finish; one in flight is
+/// younger.
+const STALE_TEMP: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 pub struct ColdCache {
@@ -37,10 +40,6 @@ impl ColdCache {
     /// The cold tier in `paths`' cache folder, kept within `budget` bytes.
     pub fn new(paths: &AppPaths, budget: u64) -> Self {
         Self { root: paths.cold_cache_dir(), budget }
-    }
-
-    pub fn budget(&self) -> u64 {
-        self.budget
     }
 
     /// The payload stored for `key` of `kind` at `version`, marked as used; `None` when there is
@@ -57,7 +56,7 @@ impl ColdCache {
         if stored != key.as_bytes() {
             return None;
         }
-        mark_used(&path);
+        atomic_file::mark_used(&path);
         Some(bytes[start..].to_vec())
     }
 
@@ -174,7 +173,7 @@ impl ColdCache {
                         .modified()
                         .ok()
                         .and_then(|modified| modified.elapsed().ok())
-                        .is_some_and(|age| age.as_secs() > 60);
+                        .is_some_and(|age| age > STALE_TEMP);
                     if is_stale {
                         let _gone_or_locked = std::fs::remove_file(&path);
                     }
@@ -205,23 +204,13 @@ fn parse(bytes: &[u8], version: u32) -> Option<(&[u8], usize)> {
     (u32::from_le_bytes(*stored_version) == version).then_some((key, MAGIC.len() + 8 + key_length))
 }
 
-/// Reading counts as use: the budget drops the files read longest ago.
-fn mark_used(path: &Path) {
-    if let Ok(file) = std::fs::File::options().write(true).open(path) {
-        // A file that cannot take the time ages from its last write, a little early.
-        let _ages_from_its_write = file.set_modified(SystemTime::now());
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use super::*;
     use crate::test_support::TestDir;
 
     fn cache(dir: &TestDir, budget: u64) -> ColdCache {
-        ColdCache::new(&AppPaths::new(dir.path().join("config"), dir.path().join("cache")), budget)
+        ColdCache::new(&dir.paths(), budget)
     }
 
     #[test]

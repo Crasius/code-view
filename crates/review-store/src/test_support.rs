@@ -1,5 +1,6 @@
-//! What the crate's tests share: a temporary folder per test, a bounded wait for work a background
-//! thread does, and the problem of a token store that refuses every token.
+//! What the crate's tests share: a temporary folder per test with the app's folders in it, the
+//! connection list and other files written as the app writes them, a bounded wait for work a
+//! background thread does, and the problem of a token store that refuses every token.
 
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -7,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::retention::remove_tree;
-use crate::{LINUX_HELP_URL, VaultProblem};
+use crate::{AppPaths, LINUX_HELP_URL, VaultProblem};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -27,6 +28,11 @@ impl TestDir {
     pub fn path(&self) -> &Path {
         &self.0
     }
+
+    /// The app's config and cache folders inside this folder.
+    pub fn paths(&self) -> AppPaths {
+        AppPaths::new(self.0.join("config"), self.0.join("cache"))
+    }
 }
 
 impl Drop for TestDir {
@@ -35,6 +41,28 @@ impl Drop for TestDir {
         // would hide the test's own failure.
         let _cleanup_is_best_effort = remove_tree(&self.0);
     }
+}
+
+/// Writes the connection list with `ids`, as Settings saves it.
+pub fn write_connections(paths: &AppPaths, ids: &[&str]) {
+    let list: Vec<String> = ids
+        .iter()
+        .map(|id| {
+            format!(r#"{{"id":"{id}","name":"n","kind":"GitHub","base_url":"https://github.com"}}"#)
+        })
+        .collect();
+    write_file(
+        &paths.connections_file(),
+        format!(r#"{{"connections":[{}]}}"#, list.join(",")).as_bytes(),
+    );
+}
+
+/// Writes `bytes` to `path`, creating its folders, and returns the path.
+pub fn write_file(path: &Path, bytes: &[u8]) -> PathBuf {
+    std::fs::create_dir_all(path.parent().expect("a file in a folder"))
+        .expect("create the folders");
+    std::fs::write(path, bytes).expect("write the file");
+    path.to_owned()
 }
 
 /// Polls `condition` until it holds or ten seconds pass; true when it held.

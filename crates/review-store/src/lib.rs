@@ -19,13 +19,13 @@ mod settings_tests;
 mod test_support;
 mod threads;
 mod token_vault;
-pub(crate) mod viewed;
+mod viewed;
 
 pub use assistant::chats::{
     AssistantChats, Chat, ChatQuote, ChatStep, ChatTurn, ChatUsage, ChatsSnapshot, TurnEnd,
     TurnKind, agent_checkouts_dir, chats_dir,
 };
-pub use assistant::settings::AssistantSettings;
+pub use assistant::settings::{AssistantSettings, MiniChatCorner};
 pub use atomic_file::write_bytes;
 pub use cold_cache::{BUDGET_BYTES as COLD_CACHE_BUDGET_BYTES, ColdCache};
 pub use connections::ConnectionStore;

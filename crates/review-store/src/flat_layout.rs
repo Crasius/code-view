@@ -19,6 +19,19 @@ use crate::{AppPaths, atomic_file, stable_hash};
 
 const OWNERS_FILE: &str = "owners.json";
 
+/// Where the state of one pull request goes in the per-connection layout of `category_dir`:
+/// `<category>\<connection>\<pull request>.json`. Retention takes every folder named after a
+/// connection's hash for that connection's.
+pub(crate) fn pull_request_file(
+    category_dir: &Path,
+    connection_id: &str,
+    pull_request_key: &str,
+) -> PathBuf {
+    category_dir
+        .join(stable_hash(connection_id))
+        .join(format!("{}.json", stable_hash(pull_request_key)))
+}
+
 #[derive(Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 struct Owners {
     connections: BTreeSet<String>,
@@ -121,5 +134,33 @@ impl FlatLayout {
                 && path.extension().is_some_and(|extension| extension == "json")
                 && !self.is_owners_file(&path)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FlatLayout, pull_request_file};
+    use crate::test_support::{TestDir, write_connections, write_file};
+
+    /// Regression: a flat file of a connection removed before the upgrade went to whichever new
+    /// connection reused the id.
+    #[test]
+    fn a_connection_added_after_the_upgrade_adopts_no_flat_file() {
+        let dir = TestDir::new("flat-stranger");
+        let paths = dir.paths();
+        let category = paths.viewed_dir();
+        let layout = FlatLayout::new(&paths, category.clone());
+        write_connections(&paths, &["gh-2"]);
+        let old = write_file(&layout.flat_file("gh-1|cli/cli|7"), b"{}");
+        let owned = write_file(&layout.flat_file("gh-2|cli/cli|7"), b"{}");
+        let adopted = pull_request_file(&category, "gh-2", "gh-2|cli/cli|7");
+        layout.adopt("gh-2", "gh-2|cli/cli|7", &adopted).unwrap();
+        assert!(adopted.exists() && !owned.exists(), "an owner adopts its flat file");
+
+        write_connections(&paths, &["gh-1", "gh-2"]);
+        let stranger = pull_request_file(&category, "gh-1", "gh-1|cli/cli|7");
+        layout.adopt("gh-1", "gh-1|cli/cli|7", &stranger).unwrap();
+        assert!(!stranger.exists(), "the owners were fixed at the first flat file");
+        assert!(old.exists(), "the file ages out, unadopted");
     }
 }

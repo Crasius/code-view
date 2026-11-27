@@ -40,13 +40,14 @@ pub fn agent_checkouts_dir(paths: &AppPaths) -> PathBuf {
 
 /// The conversations of one pull request.
 pub struct AssistantChats {
-    file: PathBuf,
+    /// `None` for a store that is never written.
+    file: Option<PathBuf>,
     stored: StoredChats,
 }
 
 /// The conversations of one pull request as they were when taken, to write on another thread.
 pub struct ChatsSnapshot {
-    file: PathBuf,
+    file: Option<PathBuf>,
     stored: StoredChats,
     number: u64,
 }
@@ -186,12 +187,12 @@ impl AssistantChats {
         for chat in &mut stored.chats {
             chat.turns.retain(|turn| turn.kind != TurnKind::Draft);
         }
-        Ok(Self { file, stored })
+        Ok(Self { file: Some(file), stored })
     }
 
     /// A store that is never written, for when the file could not be read.
     pub fn in_memory() -> Self {
-        Self { file: PathBuf::new(), stored: StoredChats::default() }
+        Self { file: None, stored: StoredChats::default() }
     }
 
     /// The agent shown last, if any conversation was kept.
@@ -231,16 +232,16 @@ impl ChatsSnapshot {
     /// Writes the conversations, unless the file already holds a later snapshot; a snapshot of
     /// an in-memory store writes nothing. Blocks on disk: call it off the UI thread.
     pub fn write(self) -> io::Result<()> {
-        if self.file.as_os_str().is_empty() {
+        let Some(file) = self.file else {
             return Ok(());
-        }
+        };
         // A write that panicked left no number behind, so the map is still right.
         let mut written = WRITTEN.lock().unwrap_or_else(PoisonError::into_inner);
-        if written.get(&self.file).is_some_and(|&held| held >= self.number) {
+        if written.get(&file).is_some_and(|&held| held >= self.number) {
             return Ok(());
         }
-        atomic_file::write_json(&self.file, &self.stored)?;
-        written.insert(self.file, self.number);
+        atomic_file::write_json(&file, &self.stored)?;
+        written.insert(file, self.number);
         Ok(())
     }
 }

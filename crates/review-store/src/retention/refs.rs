@@ -34,11 +34,7 @@ pub fn delete(git_dir: &Path, names: &[String]) -> io::Result<()> {
     if names.is_empty() {
         return Ok(());
     }
-    let mut child = git(git_dir)
-        .args(["update-ref", "--stdin"])
-        .stdin(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+    let mut child = git(git_dir).args(["update-ref", "--stdin"]).stdin(Stdio::piped()).spawn()?;
     {
         let mut stdin = child.stdin.take().ok_or_else(|| io::Error::other("git stdin missing"))?;
         for name in names {

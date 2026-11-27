@@ -67,16 +67,13 @@ pub fn tree_size(path: &Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::TestDir;
+    use crate::test_support::{TestDir, write_file};
 
     #[test]
     fn sizes_per_category_without_the_trash() {
         let dir = TestDir::new("usage");
-        let paths = AppPaths::new(dir.path().join("config"), dir.path().join("cache"));
-        let write = |path: std::path::PathBuf, bytes: usize| {
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, vec![0u8; bytes]).unwrap();
-        };
+        let paths = dir.paths();
+        let write = |path: std::path::PathBuf, bytes: usize| write_file(&path, &vec![0u8; bytes]);
         write(paths.mirrors_dir().join("a.git").join("objects").join("pack").join("p.pack"), 300);
         write(paths.logs_dir().join("c").join("l.log"), 20);
         write(paths.viewed_dir().join("c").join("v.json"), 4);

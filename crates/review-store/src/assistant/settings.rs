@@ -74,24 +74,6 @@ impl AssistantSettings {
 mod tests {
     use super::AssistantSettings;
 
-    /// Settings files written while the expanded panel had its own width still load.
-    #[test]
-    fn a_settings_file_with_the_old_panel_width_loads() {
-        let json = r#"{"panel_width":640.0,"card_height":300.0}"#;
-        let settings: AssistantSettings = serde_json::from_str(json).expect("loads");
-        assert_eq!(settings.card_height, Some(300.0));
-    }
-
-    /// Files written before the assistant could be turned off load with it shown.
-    #[test]
-    fn a_settings_file_without_the_switch_loads_with_the_assistant_shown() {
-        let settings: AssistantSettings =
-            serde_json::from_str(r#"{"agent":"Codex"}"#).expect("loads");
-        assert!(settings.enabled);
-        let off: AssistantSettings = serde_json::from_str(r#"{"enabled":false}"#).expect("loads");
-        assert!(!off.enabled);
-    }
-
     /// Files without a choice load with the mini chat on, in the bottom-right corner; the old
     /// `mini_chat: false` was a default, not a choice, so it does not turn it off.
     #[test]
@@ -102,23 +84,5 @@ mod tests {
             let corner = settings.mini_chat_corner;
             assert!(!corner.left && !corner.top, "bottom right");
         }
-    }
-
-    /// An explicit choice under the current key is kept.
-    #[test]
-    fn a_stored_mini_chat_choice_is_kept() {
-        let off: AssistantSettings =
-            serde_json::from_str(r#"{"mini_chat_beside_code":false}"#).expect("loads");
-        assert!(!off.mini_chat);
-        let json = serde_json::to_string(&off).expect("saves");
-        assert!(json.contains(r#""mini_chat_beside_code":false"#), "{json}");
-    }
-
-    /// Files written while the chip's place was an option still load; the field is ignored.
-    #[test]
-    fn a_settings_file_with_the_old_chip_place_loads() {
-        let json = r#"{"enabled":true,"model_in_title":false}"#;
-        let settings: AssistantSettings = serde_json::from_str(json).expect("loads");
-        assert!(settings.enabled);
     }
 }

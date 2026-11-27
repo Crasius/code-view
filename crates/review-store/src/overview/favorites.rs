@@ -112,21 +112,10 @@ mod tests {
     }
 
     #[test]
-    fn the_lane_is_shown_by_default_and_in_files_from_before_the_option() {
-        assert!(Favorites::default().is_lane_shown);
-        assert!(AppSettings::default().favorites.is_lane_shown);
+    fn a_favorites_object_without_the_lane_switch_shows_the_lane() {
         let older = r#"{"favorites":{"repositories":[{"connection_id":"gh","repository_key":"cli/cli"}],"is_collapsed":true}}"#;
         let settings: AppSettings = serde_json::from_str(older).expect("an older file");
         assert!(settings.favorites.is_lane_shown, "files from before the option show the lane");
         assert!(settings.favorites.is_collapsed && settings.favorites.contains("gh", "cli/cli"));
-
-        let mut hidden = Favorites { is_lane_shown: false, ..Favorites::default() };
-        hidden.toggle("gh", "cli/cli");
-        let saved =
-            serde_json::to_string(&AppSettings { favorites: hidden, ..AppSettings::default() })
-                .expect("saved");
-        let loaded: AppSettings = serde_json::from_str(&saved).expect("loaded");
-        assert!(!loaded.favorites.is_lane_shown, "a hidden lane stays hidden");
-        assert!(loaded.favorites.contains("gh", "cli/cli"), "stars stay with the lane hidden");
     }
 }

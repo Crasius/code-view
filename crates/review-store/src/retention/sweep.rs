@@ -1,5 +1,12 @@
 //! One pass over the cache folder: file system work only, never the network. Every deletion is a
 //! rename into the trash; the trash thread does the slow part.
+//!
+//! A pull request that was merged or closed, or whose source branch is gone, takes its local data
+//! with it right away ([`Sweeper::forget_pull_request`]): its pipeline logs, its viewed marks, its
+//! thread read marks and drafts (nothing can be posted to it any more) and its refs in the mirror.
+//! A mirror left without any live pull request goes whole (dropping refs alone frees nothing: the
+//! objects stay in the packs); otherwise only the refs go and the size and age limits reclaim the
+//! rest. The caller keeps the open pull request out (its page holds its drafts); see `worker`.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -8,7 +15,6 @@ use std::time::SystemTime;
 
 use serde::Deserialize;
 
-use super::finished::{self, FinishedPullRequest};
 use super::leases::Leases;
 use super::mirror_stamp::{self, MirrorStamp};
 use super::mirrors::{self, MirrorGuard};
@@ -17,10 +23,8 @@ use super::trash::Trash;
 use super::{
     IMAGE_LIMITS, LOG_LIMITS, Limits, MIRROR_LIMITS, THREAD_LIMITS, VIEWED_LIMITS, files, refs,
 };
-use crate::flat_layout::FlatLayout;
-use crate::{
-    AppPaths, COLD_CACHE_BUDGET_BYTES, ColdCache, atomic_file, stable_hash, threads, viewed,
-};
+use crate::flat_layout::{FlatLayout, pull_request_file};
+use crate::{AppPaths, COLD_CACHE_BUDGET_BYTES, ColdCache, atomic_file, stable_hash};
 
 pub struct Sweeper {
     paths: AppPaths,
@@ -48,6 +52,13 @@ impl CacheLimits {
         threads: THREAD_LIMITS,
         images: IMAGE_LIMITS,
     };
+}
+
+/// A pull request by connection and key (`connection|repository|number`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FinishedPullRequest {
+    pub connection_id: String,
+    pub key: String,
 }
 
 impl Sweeper {
@@ -175,20 +186,20 @@ impl Sweeper {
         outcome
     }
 
-    /// Deletes what `pull_request` left (see [`super::finished`]). False when something is still
-    /// in use and needs another try.
+    /// Deletes what `pull_request` left (see the module doc). False when something is still in use
+    /// and needs another try.
     pub fn forget_pull_request(&self, pull_request: &FinishedPullRequest) -> bool {
         let mut is_done = self.forget_logs(pull_request);
         let (connection_id, key) = (&pull_request.connection_id, &pull_request.key);
         let viewed_dir = self.paths.viewed_dir();
-        is_done &= self.forget_file(&viewed::file_for(&viewed_dir, connection_id, key));
+        is_done &= self.forget_file(&pull_request_file(&viewed_dir, connection_id, key));
         let threads_dir = self.paths.threads_dir();
-        is_done &= self.forget_file(&threads::file_for(&threads_dir, connection_id, key));
+        is_done &= self.forget_file(&pull_request_file(&threads_dir, connection_id, key));
         // A file from before the per-connection layout that its pull request never adopted.
         for dir in [viewed_dir, threads_dir] {
             is_done &= self.forget_file(&FlatLayout::new(&self.paths, dir).flat_file(key));
         }
-        for (git_dir, stamp) in finished::stamped_mirrors(&self.paths.mirrors_dir()) {
+        for (git_dir, stamp) in mirrors::stamped(&self.paths.mirrors_dir()) {
             if stamp.has_pull_request(&pull_request.key) {
                 is_done &= self.forget_in_mirror(&git_dir, stamp, &pull_request.key);
             }

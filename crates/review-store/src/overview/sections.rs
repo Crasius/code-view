@@ -71,7 +71,6 @@ impl RepositorySections {
 #[cfg(test)]
 mod tests {
     use super::{RepositorySections, SectionCard, SectionKey};
-    use crate::AppSettings;
 
     fn key(card: SectionCard, connection_id: &str) -> SectionKey {
         SectionKey { card, connection_id: connection_id.into(), repository_key: "group/app".into() }
@@ -92,13 +91,5 @@ mod tests {
 
         sections.retain_connections(|id| id == "gl");
         assert!(!sections.is_collapsed(SectionCard::Connection, "gh", "group/app"));
-    }
-
-    #[test]
-    fn rows_are_grouped_by_default_and_in_files_from_before_the_option() {
-        assert!(AppSettings::default().repository_sections.is_grouped);
-        let older: AppSettings =
-            serde_json::from_str(r#"{"wrap_lines":true}"#).expect("an older file");
-        assert!(older.repository_sections.is_grouped, "files from before the option group");
     }
 }

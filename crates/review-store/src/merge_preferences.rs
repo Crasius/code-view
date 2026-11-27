@@ -8,16 +8,16 @@ use review_core::{MergeStrategy, ProviderKind};
 use serde::{Deserialize, Serialize};
 
 /// Repository-keyed entries go per connection id, then per repository key.
-type PerRepository = BTreeMap<String, BTreeMap<String, MergeStrategy>>;
+type PerRepository<T> = BTreeMap<String, BTreeMap<String, T>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MergePreferences {
     platform_favourites: BTreeMap<ProviderKind, MergeStrategy>,
-    repository_favourites: PerRepository,
-    last_used: PerRepository,
+    repository_favourites: PerRepository<MergeStrategy>,
+    last_used: PerRepository<MergeStrategy>,
     /// Whether the last merge in a repository deleted its source branch.
-    delete_source_branch: BTreeMap<String, BTreeMap<String, bool>>,
+    delete_source_branch: PerRepository<bool>,
 }
 
 impl MergePreferences {
@@ -66,7 +66,7 @@ impl MergePreferences {
 
     /// The source branch choice of the last merge in this repository; `None` before the first.
     pub fn delete_source_branch(&self, connection_id: &str, repository: &str) -> Option<bool> {
-        self.delete_source_branch.get(connection_id)?.get(repository).copied()
+        get(&self.delete_source_branch, connection_id, repository)
     }
 
     pub fn remember_delete_source_branch(
@@ -75,26 +75,18 @@ impl MergePreferences {
         repository: &str,
         is_deleted: bool,
     ) {
-        self.delete_source_branch
-            .entry(connection_id.to_owned())
-            .or_default()
-            .insert(repository.to_owned(), is_deleted);
+        set(&mut self.delete_source_branch, connection_id, repository, Some(is_deleted));
     }
 
     /// Repositories with a favourite, a last used strategy or a source branch choice.
     pub fn remembered_repositories(&self) -> usize {
-        let mut keys: Vec<(&String, &String)> = Vec::new();
-        for map in [&self.repository_favourites, &self.last_used] {
-            for (connection_id, repositories) in map {
-                keys.extend(repositories.keys().map(|repository| (connection_id, repository)));
-            }
-        }
-        for (connection_id, repositories) in &self.delete_source_branch {
-            keys.extend(repositories.keys().map(|repository| (connection_id, repository)));
-        }
-        keys.sort();
-        keys.dedup();
-        keys.len()
+        let mut pairs: Vec<(&String, &String)> = keys(&self.repository_favourites)
+            .chain(keys(&self.last_used))
+            .chain(keys(&self.delete_source_branch))
+            .collect();
+        pairs.sort();
+        pairs.dedup();
+        pairs.len()
     }
 
     /// Forgets every repository's favourite, last used strategy and source branch choice;
@@ -113,21 +105,15 @@ impl MergePreferences {
     }
 }
 
-fn get(map: &PerRepository, connection_id: &str, repository: &str) -> Option<MergeStrategy> {
+fn get<T: Copy>(map: &PerRepository<T>, connection_id: &str, repository: &str) -> Option<T> {
     map.get(connection_id)?.get(repository).copied()
 }
 
-fn set(
-    map: &mut PerRepository,
-    connection_id: &str,
-    repository: &str,
-    strategy: Option<MergeStrategy>,
-) {
-    match strategy {
-        Some(strategy) => {
-            map.entry(connection_id.to_owned())
-                .or_default()
-                .insert(repository.to_owned(), strategy);
+/// `None` removes the entry, and the connection's map once it is empty.
+fn set<T>(map: &mut PerRepository<T>, connection_id: &str, repository: &str, value: Option<T>) {
+    match value {
+        Some(value) => {
+            map.entry(connection_id.to_owned()).or_default().insert(repository.to_owned(), value);
         }
         None => {
             if let Some(repositories) = map.get_mut(connection_id) {
@@ -138,6 +124,13 @@ fn set(
             }
         }
     }
+}
+
+/// The (connection id, repository key) pairs of `map`.
+fn keys<T>(map: &PerRepository<T>) -> impl Iterator<Item = (&String, &String)> {
+    map.iter().flat_map(|(connection_id, repositories)| {
+        repositories.keys().map(move |repository| (connection_id, repository))
+    })
 }
 
 #[cfg(test)]

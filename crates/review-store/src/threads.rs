@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, HashMap};
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::flat_layout::FlatLayout;
-use crate::{AppPaths, atomic_file, stable_hash};
+use crate::flat_layout::{self, FlatLayout};
+use crate::{AppPaths, atomic_file};
 
 /// What the app remembers about the conversations of one pull request on this machine: which
 /// comments the user has seen (for "new replies" and the unread filter) and unsent drafts, so a
@@ -15,7 +15,8 @@ use crate::{AppPaths, atomic_file, stable_hash};
 /// removes its drafts and read marks, and a new connection that reuses the id starts empty. Files
 /// from before that layout move into their connection's folder on first load ([`FlatLayout`]).
 pub struct ThreadStore {
-    file: PathBuf,
+    /// `None` for a store that is never written.
+    file: Option<PathBuf>,
     stored: StoredThreads,
     is_dirty: bool,
 }
@@ -59,17 +60,11 @@ pub struct DraftRange {
     pub detail: Option<[u32; 6]>,
 }
 
-/// Where the read marks and drafts of one pull request are stored.
-pub(crate) fn file_for(threads_dir: &Path, connection_id: &str, pull_request_key: &str) -> PathBuf {
-    threads_dir
-        .join(stable_hash(connection_id))
-        .join(format!("{}.json", stable_hash(pull_request_key)))
-}
-
 impl ThreadStore {
     /// `pull_request_key` identifies the PR across sessions, e.g. `connection|repo|number`.
     pub fn load(paths: &AppPaths, connection_id: &str, pull_request_key: &str) -> io::Result<Self> {
-        let file = file_for(&paths.threads_dir(), connection_id, pull_request_key);
+        let file =
+            flat_layout::pull_request_file(&paths.threads_dir(), connection_id, pull_request_key);
         FlatLayout::new(paths, paths.threads_dir()).adopt(
             connection_id,
             pull_request_key,
@@ -79,12 +74,12 @@ impl ThreadStore {
         if stored.first_visit.is_some() {
             atomic_file::mark_used(&file);
         }
-        Ok(Self { file, stored, is_dirty: false })
+        Ok(Self { file: Some(file), stored, is_dirty: false })
     }
 
     /// A store that is never written, for when the file could not be read.
     pub fn in_memory() -> Self {
-        Self { file: PathBuf::new(), stored: StoredThreads::default(), is_dirty: false }
+        Self { file: None, stored: StoredThreads::default(), is_dirty: false }
     }
 
     /// The first visit: everything there is now counts as read. Later calls change nothing.
@@ -152,12 +147,14 @@ impl ThreadStore {
 
     /// Writes the changes since the last save, if any.
     pub fn save(&mut self) -> io::Result<()> {
-        if !self.is_dirty || self.file.as_os_str().is_empty() {
+        let Some(file) = &self.file else {
             self.is_dirty = false;
             return Ok(());
+        };
+        if self.is_dirty {
+            atomic_file::write_json(file, &self.stored)?;
+            self.is_dirty = false;
         }
-        atomic_file::write_json(&self.file, &self.stored)?;
-        self.is_dirty = false;
         Ok(())
     }
 }
@@ -165,37 +162,20 @@ impl ThreadStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::TestDir;
-
-    fn paths(folder: &TestDir) -> AppPaths {
-        AppPaths::new(folder.path().join("config"), folder.path().join("cache"))
-    }
-
-    /// Writes the connection list with `ids`, as Settings saves it.
-    fn connections(paths: &AppPaths, ids: &[&str]) {
-        let list: Vec<String> =
-            ids.iter().map(|id| format!(r#"{{"id":"{id}","name":"n","kind":"GitHub"}}"#)).collect();
-        std::fs::create_dir_all(paths.config_dir()).unwrap();
-        std::fs::write(
-            paths.connections_file(),
-            format!(r#"{{"connections":[{}]}}"#, list.join(",")),
-        )
-        .unwrap();
-    }
+    use crate::flat_layout::pull_request_file;
+    use crate::test_support::{TestDir, write_connections, write_file};
 
     /// A drafts file in the layout before the per-connection folders.
     fn flat_draft(paths: &AppPaths, key: &str, text: &str) -> PathBuf {
         let flat = FlatLayout::new(paths, paths.threads_dir()).flat_file(key);
-        std::fs::create_dir_all(flat.parent().unwrap()).unwrap();
-        std::fs::write(&flat, format!(r#"{{"drafts":{{"reply:t1":{{"text":"{text}"}}}}}}"#))
-            .unwrap();
-        flat
+        let json = format!(r#"{{"drafts":{{"reply:t1":{{"text":"{text}"}}}}}}"#);
+        write_file(&flat, json.as_bytes())
     }
 
     #[test]
     fn the_first_visit_reads_everything_and_later_comments_are_new() {
         let folder = TestDir::new("threads-seen");
-        let paths = paths(&folder);
+        let paths = folder.paths();
         let mut store = ThreadStore::load(&paths, "gh", "gh|cli/cli|7").unwrap();
         assert_eq!(store.seen_until("t1"), None);
         store.start_visit(1_000, [("t1".to_owned(), 900)]);
@@ -213,13 +193,13 @@ mod tests {
         let reloaded = ThreadStore::load(&paths, "gh", "gh|cli/cli|7").unwrap();
         assert_eq!(reloaded.seen_until("t1"), Some(1_200));
         assert!(reloaded.has_visited());
-        assert!(file_for(&paths.threads_dir(), "gh", "gh|cli/cli|7").exists());
+        assert!(pull_request_file(&paths.threads_dir(), "gh", "gh|cli/cli|7").exists());
     }
 
     #[test]
     fn drafts_survive_a_restart_and_empty_ones_are_dropped() {
         let folder = TestDir::new("threads-drafts");
-        let paths = paths(&folder);
+        let paths = folder.paths();
         let mut store = ThreadStore::load(&paths, "gl", "gl|group/app|3").unwrap();
         let anchor = DraftAnchor {
             path: "src/a.rs".into(),
@@ -257,43 +237,20 @@ mod tests {
     #[test]
     fn drafts_saved_before_the_per_connection_layout_are_kept() {
         let folder = TestDir::new("threads-flat");
-        let paths = paths(&folder);
-        connections(&paths, &["gh-1", "gh-2"]);
+        let paths = folder.paths();
+        write_connections(&paths, &["gh-1", "gh-2"]);
         let flat = flat_draft(&paths, "gh-1|cli/cli|7", "Kept");
         let other = flat_draft(&paths, "gh-2|cli/cli|8", "Other");
 
         let store = ThreadStore::load(&paths, "gh-1", "gh-1|cli/cli|7").unwrap();
         assert_eq!(store.draft("reply:t1").map(|draft| draft.text.as_str()), Some("Kept"));
         assert!(!flat.exists(), "the flat file moved");
-        assert!(file_for(&paths.threads_dir(), "gh-1", "gh-1|cli/cli|7").exists());
+        assert!(pull_request_file(&paths.threads_dir(), "gh-1", "gh-1|cli/cli|7").exists());
         assert!(other.exists(), "another pull request's file waits for its own load");
 
         let reloaded = ThreadStore::load(&paths, "gh-1", "gh-1|cli/cli|7").unwrap();
         assert_eq!(reloaded.draft("reply:t1").map(|draft| draft.text.as_str()), Some("Kept"));
         let store = ThreadStore::load(&paths, "gh-2", "gh-2|cli/cli|8").unwrap();
         assert_eq!(store.draft("reply:t1").map(|draft| draft.text.as_str()), Some("Other"));
-    }
-
-    /// Regression: a flat file of a connection removed before the upgrade went to whichever new
-    /// connection reused the id.
-    #[test]
-    fn a_connection_added_after_the_upgrade_adopts_no_flat_file() {
-        let folder = TestDir::new("threads-flat-stranger");
-        let paths = paths(&folder);
-        connections(&paths, &["gh-2"]);
-        let flat = flat_draft(&paths, "gh-1|cli/cli|7", "Old");
-        let owned = flat_draft(&paths, "gh-2|cli/cli|7", "Mine");
-        assert!(
-            ThreadStore::load(&paths, "gh-2", "gh-2|cli/cli|7")
-                .unwrap()
-                .draft("reply:t1")
-                .is_some()
-        );
-        assert!(!owned.exists());
-
-        connections(&paths, &["gh-1", "gh-2"]);
-        let store = ThreadStore::load(&paths, "gh-1", "gh-1|cli/cli|7").unwrap();
-        assert!(store.draft("reply:t1").is_none(), "the owners were fixed at the first flat file");
-        assert!(flat.exists(), "the file ages out, unadopted");
     }
 }

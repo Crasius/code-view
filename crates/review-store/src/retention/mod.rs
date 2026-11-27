@@ -9,12 +9,11 @@
 //!   least recently read go first;
 //! - everything of a removed connection;
 //! - everything of a merged or closed pull request, or one whose source branch is gone, at once
-//!   (see [`finished`]).
+//!   (see [`sweep`]).
 //!
 //! Deleting renames into `cache\trash` and lets a low-priority thread do the rest (see [`trash`]).
 
 mod files;
-mod finished;
 mod leases;
 mod mirror_stamp;
 mod mirrors;
@@ -34,7 +33,7 @@ use std::time::Duration;
 
 pub use leases::{Lease, Leases};
 pub use mirror_stamp::{MirrorUse, record_use as record_mirror_use};
-pub use mirrors::{MirrorGuard, NothingInUse};
+pub use mirrors::MirrorGuard;
 pub use policy::{Limits, Outcome};
 pub use usage::StorageUsage;
 pub use worker::{Notify, Retention, Schedule, StorageStatus};
