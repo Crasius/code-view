@@ -12,7 +12,7 @@ use egui::{Align, Layout, Margin, RichText, Sense, Stroke, Ui, vec2};
 use review_core::provider::CommentActions;
 use review_core::{ReviewThread, ThreadComment};
 
-use super::super::edits::View;
+use super::super::edits::{self, View};
 use super::super::suggestion::{self, Part};
 use super::super::{ThreadEvent, ThreadsUi};
 use super::own_comment;
@@ -61,9 +61,14 @@ fn own_actions(
     thread: &ReviewThread,
     comment: &ThreadComment,
 ) -> CommentActions {
-    // Asking starts the one request that says who the user is; until then nothing is offered.
-    threads.wants_me = true;
-    threads.edits.actions(thread, comment, threads.known_me(), threads.context.can_write)
+    threads.request_me();
+    edits::actions(
+        threads.context.provider.as_deref(),
+        thread,
+        comment,
+        threads.known_me(),
+        threads.context.can_write,
+    )
 }
 
 fn is_from_others(threads: &ThreadsUi, comment: &ThreadComment) -> bool {

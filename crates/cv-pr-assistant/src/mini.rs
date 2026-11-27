@@ -275,7 +275,7 @@ fn draw(
     let layer = egui::LayerId::new(Order::Middle, id);
     ctx.set_transform_layer(layer, TSTransform::new(pivot * (1.0 - scale), scale));
     #[cfg(any(test, feature = "test-support"))]
-    note_drawn(ctx, Drawn { rect: laid.frame, opacity, is_pill });
+    cv_base::frame_probe::note(ctx, DRAWN_NOTE, Drawn { rect: laid.frame, opacity, is_pill });
 
     let turn = &assistant.chat.turns[mini.turn];
     // Busy is the conversation's state, not the shown answer's: on an earlier answer while a later
@@ -365,21 +365,12 @@ pub struct Drawn {
 }
 
 #[cfg(any(test, feature = "test-support"))]
-const DRAWN_ID: &str = "review.assistant.mini.drawn";
-
-#[cfg(any(test, feature = "test-support"))]
-fn note_drawn(ctx: &Context, drawn: Drawn) {
-    let pass = ctx.cumulative_pass_nr();
-    ctx.data_mut(|data| data.insert_temp(Id::unique(DRAWN_ID), (pass, drawn)));
-}
+const DRAWN_NOTE: &str = "assistant_mini_drawn";
 
 /// The mini chat as the last pass drew it; `None` when it drew none.
 #[cfg(any(test, feature = "test-support"))]
 pub fn drawn(ctx: &Context) -> Option<Drawn> {
-    let last = ctx.cumulative_pass_nr().checked_sub(1)?;
-    ctx.data(|data| data.get_temp::<(u64, Drawn)>(Id::unique(DRAWN_ID)))
-        .filter(|(pass, _)| *pass == last)
-        .map(|(_, drawn)| drawn)
+    cv_base::frame_probe::last::<Drawn>(ctx, DRAWN_NOTE).pop()
 }
 
 /// Whether the mini chat asked for a frame in the pass before the last (egui reports a pass's

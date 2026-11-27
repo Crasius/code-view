@@ -26,8 +26,6 @@ mod run_header;
 mod run_view;
 #[cfg(test)]
 mod run_view_check;
-#[cfg(test)]
-mod runs_share_check;
 pub mod stage_bars;
 #[cfg(test)]
 mod stage_pan_check;

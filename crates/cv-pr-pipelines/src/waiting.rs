@@ -79,7 +79,7 @@ fn rate_limit_wait(ui: &mut Ui, session: &PullRequestSession, services: &Service
 }
 
 /// Placeholder in the shape of the checks table: toolbar, header and rows.
-pub fn checks_skeleton(ui: &mut Ui) {
+pub(crate) fn checks_skeleton(ui: &mut Ui) {
     let margin = egui::Margin::symmetric(style::PAGE_MARGIN_X, 20);
     egui::Frame::new().inner_margin(margin).show(ui, |ui| {
         ui.horizontal(|ui| {
@@ -102,7 +102,7 @@ pub fn checks_skeleton(ui: &mut Ui) {
 }
 
 /// Placeholder in the shape of the stage view: pivot and a row of cards.
-pub fn stage_skeleton(ui: &mut Ui) {
+pub(crate) fn stage_skeleton(ui: &mut Ui) {
     let margin = egui::Margin::symmetric(style::PAGE_MARGIN_X, 12);
     egui::Frame::new().inner_margin(margin).show(ui, |ui| {
         ui.horizontal(|ui| {
@@ -120,7 +120,7 @@ pub fn stage_skeleton(ui: &mut Ui) {
 }
 
 /// Waits for the data while a rate limit holds it back, else shows `skeleton` in its shape.
-pub fn placeholder(
+pub(crate) fn placeholder(
     ui: &mut Ui,
     session: &PullRequestSession,
     services: &Services,
@@ -132,7 +132,12 @@ pub fn placeholder(
 }
 
 /// A check that reports only a status: where its details are.
-pub fn status_only(ui: &mut Ui, platform: ProviderKind, web_url: Option<&str>, open_label: &str) {
+pub(crate) fn status_only(
+    ui: &mut Ui,
+    platform: ProviderKind,
+    web_url: Option<&str>,
+    open_label: &str,
+) {
     let actions: Vec<Action<'_>> = web_url
         .iter()
         .map(|_| Action::primary(provider_icon::glyph(platform), open_label))
@@ -148,7 +153,7 @@ pub fn status_only(ui: &mut Ui, platform: ProviderKind, web_url: Option<&str>, o
 
 /// What the run page shows in place of stages still on their way, stages that did not load, or a
 /// run with no jobs yet. True when the user asked for the stages again (Retry, Refresh).
-pub fn no_stages(
+pub(crate) fn no_stages(
     ui: &mut Ui,
     run_id: &str,
     session: &PullRequestSession,

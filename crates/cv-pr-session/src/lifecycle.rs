@@ -48,7 +48,7 @@ pub enum NewReviewer {
 
 impl LifecycleAction {
     /// The write's name in "<name> failed: <reason>".
-    pub fn name(&self) -> &'static str {
+    pub(crate) fn name(&self) -> &'static str {
         match self {
             LifecycleAction::Vote { vote: ReviewVote::None, .. } => "Vote reset",
             LifecycleAction::Vote { .. } => "Vote",

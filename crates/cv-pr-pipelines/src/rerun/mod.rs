@@ -2,7 +2,7 @@
 //! Without a token the button stays visible but disabled, and an "Add a token" action sits next
 //! to it, so the way to enable it is one click away.
 
-pub mod requests;
+pub(crate) mod requests;
 
 use cv_base::theme::{self, icons, motion, style};
 use cv_widgets::{buttons, elide, row, states};
@@ -11,15 +11,15 @@ use review_core::{ProviderKind, RerunAction, RerunKind};
 
 const CARET_WIDTH: f32 = 32.0;
 const ICON_GAP: f32 = 6.0;
-pub const NEEDS_TOKEN: &str = "Rerunning needs a personal access token on this connection.";
+pub(crate) const NEEDS_TOKEN: &str = "Rerunning needs a personal access token on this connection.";
 const ADD_TOKEN: &str = "Add a token to rerun";
 /// Between a full-width rerun button and the "Add a token to rerun" row under it.
 const TOKEN_ROW_GAP: f32 = style::SPACE_XS;
 /// What the "Add a token to rerun" row adds under a full-width rerun button.
-pub const TOKEN_ROW_HEIGHT: f32 = TOKEN_ROW_GAP + buttons::SUBTLE_HEIGHT;
+pub(crate) const TOKEN_ROW_HEIGHT: f32 = TOKEN_ROW_GAP + buttons::SUBTLE_HEIGHT;
 
 /// The platform's words for a rerun.
-pub fn label(kind: RerunKind, platform: ProviderKind) -> &'static str {
+pub(crate) fn label(kind: RerunKind, platform: ProviderKind) -> &'static str {
     match (kind, platform) {
         (RerunKind::StageAll, _) => "Rerun just this stage",
         (RerunKind::StageFailed, _) => "Retry stage",
@@ -32,12 +32,12 @@ pub fn label(kind: RerunKind, platform: ProviderKind) -> &'static str {
 }
 
 /// What the user picked.
-pub enum Picked {
+pub(crate) enum Picked {
     Rerun(RerunAction),
     AddToken,
 }
 
-pub struct RerunButton<'a> {
+pub(crate) struct RerunButton<'a> {
     pub reruns: &'a [RerunAction],
     pub platform: ProviderKind,
     pub has_token: bool,
@@ -49,7 +49,7 @@ pub struct RerunButton<'a> {
 
 impl RerunButton<'_> {
     /// Draws nothing when there is nothing to rerun.
-    pub fn show(self, ui: &mut Ui) -> Option<Picked> {
+    pub(crate) fn show(self, ui: &mut Ui) -> Option<Picked> {
         let (first, rest) = self.reruns.split_first()?;
         let mut picked = None;
         let is_enabled = self.has_token && !self.is_busy;

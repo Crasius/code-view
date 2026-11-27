@@ -181,7 +181,9 @@ fn copied_log(harness: &mut Harness<'_, Scene>) -> String {
         });
     harness.run_steps(1);
     assert!(harness.query_by_label("Copied").is_some(), "the button confirms the copy");
-    // "Copied" shows for 1.5 seconds (harness frames are 1/60 s); then "Copy log" is back.
-    harness.run_steps(130);
+    cv_testkit::poll_until("\"Copy log\" back after \"Copied\"", || {
+        harness.step();
+        harness.query_by_label("Copy log").is_some()
+    });
     copied.expect("Copy log puts the log on the clipboard")
 }

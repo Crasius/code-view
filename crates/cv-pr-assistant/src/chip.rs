@@ -13,13 +13,13 @@ use review_agent::{AgentKind, ModelChoice};
 use super::{Action, Assistant};
 
 /// The chip menu's switch of the mini chat (Settings → Assistant has it too).
-pub const MINI_CHAT_TOGGLE: &str = "Keep the answer beside the code";
+pub(crate) const MINI_CHAT_TOGGLE: &str = "Keep the answer beside the code";
 /// The chip's tooltip after its label.
 const HINT: &str = "Agent and model of this conversation";
 
 /// The chip's label: agent and model, with the model "Fastest" or the CLI default stands for once
 /// it is known.
-pub fn label(assistant: &Assistant, services: &mut Services) -> String {
+pub(crate) fn label(assistant: &Assistant, services: &mut Services) -> String {
     let resolved = fastest_model(assistant, services);
     let model = match &assistant.chat.model {
         ModelChoice::Fastest => match &resolved {
@@ -37,7 +37,7 @@ pub fn label(assistant: &Assistant, services: &mut Services) -> String {
 
 /// The chip in a right-to-left title line, left of the buttons already there: its label when it
 /// fits the room left, else its icon. Its response opens the [`menu`].
-pub fn in_title(ui: &mut Ui, label: &str) -> Response {
+pub(crate) fn in_title(ui: &mut Ui, label: &str) -> Response {
     ui.add_space(style::SPACE_M);
     let fits = buttons::icon_button_width(ui, label) <= ui.available_width();
     if fits {
@@ -48,7 +48,11 @@ pub fn in_title(ui: &mut Ui, label: &str) -> Response {
 }
 
 /// The choices of the chip drawn as `response`, while its menu is open.
-pub fn menu(response: &Response, assistant: &Assistant, services: &mut Services) -> Option<Action> {
+pub(crate) fn menu(
+    response: &Response,
+    assistant: &Assistant,
+    services: &mut Services,
+) -> Option<Action> {
     let mut action = None;
     egui::Popup::menu(response).show(|ui| {
         ui.set_min_width(260.0);

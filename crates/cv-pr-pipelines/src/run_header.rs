@@ -26,7 +26,7 @@ const CARET_SIZE: f32 = 14.0;
 /// Rows narrower than this show "Open on …" as the platform mark alone.
 const COMPACT_ROW: f32 = 1000.0;
 
-pub enum HeaderAction {
+pub(crate) enum HeaderAction {
     /// Back to the checks table.
     Back,
     Select(CheckKey),
@@ -34,7 +34,7 @@ pub enum HeaderAction {
     OpenUrl(String),
 }
 
-pub struct HeaderInput<'a> {
+pub(crate) struct HeaderInput<'a> {
     /// The check shown: the run, or the job whose log is open.
     pub check: Check<'a>,
     /// Every check in the table's order (failed, running, then the platform's).
@@ -48,14 +48,14 @@ pub struct HeaderInput<'a> {
 
 /// The switcher's search text and the option the keyboard is on.
 #[derive(Default)]
-pub struct RunHeader {
+pub(crate) struct RunHeader {
     search: String,
     highlighted: Option<CheckKey>,
     was_open: bool,
 }
 
 impl RunHeader {
-    pub fn show(&mut self, ui: &mut Ui, input: &HeaderInput<'_>) -> Option<HeaderAction> {
+    pub(crate) fn show(&mut self, ui: &mut Ui, input: &HeaderInput<'_>) -> Option<HeaderAction> {
         let (row_rect, _) =
             ui.allocate_exact_size(vec2(ui.available_width(), HEIGHT), Sense::hover());
         let mut right = ui.new_child(
@@ -573,13 +573,17 @@ fn grouped<'a>(order: &[Check<'a>], search: &str) -> Vec<(String, Vec<Check<'a>>
 }
 
 /// True when `key` was pressed and no text field takes the keys; consumes it.
-pub fn is_free_key(ui: &Ui, key: egui::Key) -> bool {
+pub(crate) fn is_free_key(ui: &Ui, key: egui::Key) -> bool {
     !ui.ctx().text_edit_focused()
         && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, key))
 }
 
 /// J/K step through the checks, as in the switcher; not while typing or with a menu open.
-pub fn step_keys(ui: &Ui, order: &[Check<'_>], position: Option<usize>) -> Option<HeaderAction> {
+pub(crate) fn step_keys(
+    ui: &Ui,
+    order: &[Check<'_>],
+    position: Option<usize>,
+) -> Option<HeaderAction> {
     let position = position?;
     if egui::Popup::is_any_open(ui.ctx()) {
         return None;

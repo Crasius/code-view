@@ -32,7 +32,7 @@ pub enum Stages<'a> {
 }
 
 /// The bar color of a status; skipped and neutral stages stay quiet.
-pub fn color(status: RunStatus, palette: &Palette) -> Color32 {
+pub(crate) fn color(status: RunStatus, palette: &Palette) -> Color32 {
     match status {
         RunStatus::Succeeded => palette.success,
         RunStatus::Failed => palette.error,

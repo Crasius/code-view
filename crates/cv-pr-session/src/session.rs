@@ -460,7 +460,7 @@ impl PullRequestSession {
 
     /// Shows the user's writes logged since the detail and threads last caught up, in place; the
     /// page cache had them applied when they were logged.
-    pub fn catch_up_writes(&mut self, services: &mut Services) {
+    pub(crate) fn catch_up_writes(&mut self, services: &mut Services) {
         if self.writes_seen == services.writes.last() {
             return;
         }

@@ -47,12 +47,12 @@ pub(super) struct Selecting {
 
 impl Selecting {
     /// The selection, unless it is empty.
-    pub fn current(&self) -> Option<Selection> {
+    pub(crate) fn current(&self) -> Option<Selection> {
         self.selection.filter(|selection| !selection.is_empty())
     }
 
     /// What a screen reader hears for the lines: "Log lines, 3 lines selected".
-    pub fn label(&self) -> String {
+    pub(crate) fn label(&self) -> String {
         let Some(selection) = self.current() else {
             return "Log lines".to_owned();
         };
@@ -65,7 +65,7 @@ impl Selecting {
 
     /// Presses, drags and multi-clicks on the lines; runs before the visible lines paint.
     /// `line_text` gives the raw text of a line that is read in.
-    pub fn track_pointer<'t>(
+    pub(crate) fn track_pointer<'t>(
         &mut self,
         ui: &Ui,
         area: &Response,
@@ -135,7 +135,7 @@ impl Selecting {
 
     /// Dragging past the top or bottom of `view` scrolls on, so a selection can grow beyond it.
     /// `offset` is the current scroll offset, `limit` the largest one.
-    pub fn scroll_while_dragging(&mut self, ui: &Ui, view: Rect, offset: f32, limit: f32) {
+    pub(crate) fn scroll_while_dragging(&mut self, ui: &Ui, view: Rect, offset: f32, limit: f32) {
         if !self.dragging {
             return;
         }
@@ -149,7 +149,7 @@ impl Selecting {
     }
 
     /// How line `line` with raw text `text` is selected.
-    pub fn on_line(&self, line: usize, text: &str) -> Option<RowSelection> {
+    pub(crate) fn on_line(&self, line: usize, text: &str) -> Option<RowSelection> {
         let selection = self.selection?;
         let (start, end) = selection.bounds();
         if line < start.row || line > end.row {

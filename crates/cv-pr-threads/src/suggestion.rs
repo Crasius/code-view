@@ -2,6 +2,7 @@
 //! the card shows as a "Suggested change" panel. None of the three platforms documents an API to
 //! apply a suggestion as a commit (GitLab's apply endpoint takes suggestion ids its REST notes do
 //! not carry), so the panel is read-only and offers to copy the code.
+#![warn(clippy::string_slice, clippy::indexing_slicing, clippy::cast_possible_truncation)]
 
 use cv_editor::markdown_editor::FileContext;
 use review_core::{DiffSide, ThreadAnchor};
@@ -55,7 +56,7 @@ pub fn lines_title(anchor: &ThreadAnchor) -> String {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Part<'a> {
+pub(crate) enum Part<'a> {
     Markdown(&'a str),
     Suggestion(String),
 }
@@ -63,7 +64,7 @@ pub enum Part<'a> {
 /// The parts of `body` in order. A fence opens with ```` ```suggestion ```` or GitLab's
 /// ```` ```suggestion:-0+0 ```` (any number of backticks, at least three) and closes with a fence
 /// at least as long.
-pub fn split(body: &str) -> Vec<Part<'_>> {
+pub(crate) fn split(body: &str) -> Vec<Part<'_>> {
     let mut parts = Vec::new();
     let mut markdown_start = 0;
     let mut offset = 0;
@@ -72,17 +73,22 @@ pub fn split(body: &str) -> Vec<Part<'_>> {
         let trimmed = line.trim_end_matches(['\r', '\n']).trim_start();
         match &mut open {
             None => {
-                let ticks = trimmed.chars().take_while(|character| *character == '`').count();
-                if ticks >= 3 && is_suggestion_tag(trimmed[ticks..].trim()) {
+                let rest = trimmed.trim_start_matches('`');
+                let ticks = trimmed.len() - rest.len();
+                if ticks >= 3 && is_suggestion_tag(rest.trim()) {
                     if offset > markdown_start {
-                        push_markdown(&mut parts, &body[markdown_start..offset]);
+                        push_markdown(
+                            &mut parts,
+                            body.get(markdown_start..offset).unwrap_or_default(),
+                        );
                     }
                     open = Some((ticks, offset, Vec::new()));
                 }
             }
             Some((ticks, _, lines)) => {
-                let closing = trimmed.chars().take_while(|character| *character == '`').count();
-                if closing >= *ticks && trimmed[closing..].trim().is_empty() {
+                let rest = trimmed.trim_start_matches('`');
+                let closing = trimmed.len() - rest.len();
+                if closing >= *ticks && rest.trim().is_empty() {
                     parts.push(Part::Suggestion(lines.join("\n")));
                     open = None;
                     markdown_start = offset + line.len();
@@ -95,7 +101,7 @@ pub fn split(body: &str) -> Vec<Part<'_>> {
     }
     // An unclosed fence stays Markdown, as the platforms render it.
     let rest_start = open.map_or(markdown_start, |(_, start, _)| start);
-    push_markdown(&mut parts, &body[rest_start..]);
+    push_markdown(&mut parts, body.get(rest_start..).unwrap_or_default());
     parts
 }
 
@@ -119,7 +125,7 @@ fn push_markdown<'a>(parts: &mut Vec<Part<'a>>, text: &'a str) {
 }
 
 /// The comment contains a suggestion block (for the panel's "suggested change" note).
-pub fn has_suggestion(body: &str) -> bool {
+pub(crate) fn has_suggestion(body: &str) -> bool {
     split(body).iter().any(|part| matches!(part, Part::Suggestion(_)))
 }
 

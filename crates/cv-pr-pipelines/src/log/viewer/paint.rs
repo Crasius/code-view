@@ -16,14 +16,14 @@ use super::selecting;
 const STRIP_DETAILS_WIDTH: f32 = 170.0;
 /// How a visible line is marked by the search.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Highlight {
+pub(crate) enum Highlight {
     None,
     Match,
     Current,
 }
 
 /// What every visible line paints with this frame.
-pub struct LineLook<'a> {
+pub(crate) struct LineLook<'a> {
     pub font: &'a FontId,
     pub palette: &'a Palette,
     /// Width of the line numbers left of the text.
@@ -34,7 +34,7 @@ pub struct LineLook<'a> {
 
 /// One visible line in `rect`: the search's mark, its number, the selection, its text. Returns
 /// the width of the text, for the widest line the view scrolls to.
-pub fn paint_line(
+pub(crate) fn paint_line(
     ui: &Ui,
     look: &LineLook<'_>,
     rect: Rect,
@@ -73,7 +73,7 @@ pub fn paint_line(
 }
 
 /// The job's state, name and line count in focus mode's bar; the name shortens to fit `width`.
-pub fn strip_title(
+pub(crate) fn strip_title(
     ui: &mut Ui,
     title: &str,
     shown: Option<&PipelineJob>,
@@ -113,6 +113,6 @@ pub fn strip_title(
 }
 
 /// Width of the line numbers left of the text, for `line_count` lines.
-pub fn gutter_width(font_size: f32, line_count: usize) -> f32 {
+pub(crate) fn gutter_width(font_size: f32, line_count: usize) -> f32 {
     (group_digits(line_count).len() as f32 + 1.0) * font_size * 0.62 + 12.0
 }

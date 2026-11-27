@@ -26,7 +26,7 @@ use super::tree::{find, replace_node};
 /// An earlier attempt on screen in place of the latest: the retried stage or job (by its id in
 /// the run's stages) and the attempt's number.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ShownAttempt {
+pub(crate) struct ShownAttempt {
     pub node_id: String,
     pub number: u32,
 }
@@ -59,7 +59,7 @@ impl ShownAttempt {
 }
 
 /// An earlier attempt's node, as far as it is known.
-pub enum AttemptNode<'a> {
+pub(crate) enum AttemptNode<'a> {
     Ready(&'a PipelineJob),
     Loading,
     Failed(&'a str),
@@ -68,7 +68,7 @@ pub enum AttemptNode<'a> {
 }
 
 impl<'a> AttemptNode<'a> {
-    pub fn job(&self) -> Option<&'a PipelineJob> {
+    pub(crate) fn job(&self) -> Option<&'a PipelineJob> {
         match self {
             Self::Ready(job) => Some(job),
             Self::Loading | Self::Failed(_) | Self::Gone => None,
@@ -78,7 +78,7 @@ impl<'a> AttemptNode<'a> {
 
 /// A run's loaded stages, and as the log page shows them: the earlier attempt on screen, as far
 /// as known, in place of its latest.
-pub struct RunStages<'a> {
+pub(crate) struct RunStages<'a> {
     pub stages: &'a [PipelineJob],
     pub view: Cow<'a, [PipelineJob]>,
     /// `None` while the latest attempts are shown.
@@ -88,7 +88,7 @@ pub struct RunStages<'a> {
 impl<'a> RunStages<'a> {
     /// The loaded `stages` of run `run_id` with the attempt `shown`, which drops to `None` once
     /// the run no longer lists it.
-    pub fn new(
+    pub(crate) fn new(
         stages: &'a [PipelineJob],
         shown: &mut Option<ShownAttempt>,
         run_id: &str,
@@ -109,14 +109,14 @@ impl<'a> RunStages<'a> {
         Self { stages, view, attempt }
     }
 
-    pub fn attempt_job(&self) -> Option<&'a PipelineJob> {
+    pub(crate) fn attempt_job(&self) -> Option<&'a PipelineJob> {
         self.attempt.as_ref().and_then(AttemptNode::job)
     }
 }
 
 /// The ways out of an earlier attempt that did not load.
 #[derive(Clone, Copy)]
-pub enum AttemptWayOut {
+pub(crate) enum AttemptWayOut {
     /// Load the attempt again.
     Retry,
     /// Back to the latest attempt.
@@ -124,14 +124,14 @@ pub enum AttemptWayOut {
 }
 
 /// What the log pane shows instead of a log while an earlier attempt is not there yet.
-pub enum AttemptPane {
+pub(crate) enum AttemptPane {
     Loading(String),
     Failed(String),
 }
 
 /// What the log page's job list and log pane picked this frame.
 #[derive(Default)]
-pub struct LogPicks {
+pub(crate) struct LogPicks {
     /// An attempt picked in the switcher: the node and the attempt's number.
     pub attempt: Option<(String, u32)>,
     /// A job or step clicked in the job list.
@@ -141,7 +141,7 @@ pub struct LogPicks {
 }
 
 /// What the log pane shows: the open log, or the earlier attempt on its way.
-pub struct LogPane<'a> {
+pub(crate) struct LogPane<'a> {
     pub pending: Option<AttemptPane>,
     /// The open item, as the page shows it.
     pub shown: Option<&'a PipelineJob>,
@@ -150,7 +150,7 @@ pub struct LogPane<'a> {
 }
 
 /// The job list beside the log.
-pub struct JobList<'a> {
+pub(crate) struct JobList<'a> {
     pub stages: &'a [PipelineJob],
     pub selected: Option<&'a str>,
     /// The earlier attempt on screen: its node's id in `stages` and its number.
@@ -159,10 +159,10 @@ pub struct JobList<'a> {
 }
 
 /// The node whose attempts the switcher lists, and the attempt on screen.
-pub type Switch<'a> = Option<(&'a PipelineJob, u32)>;
+pub(crate) type Switch<'a> = Option<(&'a PipelineJob, u32)>;
 
 /// What the bar above the job list and the log picked.
-pub struct BarPicks {
+pub(crate) struct BarPicks {
     /// Back to the stages.
     pub back: bool,
     /// An attempt in the switcher: the node and the attempt's number.
@@ -171,7 +171,7 @@ pub struct BarPicks {
 
 /// The bar above the job list and the log: back to the stages, the open step, the attempt
 /// switcher. `named_job` is the job the header names.
-pub fn log_bar(
+pub(crate) fn log_bar(
     ui: &mut Ui,
     step: Option<&PipelineJob>,
     switch: Switch<'_>,
@@ -225,7 +225,10 @@ fn bar_switcher(
 }
 
 /// The earlier attempt on its way, as the log pane shows it in place of the log.
-pub fn attempt_pending(state: Option<&AttemptNode<'_>>, switch: Switch<'_>) -> Option<AttemptPane> {
+pub(crate) fn attempt_pending(
+    state: Option<&AttemptNode<'_>>,
+    switch: Switch<'_>,
+) -> Option<AttemptPane> {
     let (node, number) = switch?;
     match state? {
         AttemptNode::Loading => {
@@ -240,7 +243,7 @@ pub fn attempt_pending(state: Option<&AttemptNode<'_>>, switch: Switch<'_>) -> O
 }
 
 /// Focus mode's log page: the strip with the attempt switcher, the log pane below it.
-pub fn focused_log(
+pub(crate) fn focused_log(
     ui: &mut Ui,
     log: &mut LogViewer,
     pane: &LogPane<'_>,
@@ -269,7 +272,7 @@ pub fn focused_log(
 
 /// The job list beside the log pane, split by a handle that resizes the list. Returns whether
 /// it was resized, and what was picked.
-pub fn jobs_beside_log(
+pub(crate) fn jobs_beside_log(
     ui: &mut Ui,
     log: &mut LogViewer,
     jobs: &JobList<'_>,

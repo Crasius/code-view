@@ -9,14 +9,14 @@ use egui::{Color32, FontId};
 
 /// A run of text with one color.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Span {
+pub(crate) struct Span {
     pub text: String,
     pub color: Option<AnsiColor>,
 }
 
 /// The 16 standard terminal colors (bright ones map to the same role).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AnsiColor {
+pub(crate) enum AnsiColor {
     Black,
     Red,
     Green,
@@ -28,7 +28,7 @@ pub enum AnsiColor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LineMarker {
+pub(crate) enum LineMarker {
     Error,
     Warning,
     Section,
@@ -37,7 +37,7 @@ pub enum LineMarker {
 }
 
 /// Splits on SGR sequences; every other escape sequence is dropped.
-pub fn parse(line: &str) -> Vec<Span> {
+pub(crate) fn parse(line: &str) -> Vec<Span> {
     let mut spans = Vec::new();
     let mut color = None;
     let mut text = String::new();
@@ -106,7 +106,7 @@ fn standard(index: u16) -> AnsiColor {
     }
 }
 
-pub fn marker(text: &str) -> LineMarker {
+pub(crate) fn marker(text: &str) -> LineMarker {
     let body = strip_timestamp(text).trim_start();
     let lower_prefix: String = body.chars().take(12).collect::<String>().to_ascii_lowercase();
     if lower_prefix.starts_with("##[error]") {
@@ -123,7 +123,7 @@ pub fn marker(text: &str) -> LineMarker {
 }
 
 /// Azure DevOps and GitHub prefix every line with an ISO timestamp; returns the rest.
-pub fn strip_timestamp(text: &str) -> &str {
+pub(crate) fn strip_timestamp(text: &str) -> &str {
     let byte = |index: usize| text.as_bytes().get(index).copied();
     let looks_like_timestamp =
         text.len() > 20 && byte(4) == Some(b'-') && byte(7) == Some(b'-') && byte(10) == Some(b'T');
@@ -136,7 +136,7 @@ pub fn strip_timestamp(text: &str) -> &str {
     }
 }
 
-pub fn layout(line: &str, palette: &Palette, font: &FontId) -> LayoutJob {
+pub(crate) fn layout(line: &str, palette: &Palette, font: &FontId) -> LayoutJob {
     let mut job = LayoutJob::default();
     let body = strip_timestamp(line);
     // `body` is a suffix of `line`, so the difference is the timestamp's length.

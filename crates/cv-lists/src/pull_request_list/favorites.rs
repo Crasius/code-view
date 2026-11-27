@@ -35,7 +35,7 @@ struct FavoritesKey {
 }
 
 #[derive(Default)]
-pub struct FavoriteQueries {
+pub(crate) struct FavoriteQueries {
     key: Option<FavoritesKey>,
     pub results: Vec<ConnectionResult>,
 }
@@ -43,7 +43,7 @@ pub struct FavoriteQueries {
 /// Starred repositories of one connection that a role hides: the connection has no token, so it
 /// cannot tell the user's part. The card says so, with the way to a token.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HiddenFavorites {
+pub(crate) struct HiddenFavorites {
     pub connection_id: String,
     pub connection_name: String,
     pub repositories: usize,
@@ -51,7 +51,7 @@ pub struct HiddenFavorites {
 
 /// The starred repositories of existing connections under `role`: (connection id, repository key)
 /// of those the card lists, and per connection those it hides (see [`HiddenFavorites`]).
-pub fn split(
+pub(crate) fn split(
     services: &Services,
     role: PullRequestScope,
 ) -> (Vec<(String, String)>, Vec<HiddenFavorites>) {
@@ -83,7 +83,12 @@ impl FavoriteQueries {
     /// changed. Remembered answers show at once; missing and stale ones are owed a load. A
     /// connection that cannot tell the user's part (no token) lists nothing for a role, as its own
     /// card is left out then; the card names what it hides ([`split`]).
-    pub fn ensure(&mut self, services: &mut Services, role: PullRequestScope, state: StateFilter) {
+    pub(crate) fn ensure(
+        &mut self,
+        services: &mut Services,
+        role: PullRequestScope,
+        state: StateFilter,
+    ) {
         let (favorites, _) = split(services, role);
         // Favorites are sorted by connection, so equal ids are neighbours.
         let mut connection_ids: Vec<String> =
@@ -155,7 +160,7 @@ impl FavoriteQueries {
 
     /// Sends the owed loads while the lane is open and `is_on_screen`; `by_user`: also while the
     /// window is inactive.
-    pub fn load_owed(&mut self, services: &mut Services, is_on_screen: bool, by_user: bool) {
+    pub(crate) fn load_owed(&mut self, services: &mut Services, is_on_screen: bool, by_user: bool) {
         if services.settings.favorites.is_collapsed || !is_on_screen {
             return;
         }
@@ -166,7 +171,7 @@ impl FavoriteQueries {
 
     /// Each frame the lane is open and on screen: `came` on screen, it owes stale answers a load,
     /// and each of its listings follows the scheduler's beat. True on a beat.
-    pub fn follow(&mut self, services: &Services, came: bool) -> bool {
+    pub(crate) fn follow(&mut self, services: &Services, came: bool) -> bool {
         if services.settings.favorites.is_collapsed {
             return false;
         }
@@ -178,7 +183,7 @@ impl FavoriteQueries {
     }
 
     /// The lane was expanded (a user action): loads what is owed, missing or stale at once.
-    pub fn expand(&mut self, services: &mut Services) {
+    pub(crate) fn expand(&mut self, services: &mut Services) {
         for result in &mut self.results {
             if (result.owed || result.is_due(services)) && !result.load.is_loading() {
                 result.start(services);
@@ -189,29 +194,29 @@ impl FavoriteQueries {
 
     /// `force` (Refresh, Retry) owes every listing a load; a revisit owes one to answers older than
     /// the cache's freshness window.
-    pub fn revalidate(&mut self, services: &Services, force: bool) {
+    pub(crate) fn revalidate(&mut self, services: &Services, force: bool) {
         for result in &mut self.results {
             result.owed |= force || result.is_due(services);
         }
     }
 
     /// Moves arrived answers on screen and into the page cache.
-    pub fn poll(&mut self, services: &mut Services) {
+    pub(crate) fn poll(&mut self, services: &mut Services) {
         queries::poll_results(&mut self.results, services);
     }
 
     /// A starred repository's newer listing is under way ([`ConnectionResult::is_refreshing`]).
-    pub fn is_refreshing(&self, pauses: &Pauses) -> bool {
+    pub(crate) fn is_refreshing(&self, pauses: &Pauses) -> bool {
         self.results.iter().any(|result| result.is_refreshing(pauses))
     }
 
-    pub fn refresh_error(&self) -> Option<&str> {
+    pub(crate) fn refresh_error(&self) -> Option<&str> {
         self.results.iter().find_map(|result| result.load.refresh_error())
     }
 
     /// Every loaded row with its result, most recently updated first; a pull request that two
     /// results list shows once.
-    pub fn rows(&self) -> Vec<(&ConnectionResult, &PullRequestSummary)> {
+    pub(crate) fn rows(&self) -> Vec<(&ConnectionResult, &PullRequestSummary)> {
         let mut rows: Vec<(&ConnectionResult, &PullRequestSummary)> = Vec::new();
         for result in &self.results {
             for pull_request in result.load.ready().into_iter().flatten() {
@@ -233,7 +238,7 @@ impl FavoriteQueries {
 
     /// Results as if they had loaded, for tests of what reads them.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn loaded_for_test(results: Vec<ConnectionResult>) -> Self {
+    pub(crate) fn loaded_for_test(results: Vec<ConnectionResult>) -> Self {
         Self { key: None, results }
     }
 }

@@ -32,7 +32,7 @@ struct Cache {
 }
 
 /// The zoom text is laid out for: `zoom` itself at rest, a nearby fixed size while it moves.
-pub fn text_zoom(zoom: f32, is_moving: bool) -> f32 {
+pub(crate) fn text_zoom(zoom: f32, is_moving: bool) -> f32 {
     if is_moving {
         ((zoom.log2() * SIZES_PER_OCTAVE).round() / SIZES_PER_OCTAVE).exp2()
     } else {
@@ -43,7 +43,7 @@ pub fn text_zoom(zoom: f32, is_moving: bool) -> f32 {
 /// Lays the text on `layer` out again for `zoom` (the scale of the layer's transform) at the
 /// text zoom `text`. `id` keys the cache; at a zoom of 1 the text already fits and the cache
 /// is dropped.
-pub fn sharpen(ctx: &Context, layer: LayerId, id: Id, zoom: f32, text: f32) {
+pub(crate) fn sharpen(ctx: &Context, layer: LayerId, id: Id, zoom: f32, text: f32) {
     let cache_id = id.with("sharp_text");
     // Zoom steps and glides end on exactly 1.0, so only an exact 1.0 is unscaled.
     let is_unscaled = |scale: f32| scale.to_bits() == 1.0_f32.to_bits();

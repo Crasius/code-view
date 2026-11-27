@@ -10,7 +10,7 @@ use time::OffsetDateTime;
 
 use super::ThreadsUi;
 
-pub const PULL_REQUEST_URL: &str = "https://github.com/acme/shop/pull/42";
+pub(crate) const PULL_REQUEST_URL: &str = "https://github.com/acme/shop/pull/42";
 
 pub fn person(id: &str, name: &str) -> UserIdentity {
     UserIdentity {
@@ -35,7 +35,7 @@ pub fn erika() -> UserIdentity {
     person("ebrandt", "Erika Brandt")
 }
 
-pub fn minutes_ago(minutes: i64) -> OffsetDateTime {
+pub(crate) fn minutes_ago(minutes: i64) -> OffsetDateTime {
     OffsetDateTime::now_utc() - time::Duration::minutes(minutes)
 }
 
@@ -124,11 +124,11 @@ pub fn discussion(id: &str, anchor: ThreadAnchor) -> ReviewThread {
 }
 
 /// Files the threads of [`review`] are spread over, and the lines of each.
-pub const REVIEW_FILES: usize = 20;
+pub(crate) const REVIEW_FILES: usize = 20;
 const REVIEW_FILE_LINES: u32 = 400;
 
 /// The path of the changed file `index` of [`review`].
-pub fn review_path(index: usize) -> String {
+pub(crate) fn review_path(index: usize) -> String {
     format!("src/module_{}/file_{index}.rs", index / 5)
 }
 

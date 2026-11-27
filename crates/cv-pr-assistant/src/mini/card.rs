@@ -22,14 +22,14 @@ use super::answer::{self, Pieces};
 /// The card's name in the accessibility tree.
 pub const CARD_LABEL: &str = "Assistant mini chat";
 pub const SHRINK: &str = "Shrink to a pill";
-pub const FULL: &str = "Back to the full conversation";
-pub const CLOSE: &str = "Close";
+pub(crate) const FULL: &str = "Back to the full conversation";
+pub(crate) const CLOSE: &str = "Close";
 pub const OPEN: &str = "Open the answer";
 pub const PREVIOUS: &str = "Previous reference (Alt+,)";
 pub const NEXT: &str = "Next reference (Alt+.)";
 pub const OPEN_AT_HEAD: &str = "Open it at the head commit";
 pub const SKIP_NEXT: &str = "Skip to the next reference";
-pub const SKIP_PREVIOUS: &str = "Skip to the previous reference";
+pub(crate) const SKIP_PREVIOUS: &str = "Skip to the previous reference";
 pub const FOLLOW_UP: &str = "Ask a follow-up";
 pub const ANSWERING: &str = "Answering…";
 
@@ -44,7 +44,7 @@ const PULSE_FRAME: Duration = Duration::from_millis(33);
 
 /// What the user did in the mini chat this frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Event {
+pub(crate) enum Event {
     /// To the next (`true`) or previous reference.
     Step(bool),
     Shrink,
@@ -60,7 +60,7 @@ pub enum Event {
 }
 
 /// What the card shows.
-pub struct Card<'a> {
+pub(crate) struct Card<'a> {
     pub turn: usize,
     pub question: &'a str,
     pub answer: &'a str,
@@ -80,7 +80,7 @@ pub struct Card<'a> {
 }
 
 /// The reference bar's and the pill's count: "Reference 2 of 4", or how many there are.
-pub fn count_label(current: Option<usize>, count: usize) -> String {
+pub(crate) fn count_label(current: Option<usize>, count: usize) -> String {
     match (current, count) {
         (_, 0) => "No references".to_owned(),
         (Some(index), _) => format!("Reference {} of {count}", index + 1),
@@ -91,7 +91,7 @@ pub fn count_label(current: Option<usize>, count: usize) -> String {
 
 /// The card laid out in `content` (its full size in its place), shown within `frame`; what the
 /// user did, and the chip, whose menu [`super`] opens.
-pub fn card(
+pub(crate) fn card(
     ui: &mut Ui,
     content: Rect,
     view: &Card<'_>,
@@ -295,7 +295,12 @@ fn follow_up(ui: &mut Ui, view: &Card<'_>, composer: &mut String) -> Option<Even
 
 /// The pill laid out in `content`: "Assistant · N of M" (which drags it), the arrows and "Open
 /// the answer".
-pub fn pill(ui: &mut Ui, content: Rect, current: Option<usize>, count: usize) -> Option<Event> {
+pub(crate) fn pill(
+    ui: &mut Ui,
+    content: Rect,
+    current: Option<usize>,
+    count: usize,
+) -> Option<Event> {
     let inner = content.shrink2(vec2(style::SPACE_M, style::SPACE_XS));
     let mut strip =
         ui.new_child(UiBuilder::new().max_rect(inner).layout(Layout::right_to_left(Align::Center)));
@@ -338,7 +343,7 @@ pub fn pill(ui: &mut Ui, content: Rect, current: Option<usize>, count: usize) ->
 }
 
 /// "Assistant · 2 of 4", or with no reference picked yet how many there are.
-pub fn pill_label(current: Option<usize>, count: usize) -> String {
+pub(crate) fn pill_label(current: Option<usize>, count: usize) -> String {
     match (current, count) {
         (_, 0) => "Assistant".to_owned(),
         (Some(index), _) => format!("Assistant · {} of {count}", index + 1),

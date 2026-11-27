@@ -28,7 +28,7 @@ const SEARCH_WIDTH: f32 = 240.0;
 /// Below this table width the source column gives its room to the name.
 const SOURCE_MIN_TABLE: f32 = 760.0;
 
-pub enum TableAction {
+pub(crate) enum TableAction {
     /// Show the run full width, or the job's log.
     Open(CheckKey),
     /// Show the check's first failed log (or first log).
@@ -41,7 +41,7 @@ pub enum TableAction {
     FilterChanged,
 }
 
-pub struct TableInput<'a> {
+pub(crate) struct TableInput<'a> {
     pub runs: &'a [PipelineRun],
     /// Every run and job, in [`checks::order`].
     pub checks: &'a [Check<'a>],
@@ -58,7 +58,7 @@ pub struct TableInput<'a> {
 
 /// What the table keeps between frames: the text filter and the keyboard row.
 #[derive(Default)]
-pub struct ChecksTable {
+pub(crate) struct ChecksTable {
     search: String,
     /// The check the keyboard is on (↑/↓), opened with Enter.
     cursor: Option<CheckKey>,
@@ -75,7 +75,7 @@ struct Columns {
 }
 
 impl ChecksTable {
-    pub fn show(&mut self, ui: &mut Ui, mut input: TableInput<'_>) -> Option<TableAction> {
+    pub(crate) fn show(&mut self, ui: &mut Ui, mut input: TableInput<'_>) -> Option<TableAction> {
         let mut action = None;
         let margin = egui::Margin::symmetric(style::PAGE_MARGIN_X, 20);
         egui::Frame::new().inner_margin(margin).show(ui, |ui| {

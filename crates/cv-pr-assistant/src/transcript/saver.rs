@@ -19,18 +19,22 @@ pub(crate) struct Saver {
 }
 
 impl Saver {
-    pub fn new(background: &Background) -> Self {
+    pub(crate) fn new(background: &Background) -> Self {
         Self { writing: None, is_dirty: false, spawner: background.spawner() }
     }
 
     /// The conversations changed: [`Self::poll`] writes them once no write runs.
-    pub fn changed(&mut self) {
+    pub(crate) fn changed(&mut self) {
         self.is_dirty = true;
     }
 
     /// Takes in the write that finished and starts the next one when changes wait; returns the
     /// failure of the finished one. Runs every frame.
-    pub fn poll(&mut self, chats: &AssistantChats, background: &Background) -> io::Result<()> {
+    pub(crate) fn poll(
+        &mut self,
+        chats: &AssistantChats,
+        background: &Background,
+    ) -> io::Result<()> {
         let finished = match self.writing.as_mut().map(Task::poll) {
             Some(TaskPoll::Pending) => return Ok(()),
             Some(TaskPoll::Done(outcome)) => outcome,
@@ -53,7 +57,7 @@ impl Saver {
     /// The page closes: the latest state goes to disk on the background, kept so that an app
     /// exiting right after still waits for it. A write still running would be cancelled with the
     /// app, so it counts as a change too. No one is left to report a failure to.
-    pub fn finish(&mut self, chats: &AssistantChats) {
+    pub(crate) fn finish(&mut self, chats: &AssistantChats) {
         if !self.is_dirty && self.writing.is_none() {
             return;
         }

@@ -34,7 +34,7 @@ impl PostState {
 }
 
 #[derive(Clone)]
-pub enum PostKind {
+pub(crate) enum PostKind {
     Reply { thread_id: String, body: String, resolve: bool },
     Create(NewThread),
 }
@@ -58,7 +58,7 @@ impl PostKind {
 
     /// The thread whose card changes with this post: the one replied to; `None` for a new thread,
     /// whose card is known by its draft key until the platform names it.
-    pub fn thread_id(&self) -> Option<&str> {
+    pub(crate) fn thread_id(&self) -> Option<&str> {
         match self {
             PostKind::Reply { thread_id, .. } => Some(thread_id),
             PostKind::Create(_) => None,
@@ -78,7 +78,7 @@ pub enum Delivery {
 /// What finished posts have to say: confirmations, warnings for replies whose thread could not
 /// be resolved afterwards, and the posts that changed state (by draft key).
 #[derive(Default)]
-pub struct PostNews {
+pub(crate) struct PostNews {
     pub done: Vec<&'static str>,
     pub warnings: Vec<String>,
     pub delivered: Vec<String>,
@@ -86,7 +86,7 @@ pub struct PostNews {
 }
 
 /// A post the reloaded threads now show: its draft key, and the thread it created or answered.
-pub struct Landed {
+pub(crate) struct Landed {
     pub key: String,
     pub thread_id: Option<String>,
 }
@@ -102,12 +102,12 @@ struct Post {
 }
 
 #[derive(Default)]
-pub struct Posts {
+pub(crate) struct Posts {
     by_key: HashMap<String, Post>,
 }
 
 impl Posts {
-    pub fn start(
+    pub(crate) fn start(
         &mut self,
         key: &str,
         kind: PostKind,
@@ -132,7 +132,7 @@ impl Posts {
 
     /// The text a failed post goes out with on Retry: its composer stays editable after the
     /// failure, so the text there is the one to send.
-    pub fn set_failed_body(&mut self, key: &str, text: &str) {
+    pub(crate) fn set_failed_body(&mut self, key: &str, text: &str) {
         let Some(post) =
             self.by_key.get_mut(key).filter(|post| matches!(post.state, PostState::Failed { .. }))
         else {
@@ -145,7 +145,7 @@ impl Posts {
         text.clone_into(body);
     }
 
-    pub fn retry(&mut self, key: &str, session: &PullRequestSession, services: &Services) {
+    pub(crate) fn retry(&mut self, key: &str, session: &PullRequestSession, services: &Services) {
         let Some(post) =
             self.by_key.get_mut(key).filter(|post| matches!(post.state, PostState::Failed { .. }))
         else {
@@ -158,7 +158,7 @@ impl Posts {
 
     /// Moves finished posts on. Returns true when one reached the platform (the threads need a
     /// reload); `news` gets a confirmation per delivered post and the keys that changed state.
-    pub fn poll(
+    pub(crate) fn poll(
         &mut self,
         store: &mut ThreadStore,
         texts: &mut HashMap<String, String>,
@@ -186,7 +186,7 @@ impl Posts {
     }
 
     /// Drops sent posts the threads loaded at `version` show, and says which they were.
-    pub fn forget_delivered(&mut self, version: u64) -> Vec<Landed> {
+    pub(crate) fn forget_delivered(&mut self, version: u64) -> Vec<Landed> {
         let has_landed = |post: &Post| match post.state {
             PostState::Sent { after_version } => version > after_version,
             _ => false,
@@ -212,33 +212,33 @@ impl Posts {
     }
 
     /// Drops a failed post; its draft stays for the user to edit.
-    pub fn forget(&mut self, key: &str) {
+    pub(crate) fn forget(&mut self, key: &str) {
         self.by_key.remove(key);
     }
 
-    pub fn state(&self, key: &str) -> Option<&PostState> {
+    pub(crate) fn state(&self, key: &str) -> Option<&PostState> {
         self.by_key.get(key).map(|post| &post.state)
     }
 
-    pub fn kind(&self, key: &str) -> Option<&PostKind> {
+    pub(crate) fn kind(&self, key: &str) -> Option<&PostKind> {
         self.by_key.get(key).map(|post| &post.kind)
     }
 
     /// Whether a post is on its way to the platform.
-    pub fn is_sending(&self) -> bool {
+    pub(crate) fn is_sending(&self) -> bool {
         self.by_key.values().any(|post| post.state == PostState::Sending)
     }
 
-    pub fn body(&self, key: &str) -> Option<&str> {
+    pub(crate) fn body(&self, key: &str) -> Option<&str> {
         self.by_key.get(key).map(|post| post.kind.body())
     }
 
-    pub fn sent_at(&self, key: &str) -> Option<time::OffsetDateTime> {
+    pub(crate) fn sent_at(&self, key: &str) -> Option<time::OffsetDateTime> {
         self.by_key.get(key).map(|post| post.sent_at)
     }
 
     /// The new thread as the platform stored it, once it answered.
-    pub fn created(&self, key: &str) -> Option<&ReviewThread> {
+    pub(crate) fn created(&self, key: &str) -> Option<&ReviewThread> {
         match self.by_key.get(key)?.delivery.as_ref()? {
             Delivery::Created(thread) => Some(thread),
             Delivery::Replied { .. } => None,
@@ -246,7 +246,7 @@ impl Posts {
     }
 
     /// The reply as the platform stored it, once it answered.
-    pub fn replied(&self, key: &str) -> Option<&ThreadComment> {
+    pub(crate) fn replied(&self, key: &str) -> Option<&ThreadComment> {
         match self.by_key.get(key)?.delivery.as_ref()? {
             Delivery::Replied { comment, .. } => Some(comment),
             Delivery::Created(_) => None,
@@ -254,7 +254,7 @@ impl Posts {
     }
 
     /// Keys of the new threads on their way (not failed), in the order they were sent.
-    pub fn pending_creates(&self) -> Vec<&str> {
+    pub(crate) fn pending_creates(&self) -> Vec<&str> {
         let mut keys: Vec<(&str, time::OffsetDateTime)> = self
             .by_key
             .iter()
@@ -267,13 +267,13 @@ impl Posts {
 
     #[cfg(any(test, feature = "test-support"))]
     /// A post on its way, without a platform behind it.
-    pub fn start_for_tests(&mut self, key: &str, kind: PostKind) {
+    pub(crate) fn start_for_tests(&mut self, key: &str, kind: PostKind) {
         self.insert(key, kind, Load::Idle);
     }
 
     #[cfg(any(test, feature = "test-support"))]
     /// The platform answered the post under `key` at threads `version`.
-    pub fn deliver_for_tests(
+    pub(crate) fn deliver_for_tests(
         &mut self,
         key: &str,
         delivery: Delivery,
@@ -287,14 +287,14 @@ impl Posts {
 
     #[cfg(any(test, feature = "test-support"))]
     /// The platform refused the post under `key`.
-    pub fn fail_for_tests(&mut self, key: &str, message: &str, news: &mut PostNews) {
+    pub(crate) fn fail_for_tests(&mut self, key: &str, message: &str, news: &mut PostNews) {
         if let Some(post) = self.by_key.get_mut(key) {
             fail(key, post, message.to_owned(), false, news);
         }
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn insert_for_tests(&mut self, key: &str, state: PostState, body: &str) {
+    #[cfg(test)]
+    pub(crate) fn insert_for_tests(&mut self, key: &str, state: PostState, body: &str) {
         let kind = PostKind::Reply {
             thread_id: key.strip_prefix(super::drafts::REPLY_PREFIX).unwrap_or_default().to_owned(),
             body: body.to_owned(),

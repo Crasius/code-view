@@ -197,7 +197,7 @@ mod tests {
         );
         let mut threads = ThreadsUi::for_tests(ProviderKind::GitHub);
         threads.set_me(erika());
-        threads.edits.set_provider(&github());
+        threads.context.provider = Some(github());
         let scene = Scene { thread, threads, events: Vec::new() };
         Harness::builder()
             .with_size([900.0, 900.0])

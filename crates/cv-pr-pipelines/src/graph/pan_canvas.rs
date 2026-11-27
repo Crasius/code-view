@@ -5,7 +5,8 @@
 //!   click, so nothing fires. The content then follows the pointer 1:1 from where it was pressed.
 //! * The middle button, and the primary button while Space is held, pan at once.
 //! * Releasing a pan flings it for a short coast (none under reduced motion); a new press, the
-//!   wheel or a reveal stops the coast. Repaints are requested only while it moves.
+//!   wheel or keyboard focus moving onto a card stops the coast.
+//!   Repaints are requested only while it moves.
 //! * The wheel scrolls as in a document (Shift for sideways), within the content's own bounds.
 //! * Ctrl+wheel and a trackpad pinch zoom around the pointer, which keeps the point under it in
 //!   place, between [`MIN_ZOOM`] and [`MAX_ZOOM`]. Ctrl+Plus/Minus step through [`ZOOM_STEPS`] and
@@ -35,7 +36,7 @@ use super::{sharp_text, zoom_controls};
 const KEEP_VISIBLE: f32 = 120.0;
 /// Time constant of the fling's exponential decay; it coasts `velocity × FLING_DECAY` points.
 const FLING_DECAY: f32 = 0.16;
-/// Time constant of the glide to a revealed card or to a zoom step.
+/// Time constant of the glide to a focused control or to a zoom step.
 const GLIDE: f32 = 0.07;
 /// Below this many points left to travel, movement ends in one step.
 const SETTLE: f32 = 0.5;
@@ -50,10 +51,10 @@ const INDICATOR_THICKNESS: f32 = 4.0;
 const INDICATOR_INSET: f32 = 3.0;
 const INDICATOR_MIN_LENGTH: f32 = 32.0;
 
-pub const MIN_ZOOM: f32 = 0.25;
-pub const MAX_ZOOM: f32 = 2.0;
+pub(crate) const MIN_ZOOM: f32 = 0.25;
+pub(crate) const MAX_ZOOM: f32 = 2.0;
 /// The levels the zoom buttons and Ctrl+Plus/Minus step through, as in a browser.
-pub const ZOOM_STEPS: [f32; 12] =
+pub(crate) const ZOOM_STEPS: [f32; 12] =
     [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
 
 #[derive(Clone, Copy)]
@@ -64,7 +65,7 @@ struct State {
     zoom: f32,
     /// Of `offset`, in points per second, while flinging.
     velocity: Vec2,
-    /// Where `offset` glides to, to reveal a card.
+    /// Where `offset` glides to, to bring a focused control into view.
     target: Option<Vec2>,
     /// A zoom step or fit in progress.
     glide: Option<ZoomGlide>,
@@ -141,7 +142,7 @@ struct ZoomGlide {
 
 /// What a zoom control or shortcut asks for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Command {
+pub(crate) enum Command {
     /// Whole steps of [`ZOOM_STEPS`], negative to zoom out.
     Step(i32),
     /// Back to 100 %.
@@ -180,7 +181,7 @@ impl Bounds {
 }
 
 /// One frame of the canvas, between [`begin`] and [`Pan::finish`].
-pub struct Pan {
+pub(crate) struct Pan {
     /// Draws on the canvas, in canvas coordinates: one point is one point of content at 100 %.
     pub ui: Ui,
     /// The canvas on screen.
@@ -194,7 +195,7 @@ pub struct Pan {
 }
 
 impl Pan {
-    pub fn zoom(&self) -> f32 {
+    pub(crate) fn zoom(&self) -> f32 {
         self.zoom
     }
 
@@ -205,7 +206,7 @@ impl Pan {
 
     /// Paints the position indicators over what was drawn on the canvas, lays its text out for
     /// the zoom and shows the zoom control.
-    pub fn finish(self, ui: &Ui) {
+    pub(crate) fn finish(self, ui: &Ui) {
         let Self { ui: canvas, rect, id, content, offset, zoom, is_zooming } = self;
         let layer = canvas.layer_id();
         let to_screen = TSTransform::new(rect.min.to_vec2() - offset, zoom);
@@ -262,9 +263,8 @@ struct Frame {
 }
 
 /// Takes the rest of `ui` as the canvas for `content` points of content (at 100 %) and handles
-/// this frame's pan, zoom, wheel and coast. `reveal` (canvas coordinates) glides into the middle
-/// of view.
-pub fn begin(ui: &mut Ui, id: Id, content: Vec2, reveal: Option<Rect>) -> Pan {
+/// this frame's pan, zoom, wheel and coast.
+pub(crate) fn begin(ui: &mut Ui, id: Id, content: Vec2) -> Pan {
     let rect = ui.available_rect_before_wrap();
     ui.advance_cursor_after_rect(rect);
     let ctx = ui.ctx().clone();
@@ -295,11 +295,6 @@ pub fn begin(ui: &mut Ui, id: Id, content: Vec2, reveal: Option<Rect>) -> Pan {
     let free = Bounds::free(scaled, size);
     let natural = Bounds::natural(scaled, size);
 
-    if let Some(card) = reveal {
-        state.target = Some(natural.clamp(card.center().to_vec2() * state.zoom - size / 2.0));
-        state.velocity = Vec2::ZERO;
-        state.glide = None;
-    }
     follow_focus(ui, &mut state, layer, rect, free);
     drag(ui, &mut state, &frame, response.as_ref(), free);
     if frame.is_hovered && state.grab.is_none() {
@@ -509,7 +504,7 @@ fn has_focus_in(ctx: &Context, canvas: Rect) -> bool {
 }
 
 /// The step `steps` away from `zoom` in [`ZOOM_STEPS`]; a zoom between steps moves to its neighbor.
-pub fn next_step(zoom: f32, steps: i32) -> f32 {
+pub(crate) fn next_step(zoom: f32, steps: i32) -> f32 {
     let mut zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
     for _ in 0..steps.unsigned_abs() {
         zoom = if steps > 0 {
@@ -545,7 +540,7 @@ fn zoom_glide(state: &mut State, dt: f32, is_reduced: bool) {
     state.offset = glide.point * zoom - screen;
 }
 
-/// One frame of the glide to a revealed card, or of the fling after a pan.
+/// One frame of the glide to a focused control, or of the fling after a pan.
 fn coast(state: &mut State, free: Bounds, dt: f32, is_reduced: bool) {
     if let Some(target) = state.target {
         let next = if is_reduced {

@@ -23,16 +23,15 @@ use super::checkout::{self, Checkout};
 type Batch = (Vec<AgentEvent>, UnboundedReceiver<AgentEvent>);
 
 /// What finished in the background since the last frame.
-pub enum RunnerEvent {
+pub(crate) enum RunnerEvent {
     CheckoutReady(Checkout),
     CheckoutFailed(String),
-    SessionStarted,
     SessionFailed(AgentError),
     Agent(AgentEvent),
 }
 
 #[derive(Default)]
-pub struct Runner {
+pub(crate) struct Runner {
     checkout: Option<Task<Result<Checkout, String>>>,
     starting: Option<Task<Started>>,
     session: Option<Session>,
@@ -45,7 +44,7 @@ pub struct Runner {
 
 impl Runner {
     /// Puts the checkout at `dest` on `head`.
-    pub fn prepare_checkout(
+    pub(crate) fn prepare_checkout(
         &mut self,
         background: &Background,
         git: Arc<GitMirror>,
@@ -55,11 +54,11 @@ impl Runner {
         self.checkout = Some(background.spawn(checkout::prepare(git, head, dest)));
     }
 
-    pub fn is_preparing(&self) -> bool {
+    pub(crate) fn is_preparing(&self) -> bool {
         self.checkout.is_some()
     }
 
-    pub fn start(
+    pub(crate) fn start(
         &mut self,
         agents: &AgentDirectory,
         background: &Background,
@@ -69,16 +68,16 @@ impl Runner {
         self.starting = Some(agents.start(background, config));
     }
 
-    pub fn is_starting(&self) -> bool {
+    pub(crate) fn is_starting(&self) -> bool {
         self.starting.is_some()
     }
 
-    pub fn has_session(&self) -> bool {
+    pub(crate) fn has_session(&self) -> bool {
         self.session.is_some()
     }
 
     /// Sends `prompt` and waits for the answer.
-    pub fn ask(&mut self, background: &Background, prompt: &str) {
+    pub(crate) fn ask(&mut self, background: &Background, prompt: &str) {
         let Some(session) = &self.session else {
             return;
         };
@@ -87,14 +86,14 @@ impl Runner {
     }
 
     /// Stops the running turn; its end still arrives as an event.
-    pub fn interrupt(&self) {
+    pub(crate) fn interrupt(&self) {
         if let Some(session) = &self.session {
             session.interrupt();
         }
     }
 
     /// Ends the session: dropping it ends the CLI process.
-    pub fn end(&mut self) {
+    pub(crate) fn end(&mut self) {
         self.generation += 1;
         self.starting = None;
         self.session = None;
@@ -104,17 +103,17 @@ impl Runner {
 
     /// Changes whenever [`Self::end`] ends a session: events taken from the runner before belong to
     /// the ended one.
-    pub fn generation(&self) -> u64 {
+    pub(crate) fn generation(&self) -> u64 {
         self.generation
     }
 
     /// Nothing runs: no checkout, no session starting or running.
-    pub fn is_idle(&self) -> bool {
+    pub(crate) fn is_idle(&self) -> bool {
         self.checkout.is_none() && self.starting.is_none() && self.session.is_none()
     }
 
     /// Ends the session and drops a checkout on its way; the assistant was turned off.
-    pub fn abandon(&mut self) {
+    pub(crate) fn abandon(&mut self) {
         self.end();
         self.checkout = None;
     }
@@ -141,7 +140,7 @@ impl Runner {
     }
 
     /// What finished since the last frame; re-arms the receiver while the turn goes on.
-    pub fn poll(&mut self, background: &Background) -> Vec<RunnerEvent> {
+    pub(crate) fn poll(&mut self, background: &Background) -> Vec<RunnerEvent> {
         let mut finished = Vec::new();
         if let Some(task) = &mut self.checkout {
             match task.poll() {
@@ -169,7 +168,6 @@ impl Runner {
                     self.session = Some(session);
                     self.resting = Some(events);
                     self.starting = None;
-                    finished.push(RunnerEvent::SessionStarted);
                 }
                 TaskPoll::Done(Err(error)) => {
                     self.starting = None;

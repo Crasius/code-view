@@ -253,7 +253,7 @@ impl ActionRunner {
     }
 
     /// The action just started is `write`: a failure offers Retry.
-    pub fn remember(&mut self, write: Write) {
+    pub(crate) fn remember(&mut self, write: Write) {
         self.write = Some(write);
     }
 

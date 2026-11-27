@@ -2,7 +2,7 @@
 //! Favorites card ([`favorites`]), as the rows the list paints, grouped by repository under their
 //! section headers when the overview asks for it ([`sections`]).
 
-pub mod sections;
+pub(crate) mod sections;
 
 use cv_base::theme::motion;
 use egui::{Id, Ui};
@@ -18,7 +18,7 @@ use super::{
 
 /// A connection's card: skeleton rows until its first answer, a note when it failed or waits for
 /// the host's rate limit, then its matching rows.
-pub fn connection<'a>(
+pub(crate) fn connection<'a>(
     ui: &Ui,
     queries: &ConnectionQueries,
     hosts: &Hosts<'_>,
@@ -72,7 +72,7 @@ pub fn connection<'a>(
 /// waits for its host's rate limit), so rows that arrive later never reshuffle the ones shown;
 /// then all rows mixed, most recently updated first, and below them what failed or waits. What the
 /// role hides leads the card from the start, so it stays put while the rest loads.
-pub fn favorites<'a>(
+pub(crate) fn favorites<'a>(
     ui: &Ui,
     lane: &'a FavoritesLane<'a>,
     hosts: &Hosts<'_>,

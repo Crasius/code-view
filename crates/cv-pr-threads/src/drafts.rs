@@ -7,9 +7,9 @@ use review_store::{DraftAnchor, DraftRange, ThreadStore};
 pub const GENERAL_KEY: &str = "general";
 
 /// What the draft keys of replies start with.
-pub const REPLY_PREFIX: &str = "reply:";
+pub(crate) const REPLY_PREFIX: &str = "reply:";
 
-pub fn reply_key(thread_id: &str) -> String {
+pub(crate) fn reply_key(thread_id: &str) -> String {
     format!("{REPLY_PREFIX}{thread_id}")
 }
 
@@ -25,14 +25,19 @@ pub fn new_thread_key(anchor: &ThreadAnchor) -> String {
 
 /// Whether `store` already keeps `text` on `anchor` under `key` (no text: keeps nothing), so the
 /// draft need not be written again.
-pub fn is_kept(store: &ThreadStore, key: &str, text: &str, anchor: Option<&ThreadAnchor>) -> bool {
+pub(crate) fn is_kept(
+    store: &ThreadStore,
+    key: &str,
+    text: &str,
+    anchor: Option<&ThreadAnchor>,
+) -> bool {
     match store.draft(key) {
         Some(draft) => draft.text == text && holds(draft.anchor.as_ref(), anchor),
         None => text.trim().is_empty(),
     }
 }
 
-pub fn to_stored(anchor: &ThreadAnchor) -> DraftAnchor {
+pub(crate) fn to_stored(anchor: &ThreadAnchor) -> DraftAnchor {
     DraftAnchor {
         path: anchor.path.clone(),
         old_path: anchor.old_path.clone(),
@@ -59,7 +64,7 @@ fn stored_detail(detail: RangeDetail) -> [u32; 6] {
 }
 
 /// Whether `stored` is [`to_stored`] of `anchor`, compared field by field without building it.
-pub fn holds(stored: Option<&DraftAnchor>, anchor: Option<&ThreadAnchor>) -> bool {
+pub(crate) fn holds(stored: Option<&DraftAnchor>, anchor: Option<&ThreadAnchor>) -> bool {
     let (Some(stored), Some(anchor)) = (stored, anchor) else {
         return stored.is_none() && anchor.is_none();
     };
@@ -79,7 +84,7 @@ pub fn holds(stored: Option<&DraftAnchor>, anchor: Option<&ThreadAnchor>) -> boo
         && is_same_range
 }
 
-pub fn from_stored(anchor: &DraftAnchor) -> ThreadAnchor {
+pub(crate) fn from_stored(anchor: &DraftAnchor) -> ThreadAnchor {
     ThreadAnchor {
         path: anchor.path.clone(),
         old_path: anchor.old_path.clone(),

@@ -18,7 +18,7 @@ const WIDEST_LEVEL: &str = "200 %";
 
 /// Shows the control for `zoom` over the visible part of the canvas `canvas`; returns what was
 /// clicked.
-pub fn show(ctx: &Context, id: Id, canvas: Rect, zoom: f32) -> Option<Command> {
+pub(crate) fn show(ctx: &Context, id: Id, canvas: Rect, zoom: f32) -> Option<Command> {
     if !canvas.is_positive() {
         return None;
     }

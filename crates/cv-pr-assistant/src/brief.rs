@@ -18,7 +18,7 @@ const MAX_DESCRIPTION_CHARS: usize = 6_000;
 const MAX_THREAD_CHARS: usize = 160;
 
 /// What the page knows about the pull request.
-pub struct Facts<'a> {
+pub(crate) struct Facts<'a> {
     pub detail: &'a PullRequestDetail,
     /// Where the pull request's changes start: the merge base of target and head.
     pub merge_base: Option<&'a str>,
@@ -28,7 +28,7 @@ pub struct Facts<'a> {
 }
 
 /// The system prompt appendix for a session about the pull request.
-pub fn brief(facts: &Facts<'_>) -> String {
+pub(crate) fn brief(facts: &Facts<'_>) -> String {
     let detail = facts.detail;
     let summary = &detail.summary;
     let base = facts.merge_base.unwrap_or(&detail.target_sha);
@@ -136,7 +136,7 @@ fn failing(runs: &[PipelineRun]) -> impl Iterator<Item = &PipelineRun> {
 }
 
 /// The note that tells the agent its checkout moved to new commits.
-pub fn update_note(old_head: &str, new_head: &str) -> String {
+pub(crate) fn update_note(old_head: &str, new_head: &str) -> String {
     format!(
         "The pull request has new commits. The checkout was moved from {old_head} to its new \
          head {new_head}; `git diff {old_head} {new_head}` shows what changed since. Earlier \

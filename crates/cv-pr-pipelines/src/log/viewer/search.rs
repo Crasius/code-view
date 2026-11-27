@@ -16,7 +16,7 @@ use review_core::ProviderError;
 use super::super::download::LoadedLog;
 
 #[derive(Default)]
-pub struct LogSearch {
+pub(crate) struct LogSearch {
     /// What the search box holds.
     text: String,
     /// The matching lines, ascending.
@@ -31,7 +31,7 @@ pub struct LogSearch {
 
 impl LogSearch {
     /// Forgets the matches of the log shown before; the box keeps its text.
-    pub fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.matches = Load::Idle;
         self.searched_for.clear();
         self.current = 0;
@@ -39,18 +39,18 @@ impl LogSearch {
     }
 
     /// The matching lines, once found.
-    pub fn matches(&self) -> Option<&Arc<Vec<usize>>> {
+    pub(crate) fn matches(&self) -> Option<&Arc<Vec<usize>>> {
         self.matches.ready()
     }
 
     /// The line of the current match.
-    pub fn current_line(&self) -> Option<usize> {
+    pub(crate) fn current_line(&self) -> Option<usize> {
         self.matches().and_then(|matches| matches.get(self.current).copied())
     }
 
     /// Takes in a finished search; returns its first match to scroll to. A search over a grown
     /// log keeps the current match where it still is.
-    pub fn poll(&mut self) -> Option<usize> {
+    pub(crate) fn poll(&mut self) -> Option<usize> {
         if !self.matches.poll() {
             return None;
         }
@@ -63,7 +63,7 @@ impl LogSearch {
     }
 
     /// The log grew: the search runs again over it, in place.
-    pub fn rerun(&mut self, log: Arc<LoadedLog>, background: &Background) {
+    pub(crate) fn rerun(&mut self, log: Arc<LoadedLog>, background: &Background) {
         if self.searched_for.is_empty() || self.matches.is_loading() {
             return;
         }
@@ -73,7 +73,7 @@ impl LogSearch {
     }
 
     /// "3 / 12", "No matches", "Searching…" or "Search failed" beside the search box.
-    pub fn status(&self) -> String {
+    pub(crate) fn status(&self) -> String {
         match &self.matches {
             Load::Loading(_) => "Searching…".to_owned(),
             Load::Ready(matches) if matches.is_empty() => "No matches".to_owned(),
@@ -86,7 +86,7 @@ impl LogSearch {
     }
 
     /// Why the search failed and how to try again, on hover over `status` (its [`Self::status`]).
-    pub fn explain_failure(&self, status: egui::Response) {
+    pub(crate) fn explain_failure(&self, status: egui::Response) {
         if let Load::Failed(message) = &self.matches {
             status.on_hover_text(format!("{message}\nPress Enter in the search box to try again."));
         }
@@ -95,7 +95,7 @@ impl LogSearch {
     /// The search box: Enter searches, Enter again (Shift+Enter) asks for the next (previous)
     /// match, which this returns. The toolbar and the focus strip share one id: the box keeps the
     /// keys and its cursor when focus mode moves it (one log is on screen at a time).
-    pub fn field(
+    pub(crate) fn field(
         &mut self,
         ui: &mut Ui,
         log: &Arc<LoadedLog>,
@@ -133,7 +133,7 @@ impl LogSearch {
     }
 
     /// Moves to the next or previous match, wrapping around; returns its line to scroll to.
-    pub fn step(&mut self, step: Option<Step>) -> Option<usize> {
+    pub(crate) fn step(&mut self, step: Option<Step>) -> Option<usize> {
         let count = self.matches()?.len();
         self.current = find_bar::step_index(Some(self.current), count, step?)?;
         self.current_line()

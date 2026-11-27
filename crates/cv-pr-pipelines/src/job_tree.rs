@@ -15,7 +15,7 @@ const ROW_HEIGHT: f32 = 32.0;
 const INDENT: f32 = 18.0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LogTarget {
+pub(crate) struct LogTarget {
     pub job_id: String,
     /// `None` while the item has no log at all (queued, skipped, not started yet): the log pane
     /// then shows the item's state and the way to the platform.
@@ -39,7 +39,7 @@ fn target(job: &PipelineJob, log: Option<&str>, inherited_url: Option<&str>) -> 
 /// else its first step's (Azure DevOps creates a job's own log only once the job finished, its
 /// steps' logs as they finish), else its parent's; without any log the item itself, whose state
 /// the log pane explains.
-pub fn click_target(
+pub(crate) fn click_target(
     job: &PipelineJob,
     inherited_log: Option<&str>,
     inherited_url: Option<&str>,
@@ -51,7 +51,7 @@ pub fn click_target(
 
 /// [`click_target`] for the item with `id` anywhere in the run, with what it inherits from its
 /// parents; `None` when the run has no such item (any more).
-pub fn resolve(stages: &[PipelineJob], id: &str) -> Option<LogTarget> {
+pub(crate) fn resolve(stages: &[PipelineJob], id: &str) -> Option<LogTarget> {
     fn walk(
         nodes: &[PipelineJob],
         id: &str,
@@ -74,7 +74,7 @@ pub fn resolve(stages: &[PipelineJob], id: &str) -> Option<LogTarget> {
 }
 
 /// The row's tooltip line about its log; `None` when a click opens a log.
-pub fn no_log_hint(job: &PipelineJob, target: &LogTarget) -> Option<String> {
+pub(crate) fn no_log_hint(job: &PipelineJob, target: &LogTarget) -> Option<String> {
     target
         .log_id
         .is_none()
@@ -82,7 +82,7 @@ pub fn no_log_hint(job: &PipelineJob, target: &LogTarget) -> Option<String> {
 }
 
 /// Why an item has no log, in a few words.
-pub fn no_log_reason(status: RunStatus) -> &'static str {
+pub(crate) fn no_log_reason(status: RunStatus) -> &'static str {
     match status {
         RunStatus::Queued => "waiting to start, no log yet",
         RunStatus::Running => "no log yet",
@@ -112,7 +112,7 @@ impl<'a> Row<'a> {
 
 /// `attempt` is the node shown in an earlier attempt (its id in `stages`) and that attempt's
 /// number; its row says so, and retried rows carry their attempt count.
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     stages: &[PipelineJob],
     selected_job: Option<&str>,
@@ -260,12 +260,12 @@ fn flatten<'a>(
 
 /// The log to open first for a stage: its first failed item with a log, else its first item
 /// with a log.
-pub fn initial_target(stage: &PipelineJob) -> Option<LogTarget> {
+pub(crate) fn initial_target(stage: &PipelineJob) -> Option<LogTarget> {
     first_with_log(stage, None, None, is_failed).or_else(|| first_with_log(stage, None, None, any))
 }
 
 /// The first failed item with a log in a stage, whatever the stage's own status.
-pub fn failed_target(stage: &PipelineJob) -> Option<LogTarget> {
+pub(crate) fn failed_target(stage: &PipelineJob) -> Option<LogTarget> {
     first_with_log(stage, None, None, is_failed)
 }
 

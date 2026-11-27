@@ -3,6 +3,7 @@
 
 use cv_base::theme::{self, icons, style};
 use cv_runtime::intents;
+use cv_widgets::numbers::counted;
 use cv_widgets::states::{self, Action};
 use cv_widgets::{buttons, glyph, skeleton};
 use egui::{Rect, Ui, pos2, vec2};
@@ -10,7 +11,6 @@ use review_core::ProviderKind;
 
 use super::super::favorites::HiddenFavorites;
 use super::super::queries::ConnectionResult;
-use super::header::repositories_text;
 use super::indicators::{self, REVIEWER_SIZE};
 use super::{
     AVATAR_SIZE, Columns, EmptyOffer, LINE_OFFSET, ListAction, META_MARK_GAP, ROW_PADDING, size,
@@ -18,7 +18,11 @@ use super::{
 
 /// A failed first answer with Retry and the connection's setup. Where the request named
 /// repositories (the Favorites card mixes several), the message says which.
-pub fn paint_message(ui: &mut Ui, rect: Rect, result: &ConnectionResult) -> Option<ListAction> {
+pub(crate) fn paint_message(
+    ui: &mut Ui,
+    rect: Rect,
+    result: &ConnectionResult,
+) -> Option<ListAction> {
     let message = result.load.error()?;
     let message = match result.repositories_label() {
         Some(repositories) => format!("{repositories} on {}: {message}", result.connection_name),
@@ -45,7 +49,7 @@ pub fn paint_message(ui: &mut Ui, rect: Rect, result: &ConnectionResult) -> Opti
 
 /// The note of an empty card and its way forward: a card whose rows the repository filter hid
 /// always offers to clear the filters, any other one the page's `offer`.
-pub fn paint_empty(
+pub(crate) fn paint_empty(
     ui: &mut Ui,
     rect: Rect,
     is_filtered: bool,
@@ -82,10 +86,10 @@ pub fn paint_empty(
 
 /// Starred repositories the role hides: how many, why, and "Add token", which opens the
 /// connection's setup at its token step.
-pub fn paint_hidden_favorites(ui: &mut Ui, rect: Rect, hidden: &HiddenFavorites) {
+pub(crate) fn paint_hidden_favorites(ui: &mut Ui, rect: Rect, hidden: &HiddenFavorites) {
     let words = format!(
         "{} hidden: {} has no token to know who you are.",
-        repositories_text(hidden.repositories),
+        counted(hidden.repositories, "repository", "repositories"),
         hidden.connection_name
     );
     let text = format!("{}  {words}", icons::KEY);
@@ -100,7 +104,7 @@ pub fn paint_hidden_favorites(ui: &mut Ui, rect: Rect, hidden: &HiddenFavorites)
 
 /// The Favorites card before anything is starred: what a star does, and the way to the
 /// repositories, where the stars are. True when that way was taken.
-pub fn paint_no_favorites(ui: &mut Ui, rect: Rect) -> bool {
+pub(crate) fn paint_no_favorites(ui: &mut Ui, rect: Rect) -> bool {
     let text = "Star a repository to see its pull requests here, from every connection.";
     note_with_button(ui, rect, text, text, |ui| {
         buttons::subtle(ui, icons::BOOKS, "Browse repositories").clicked()
@@ -139,7 +143,7 @@ fn note_with_button(
     picked
 }
 
-pub fn paint_waiting(ui: &mut Ui, rect: Rect, kind: ProviderKind) {
+pub(crate) fn paint_waiting(ui: &mut Ui, rect: Rect, kind: ProviderKind) {
     let palette = theme::palette(ui.ctx());
     let words = format!(
         "Waiting for {} to accept requests again. The list loads on its own.",
@@ -155,7 +159,7 @@ pub fn paint_waiting(ui: &mut Ui, rect: Rect, kind: ProviderKind) {
 }
 
 /// The row's shape while its first answer loads: same columns, same heights.
-pub fn paint_skeleton(ui: &Ui, rect: Rect, seed: usize) {
+pub(crate) fn paint_skeleton(ui: &Ui, rect: Rect, seed: usize) {
     let columns = Columns::for_row(rect);
     let center = rect.center().y;
     skeleton::paint_circle(

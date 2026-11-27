@@ -20,7 +20,7 @@ use review_store::CheckFilter;
 
 use super::tree::jobs_of;
 
-pub const FILTERS: [(CheckFilter, &str); 4] = [
+pub(crate) const FILTERS: [(CheckFilter, &str); 4] = [
     (CheckFilter::Failed, "Failed"),
     (CheckFilter::Running, "Running"),
     (CheckFilter::Succeeded, "Succeeded"),
@@ -28,7 +28,7 @@ pub const FILTERS: [(CheckFilter, &str); 4] = [
 ];
 
 /// The filter chip a run counts under.
-pub fn group(status: RunStatus) -> CheckFilter {
+pub(crate) fn group(status: RunStatus) -> CheckFilter {
     match status {
         RunStatus::Failed | RunStatus::Canceled => CheckFilter::Failed,
         RunStatus::Running | RunStatus::Queued => CheckFilter::Running,
@@ -39,7 +39,7 @@ pub fn group(status: RunStatus) -> CheckFilter {
 
 /// Which check: a run, or one of its jobs. Survives reloads, unlike references into the data.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CheckKey {
+pub(crate) struct CheckKey {
     pub run_id: String,
     pub job_id: Option<String>,
 }
@@ -54,49 +54,49 @@ pub struct Check<'a> {
 }
 
 impl<'a> Check<'a> {
-    pub fn key(&self) -> CheckKey {
+    pub(crate) fn key(&self) -> CheckKey {
         CheckKey { run_id: self.run.id.clone(), job_id: self.job.map(|(_, job)| job.id.clone()) }
     }
 
-    pub fn is(&self, key: &CheckKey) -> bool {
+    pub(crate) fn is(&self, key: &CheckKey) -> bool {
         self.run.id == key.run_id
             && self.job.map(|(_, job)| job.id.as_str()) == key.job_id.as_deref()
     }
 
-    pub fn name(&self) -> &'a str {
+    pub(crate) fn name(&self) -> &'a str {
         self.job.map_or(&self.run.name, |(_, job)| &job.name)
     }
 
-    pub fn status(&self) -> RunStatus {
+    pub(crate) fn status(&self) -> RunStatus {
         self.job.map_or(self.run.status, |(_, job)| job.status)
     }
 
-    pub fn started_at(&self) -> Option<Timestamp> {
+    pub(crate) fn started_at(&self) -> Option<Timestamp> {
         self.job.map_or(self.run.started_at, |(_, job)| job.started_at)
     }
 
-    pub fn finished_at(&self) -> Option<Timestamp> {
+    pub(crate) fn finished_at(&self) -> Option<Timestamp> {
         self.job.map_or(self.run.finished_at, |(_, job)| job.finished_at)
     }
 
-    pub fn reruns(&self) -> &'a [RerunAction] {
+    pub(crate) fn reruns(&self) -> &'a [RerunAction] {
         self.job.map_or(&self.run.reruns, |(_, job)| &job.reruns)
     }
 
-    pub fn web_url(&self) -> Option<&'a str> {
+    pub(crate) fn web_url(&self) -> Option<&'a str> {
         self.job.map_or(self.run.web_url.as_deref(), |(stage, job)| {
             job.web_url.as_deref().or(stage.web_url.as_deref())
         })
     }
 
     /// A job that waits for a person to start it (GitLab's manual jobs): neutral, never started.
-    pub fn is_manual(&self) -> bool {
+    pub(crate) fn is_manual(&self) -> bool {
         self.job
             .is_some_and(|(_, job)| job.status == RunStatus::Neutral && job.started_at.is_none())
     }
 
     /// The stage a job belongs to; `None` for a run and for a stage that is its own job.
-    pub fn stage_name(&self) -> Option<&'a str> {
+    pub(crate) fn stage_name(&self) -> Option<&'a str> {
         self.job.filter(|(stage, job)| stage.id != job.id).map(|(stage, _)| stage.name.as_str())
     }
 
@@ -117,7 +117,7 @@ impl<'a> Check<'a> {
 
 /// Every run followed by its jobs, in the platform's order. `stages` gives the stages known for
 /// a run; runs without jobs, or whose stages are not known yet, stand alone.
-pub fn list<'a>(
+pub(crate) fn list<'a>(
     runs: &'a [PipelineRun],
     stages: impl Fn(&PipelineRun) -> Option<&'a [PipelineJob]>,
 ) -> Vec<Check<'a>> {
@@ -135,7 +135,7 @@ pub fn list<'a>(
 
 /// The head commit's checks first, each part failed first, then running, then in the order the
 /// platform lists them.
-pub fn sort(checks: &mut [Check<'_>]) {
+pub(crate) fn sort(checks: &mut [Check<'_>]) {
     checks.sort_by_key(order);
 }
 
@@ -157,12 +157,12 @@ pub fn latest_pipelines(runs: &[PipelineRun]) -> Vec<&PipelineRun> {
 }
 
 /// The sort key of the checks: older runs last, then [`rank`].
-pub fn order(check: &Check<'_>) -> (bool, u8) {
+pub(crate) fn order(check: &Check<'_>) -> (bool, u8) {
     (!check.run.is_head, rank(check.status()))
 }
 
 /// 0 failed (canceled too, as the Failed chip counts it), 1 running, 2 the rest.
-pub fn rank(status: RunStatus) -> u8 {
+pub(crate) fn rank(status: RunStatus) -> u8 {
     match group(status) {
         CheckFilter::Failed => 0,
         CheckFilter::Running => 1,
@@ -171,7 +171,7 @@ pub fn rank(status: RunStatus) -> u8 {
 }
 
 /// The head commit's checks per filter chip, in [`FILTERS`] order.
-pub fn counts<'a>(checks: impl Iterator<Item = &'a Check<'a>>) -> [usize; 4] {
+pub(crate) fn counts<'a>(checks: impl Iterator<Item = &'a Check<'a>>) -> [usize; 4] {
     let mut counts = [0; 4];
     for check in checks.filter(|check| check.run.is_head) {
         counts[filter_index(group(check.status()))] += 1;
@@ -200,7 +200,7 @@ const _: () = {
 /// True when `check` passes the status chips and the text filter, which matches the name, the
 /// line under it and the source. No chip selected shows everything; a chip shows the head
 /// commit's checks of its status, as it counts them.
-pub fn matches(
+pub(crate) fn matches(
     check: &Check<'_>,
     filter: &BTreeSet<CheckFilter>,
     text: &str,
@@ -229,7 +229,7 @@ pub fn source(run: &PipelineRun, platform: ProviderKind) -> &'static str {
 }
 
 /// The line under a check's name: a job's stage ("Cleanup · manual"), else [`sub_line`].
-pub fn check_sub_line(check: &Check<'_>, stages: Option<&[PipelineJob]>) -> String {
+pub(crate) fn check_sub_line(check: &Check<'_>, stages: Option<&[PipelineJob]>) -> String {
     if check.job.is_none() {
         return sub_line(check.run, stages);
     }
@@ -270,12 +270,12 @@ pub fn duration(run: &PipelineRun) -> Option<String> {
 }
 
 /// [`duration`] of a run or a job.
-pub fn check_duration(check: &Check<'_>) -> Option<String> {
+pub(crate) fn check_duration(check: &Check<'_>) -> Option<String> {
     super::duration(check.started_at(), check.finished_at())
 }
 
 /// The head commit's failed runs that offer rerunning their failed jobs, for "Rerun failed".
-pub fn failed_reruns(runs: &[PipelineRun]) -> Vec<(String, RerunAction)> {
+pub(crate) fn failed_reruns(runs: &[PipelineRun]) -> Vec<(String, RerunAction)> {
     runs.iter()
         .filter(|run| run.is_head && group(run.status) == CheckFilter::Failed)
         .filter_map(|run| {

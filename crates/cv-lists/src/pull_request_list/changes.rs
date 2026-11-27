@@ -16,7 +16,7 @@ use super::statuses::fingerprint;
 type RowKey = (String, u64);
 
 #[derive(Default)]
-pub struct RowChanges {
+pub(crate) struct RowChanges {
     /// The fingerprint of every row shown; `None` before the first rows.
     shown: Option<HashMap<RowKey, u64>>,
     changed: HashSet<RowKey>,
@@ -24,17 +24,17 @@ pub struct RowChanges {
 
 impl RowChanges {
     /// `rows`, if any, are the baseline.
-    pub fn new(rows: Option<&[PullRequestSummary]>) -> Self {
+    pub(crate) fn new(rows: Option<&[PullRequestSummary]>) -> Self {
         Self { shown: rows.map(fingerprints), changed: HashSet::new() }
     }
 
     /// The rows on screen changed by the user's own writes: the new baseline, nothing marked.
-    pub fn follow(&mut self, rows: &[PullRequestSummary]) {
+    pub(crate) fn follow(&mut self, rows: &[PullRequestSummary]) {
         self.shown = Some(fingerprints(rows));
     }
 
     /// An answer of the host: marks the rows it shows new or changed against the rows shown before.
-    pub fn answered(&mut self, rows: &[PullRequestSummary]) {
+    pub(crate) fn answered(&mut self, rows: &[PullRequestSummary]) {
         let now = fingerprints(rows);
         if let Some(before) = &self.shown {
             let changed = now.iter().filter(|(key, print)| before.get(*key) != Some(*print));
@@ -44,7 +44,7 @@ impl RowChanges {
         self.shown = Some(now);
     }
 
-    pub fn is_changed(&self, repository_key: &str, number: u64) -> bool {
+    pub(crate) fn is_changed(&self, repository_key: &str, number: u64) -> bool {
         // Few rows are marked at a time, so a scan beats building a key per painted row.
         self.changed
             .iter()
@@ -52,7 +52,7 @@ impl RowChanges {
     }
 
     /// The user saw the row: it is no longer marked.
-    pub fn seen(&mut self, repository_key: &str, number: u64) {
+    pub(crate) fn seen(&mut self, repository_key: &str, number: u64) {
         self.changed
             .retain(|(repository, marked)| *marked != number || repository != repository_key);
     }

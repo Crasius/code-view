@@ -20,7 +20,7 @@ const OVERVIEW_TOOLS: f32 = 2.0;
 /// A drop-down exactly `width` wide whose choice is cut with an ellipsis; `name` is its
 /// accessible name. Its list is at most [`MENU_MAX_WIDTH`] wide (and never wider than the window):
 /// longer choices are cut too, see [`choice`]. True when `menu` reports a change.
-pub fn picker(
+pub(crate) fn picker(
     ui: &mut egui::Ui,
     id: &str,
     selected: &str,
@@ -51,7 +51,7 @@ pub fn picker(
 }
 
 /// One choice of a [`picker`]'s list; one cut to the list's width reads in full on hover.
-pub fn choice<T: PartialEq>(
+pub(crate) fn choice<T: PartialEq>(
     ui: &mut egui::Ui,
     current: &mut T,
     value: T,
@@ -65,9 +65,9 @@ pub fn choice<T: PartialEq>(
 }
 
 /// The header's single row: tall enough for the pivot tabs, so the list below never moves.
-pub const HEADER_ROW: f32 = 40.0;
+pub(crate) const HEADER_ROW: f32 = 40.0;
 /// Gap after the title.
-pub const TITLE_GAP: f32 = style::SPACE_L;
+pub(crate) const TITLE_GAP: f32 = style::SPACE_L;
 /// A longer title (a repository's key) is cut here, its full text in the tooltip.
 const TITLE_MAX: f32 = 320.0;
 /// A picker's list: room for a long repository key and its connection.
@@ -79,7 +79,7 @@ const REPOSITORY_MAX: f32 = 240.0;
 const REPOSITORY_MIN: f32 = 108.0;
 /// How the header's row fits the width, decided before anything is drawn so it never flickers.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct HeaderLayout {
+pub(crate) struct HeaderLayout {
     pub title_width: f32,
     /// The overview's repository picker.
     pub repository_width: f32,
@@ -92,7 +92,7 @@ pub struct HeaderLayout {
 impl HeaderLayout {
     /// `fixed_filters` is the filters' width without the repository picker (or the pivot tabs'),
     /// `is_overview` whether the picker is part of them and the overview's tools of the tools.
-    pub fn plan(available: f32, title: f32, fixed_filters: f32, is_overview: bool) -> Self {
+    pub(crate) fn plan(available: f32, title: f32, fixed_filters: f32, is_overview: bool) -> Self {
         let title_width = title.min(TITLE_MAX);
         let own = if is_overview { OVERVIEW_TOOLS } else { 0.0 };
         let icons = (buttons::icon_width() + style::SPACE_XS) * (2.0 + own);
@@ -136,7 +136,7 @@ impl HeaderLayout {
 
 /// What the header asked for, carried out once it is drawn.
 #[derive(Default)]
-pub struct HeaderAsks {
+pub(crate) struct HeaderAsks {
     pub wants_refresh: bool,
     pub filters_changed: bool,
     /// A star of the header was clicked.
@@ -147,14 +147,14 @@ pub struct HeaderAsks {
 
 /// The overview's tools and whether each is on.
 #[derive(Clone, Copy)]
-pub struct OverviewTools {
+pub(crate) struct OverviewTools {
     pub is_lane_shown: bool,
     pub is_grouped: bool,
 }
 
 /// The header's star: a repository's list has the repository's, the overview the lane tool.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum HeaderStar {
+pub(crate) enum HeaderStar {
     /// Star or unstar the repository.
     Repository,
     /// Show or hide the Favorites lane.
@@ -163,7 +163,7 @@ pub enum HeaderStar {
 
 /// Refresh (F5), search, the overview's Favorites lane and sections tools and the refresh note,
 /// laid out from the right edge; fills in what they asked for.
-pub fn header_tools(
+pub(crate) fn header_tools(
     ui: &mut egui::Ui,
     layout: HeaderLayout,
     status: RefreshStatus<'_>,

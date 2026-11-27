@@ -7,8 +7,6 @@
 //!
 //! Changes are few at a time, so they sit in a short list that a card scans without allocating.
 
-use std::sync::Arc;
-
 use cv_pr_session::session::PullRequestSession;
 use cv_runtime::load::Load;
 use cv_runtime::toasts::Toasts;
@@ -20,14 +18,14 @@ use review_core::{Provider, ReviewThread, ThreadComment, UserIdentity};
 /// Why the last save or deletion did not go through. `needs_token`: the platform refused the
 /// token, so "Fix token" is the way out.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Failure {
+pub(crate) struct Failure {
     pub message: String,
     pub needs_token: bool,
 }
 
 /// How one comment shows this frame.
 #[derive(Debug, Clone, PartialEq)]
-pub enum View {
+pub(crate) enum View {
     Plain,
     /// The composer replaces the body; its text is [`CommentEdits::text_mut`].
     Editing {
@@ -83,42 +81,12 @@ struct Entry {
 }
 
 #[derive(Default)]
-pub struct CommentEdits {
-    /// What the platform lets the user do per thread; set by the first frame with a session.
-    provider: Option<Arc<dyn Provider>>,
+pub(crate) struct CommentEdits {
     entries: Vec<Entry>,
 }
 
 impl CommentEdits {
-    pub fn set_provider(&mut self, provider: &Arc<dyn Provider>) {
-        if self.provider.is_none() {
-            self.provider = Some(Arc::clone(provider));
-        }
-    }
-
-    /// The platform of the pull request, once a frame with its session ran.
-    pub fn provider(&self) -> Option<&dyn Provider> {
-        self.provider.as_deref()
-    }
-
-    /// What the menu of `comment` offers: what the platform lets the user do in `thread`, for
-    /// [`may_change`] comments only.
-    pub fn actions(
-        &self,
-        thread: &ReviewThread,
-        comment: &ThreadComment,
-        me: Option<&UserIdentity>,
-        can_write: bool,
-    ) -> CommentActions {
-        match &self.provider {
-            Some(provider) if may_change(thread, comment, me, can_write) => {
-                provider.comment_actions(thread)
-            }
-            _ => CommentActions::NONE,
-        }
-    }
-
-    pub fn view(&self, thread_id: &str, comment_id: &str) -> View {
+    pub(crate) fn view(&self, thread_id: &str, comment_id: &str) -> View {
         let Some(entry) = self.entry(thread_id, comment_id) else {
             return View::Plain;
         };
@@ -132,43 +100,43 @@ impl CommentEdits {
         }
     }
 
-    pub fn is_deleted(&self, thread_id: &str, comment_id: &str) -> bool {
+    pub(crate) fn is_deleted(&self, thread_id: &str, comment_id: &str) -> bool {
         self.entry(thread_id, comment_id)
             .is_some_and(|entry| matches!(entry.change, Change::Deleted { .. }))
     }
 
     /// Every comment of `thread` is deleted: the platform drops the thread, so its card goes too.
-    pub fn hides(&self, thread: &ReviewThread) -> bool {
+    pub(crate) fn hides(&self, thread: &ReviewThread) -> bool {
         !self.entries.is_empty()
             && !thread.comments.is_empty()
             && thread.comments.iter().all(|comment| self.is_deleted(&thread.id, &comment.id))
     }
 
     /// Whether a composer is open on a comment: live updates hold back what would move it.
-    pub fn is_editing(&self) -> bool {
+    pub(crate) fn is_editing(&self) -> bool {
         self.entries.iter().any(|entry| matches!(entry.change, Change::Editing { .. }))
     }
 
     /// Opens the composer on the comment's current text.
-    pub fn start_edit(&mut self, thread_id: &str, comment_id: &str, body: &str) {
+    pub(crate) fn start_edit(&mut self, thread_id: &str, comment_id: &str, body: &str) {
         let change = Change::Editing { text: body.to_owned(), failure: None, wants_focus: true };
         self.put(thread_id, comment_id, change);
     }
 
     /// The composer's text while the comment is edited.
-    pub fn text_mut(&mut self, thread_id: &str, comment_id: &str) -> Option<&mut String> {
+    pub(crate) fn text_mut(&mut self, thread_id: &str, comment_id: &str) -> Option<&mut String> {
         match &mut self.entry_mut(thread_id, comment_id)?.change {
             Change::Editing { text, .. } => Some(text),
             _ => None,
         }
     }
 
-    pub fn ask_delete(&mut self, thread_id: &str, comment_id: &str) {
+    pub(crate) fn ask_delete(&mut self, thread_id: &str, comment_id: &str) {
         self.put(thread_id, comment_id, Change::Confirming { failure: None, wants_focus: true });
     }
 
     /// True once after the composer or the delete question opened: it takes the keyboard focus.
-    pub fn take_focus(&mut self, thread_id: &str, comment_id: &str) -> bool {
+    pub(crate) fn take_focus(&mut self, thread_id: &str, comment_id: &str) -> bool {
         match self.entry_mut(thread_id, comment_id).map(|entry| &mut entry.change) {
             Some(Change::Editing { wants_focus, .. } | Change::Confirming { wants_focus, .. }) => {
                 std::mem::take(wants_focus)
@@ -178,7 +146,7 @@ impl CommentEdits {
     }
 
     /// The user goes on after a failure: its reason leaves, the composer or question stays.
-    pub fn clear_failure(&mut self, thread_id: &str, comment_id: &str) {
+    pub(crate) fn clear_failure(&mut self, thread_id: &str, comment_id: &str) {
         if let Some(Change::Editing { failure, .. } | Change::Confirming { failure, .. }) =
             self.entry_mut(thread_id, comment_id).map(|entry| &mut entry.change)
         {
@@ -187,7 +155,7 @@ impl CommentEdits {
     }
 
     /// Closes the composer or the delete question; the comment shows as the platform has it.
-    pub fn cancel(&mut self, thread_id: &str, comment_id: &str) {
+    pub(crate) fn cancel(&mut self, thread_id: &str, comment_id: &str) {
         self.entries.retain(|entry| {
             let is_open =
                 matches!(entry.change, Change::Editing { .. } | Change::Confirming { .. });
@@ -195,7 +163,7 @@ impl CommentEdits {
         });
     }
 
-    pub fn save(
+    pub(crate) fn save(
         &mut self,
         thread_id: &str,
         comment_id: &str,
@@ -213,7 +181,7 @@ impl CommentEdits {
         self.put(thread_id, comment_id, Change::Saving { text: body, load });
     }
 
-    pub fn delete(
+    pub(crate) fn delete(
         &mut self,
         thread_id: &str,
         comment_id: &str,
@@ -232,7 +200,7 @@ impl CommentEdits {
 
     /// Moves finished saves and deletions on; returns true when one reached the platform (the
     /// threads need a reload). `version` is the threads' version now.
-    pub fn poll(
+    pub(crate) fn poll(
         &mut self,
         issues: &AccessIssues,
         connection_id: &str,
@@ -264,7 +232,7 @@ impl CommentEdits {
     }
 
     /// Drops the saved and deleted comments the threads loaded at `version` already show as they are.
-    pub fn forget_landed(&mut self, version: u64) {
+    pub(crate) fn forget_landed(&mut self, version: u64) {
         self.entries.retain(|entry| match entry.change {
             Change::Saved { after_version, .. } | Change::Deleted { after_version } => {
                 version <= after_version
@@ -330,6 +298,23 @@ fn finish(
     };
     *change = next;
     done
+}
+
+/// What the menu of `comment` offers: what `provider` lets the user do in `thread`, for
+/// [`may_change`] comments only.
+pub(crate) fn actions(
+    provider: Option<&dyn Provider>,
+    thread: &ReviewThread,
+    comment: &ThreadComment,
+    me: Option<&UserIdentity>,
+    can_write: bool,
+) -> CommentActions {
+    match provider {
+        Some(provider) if may_change(thread, comment, me, can_write) => {
+            provider.comment_actions(thread)
+        }
+        _ => CommentActions::NONE,
+    }
 }
 
 /// Only the signed-in user's own comments, outside platform notices, and only with a token: other
