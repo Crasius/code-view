@@ -1,14 +1,16 @@
 //! Lays out a Markdown sample covering every construct a pull request description uses, and the
 //! code blocks, tables and zoom of the renderer.
 
-use cv_base::theme::{self, Palette};
+use std::sync::Arc;
+
+use cv_base::theme;
 use egui::accesskit::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
 use review_core::ProviderKind;
-use review_store::ThemePreference;
 
 use super::RenderOptions;
+use super::test_document;
 
 const SAMPLE: &str = "\
 This **automated pull request**, created by **1ES**, is part of the **[Inventory-As-Code](https://aka.ms/iac)** onboarding.
@@ -63,10 +65,21 @@ Last paragraph.
 
 #[test]
 fn markdown_sample_lays_out_headings_and_list_items() {
-    let mut harness = harness();
+    let mut harness = Harness::builder()
+        .with_size([760.0, 1240.0])
+        .with_context_setup(test_document::light)
+        .build_ui(|ui| {
+            let options = RenderOptions::for_platform(ProviderKind::AzureDevOps);
+            super::render(ui, "sample", SAMPLE, options);
+        });
     harness.run();
-    let problems = check_layout(&harness);
-    assert!(problems.is_empty(), "{problems:#?}");
+    for heading in ["🚀 What's Changing?", "1. Review the YAML file(s)", "Proper heading"] {
+        harness.get_by_role_and_label(Role::Heading, heading);
+    }
+    // A list item is one galley: the link is part of its line, not a separate widget.
+    harness.get_by_label(
+        "Repositories under orgs that have opted into auto-merge are merged within 24 hours.",
+    );
 }
 
 /// The code zoom scales the whole document: type, spacing and markers. Wide enough that no line
@@ -81,10 +94,7 @@ fn scale_grows_the_rendered_height() {
             let measured = height.clone();
             let mut harness = Harness::builder()
                 .with_size([4000.0, 3000.0])
-                .with_context_setup(|ctx| {
-                    theme::fonts::install(ctx);
-                    theme::activate(ctx, ThemePreference::Light);
-                })
+                .with_context_setup(test_document::light)
                 .build_ui(move |ui| {
                     let options = RenderOptions {
                         platform: Some(ProviderKind::AzureDevOps),
@@ -110,18 +120,14 @@ const CODE_LINE: &str = "fn main() { let answer = 42; }";
 /// A document in a scroll area scrolled to its end, as a long preview often is: a layout change
 /// there also moves the scroll offset.
 fn code_harness() -> Harness<'static> {
-    Harness::builder()
-        .with_size([520.0, 180.0])
-        .with_context_setup(|ctx| {
-            theme::fonts::install(ctx);
-            theme::activate(ctx, ThemePreference::Light);
-        })
-        .build_ui(|ui| {
+    Harness::builder().with_size([520.0, 180.0]).with_context_setup(test_document::light).build_ui(
+        |ui| {
             egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| {
                 ui.add_space(120.0);
                 super::render(ui, "code", CODE_DOCUMENT, RenderOptions::default());
             });
-        })
+        },
+    )
 }
 
 /// Hovering a code block shows its copy button over the corner and moves nothing: the text after
@@ -150,15 +156,11 @@ fn hovering_a_code_block_moves_nothing() {
     assert_eq!(after(&harness), resting_after, "hovering the button itself moves nothing either");
 }
 
-/// Every text shape painted last frame: its text and the colors of its sections.
-fn painted_texts(harness: &Harness<'_>) -> Vec<(String, Vec<egui::Color32>)> {
-    fn walk(shape: &egui::Shape, out: &mut Vec<(String, Vec<egui::Color32>)>) {
+/// Every text galley painted last frame.
+fn painted_galleys(harness: &Harness<'_>) -> Vec<Arc<egui::Galley>> {
+    fn walk(shape: &egui::Shape, out: &mut Vec<Arc<egui::Galley>>) {
         match shape {
-            egui::Shape::Text(text) => {
-                let colors =
-                    text.galley.job.sections.iter().map(|section| section.format.color).collect();
-                out.push((text.galley.text().to_owned(), colors));
-            }
+            egui::Shape::Text(text) => out.push(Arc::clone(&text.galley)),
             egui::Shape::Vec(shapes) => shapes.iter().for_each(|shape| walk(shape, out)),
             _ => {}
         }
@@ -173,29 +175,20 @@ fn painted_texts(harness: &Harness<'_>) -> Vec<(String, Vec<egui::Color32>)> {
 /// A fenced block with a language shows in that language's syntax colors once they are worked
 /// out in the background; they are worked out once, however often the block is painted.
 #[test]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "the colors are worked out on a background thread that offers the test no wake-up"
-)]
 fn fenced_code_takes_its_language_colors_once() {
     let mut harness = code_harness();
     let colors_of_code = |harness: &Harness<'_>| {
-        painted_texts(harness)
-            .into_iter()
-            .find(|(text, _)| text == CODE_LINE)
-            .map(|(_, colors)| colors.into_iter().collect::<std::collections::HashSet<_>>().len())
+        painted_galleys(harness).into_iter().find(|galley| galley.text() == CODE_LINE).map(
+            |galley| {
+                let colors = galley.job.sections.iter().map(|section| section.format.color);
+                colors.collect::<std::collections::HashSet<_>>().len()
+            },
+        )
     };
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-    let mut distinct = 0;
-    while std::time::Instant::now() < deadline {
+    cv_testkit::poll_until("keyword, number and plain text to take their own colors", || {
         harness.step();
-        distinct = colors_of_code(&harness).unwrap_or(0);
-        if distinct > 2 {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    assert!(distinct > 2, "keyword, number and plain text take their own colors, got {distinct}");
+        colors_of_code(&harness).unwrap_or(0) > 2
+    });
     let code = CODE_LINE;
     harness.hover_at(harness.get_by_label(code).rect().center());
     harness.run_steps(10);
@@ -204,50 +197,6 @@ fn fenced_code_takes_its_language_colors_once() {
         1,
         "painting again reuses the colors"
     );
-}
-
-fn check_layout(harness: &Harness<'_>) -> Vec<String> {
-    let mut problems = Vec::new();
-    for heading in ["🚀 What's Changing?", "1. Review the YAML file(s)", "Proper heading"] {
-        if harness.query_by_role_and_label(Role::Heading, heading).is_none() {
-            problems.push(format!("{heading:?} is not a heading"));
-        }
-    }
-    // A list item is one galley: the link is part of its line, not a separate widget.
-    let item =
-        "Repositories under orgs that have opted into auto-merge are merged within 24 hours.";
-    if harness.query_by_label(item).is_none() {
-        problems.push(format!("list item {item:?} is not laid out as one text"));
-    }
-    problems
-}
-
-fn harness() -> Harness<'static> {
-    let palette = Palette::LIGHT;
-    let builder = Harness::builder().with_size([760.0, 1240.0]).with_context_setup(|ctx| {
-        theme::fonts::install(ctx);
-        theme::activate(ctx, ThemePreference::Light);
-    });
-    builder.build_ui(move |ui| {
-        egui::Frame::new().fill(palette.ground).inner_margin(theme::style::SPACE_L).show(
-            ui,
-            |ui| {
-                ui.set_width(ui.available_width());
-                theme::style::card_frame(&palette).inner_margin(theme::style::SPACE_L).show(
-                    ui,
-                    |ui| {
-                        ui.set_width(ui.available_width());
-                        super::render(
-                            ui,
-                            "sample",
-                            SAMPLE,
-                            RenderOptions::for_platform(ProviderKind::AzureDevOps),
-                        );
-                    },
-                );
-            },
-        );
-    })
 }
 
 const CARD_TABLE: &str = "\
@@ -265,10 +214,7 @@ fn a_table_in_a_narrow_card_wraps_inside_it() {
     let seen = card.clone();
     let mut harness = Harness::builder()
         .with_size([360.0, 600.0])
-        .with_context_setup(|ctx| {
-            theme::fonts::install(ctx);
-            theme::activate(ctx, ThemePreference::Light);
-        })
+        .with_context_setup(test_document::light)
         .build_ui(move |ui| {
             ui.set_width(300.0);
             let response = ui
@@ -302,26 +248,20 @@ fn a_table_in_a_narrow_card_wraps_inside_it() {
 
 /// The format of every painted section whose text is `wanted`.
 fn painted_formats(harness: &Harness<'_>, wanted: &str) -> Vec<egui::TextFormat> {
-    fn walk(shape: &egui::Shape, wanted: &str, out: &mut Vec<egui::TextFormat>) {
-        match shape {
-            egui::Shape::Text(text) => {
-                let job = &text.galley.job;
-                for section in &job.sections {
+    painted_galleys(harness)
+        .iter()
+        .flat_map(|galley| {
+            let job = &galley.job;
+            job.sections
+                .iter()
+                .filter(|section| {
                     let range = section.byte_range.start.0..section.byte_range.end.0;
-                    if job.text.get(range) == Some(wanted) {
-                        out.push(section.format.clone());
-                    }
-                }
-            }
-            egui::Shape::Vec(shapes) => shapes.iter().for_each(|shape| walk(shape, wanted, out)),
-            _ => {}
-        }
-    }
-    let mut out = Vec::new();
-    for clipped in &harness.output().shapes {
-        walk(&clipped.shape, wanted, &mut out);
-    }
-    out
+                    job.text.get(range) == Some(wanted)
+                })
+                .map(|section| section.format.clone())
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 /// The HTML marks the rich editor writes render as their tags do in a browser: underlined,
@@ -330,10 +270,7 @@ fn painted_formats(harness: &Harness<'_>, wanted: &str) -> Vec<egui::TextFormat>
 fn html_marks_render_underlined_scripted_and_as_keys() {
     let mut harness = Harness::builder()
         .with_size([520.0, 160.0])
-        .with_context_setup(|ctx| {
-            theme::fonts::install(ctx);
-            theme::activate(ctx, ThemePreference::Light);
-        })
+        .with_context_setup(test_document::light)
         .build_ui(|ui| {
             let text = "plain <ins>under</ins> H<sub>low</sub> x<sup>high</sup> <kbd>Key</kbd>";
             super::render(ui, "marks", text, RenderOptions::default());

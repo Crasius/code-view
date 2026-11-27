@@ -28,6 +28,7 @@ use egui::{
 };
 
 use super::parse::{ImageSpec, Length};
+use super::render::is_url;
 use super::video;
 use super::{InApp, ResolvedLink, link_hint, request_in_app};
 
@@ -43,7 +44,7 @@ const BADGE_PLACEHOLDER: Vec2 = vec2(88.0, 20.0);
 pub(super) const CARD_HEIGHT: f32 = 56.0;
 const CARD_MAX_WIDTH: f32 = 560.0;
 /// Images this share of a screen above or below the view load ahead of being scrolled to.
-const PRELOAD_SCREENS: f32 = 0.5;
+pub(super) const PRELOAD_SCREENS: f32 = 0.5;
 
 const SOURCE_ID: &str = "review.markdown.images";
 const BASES_ID: &str = "review.markdown.image_bases";
@@ -280,8 +281,7 @@ pub(super) fn show(ui: &mut Ui, shown: &Shown<'_>) {
 
 /// The accessible name: alt text, and what the image is doing.
 fn describe(spec: &ImageSpec, state: &ImageState) -> String {
-    let name =
-        if spec.alt.trim().is_empty() { file_name(&spec.src) } else { spec.alt.trim().to_owned() };
+    let name = display_name(spec);
     let kind = if spec.is_video() { "video" } else { "image" };
     match state {
         ImageState::Waiting { .. } => format!("Loading {kind} {name}"),
@@ -372,11 +372,7 @@ fn interact(
     }
     let open_lightbox = || {
         if let Some(picture) = source.and_then(|source| source.picture(request)) {
-            let title = if shown.spec.title.is_empty() {
-                shown.spec.alt.clone()
-            } else {
-                shown.spec.title.clone()
-            };
+            let title = caption(shown.spec).to_owned();
             let web_url = source.and_then(|source| source.web_url(request));
             let size = match source.map(|source| source.state(ctx, request, false)) {
                 Some(ImageState::Ready { size, .. }) => size,
@@ -448,8 +444,7 @@ fn hover_hint(shown: &Shown<'_>, is_ready: bool) -> Option<String> {
     match shown.link {
         Some((_, link)) => Some(link_hint(link)),
         None if is_ready => {
-            let name =
-                if shown.spec.title.is_empty() { &shown.spec.alt } else { &shown.spec.title };
+            let name = caption(shown.spec);
             Some(if name.trim().is_empty() {
                 "Click to enlarge".to_owned()
             } else {
@@ -477,7 +472,7 @@ fn failure_card(
     painter.rect_stroke(rect, tokens::RADIUS_CONTROL, Stroke::new(1.0, border), StrokeKind::Inside);
     let web_url = source
         .and_then(|source| source.web_url(request))
-        .or_else(|| is_web(&shown.spec.src).then(|| shown.spec.src.clone()));
+        .or_else(|| is_url(&shown.spec.src).then(|| shown.spec.src.clone()));
     let mut child = ui.new_child(
         UiBuilder::new()
             .max_rect(rect.shrink2(vec2(tokens::SPACE_M, tokens::SPACE_S)))
@@ -522,12 +517,7 @@ fn failure_card(
         }
         ui.with_layout(Layout::top_down(Align::Min), |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
-            let name = if shown.spec.alt.trim().is_empty() {
-                file_name(&shown.spec.src)
-            } else {
-                shown.spec.alt.trim().to_owned()
-            };
-            let title = egui::RichText::new(name)
+            let title = egui::RichText::new(display_name(shown.spec))
                 .font(theme::fonts::semibold_font(tokens::SMALL_SIZE + 1.0))
                 .color(palette.text);
             ui.add(egui::Label::new(title).truncate());
@@ -544,8 +534,15 @@ fn failure_card(
     });
 }
 
-fn is_web(src: &str) -> bool {
-    src.starts_with("https://") || src.starts_with("http://")
+/// What an image is called: its alt text, else its file name.
+fn display_name(spec: &ImageSpec) -> String {
+    let alt = spec.alt.trim();
+    if alt.is_empty() { file_name(&spec.src) } else { alt.to_owned() }
+}
+
+/// What the lightbox and the hover hint call an image: its title, else its alt text.
+fn caption(spec: &ImageSpec) -> &str {
+    if spec.title.is_empty() { &spec.alt } else { &spec.title }
 }
 
 /// The host of an absolute address, else the source as written.
@@ -622,8 +619,12 @@ mod tests {
     }
 
     #[test]
-    fn names_and_badges() {
+    fn unnamed_images_are_called_by_their_decoded_file_name() {
         assert_eq!(file_name("../docs/My%20shot.png?raw=true"), "My shot.png");
+    }
+
+    #[test]
+    fn badge_hosts_get_the_small_placeholder() {
         assert!(is_badge("https://img.shields.io/badge/build-passing-green"));
         assert!(is_badge("https://github.com/o/r/actions/workflows/ci.yml/badge.svg"));
         assert!(!is_badge("./docs/screenshot.png"));

@@ -13,11 +13,11 @@ use cv_media::picture::Picture;
 use cv_media::video;
 use cv_testkit::Clicks;
 use egui::accesskit::Role;
-use egui::{Context, vec2};
+use egui::{Context, TextureHandle, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
-use review_store::ThemePreference;
 
+use super::test_document::{self, lines};
 use super::{ImageRequest, ImageSource, RenderOptions};
 
 #[derive(Default)]
@@ -35,11 +35,7 @@ impl Fake {
     }
 
     fn ready(&self, ctx: &Context, src: &str, size: egui::Vec2) {
-        let texture = ctx.load_texture(
-            "fake",
-            egui::ColorImage::filled([4, 4], egui::Color32::RED),
-            egui::TextureOptions::LINEAR,
-        );
+        let texture = texture(ctx, "fake");
         self.set(
             src,
             ImageState::Ready { texture: texture.id(), size, next_frame: None, clip: None },
@@ -86,6 +82,26 @@ impl ImageSource for Fake {
     }
 }
 
+/// A 4x4 red texture named `name`, standing in for a decoded image or frame.
+fn texture(ctx: &Context, name: &str) -> TextureHandle {
+    ctx.load_texture(
+        name,
+        egui::ColorImage::filled([4, 4], egui::Color32::RED),
+        egui::TextureOptions::LINEAR,
+    )
+}
+
+/// A failure that a retry may fix, needing neither a token nor ffmpeg.
+fn failure(reason: &str, place: &str) -> ImageFailure {
+    ImageFailure {
+        reason: reason.into(),
+        place: place.into(),
+        can_retry: true,
+        needs_access: false,
+        needs_ffmpeg: false,
+    }
+}
+
 /// The body the fake's ready images were decoded from.
 const BODY: &[u8] = b"the encoded image";
 
@@ -98,31 +114,14 @@ struct Scene {
 
 fn harness(text: String, offset: Option<f32>, size: [f32; 2]) -> Harness<'static, Scene> {
     let scene = Scene { source: Arc::new(Fake::default()), text, offset };
-    Harness::builder()
-        .with_size(size)
-        .with_context_setup(|ctx| {
-            theme::fonts::install(ctx);
-            theme::activate(ctx, ThemePreference::Light);
-        })
-        .build_ui_state(
-            |ui, scene: &mut Scene| {
-                super::publish_images(ui.ctx(), Arc::<Fake>::downgrade(&scene.source));
-                let mut area = egui::ScrollArea::vertical().id_salt("document").auto_shrink(false);
-                if let Some(offset) = scene.offset.take() {
-                    area = area.vertical_scroll_offset(offset);
-                }
-                area.show(ui, |ui| super::render(ui, "doc", &scene.text, RenderOptions::default()));
-                super::show_lightbox(ui.ctx());
-            },
-            scene,
-        )
-}
-
-fn lines(count: usize) -> String {
-    (0..count)
-        .map(|index| format!("Line {index} of the document."))
-        .collect::<Vec<_>>()
-        .join("\n\n")
+    Harness::builder().with_size(size).with_context_setup(test_document::light).build_ui_state(
+        |ui, scene: &mut Scene| {
+            super::publish_images(ui.ctx(), Arc::<Fake>::downgrade(&scene.source));
+            let options = RenderOptions::default();
+            test_document::scrolled(ui, &mut scene.offset, &scene.text, options);
+        },
+        scene,
+    )
 }
 
 #[test]
@@ -173,13 +172,7 @@ fn an_image_arriving_above_the_view_keeps_the_text_in_place() {
 #[test]
 fn a_failed_image_says_why_and_offers_retry_and_the_browser() {
     let mut harness = harness("![Build chart](chart.png)".to_owned(), None, [600.0, 300.0]);
-    let failure = ImageFailure {
-        reason: "Not found (404)".into(),
-        place: "x.test".into(),
-        can_retry: true,
-        needs_access: false,
-        needs_ffmpeg: false,
-    };
+    let failure = failure("Not found (404)", "x.test");
     harness.state().source.set("chart.png", ImageState::Failed(Arc::new(failure)));
     harness.run_steps(3);
     harness.get_by_label("Build chart");
@@ -195,11 +188,8 @@ fn a_failed_image_says_why_and_offers_retry_and_the_browser() {
 fn a_private_image_offers_the_token_fix_on_a_card_of_the_usual_size() {
     let mut harness = harness("![Screenshot](shot.png)\n\nBelow".to_owned(), None, [600.0, 300.0]);
     let failure = ImageFailure {
-        reason: "Sign-in needed: this image is private".into(),
-        place: "github.com".into(),
-        can_retry: true,
         needs_access: true,
-        needs_ffmpeg: false,
+        ..failure("Sign-in needed: this image is private", "github.com")
     };
     harness.state().source.set("shot.png", ImageState::Failed(Arc::new(failure)));
     harness.run_steps(3);
@@ -255,11 +245,7 @@ fn animations_repaint_only_while_on_screen() {
     let text = format!("![clip](clip.gif)\n\n{}", lines(80));
     let mut shown = harness(text.clone(), None, [600.0, 300.0]);
     let ctx = shown.ctx.clone();
-    let frame = ctx.load_texture(
-        "frame",
-        egui::ColorImage::filled([4, 4], egui::Color32::RED),
-        egui::TextureOptions::LINEAR,
-    );
+    let frame = texture(&ctx, "frame");
     let next_frame = Some(std::time::Duration::from_millis(80));
     let size = vec2(40.0, 40.0);
     let state = ImageState::Ready { texture: frame.id(), size, next_frame, clip: None };
@@ -285,11 +271,7 @@ fn animations_repaint_only_while_on_screen() {
 fn a_video_shows_its_controls_and_plays_in_place() {
     let mut harness = harness("![demo](demo.webm)".to_owned(), None, [800.0, 600.0]);
     let ctx = harness.ctx.clone();
-    let poster = ctx.load_texture(
-        "poster",
-        egui::ColorImage::filled([4, 4], egui::Color32::RED),
-        egui::TextureOptions::LINEAR,
-    );
+    let poster = texture(&ctx, "poster");
     let clip = Some(video::Clip::without_ffmpeg([320, 180], 12.0));
     let state = ImageState::Ready {
         texture: poster.id(),
@@ -312,13 +294,7 @@ fn a_video_shows_its_controls_and_plays_in_place() {
 #[test]
 fn a_video_without_ffmpeg_offers_the_install_command() {
     let mut harness = harness("![demo](demo.webm)".to_owned(), None, [600.0, 300.0]);
-    let failure = ImageFailure {
-        reason: video::MISSING.into(),
-        place: "github.com".into(),
-        can_retry: true,
-        needs_access: false,
-        needs_ffmpeg: true,
-    };
+    let failure = ImageFailure { needs_ffmpeg: true, ..failure(video::MISSING, "github.com") };
     harness.state().source.set("demo.webm", ImageState::Failed(Arc::new(failure)));
     harness.run_steps(3);
     harness.get_by_role_and_label(Role::Button, "Retry");
