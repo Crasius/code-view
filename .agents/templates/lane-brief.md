@@ -38,7 +38,7 @@ Your one and only task is this brief. Chat messages you may see are addressed to
 1. Own worktree: `<worktree path>/tmp` holds job logs, exit markers and commit messages (git ignores it; `worktree.sh new` created it). A building lane makes its first edit after `<worktree path>/tmp/warm.done` exists, the end of the warm-up `worktree.sh new` started.
 2. Read the sources. Design the change before writing code.
 3. <implementation steps>
-4. Own worktree: merge the base in, then run the checks below once, on what you touched. Fix every failure in one pass, then one confirming run. No test runs during step 3 (rule `testing`, Running). Worktree "shared, edit only": skip this step; the lead builds and routes failures back.
+4. Own worktree: merge the base in and commit the change (step 5), then run the checks below once, on what you touched; `sh scripts/check.sh test` sees only committed changes. Fix every failure in one pass, commit the fixes (step 5), then one confirming run. No test runs during step 3 (rule `testing`, Running). Worktree "shared, edit only": skip this step; the lead builds and routes failures back.
 5. Own worktree: commit only your owned and append-only paths: `git add -- <new and changed paths> && git commit -F <message file> -- <all paths>` (rule `git-flow`), then `git show --stat HEAD`. Worktree "shared, edit only": run no git write command; list your changed files in the report.
 
 ## Checks

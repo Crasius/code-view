@@ -3,9 +3,8 @@
 Every release has a universal macOS app, cross-built on Linux (`docs/release.md`). The packaging
 command below builds one on a Mac. It was last verified on an Apple-silicon Mac on 2026-10-19, with
 an earlier script that used cargo-bundle instead of `scripts/bundle-macos.sh` (Packaging
-verification). The pull
-request workflow tests the crates with macOS code on a Mac and packages the universal app on a
-manual run. The **NOT-VERIFIED** list tracks remaining checks.
+verification). The pull request workflow tests the crates with macOS code on a Mac and packages
+the universal app on a manual run. The **NOT-VERIFIED** list tracks remaining checks.
 
 ## Getting the source
 

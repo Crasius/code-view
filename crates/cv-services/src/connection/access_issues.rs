@@ -552,15 +552,13 @@ mod tests {
             updated_at: None,
         };
         let thread = ReviewThread {
-            id: "issue-comment:5".to_owned(),
-            status: review_core::ThreadStatus::Active,
-            anchor: None,
-            is_outdated: false,
-            origin: None,
-            is_system: false,
-            can_reply: true,
             can_resolve: false,
-            comments: vec![comment],
+            ..samples::thread(
+                "issue-comment:5",
+                review_core::ThreadStatus::Active,
+                None,
+                vec![comment],
+            )
         };
         assert_eq!(watched.thread_page_suffix(&thread).as_deref(), Some("#issuecomment-5"));
     }
