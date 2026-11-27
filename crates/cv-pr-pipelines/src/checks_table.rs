@@ -5,11 +5,11 @@
 use std::collections::BTreeSet;
 
 use cv_base::theme::{self, icons, motion, style};
+use cv_widgets::numbers::counted;
 use cv_widgets::states::{self, Action};
 use cv_widgets::{badges, buttons, elide, glyph, row};
 use egui::{
-    Align2, Color32, FontId, Key, Rect, Sense, Stroke, StrokeKind, TextEdit, Ui, UiBuilder, pos2,
-    vec2,
+    Align2, FontId, Key, Rect, Sense, Stroke, StrokeKind, TextEdit, Ui, UiBuilder, pos2, vec2,
 };
 use review_core::{PipelineRun, ProviderKind, RerunAction};
 use review_store::CheckFilter;
@@ -480,15 +480,11 @@ fn chip(ui: &mut Ui, label: &str, count: usize, is_on: bool) -> egui::Response {
     let palette = theme::palette(ui.ctx());
     let font = FontId::proportional(style::SMALL_SIZE);
     let count_text = count.to_string();
-    let label_width = ui.fonts_mut(|fonts| {
-        fonts.layout_no_wrap(label.to_owned(), font.clone(), Color32::WHITE).size().x
-    });
-    let count_width = ui.fonts_mut(|fonts| {
-        fonts.layout_no_wrap(count_text.clone(), font.clone(), Color32::WHITE).size().x
-    });
+    let label_width = elide::text_width(ui, label, &font);
+    let count_width = elide::text_width(ui, &count_text, &font);
     let width = style::SPACE_M * 2.0 + label_width + style::SPACE_XS + 2.0 + count_width;
     let (rect, response) = ui.allocate_exact_size(vec2(width, CHIP_HEIGHT), Sense::click());
-    let name = format!("{label}, {}", checks::plural(count, "check"));
+    let name = format!("{label}, {}", counted(count, "check", "checks"));
     response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, is_on, &name));
     let on = motion::toggle(ui.ctx(), response.id.with("chip_on"), is_on, motion::FAST);
     let hover = row::hover_amount(ui, &response);

@@ -145,9 +145,7 @@ fn badge_text(node: &PipelineJob, is_compact: bool) -> String {
 /// Width of the badge, for the space a row keeps for it.
 pub fn badge_width(ui: &Ui, node: &PipelineJob, is_compact: bool) -> f32 {
     let font = FontId::proportional(style::SMALL_SIZE);
-    let text = ui.fonts_mut(|fonts| {
-        fonts.layout_no_wrap(badge_text(node, is_compact), font, Color32::WHITE).size().x
-    });
+    let text = elide::text_width(ui, &badge_text(node, is_compact), &font);
     BADGE_PADDING * 2.0 + ICON_SIZE + style::SPACE_XS + text
 }
 
@@ -239,7 +237,7 @@ pub fn switcher(
     let current = attempts.iter().find(|attempt| attempt.number == shown);
     let text = format!("Attempt {shown} of {}", attempts.len());
     let font = FontId::proportional(style::BODY_SIZE);
-    let text_width = ui.painter().layout_no_wrap(text.clone(), font.clone(), palette.text).size().x;
+    let text_width = elide::text_width(ui, &text, &font);
     let width =
         style::SPACE_S * 2.0 + ICON_SIZE + style::SPACE_S + text_width + style::SPACE_S + 12.0;
     let (rect, button) = ui.allocate_exact_size(vec2(width, height), Sense::click());
