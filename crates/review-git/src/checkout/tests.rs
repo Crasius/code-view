@@ -3,10 +3,7 @@
 //! object a checkout gets must come through the mirror.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Mutex;
-
-use review_core::GitRemote;
 
 use super::{
     Blocked, CheckoutError, Event, Finished, FinishedTree, FoundClone, Keep, Made, Removal,
@@ -14,47 +11,18 @@ use super::{
     remove_finished, remove_worktree, survey, undo, update,
 };
 use crate::mirror::GitMirror;
+use crate::test_repo::{Scratch, file_remote, git, write};
 
 const PULL_REF: &str = "refs/pull/7/head";
 const CLONE_PULL_REF: &str = "refs/codeview/pull/7/head";
 
 struct Fixture {
-    root: PathBuf,
+    scratch: Scratch,
     origin: PathBuf,
     mirror: GitMirror,
     clone: PathBuf,
     base: String,
     head: String,
-}
-
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        // Best effort: a folder left in the temp directory harms nothing.
-        let _cleanup_is_best_effort = std::fs::remove_dir_all(&self.root);
-    }
-}
-
-#[expect(
-    clippy::disallowed_methods,
-    reason = "test driver: builds the fixture repositories with git before the code under test runs"
-)]
-fn git(dir: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(["-c", "user.name=Test", "-c", "user.email=test@example.org"])
-        .args(["-c", "core.autocrlf=false", "-c", "init.defaultBranch=main"])
-        .args(args)
-        .output()
-        .expect("git runs");
-    assert!(output.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&output.stderr));
-    String::from_utf8_lossy(&output.stdout).trim().to_owned()
-}
-
-fn write(dir: &Path, path: &str, content: &str) {
-    let full = dir.join(path);
-    std::fs::create_dir_all(full.parent().expect("a file path has a folder")).expect("mkdir");
-    std::fs::write(full, content).expect("write the file");
 }
 
 fn read(dir: &Path, path: &str) -> String {
@@ -92,14 +60,9 @@ fn force_push(origin: &Path, path: &str, content: &str) -> String {
 }
 
 async fn fixture(name: &str) -> Fixture {
-    let root =
-        std::env::temp_dir().join(format!("review-git-checkout-{name}-{}", std::process::id()));
-    let _stale_folder_may_be_missing = std::fs::remove_dir_all(&root);
-    let origin = root.join("origin");
-    std::fs::create_dir_all(&origin).expect("origin folder");
-    git(&origin, &["init", "-q", "-b", "main"]);
-    git(&origin, &["config", "uploadpack.allowFilter", "true"]);
-    git(&origin, &["config", "uploadpack.allowAnySHA1InWant", "true"]);
+    let scratch = Scratch::new(&format!("checkout-{name}"));
+    let root = scratch.0.as_path();
+    let origin = scratch.origin();
     write(&origin, "src/app.rs", "fn main() {}\n");
     git(&origin, &["add", "-A"]);
     git(&origin, &["commit", "-q", "-m", "Start"]);
@@ -108,19 +71,17 @@ async fn fixture(name: &str) -> Fixture {
     let clone = root.join("dev").join("app");
     let origin_text = origin.to_string_lossy().into_owned();
     let clone_text = clone.to_string_lossy().into_owned();
-    git(&root, &["clone", "-q", "--single-branch", "-b", "main", &origin_text, &clone_text]);
+    git(root, &["clone", "-q", "--single-branch", "-b", "main", &origin_text, &clone_text]);
     // The machine's line ending settings must not make a fresh checkout look changed.
     git(&clone, &["config", "core.autocrlf", "false"]);
     // The clone's own remote is out of reach: whatever it gets comes through the mirror.
     git(&clone, &["remote", "set-url", "origin", "https://example.invalid/acme/app.git"]);
     let head = push(&origin, "src/login.rs", "pub fn login() {}\n");
 
-    let remote = GitRemote {
-        clone_url: format!("file:///{}", origin.display().to_string().replace('\\', "/")),
-        authorization_header: None,
-    };
-    let mirror = GitMirror::open(&root.join("mirrors"), &remote).await.expect("the mirror opens");
-    let fixture = Fixture { root, origin, mirror, clone, base, head };
+    let mirror = GitMirror::open(&root.join("mirrors"), &file_remote(&origin))
+        .await
+        .expect("the mirror opens");
+    let fixture = Fixture { scratch, origin, mirror, clone, base, head };
     fixture.mirror_head().await;
     fixture
 }
@@ -146,7 +107,7 @@ impl Fixture {
     }
 
     fn worktree(&self) -> PathBuf {
-        self.root.join("dev").join("app-wt").join("pr-7-feature")
+        self.scratch.0.join("dev").join("app-wt").join("pr-7-feature")
     }
 
     /// The checkout's own `feature` worktree at `path`, as a finished pull request removes it.
@@ -205,7 +166,8 @@ async fn a_new_worktree_gets_the_pull_request_from_the_mirror_with_its_upstream(
 
     // A second worktree of the same branch is refused: git allows one. The error names the
     // folder as git prints it, with symbolic links resolved (on macOS the temp folder is one).
-    let second = fixture.request(Target::Worktree { path: fixture.root.join("other") }, "feature");
+    let second =
+        fixture.request(Target::Worktree { path: fixture.scratch.0.join("other") }, "feature");
     let refused = check_out(&fixture.mirror, &second, &ignore, &Mutex::default()).await;
     assert!(
         matches!(&refused, Err(CheckoutError::CheckedOut(path)) if is_same_place(path, &fixture.worktree())),
@@ -246,7 +208,7 @@ async fn the_clone_switches_only_when_its_tracked_files_are_unchanged() {
 #[tokio::test]
 async fn a_new_clone_comes_from_the_mirror_and_keeps_no_credentials() {
     let fixture = fixture("new-clone").await;
-    let dir = fixture.root.join("dev").join("fresh");
+    let dir = fixture.scratch.0.join("dev").join("fresh");
     let mut request = fixture.request(
         Target::NewClone { origin: "https://user:secret@example.invalid/acme/app.git".into() },
         "feature",
@@ -393,21 +355,11 @@ async fn a_finished_pull_requests_worktree_stays_while_anything_of_the_users_is_
     let request = fixture.request(Target::Worktree { path: path.clone() }, "feature");
     check_out(&fixture.mirror, &request, &ignore, &Mutex::default()).await.expect("checked out");
 
-    write(
-        &path,
-        "src/app.rs",
-        "fn main() { edited() }
-",
-    );
+    write(&path, "src/app.rs", "fn main() { edited() }\n");
     let tracked = remove_finished(fixture.finished(&path)).await.expect("looked");
     assert_eq!(tracked, Finished::Kept(Keep::Changed(vec![" M src/app.rs".into()])));
     git(&path, &["checkout", "-q", "--", "src/app.rs"]);
-    write(
-        &path,
-        "scratch.txt",
-        "notes
-",
-    );
+    write(&path, "scratch.txt", "notes\n");
     let untracked = remove_finished(fixture.finished(&path)).await.expect("looked");
     assert_eq!(untracked, Finished::Kept(Keep::Changed(vec!["?? scratch.txt".into()])));
     git(&path, &["add", "scratch.txt"]);
@@ -453,12 +405,7 @@ async fn the_survey_tells_a_fork_from_a_branch_of_the_repository() {
     let on_main = survey(&found, "main", 7).await.expect("surveyed");
     assert_eq!(on_main.checked_out.as_deref(), Some(fixture.clone.as_path()));
 
-    write(
-        &fixture.clone,
-        "src/app.rs",
-        "fn main() { changed() }
-",
-    );
+    write(&fixture.clone, "src/app.rs", "fn main() { changed() }\n");
     let dirty = survey(&found, "feature", 7).await.expect("surveyed");
     assert_eq!(dirty.state.tracked_changes(), [" M src/app.rs"]);
 }
@@ -470,7 +417,7 @@ async fn the_survey_tells_a_fork_from_a_branch_of_the_repository() {
 #[tokio::test]
 async fn a_clone_reached_through_a_symbolic_link_is_still_itself() {
     let fixture = fixture("symlink").await;
-    let linked = fixture.root.join("linked-app");
+    let linked = fixture.scratch.0.join("linked-app");
     std::os::unix::fs::symlink(&fixture.clone, &linked).expect("the link");
     let found = FoundClone { dir: linked.clone(), remote: "origin".into() };
     let on_main = survey(&found, "main", 7).await.expect("surveyed");

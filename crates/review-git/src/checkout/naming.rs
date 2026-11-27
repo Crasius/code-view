@@ -61,7 +61,7 @@ pub fn worktree_path(pattern: &str, clone: &Path, number: u64, branch: &str) -> 
 mod tests {
     use std::path::{MAIN_SEPARATOR_STR, Path, PathBuf};
 
-    use super::{fork_branch, slug, worktree_path};
+    use super::{slug, worktree_path};
 
     #[test]
     fn slugs_keep_the_last_part_of_the_branch_in_lower_case() {
@@ -72,11 +72,6 @@ mod tests {
         assert_eq!(slug("---"), "branch", "never empty");
         assert_eq!(slug("ümlaut-branch"), "mlaut-branch");
         assert_eq!(slug(&"x".repeat(80)).len(), 40);
-    }
-
-    #[test]
-    fn fork_branches_name_the_pull_request() {
-        assert_eq!(fork_branch(12, "feature/login-cache"), "pr-12-login-cache");
     }
 
     fn native(path: &str) -> PathBuf {

@@ -1,64 +1,9 @@
-use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Mutex;
 
-use review_core::GitRemote;
-
 use super::*;
+use crate::test_repo::{Scratch, file_remote, git, numbered_lines, write};
 use crate::{DiffOptions, GitMirror};
-
-/// A temporary folder for one test, removed when the test ends.
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new(name: &str) -> Self {
-        let path =
-            std::env::temp_dir().join(format!("review-git-counts-{name}-{}", std::process::id()));
-        // A folder an earlier run with the same process id left behind; usually there is none.
-        let _stale_folder_may_be_missing = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).expect("create the scratch folder");
-        Self(path)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        // Best effort: a folder left in the temp directory harms nothing.
-        let _cleanup_is_best_effort = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-#[expect(
-    clippy::disallowed_methods,
-    reason = "test driver: builds the fixture repository with git before the code under test runs"
-)]
-fn git(dir: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(["-c", "user.name=Test", "-c", "user.email=test@example.org"])
-        .args(["-c", "core.autocrlf=false"])
-        .args(args)
-        .output()
-        .expect("git runs");
-    assert!(output.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&output.stderr));
-    String::from_utf8_lossy(&output.stdout).trim().to_owned()
-}
-
-fn write(dir: &Path, path: &str, content: impl AsRef<[u8]>) {
-    let full = dir.join(path);
-    std::fs::create_dir_all(full.parent().expect("a file path has a folder")).expect("mkdir");
-    std::fs::write(full, content).expect("write the file");
-}
-
-/// `{name} line 1\n` up to `{name} line {count}\n`: text no other file shares.
-fn lines(name: &str, count: u32) -> String {
-    (1..=count).fold(String::new(), |mut text, line| {
-        writeln!(text, "{name} line {line}").expect("writing to a String cannot fail");
-        text
-    })
-}
 
 /// Files changed in the fixture besides the [`MANY`] modified ones.
 const MANY: usize = 70;
@@ -68,19 +13,19 @@ const MANY: usize = 70;
 /// and deleted file, a binary file, a whitespace-only change, a mode change and an empty file.
 /// Returns the origin and its (base, head) commits.
 fn fixture(scratch: &Scratch) -> (PathBuf, String, String) {
-    let origin = scratch.0.join("origin");
-    std::fs::create_dir_all(&origin).expect("create the origin folder");
-    git(&origin, &["init", "-q", "-b", "main"]);
-    git(&origin, &["config", "uploadpack.allowFilter", "true"]);
-    git(&origin, &["config", "uploadpack.allowAnySHA1InWant", "true"]);
+    let origin = scratch.origin();
     for index in 0..MANY {
-        write(&origin, &format!("src/many/f{index:02}.rs"), lines(&format!("f{index}"), 30));
+        write(
+            &origin,
+            &format!("src/many/f{index:02}.rs"),
+            numbered_lines(&format!("f{index} "), 30),
+        );
     }
-    write(&origin, "z/old_name.md", lines("renamed", 40));
-    write(&origin, "docs/exact.txt", lines("exact", 10));
-    write(&origin, "gone.txt", lines("gone", 12));
+    write(&origin, "z/old_name.md", numbered_lines("renamed ", 40));
+    write(&origin, "docs/exact.txt", numbered_lines("exact ", 10));
+    write(&origin, "gone.txt", numbered_lines("gone ", 12));
     write(&origin, "logo.png", [0u8, 1, 2, 3, 0, 255]);
-    write(&origin, "ws.txt", lines("ws", 5));
+    write(&origin, "ws.txt", numbered_lines("ws ", 5));
     write(&origin, "run.sh", "echo run\n");
     git(&origin, &["add", "-A"]);
     git(&origin, &["commit", "-q", "-m", "base"]);
@@ -88,18 +33,23 @@ fn fixture(scratch: &Scratch) -> (PathBuf, String, String) {
 
     git(&origin, &["switch", "-q", "-c", "feature"]);
     for index in 0..MANY {
-        let text = lines(&format!("f{index}"), 30).replace(" line 3\n", " line three\nmore\n");
+        let text =
+            numbered_lines(&format!("f{index} "), 30).replace(" line 3\n", " line three\nmore\n");
         write(&origin, &format!("src/many/f{index:02}.rs"), text);
     }
     std::fs::remove_file(origin.join("z/old_name.md")).expect("remove");
-    write(&origin, "a/new_name.md", lines("renamed", 40).replace(" line 7\n", " line seven\n"));
+    write(
+        &origin,
+        "a/new_name.md",
+        numbered_lines("renamed ", 40).replace(" line 7\n", " line seven\n"),
+    );
     std::fs::remove_file(origin.join("docs/exact.txt")).expect("remove");
-    write(&origin, "docs/moved/exact.txt", lines("exact", 10));
+    write(&origin, "docs/moved/exact.txt", numbered_lines("exact ", 10));
     std::fs::remove_file(origin.join("gone.txt")).expect("remove");
-    write(&origin, "added.rs", lines("added", 8));
+    write(&origin, "added.rs", numbered_lines("added ", 8));
     write(&origin, "empty.txt", "");
     write(&origin, "logo.png", [0u8, 1, 2, 4, 0, 255]);
-    write(&origin, "ws.txt", lines("ws", 5).replace('\n', "\r\n"));
+    write(&origin, "ws.txt", numbered_lines("ws ", 5).replace('\n', "\r\n"));
     git(&origin, &["add", "-A"]);
     git(&origin, &["update-index", "--chmod=+x", "run.sh"]);
     git(&origin, &["commit", "-q", "-m", "feature"]);
@@ -108,11 +58,8 @@ fn fixture(scratch: &Scratch) -> (PathBuf, String, String) {
 }
 
 async fn mirror(scratch: &Scratch, name: &str, origin: &Path, commits: [&str; 2]) -> GitMirror {
-    let remote = GitRemote {
-        clone_url: format!("file:///{}", origin.display().to_string().replace('\\', "/")),
-        authorization_header: None,
-    };
-    let mirror = GitMirror::open(&scratch.0.join(name), &remote).await.expect("mirror");
+    let mirror =
+        GitMirror::open(&scratch.0.join(name), &file_remote(origin)).await.expect("mirror");
     let refs = ["refs/heads/main", "refs/heads/feature"].map(str::to_owned);
     mirror.ensure_commits(&refs, &commits, &|_| {}).await.expect("fetched");
     mirror
@@ -137,7 +84,7 @@ async fn one_shot(mirror: &GitMirror, base: &str, head: &str) -> Vec<ChangedFile
 
 #[tokio::test]
 async fn streamed_counts_end_with_the_one_shot_list() {
-    let scratch = Scratch::new("stream");
+    let scratch = Scratch::new("counts-stream");
     let (origin, base, head) = fixture(&scratch);
     let expected =
         one_shot(&mirror(&scratch, "once", &origin, [&base, &head]).await, &base, &head).await;
@@ -186,7 +133,7 @@ async fn streamed_counts_end_with_the_one_shot_list() {
 
 #[tokio::test]
 async fn counts_local_blobs_at_once_without_publishing() {
-    let scratch = Scratch::new("local");
+    let scratch = Scratch::new("counts-local");
     let (origin, base, head) = fixture(&scratch);
     let mirror = mirror(&scratch, "mirror", &origin, [&base, &head]).await;
     let expected = one_shot(&mirror, &base, &head).await;
@@ -288,7 +235,7 @@ fn wanted_files_make_the_next_chunk_and_the_first_one_fills_up() {
     assert!(!plan.uncounted().contains(&215));
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_diff_waits_for_the_count_that_has_not_reached_its_file() {
     let wanted = Wanted::default();
     let files = [file("a.rs"), file("b.rs")];
@@ -321,13 +268,13 @@ async fn a_diff_waits_for_the_count_that_has_not_reached_its_file() {
 
 /// Regression (counting walkthrough): a chunk that never lands (a slow host) held a diff of its
 /// file up for good; the diff fetches the blobs itself after [`COUNT_WAIT`].
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_diff_waits_for_a_slow_count_no_longer_than_one_fetch_of_its_own() {
     let wanted = Wanted::default();
     let files = [file("a.rs")];
     let run = wanted.start("base", "head");
     run.listed(&files);
-    let started = std::time::Instant::now();
+    let started = tokio::time::Instant::now();
     tokio::time::timeout(
         COUNT_WAIT * 5,
         wanted.wait_counted("base", "head", &["a.rs"], Some(COUNT_WAIT)),
@@ -341,7 +288,7 @@ async fn a_diff_waits_for_a_slow_count_no_longer_than_one_fetch_of_its_own() {
 /// Regression (request budget): a thread excerpt asked for its file while a large pull request's
 /// count still listed its files; its wait ran out before the count took the file up, so the
 /// excerpt fetched the blobs and the count fetched them again. The wait starts once listed.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_diff_asked_while_the_count_lists_its_files_waits_from_the_listing_on() {
     let wanted = Wanted::default();
     let files = [file("a.rs"), file("b.rs")];
@@ -369,7 +316,7 @@ async fn a_diff_asked_while_the_count_lists_its_files_waits_from_the_listing_on(
 /// Regression (request budget): the excerpt's diff waited [`COUNT_WAIT`] for its chunk, which a
 /// 3,000-file pull request's first chunk takes about as long, and fetched the file a second time.
 /// An excerpt waits for the chunk however long it takes; the count's end frees it.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_excerpt_waits_for_its_chunk_past_the_diffs_limit() {
     let wanted = Wanted::default();
     let files = [file("a.rs"), file("b.rs")];
@@ -425,7 +372,7 @@ fn fetched_blobs(mirror: &GitMirror) -> Vec<String> {
 
 #[tokio::test]
 async fn a_diff_during_the_count_downloads_no_blob_twice() {
-    let scratch = Scratch::new("once");
+    let scratch = Scratch::new("counts-once");
     let (origin, base, head) = fixture(&scratch);
     let mirror = mirror(&scratch, "mirror", &origin, [&base, &head]).await;
     let files = mirror.changed_files_fast(&base, &head).await.unwrap();
