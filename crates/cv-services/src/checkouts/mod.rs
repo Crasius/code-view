@@ -11,6 +11,8 @@
 mod clones;
 mod finish;
 mod job;
+#[cfg(test)]
+mod open_tests;
 mod upkeep;
 
 use std::collections::HashMap;
@@ -33,6 +35,7 @@ use cv_runtime::background::Background;
 use cv_runtime::load::Load;
 use cv_runtime::route::PullRequestKey;
 use cv_runtime::toasts::ToastAction;
+use cv_widgets::progress_log::redact;
 
 use crate::{Services, agent_names};
 
@@ -45,11 +48,16 @@ pub struct Checkouts {
 }
 
 impl Checkouts {
-    /// The saved records; none (and why) when the file cannot be read.
+    /// The saved records; none (and why) when the file cannot be read. Their log lines are
+    /// redacted once here, for a file an earlier build wrote with raw lines; lines added later are
+    /// redacted where they are built. A failed save of the redacted file is the message then.
     pub fn open(paths: &AppPaths) -> (Self, Option<String>) {
         let file = paths.checkouts_file();
         let (records, error) = match CheckoutRecords::load(file.clone()) {
-            Ok(records) => (records, None),
+            Ok(mut records) => {
+                let saved = records.rewrite_log_lines(redact);
+                (records, saved.err().map(|error| save_message(&error)))
+            }
             Err(error) => (
                 CheckoutRecords::empty(file),
                 Some(format!("Could not read the list of local checkouts: {error}")),
@@ -483,5 +491,9 @@ pub fn open_with(services: &mut Services, key: &PullRequestKey, with: OpenWith) 
 
 fn save_failed(services: &mut Services, error: &std::io::Error) {
     let folder = ToastAction::open_folder(services.paths.config_dir());
-    services.toasts.error(format!("Could not save the list of local checkouts: {error}"), folder);
+    services.toasts.error(save_message(error), folder);
+}
+
+fn save_message(error: &std::io::Error) -> String {
+    format!("Could not save the list of local checkouts: {error}")
 }
