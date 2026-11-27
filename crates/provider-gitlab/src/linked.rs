@@ -87,18 +87,3 @@ fn to_item(reference: ItemRef, is_merge_request: bool, dto: ItemDto) -> LinkedIt
         web_url: dto.web_url,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use review_core::PullRequestState;
-
-    use super::pull_request_state;
-
-    #[test]
-    fn decodes_merge_request_states() {
-        assert_eq!(pull_request_state("merged"), PullRequestState::Merged);
-        assert_eq!(pull_request_state("closed"), PullRequestState::Closed);
-        assert_eq!(pull_request_state("opened"), PullRequestState::Open);
-        assert_eq!(pull_request_state("locked"), PullRequestState::Open);
-    }
-}

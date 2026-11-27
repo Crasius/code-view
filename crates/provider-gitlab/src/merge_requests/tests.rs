@@ -38,6 +38,14 @@ fn maps_summary() {
 }
 
 #[test]
+fn decodes_merge_request_states() {
+    assert_eq!(pull_request_state("merged"), PullRequestState::Merged);
+    assert_eq!(pull_request_state("closed"), PullRequestState::Closed);
+    assert_eq!(pull_request_state("opened"), PullRequestState::Open);
+    assert_eq!(pull_request_state("locked"), PullRequestState::Open);
+}
+
+#[test]
 fn maps_detail_with_refs_and_votes() {
     let reviewers: Vec<ReviewerDto> =
         serde_json::from_str(r#"[{"user":{"id":8,"username":"bob"},"state":"approved"}]"#)

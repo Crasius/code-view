@@ -124,7 +124,7 @@ pub(crate) fn combine_reviewers(
     } else {
         reviewers
             .iter()
-            .map(|listed| reviewer(&listed.user, state_vote(listed.state.as_deref())))
+            .map(|entry| reviewer(&entry.user, state_vote(entry.state.as_deref())))
             .collect()
     };
     let approvers =

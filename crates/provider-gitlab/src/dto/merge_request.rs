@@ -63,7 +63,8 @@ pub(crate) struct MergeRequestDto {
 
 impl MergeRequestDto {
     /// The commit every part of a merge request compares against: outdated threads, the detail,
-    /// the revision probe and the head pipelines. `diff_refs` lags behind `sha` right after a push.
+    /// the revision probe and the head pipelines. `diff_refs` names the commit the diff and the
+    /// thread positions refer to; `sha` stands in while GitLab has not computed the refs yet.
     pub(crate) fn head_sha(&self) -> Option<&str> {
         self.diff_refs.as_ref().and_then(|refs| refs.head_sha.as_deref()).or(self.sha.as_deref())
     }
