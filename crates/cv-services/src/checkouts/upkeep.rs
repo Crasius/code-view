@@ -251,7 +251,7 @@ async fn behind(request: &UpdateRequest) -> usize {
     let Ok(Some(tip)) = repo.branch_tip(&request.branch).await else {
         return 0;
     };
-    repo.divergence(&tip, &request.head).await.map_or(0, |divergence| divergence.behind)
+    repo.behind(&tip, &request.head).await.unwrap_or(0)
 }
 
 /// Why a checkout was not updated, for its log and the menu's Update item.

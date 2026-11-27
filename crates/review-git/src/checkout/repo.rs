@@ -46,15 +46,6 @@ pub struct Worktree {
     pub branch: Option<String>,
 }
 
-/// How a branch and the pull request's head relate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Divergence {
-    /// Commits of the pull request the branch lacks.
-    pub behind: usize,
-    /// Commits of the branch the pull request lacks.
-    pub ahead: usize,
-}
-
 impl LocalRepo {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
         Self { dir: dir.into() }
@@ -138,12 +129,9 @@ impl LocalRepo {
         Ok(self.count(ancestor, descendant).await? == 0)
     }
 
-    /// How `local` and `head` relate.
-    pub async fn divergence(&self, local: &str, head: &str) -> Result<Divergence> {
-        Ok(Divergence {
-            behind: self.count(head, local).await?,
-            ahead: self.count(local, head).await?,
-        })
+    /// The commits of `head` that `local` lacks.
+    pub async fn behind(&self, local: &str, head: &str) -> Result<usize> {
+        self.count(head, local).await
     }
 
     /// `4be19a0  wip: try shorter ttl` for each commit of `tip` that `base` lacks, newest first.
