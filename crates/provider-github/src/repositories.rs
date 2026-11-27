@@ -98,11 +98,11 @@ mod tests {
 
     #[test]
     fn anonymous_remote_has_no_header() {
-        let remote = git_remote(&connection(None), "cli/cli").expect("remote");
-        assert_eq!(remote.clone_url, "https://github.com/cli/cli.git");
+        let remote = git_remote(&connection(None), "contoso/app").expect("remote");
+        assert_eq!(remote.clone_url, "https://github.com/contoso/app.git");
         assert_eq!(remote.authorization_header, None);
         assert!(
-            git_remote(&connection(Some("")), "cli/cli")
+            git_remote(&connection(Some("")), "contoso/app")
                 .expect("remote")
                 .authorization_header
                 .is_none()
@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn token_becomes_basic_auth() {
-        let remote = git_remote(&connection(Some("abc")), "cli/cli").expect("remote");
+        let remote = git_remote(&connection(Some("abc")), "contoso/app").expect("remote");
         // base64("x-access-token:abc")
         assert_eq!(remote.authorization_header.as_deref(), Some("Basic eC1hY2Nlc3MtdG9rZW46YWJj"));
     }

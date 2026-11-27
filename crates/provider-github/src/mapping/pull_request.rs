@@ -135,9 +135,9 @@ mod tests {
         let reviews: Vec<ReviewDto> = parse(
             r#"[{"id":1,"user":{"id":2,"login":"bob"},"state":"APPROVED","submitted_at":"2024-05-02T08:00:00Z"}]"#,
         );
-        let detail = detail(parse(PULL), &reviews, "cli/cli");
-        assert_eq!(detail.summary.repository_key, "cli/cli");
-        assert_eq!(detail.summary.repository_name, "cli");
+        let detail = detail(parse(PULL), &reviews, "contoso/app");
+        assert_eq!(detail.summary.repository_key, "contoso/app");
+        assert_eq!(detail.summary.repository_name, "app");
         assert_eq!(detail.summary.number, 1234);
         assert_eq!(detail.summary.state, PullRequestState::Open);
         assert!(detail.summary.is_draft);

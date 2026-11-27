@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const REPO: &str = "cli/cli";
+const REPO: &str = "contoso/app";
 
 async fn setup(token: Option<&str>) -> (MockServer, GitHubProvider) {
     let server = MockServer::start().await;
@@ -27,7 +27,7 @@ async fn setup(token: Option<&str>) -> (MockServer, GitHubProvider) {
 }
 
 fn repository(settings: Value) -> Value {
-    let mut body = json!({ "full_name": REPO, "name": "cli", "html_url": "https://ghe.example/cli/cli", "default_branch": "trunk" });
+    let mut body = json!({ "full_name": REPO, "name": "app", "html_url": "https://ghe.example/contoso/app", "default_branch": "trunk" });
     let (Value::Object(fields), Value::Object(settings)) = (&mut body, settings) else {
         unreachable!("the body and the settings are JSON objects");
     };
@@ -55,7 +55,7 @@ fn rules(methods: &[&str]) -> ResponseTemplate {
     ResponseTemplate::new(200).set_body_json(json!([
         { "type": "deletion", "ruleset_source_type": "Repository", "ruleset_source": REPO, "ruleset_id": 1 },
         { "type": "pull_request", "parameters": { "required_approving_review_count": 1, "allowed_merge_methods": methods },
-          "ruleset_source_type": "Organization", "ruleset_source": "cli", "ruleset_id": 2 },
+          "ruleset_source_type": "Organization", "ruleset_source": "contoso", "ruleset_id": 2 },
     ]))
 }
 
@@ -74,7 +74,7 @@ async fn repository_settings_and_branch_rules_both_apply() {
     );
     assert_eq!(
         policy.settings_url.as_deref(),
-        Some(format!("{}/cli/cli/settings", server.uri()).as_str())
+        Some(format!("{}/contoso/app/settings", server.uri()).as_str())
     );
 }
 

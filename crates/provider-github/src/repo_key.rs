@@ -3,6 +3,8 @@
 // RS-DONT-04: parses provider data, so indexing and narrowing casts are checked here.
 #![warn(clippy::string_slice, clippy::indexing_slicing)]
 
+use std::fmt;
+
 use review_core::{ProviderError, Result};
 use urlencoding::encode;
 
@@ -39,6 +41,13 @@ impl<'a> RepoKey<'a> {
     }
 }
 
+/// `owner/repo`, the key it was parsed from.
+impl fmt::Display for RepoKey<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}/{}", self.owner, self.name)
+    }
+}
+
 /// Encodes a branch name for `/git/refs/heads/{ref}`, keeping its `/` separators.
 pub(crate) fn encode_branch(branch: &str) -> String {
     branch.split('/').map(|segment| encode(segment).into_owned()).collect::<Vec<_>>().join("/")
@@ -50,16 +59,16 @@ mod tests {
 
     #[test]
     fn parses_owner_and_name() {
-        let key = RepoKey::parse("cli/cli").expect("valid key");
-        assert_eq!(key.api_path(), "/repos/cli/cli");
-        assert_eq!(key.pull_path(7), "/repos/cli/cli/pulls/7");
-        assert_eq!(key.issue_path(7), "/repos/cli/cli/issues/7");
+        let key = RepoKey::parse("contoso/app").expect("valid key");
+        assert_eq!(key.api_path(), "/repos/contoso/app");
+        assert_eq!(key.pull_path(7), "/repos/contoso/app/pulls/7");
+        assert_eq!(key.issue_path(7), "/repos/contoso/app/issues/7");
     }
 
     #[test]
     fn rejects_malformed_keys() {
-        assert!(RepoKey::parse("cli").is_err());
-        assert!(RepoKey::parse("/cli").is_err());
+        assert!(RepoKey::parse("contoso").is_err());
+        assert!(RepoKey::parse("/contoso").is_err());
         assert!(RepoKey::parse("a/b/c").is_err());
     }
 

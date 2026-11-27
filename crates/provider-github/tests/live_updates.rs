@@ -9,8 +9,8 @@ use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const PULL: &str = "/api/v3/repos/cli/cli/pulls/1234";
-const REVIEWS: &str = "/api/v3/repos/cli/cli/pulls/1234/reviews";
+const PULL: &str = "/api/v3/repos/contoso/app/pulls/1234";
+const REVIEWS: &str = "/api/v3/repos/contoso/app/pulls/1234/reviews";
 
 fn provider(server: &MockServer, token: Option<&str>) -> GitHubProvider {
     let connection = Connection {
@@ -78,9 +78,9 @@ async fn an_unchanged_pull_request_is_a_free_304() {
         .await;
     let provider = provider(&server, Some("test-token"));
 
-    let first = provider.revision("cli/cli", 1234).await.expect("first probe");
+    let first = provider.revision("contoso/app", 1234).await.expect("first probe");
     assert_eq!(first.head_sha, "head111");
-    let second = provider.revision("cli/cli", 1234).await.expect("second probe");
+    let second = provider.revision("contoso/app", 1234).await.expect("second probe");
     assert_eq!(second, first, "a 304 answers with the remembered pull request");
 }
 
@@ -116,10 +116,10 @@ async fn a_push_or_a_comment_changes_the_revision() {
         .await;
     let provider = provider(&server, None);
 
-    let opened = provider.revision("cli/cli", 1234).await.expect("probe");
-    let commented = provider.revision("cli/cli", 1234).await.expect("probe after a comment");
+    let opened = provider.revision("contoso/app", 1234).await.expect("probe");
+    let commented = provider.revision("contoso/app", 1234).await.expect("probe after a comment");
     assert_eq!(commented.head_sha, opened.head_sha);
     assert_ne!(commented.marker, opened.marker, "updated_at moved with the comment");
-    let pushed = provider.revision("cli/cli", 1234).await.expect("probe after a push");
+    let pushed = provider.revision("contoso/app", 1234).await.expect("probe after a push");
     assert_eq!(pushed.head_sha, "head222");
 }

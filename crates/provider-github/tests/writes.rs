@@ -12,7 +12,7 @@ use wiremock::matchers::{
 };
 use wiremock::{Mock, MockBuilder, MockServer, ResponseTemplate};
 
-const REPO: &str = "cli/cli";
+const REPO: &str = "contoso/app";
 const NUMBER: u64 = 7;
 const HEAD_SHA: &str = "head111";
 /// The head the user reviewed, older than the fixture's: the merge must guard with this one.
@@ -37,7 +37,7 @@ async fn setup() -> (MockServer, GitHubProvider) {
     (server, provider)
 }
 
-/// REST call below `/api/v3/repos/cli/cli` with GitHub's required headers.
+/// REST call below `/api/v3/repos/contoso/app` with GitHub's required headers.
 fn rest(verb: &str, repo_path: &str) -> MockBuilder {
     Mock::given(method(verb))
         .and(path(format!("/api/v3/repos/{REPO}{repo_path}")))
@@ -163,7 +163,7 @@ async fn create_thread_on_new_line_comments_right_and_resolves_graphql_thread() 
     graphql()
         .and(body_string_contains("reviewThreads(last: 20"))
         .and(body_partial_json(
-            json!({ "variables": { "owner": "cli", "name": "cli", "number": NUMBER } }),
+            json!({ "variables": { "owner": "contoso", "name": "app", "number": NUMBER } }),
         ))
         .respond_with(ok_json(
             json!({ "data": { "repository": { "pullRequest": { "reviewThreads": {
@@ -382,7 +382,7 @@ async fn add_reviewer_requests_users_and_teams() {
         .await;
 
     provider.add_reviewer(REPO, NUMBER, "@octocat").await.expect("user");
-    provider.add_reviewer(REPO, NUMBER, "cli/core").await.expect("team");
+    provider.add_reviewer(REPO, NUMBER, "contoso/core").await.expect("team");
 }
 
 #[tokio::test]
@@ -399,7 +399,7 @@ async fn a_refused_review_request_names_the_rules_and_keeps_githubs_words() {
     let error = provider.add_reviewer(REPO, NUMBER, "octocat").await.unwrap_err();
     let ProviderError::Local(message) = error else { panic!("a local message: {error:?}") };
     assert!(
-        message.contains("octocat") && message.contains("collaborators on cli/cli"),
+        message.contains("octocat") && message.contains("collaborators on contoso/app"),
         "{message}"
     );
     assert!(message.ends_with("Reviews may only be requested from collaborators."), "{message}");

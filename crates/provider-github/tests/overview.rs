@@ -99,22 +99,22 @@ async fn mount_organization(server: &MockServer, owner: &str) {
 #[tokio::test]
 async fn everything_in_the_organizations_is_one_search() {
     let server = MockServer::start().await;
-    mount_organization(&server, "cli").await;
-    graphql(r#""q":"is:pr is:open org:cli sort:created-desc""#)
+    mount_organization(&server, "contoso").await;
+    graphql(r#""q":"is:pr is:open org:contoso sort:created-desc""#)
         .respond_with(results(&[
-            node("cli/cli", 12, "2026-10-02T10:00:00Z", Some("SUCCESS")),
-            node("cli/go-gh", 4, "2026-10-01T10:00:00Z", None),
+            node("contoso/app", 12, "2026-10-02T10:00:00Z", Some("SUCCESS")),
+            node("contoso/tools", 4, "2026-10-01T10:00:00Z", None),
         ]))
         .expect(2)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["cli"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some("test-token"));
 
     let rows =
         provider.list_pull_requests(&query(PullRequestScope::Visible)).await.expect("overview");
     assert_eq!(
         rows.iter().map(|row| (row.repository_key.as_str(), row.number)).collect::<Vec<_>>(),
-        [("cli/cli", 12), ("cli/go-gh", 4)]
+        [("contoso/app", 12), ("contoso/tools", 4)]
     );
     assert_eq!(rows[0].checks, Some(RunStatus::Succeeded));
     assert_eq!(rows[1].checks, None, "no checks on the head commit");
@@ -128,18 +128,18 @@ async fn everything_in_the_organizations_is_one_search() {
 #[tokio::test]
 async fn the_search_brings_line_and_file_counts() {
     let server = MockServer::start().await;
-    mount_organization(&server, "cli").await;
-    let mut counted = node("cli/cli", 12, "2026-10-02T10:00:00Z", None);
+    mount_organization(&server, "contoso").await;
+    let mut counted = node("contoso/app", 12, "2026-10-02T10:00:00Z", None);
     counted["additions"] = json!(1240);
     counted["deletions"] = json!(312);
     counted["changedFiles"] = json!(18);
-    graphql(r#""q":"is:pr is:open org:cli sort:created-desc""#)
+    graphql(r#""q":"is:pr is:open org:contoso sort:created-desc""#)
         .and(body_string_contains("additions deletions changedFiles"))
         .respond_with(results(&[counted]))
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["cli"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some("test-token"));
 
     let rows =
         provider.list_pull_requests(&query(PullRequestScope::Visible)).await.expect("overview");
@@ -175,12 +175,12 @@ async fn everything_lists_colleagues_drafts_in_the_users_organizations() {
         .await;
     let outside = "-user:mona -org:acme -org:tools sort:created-desc";
     graphql_as(CLI_TOKEN, &format!(r#""q":"is:pr involves:@me is:open {outside}""#))
-        .respond_with(results(&[node("cli/cli", 99, "2026-10-01T10:00:00Z", Some("PENDING"))]))
+        .respond_with(results(&[node("contoso/app", 99, "2026-10-01T10:00:00Z", Some("PENDING"))]))
         .expect(2)
         .mount(&server)
         .await;
     graphql_as(CLI_TOKEN, &format!(r#""q":"is:pr review-requested:@me is:open {outside}""#))
-        .respond_with(results(&[node("cli/cli", 99, "2026-10-01T10:00:00Z", Some("PENDING"))]))
+        .respond_with(results(&[node("contoso/app", 99, "2026-10-01T10:00:00Z", Some("PENDING"))]))
         .expect(2)
         .mount(&server)
         .await;
@@ -196,7 +196,7 @@ async fn everything_lists_colleagues_drafts_in_the_users_organizations() {
             ("acme/api", 31, true),
             ("tools/ci", 7, true),
             ("acme/web", 12, false),
-            ("cli/cli", 99, false),
+            ("contoso/app", 99, false),
             ("mona/dotfiles", 2, true)
         ],
         "everyone's pull requests in the owners' repositories plus the user's elsewhere, each once, newest first"
@@ -260,18 +260,18 @@ async fn organizations_behind_sso_surface_an_authorize_action() {
 #[tokio::test]
 async fn created_by_me_and_assigned_to_me_use_their_qualifiers() {
     let server = MockServer::start().await;
-    mount_organization(&server, "cli").await;
-    graphql(r#""q":"is:pr author:@me is:open org:cli sort:created-desc""#)
-        .respond_with(results(&[node("cli/cli", 5, "2026-10-01T10:00:00Z", None)]))
+    mount_organization(&server, "contoso").await;
+    graphql(r#""q":"is:pr author:@me is:open org:contoso sort:created-desc""#)
+        .respond_with(results(&[node("contoso/app", 5, "2026-10-01T10:00:00Z", None)]))
         .expect(1)
         .mount(&server)
         .await;
-    graphql(r#""q":"is:pr review-requested:@me is:open org:cli sort:created-desc""#)
-        .respond_with(results(&[node("cli/cli", 6, "2026-10-01T10:00:00Z", None)]))
+    graphql(r#""q":"is:pr review-requested:@me is:open org:contoso sort:created-desc""#)
+        .respond_with(results(&[node("contoso/app", 6, "2026-10-01T10:00:00Z", None)]))
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["cli"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some("test-token"));
 
     let mine = provider
         .list_pull_requests(&query(PullRequestScope::CreatedByMe))
@@ -290,24 +290,25 @@ async fn created_by_me_and_assigned_to_me_use_their_qualifiers() {
 #[tokio::test]
 async fn the_users_part_of_one_repository_is_one_search_for_it() {
     let server = MockServer::start().await;
-    graphql(r#""q":"is:pr author:@me is:open repo:cli/cli sort:updated-desc""#)
-        .respond_with(results(&[node("cli/cli", 5, "2026-10-01T10:00:00Z", None)]))
+    graphql(r#""q":"is:pr author:@me is:open repo:contoso/app sort:updated-desc""#)
+        .respond_with(results(&[node("contoso/app", 5, "2026-10-01T10:00:00Z", None)]))
         .expect(1)
         .mount(&server)
         .await;
-    graphql(r#""q":"is:pr review-requested:@me is:open repo:cli/cli sort:updated-desc""#)
-        .respond_with(results(&[node("cli/cli", 6, "2026-10-01T10:00:00Z", None)]))
+    graphql(r#""q":"is:pr review-requested:@me is:open repo:contoso/app sort:updated-desc""#)
+        .respond_with(results(&[node("contoso/app", 6, "2026-10-01T10:00:00Z", None)]))
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["cli"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some("test-token"));
 
     for (role, number) in
         [(PullRequestScope::CreatedByMe, 5), (PullRequestScope::ReviewRequested, 6)]
     {
         let query =
-            PullRequestQuery::in_repository("cli/cli".to_owned(), role, StateFilter::Open, 100);
-        let rows = provider.list_pull_requests(&query).await.expect("the user's part of cli/cli");
+            PullRequestQuery::in_repository("contoso/app".to_owned(), role, StateFilter::Open, 100);
+        let rows =
+            provider.list_pull_requests(&query).await.expect("the user's part of contoso/app");
         assert_eq!(rows.iter().map(|row| row.number).collect::<Vec<_>>(), [number], "{role:?}");
     }
     let requests = server.received_requests().await.unwrap_or_default();
@@ -325,7 +326,7 @@ async fn a_timed_out_search_page_is_asked_again_at_half_its_size() {
             "<html>\r\n<head><title>502 Bad Gateway</title></head>\r\n<body>nginx</body>\r\n</html>",
         )
     };
-    let search = r#""q":"is:pr author:@me is:open repo:cli/cli sort:updated-desc""#;
+    let search = r#""q":"is:pr author:@me is:open repo:contoso/app sort:updated-desc""#;
     graphql(search)
         .and(body_string_contains(r#""first":100"#))
         .respond_with(bad_gateway())
@@ -334,13 +335,13 @@ async fn a_timed_out_search_page_is_asked_again_at_half_its_size() {
         .await;
     graphql(search)
         .and(body_string_contains(r#""first":50"#))
-        .respond_with(results(&[node("cli/cli", 5, "2026-10-01T10:00:00Z", None)]))
+        .respond_with(results(&[node("contoso/app", 5, "2026-10-01T10:00:00Z", None)]))
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["cli"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some("test-token"));
     let query = PullRequestQuery::in_repository(
-        "cli/cli".to_owned(),
+        "contoso/app".to_owned(),
         PullRequestScope::CreatedByMe,
         StateFilter::Open,
         100,
@@ -361,16 +362,21 @@ async fn a_timed_out_search_page_is_asked_again_at_half_its_size() {
 #[tokio::test]
 async fn a_rest_listing_asks_for_checks_an_earlier_search_listed() {
     let server = MockServer::start().await;
-    mount_organization(&server, "cli").await;
-    graphql(r#""q":"is:pr is:open org:cli sort:created-desc""#)
-        .respond_with(results(&[node("cli/cli", 1234, "2024-05-01T10:00:00Z", Some("PENDING"))]))
+    mount_organization(&server, "contoso").await;
+    graphql(r#""q":"is:pr is:open org:contoso sort:created-desc""#)
+        .respond_with(results(&[node(
+            "contoso/app",
+            1234,
+            "2024-05-01T10:00:00Z",
+            Some("PENDING"),
+        )]))
         .expect(1)
         .mount(&server)
         .await;
     let rest_row: Value =
         serde_json::from_str(include_str!("fixtures/pull_request.json")).expect("fixture");
     Mock::given(method("GET"))
-        .and(path("/api/v3/repos/cli/cli/pulls"))
+        .and(path("/api/v3/repos/contoso/app/pulls"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([rest_row])))
         .expect(1)
         .mount(&server)
@@ -385,18 +391,18 @@ async fn a_rest_listing_asks_for_checks_an_earlier_search_listed() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["cli"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some("test-token"));
 
     provider.list_pull_requests(&query(PullRequestScope::Visible)).await.expect("search");
     let repository = PullRequestQuery::in_repository(
-        "cli/cli".to_owned(),
+        "contoso/app".to_owned(),
         PullRequestScope::Repository,
         StateFilter::Open,
         100,
     );
     let rows = provider.list_pull_requests(&repository).await.expect("REST listing");
     assert_eq!(rows.iter().map(|row| row.number).collect::<Vec<_>>(), [1234]);
-    let statuses = provider.row_statuses("cli/cli", &[1234]).await.expect("checks");
+    let statuses = provider.row_statuses("contoso/app", &[1234]).await.expect("checks");
     assert_eq!(
         statuses.iter().map(|(number, status)| (*number, status.reported)).collect::<Vec<_>>(),
         [(1234, Some(CheckState::Passed))],
@@ -407,7 +413,7 @@ async fn a_rest_listing_asks_for_checks_an_earlier_search_listed() {
 #[tokio::test]
 async fn anonymous_overview_asks_for_a_token_without_a_request() {
     let server = MockServer::start().await;
-    let provider = provider(&server, &["cli"], None);
+    let provider = provider(&server, &["contoso"], None);
     let error = provider
         .list_pull_requests(&query(PullRequestScope::Visible))
         .await
@@ -483,9 +489,9 @@ async fn a_missing_pull_request_in_the_status_batch_is_left_out() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["cli"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some("test-token"));
 
-    let statuses = provider.row_statuses("cli/cli", &[7, 8]).await.expect("the found one");
+    let statuses = provider.row_statuses("contoso/app", &[7, 8]).await.expect("the found one");
     assert_eq!(
         statuses.iter().map(|(number, status)| (*number, status.reported)).collect::<Vec<_>>(),
         [(7, Some(CheckState::Passed))]
@@ -499,6 +505,6 @@ async fn a_missing_pull_request_in_the_status_batch_is_left_out() {
         .expect(1)
         .mount(&server)
         .await;
-    let error = provider.row_statuses("cli/cli", &[7, 8]).await.expect_err("not a missing row");
+    let error = provider.row_statuses("contoso/app", &[7, 8]).await.expect_err("not a missing row");
     assert_eq!(error.status(), Some(403));
 }

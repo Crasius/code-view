@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use wiremock::matchers::{body_partial_json, body_string_contains, header, method, path};
 use wiremock::{Mock, MockBuilder, MockServer, ResponseTemplate};
 
-const REPO: &str = "cli/cli";
+const REPO: &str = "contoso/app";
 const NUMBER: u64 = 7;
 const PULL_NODE_ID: &str = "PR_kwDOAbc";
 
@@ -81,7 +81,7 @@ async fn enable_on_a_repository_without_auto_merge_points_to_its_settings() {
     let ProviderError::Unsupported(message) = error else {
         panic!("unexpected {error:?}");
     };
-    assert!(message.contains(&format!("{}/cli/cli/settings", server.uri())), "{message}");
+    assert!(message.contains(&format!("{}/contoso/app/settings", server.uri())), "{message}");
 }
 
 #[tokio::test]

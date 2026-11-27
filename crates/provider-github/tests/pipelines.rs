@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const REPO: &str = "cli/cli";
+const REPO: &str = "contoso/app";
 const NUMBER: u64 = 7;
 const HEAD_SHA: &str = "head111";
 
@@ -83,7 +83,7 @@ async fn mount_jobs(server: &MockServer) {
 async fn job_graph_follows_the_workflow_files_needs() {
     let (server, provider) = setup().await;
     mount_jobs(&server).await;
-    let run = json!({ "id": 11, "html_url": "https://github.com/cli/cli/actions/runs/11",
+    let run = json!({ "id": 11, "html_url": "https://github.com/contoso/app/actions/runs/11",
                       "path": ".github/workflows/ci.yml", "head_sha": HEAD_SHA });
     Mock::given(method("GET"))
         .and(path(format!("/api/v3/repos/{REPO}/actions/runs/11")))
@@ -122,7 +122,7 @@ async fn listed_runs_read_their_workflow_file_without_another_run_request() {
     mount_get(&server, &format!("/pulls/{NUMBER}"), ok_json(pull)).await;
     let listed = |id: u64| {
         json!({ "id": id, "workflow_id": 5, "name": "CI", "status": "completed", "conclusion": "success", "event": "pull_request",
-                "html_url": format!("https://github.com/cli/cli/actions/runs/{id}"), "path": ".github/workflows/ci.yml", "head_sha": HEAD_SHA })
+                "html_url": format!("https://github.com/contoso/app/actions/runs/{id}"), "path": ".github/workflows/ci.yml", "head_sha": HEAD_SHA })
     };
     mount_get(
         &server,

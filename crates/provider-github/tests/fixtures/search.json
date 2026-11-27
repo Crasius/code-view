@@ -5,7 +5,7 @@
       {
         "number": 99,
         "title": "Add feature",
-        "url": "https://github.com/cli/cli/pull/99",
+        "url": "https://github.com/contoso/app/pull/99",
         "state": "MERGED",
         "isDraft": false,
         "createdAt": "2024-04-01T09:00:00Z",
@@ -13,7 +13,7 @@
         "headRefName": "feature/y",
         "baseRefName": "trunk",
         "author": { "login": "mona", "avatarUrl": "https://avatars.example/1", "databaseId": 1, "name": null },
-        "repository": { "nameWithOwner": "cli/cli", "name": "cli" },
+        "repository": { "nameWithOwner": "contoso/app", "name": "app" },
         "labels": { "pageInfo": { "hasNextPage": false }, "nodes": [{ "name": "enhancement", "color": "a2eeef", "description": null }] },
         "reviewRequests": {
           "pageInfo": { "hasNextPage": false },

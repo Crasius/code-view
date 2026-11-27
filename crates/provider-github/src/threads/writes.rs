@@ -5,7 +5,7 @@ use review_core::{
     DiffSide, NewThread, ProviderError, Result, ReviewThread, ThreadAnchor, ThreadComment,
     ThreadStatus, http,
 };
-use serde::Deserialize;
+use serde::de::IgnoredAny;
 use serde_json::{Value, json};
 
 use super::{COMMENT_FRAGMENT, THREAD_FRAGMENT, review_threads_of};
@@ -35,9 +35,6 @@ const RESOLVE_MUTATION: &str =
     "mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }";
 const UNRESOLVE_MUTATION: &str =
     "mutation($id: ID!) { unresolveReviewThread(input: { threadId: $id }) { thread { id } } }";
-
-#[derive(Debug, Deserialize)]
-struct Ignored {}
 
 pub(crate) async fn create(
     client: &GitHubClient,
@@ -195,7 +192,7 @@ pub(crate) async fn set_status(
         ThreadStatus::Resolved => RESOLVE_MUTATION,
         ThreadStatus::Active => UNRESOLVE_MUTATION,
     };
-    let _: Ignored =
+    let _: IgnoredAny =
         graphql::execute(client, "Resolving threads", mutation, json!({ "id": node_id })).await?;
     Ok(())
 }

@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockBuilder, MockServer, ResponseTemplate};
 
-const REPO: &str = "cli/cli";
+const REPO: &str = "contoso/app";
 const NUMBER: u64 = 7;
 
 async fn setup() -> (MockServer, GitHubProvider) {

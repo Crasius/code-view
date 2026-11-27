@@ -1,7 +1,7 @@
 //! Request building: API roots, GitHub headers, auth and `Link`-header pagination.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use reqwest::header::ACCEPT;
 use reqwest::{Client, Method, RequestBuilder, Url};
@@ -14,7 +14,7 @@ use crate::sso::Blocked;
 const API_VERSION: &str = "2022-11-28";
 const MEDIA_TYPE: &str = "application/vnd.github+json";
 const PUBLIC_WEB_ROOTS: [&str; 2] = ["https://github.com", "https://www.github.com"];
-const PUBLIC_API_ROOT: &str = "https://api.github.com";
+pub(crate) const PUBLIC_API_ROOT: &str = "https://api.github.com";
 
 /// Page size for every REST and GraphQL listing; GitHub's maximum.
 pub(crate) const PER_PAGE: usize = 100;
@@ -180,14 +180,11 @@ impl GitHubClient {
     }
 
     pub fn cached_owner_kind(&self, owner: &str) -> Option<OwnerKind> {
-        let cache = self.owner_kinds.lock().ok()?;
-        cache.get(&owner.to_ascii_lowercase()).copied()
+        lock(&self.owner_kinds).get(&owner.to_ascii_lowercase()).copied()
     }
 
     pub fn remember_owner_kind(&self, owner: &str, kind: OwnerKind) {
-        if let Ok(mut cache) = self.owner_kinds.lock() {
-            cache.insert(owner.to_ascii_lowercase(), kind);
-        }
+        lock(&self.owner_kinds).insert(owner.to_ascii_lowercase(), kind);
     }
 
     pub fn reach_cache(&self) -> &tokio::sync::Mutex<Option<Reach>> {
@@ -195,49 +192,48 @@ impl GitHubClient {
     }
 
     pub fn cached_organization_login(&self, id: u64) -> Option<String> {
-        self.organization_logins.lock().ok()?.get(&id).cloned()
+        lock(&self.organization_logins).get(&id).cloned()
     }
 
     pub fn remember_organization_login(&self, id: u64, login: &str) {
-        if let Ok(mut cache) = self.organization_logins.lock() {
-            cache.insert(id, login.to_owned());
-        }
+        lock(&self.organization_logins).insert(id, login.to_owned());
     }
 
     pub fn partial(&self) -> Vec<Blocked> {
-        self.partial.lock().map(|blocked| blocked.clone()).unwrap_or_default()
+        lock(&self.partial).clone()
     }
 
     pub fn set_partial(&self, blocked: Vec<Blocked>) {
-        if let Ok(mut partial) = self.partial.lock() {
-            *partial = blocked;
-        }
+        *lock(&self.partial) = blocked;
     }
 
     /// Keeps the checks a search listed with its rows; a full cache starts over.
     pub fn remember_statuses(&self, statuses: Vec<((String, u64), RowStatus)>) {
-        if let Ok(mut cache) = self.listed_statuses.lock() {
-            if cache.len() + statuses.len() > MAX_LISTED_STATUSES {
-                cache.clear();
-            }
-            cache.extend(statuses);
+        let mut cache = lock(&self.listed_statuses);
+        if cache.len() + statuses.len() > MAX_LISTED_STATUSES {
+            cache.clear();
         }
+        cache.extend(statuses);
     }
 
     /// Drops what a search listed for `rows`: a later listing without checks (REST) shows them,
     /// so their checks are asked for again instead of answered from an older search.
     pub fn forget_statuses<'a>(&self, rows: impl IntoIterator<Item = (&'a str, u64)>) {
-        if let Ok(mut cache) = self.listed_statuses.lock() {
-            for (repo, number) in rows {
-                cache.remove(&(repo.to_owned(), number));
-            }
+        let mut cache = lock(&self.listed_statuses);
+        for (repo, number) in rows {
+            cache.remove(&(repo.to_owned(), number));
         }
     }
 
     /// The checks the latest listing of the pull request `number` of `repo` brought.
     pub fn listed_status(&self, repo: &str, number: u64) -> Option<RowStatus> {
-        self.listed_statuses.lock().ok()?.get(&(repo.to_owned(), number)).cloned()
+        lock(&self.listed_statuses).get(&(repo.to_owned(), number)).cloned()
     }
+}
+
+/// A poisoned cache lock still holds valid entries: a panic elsewhere never turns the caches off.
+pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// Number of pages needed for `limit` items at [`PER_PAGE`].

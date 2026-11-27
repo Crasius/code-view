@@ -7,7 +7,7 @@
 //! settings page where "Allow auto-merge" lives.
 
 use review_core::{MergeOptions, ProviderError, Result};
-use serde::Deserialize;
+use serde::de::IgnoredAny;
 use serde_json::{Value, json};
 
 use crate::client::GitHubClient;
@@ -18,10 +18,6 @@ use crate::repo_key::RepoKey;
 
 const ENABLE: &str = "mutation($id: ID!, $method: PullRequestMergeMethod!, $head: GitObjectID!, $headline: String, $body: String) { enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: $method, expectedHeadOid: $head, commitHeadline: $headline, commitBody: $body }) { pullRequest { id } } }";
 const DISABLE: &str = "mutation($id: ID!) { disablePullRequestAutoMerge(input: { pullRequestId: $id }) { pullRequest { id } } }";
-
-/// Mutation payloads are only checked for errors.
-#[derive(Debug, Deserialize)]
-struct Ignored {}
 
 /// Turns auto-merge on with the method and message the user chose, guarded by the reviewed head
 /// (`expectedHeadOid`). GitHub's auto-merge cannot delete the head branch; the repository's
@@ -52,8 +48,10 @@ pub(crate) async fn enable(
             variables["body"] = Value::from(body);
         }
     }
-    let result: Result<Ignored> = graphql::execute(client, action, ENABLE, variables).await;
-    result.map(|_| ()).map_err(|error| explain(error, client, &repo))
+    graphql::execute::<IgnoredAny>(client, action, ENABLE, variables)
+        .await
+        .map(drop)
+        .map_err(|error| explain(error, client, &repo))
 }
 
 pub(crate) async fn disable(client: &GitHubClient, key: &str, number: u64) -> Result<()> {
@@ -61,7 +59,7 @@ pub(crate) async fn disable(client: &GitHubClient, key: &str, number: u64) -> Re
     client.require_token(action)?;
     let repo = RepoKey::parse(key)?;
     let pull = pull_requests::fetch(client, &repo, number).await?;
-    let _: Ignored =
+    let _: IgnoredAny =
         graphql::execute(client, action, DISABLE, json!({ "id": pull.node_id })).await?;
     Ok(())
 }
@@ -84,13 +82,12 @@ fn explain(error: ProviderError, client: &GitHubClient, repo: &RepoKey<'_>) -> P
     let Some(message) = error.server_message().map(|message| message.to_lowercase()) else {
         return error;
     };
-    let full_name = format!("{}/{}", repo.owner, repo.name);
     if message.contains("auto merge is not allowed")
         || message.contains("auto-merge is not allowed")
     {
         let settings = settings_url(client, repo);
         return ProviderError::Unsupported(format!(
-            "Auto-merge is turned off for {full_name}. A repository admin turns on “Allow auto-merge” in its settings: {settings}"
+            "Auto-merge is turned off for {repo}. A repository admin turns on “Allow auto-merge” in its settings: {settings}"
         ));
     }
     if message.contains("clean status") {
@@ -104,7 +101,7 @@ fn explain(error: ProviderError, client: &GitHubClient, repo: &RepoKey<'_>) -> P
 
 /// The repository's general settings, where "Allow auto-merge" is.
 pub(crate) fn settings_url(client: &GitHubClient, repo: &RepoKey<'_>) -> String {
-    format!("{}/{}/{}/settings", client.connection().base_url(), repo.owner, repo.name)
+    format!("{}/{repo}/settings", client.connection().base_url())
 }
 
 #[cfg(test)]

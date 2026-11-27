@@ -560,7 +560,7 @@ mod tests {
             .and(query_param("per_page", "100"))
             .respond_with(
                 ResponseTemplate::new(200)
-                    .set_body_json(json!([{"login": "github"}, {"login": "cli"}])),
+                    .set_body_json(json!([{"login": "fabrikam"}, {"login": "contoso"}])),
             )
             .mount(&server)
             .await;
@@ -571,8 +571,8 @@ mod tests {
             keys,
             [
                 ("octocat", ScopeKind::Account),
-                ("github", ScopeKind::Organization),
-                ("cli", ScopeKind::Organization)
+                ("fabrikam", ScopeKind::Organization),
+                ("contoso", ScopeKind::Organization)
             ]
         );
     }

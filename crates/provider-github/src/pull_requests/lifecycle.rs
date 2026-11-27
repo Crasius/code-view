@@ -2,7 +2,7 @@
 
 use reqwest::Method;
 use review_core::{MergeOptions, ProviderError, Result, http};
-use serde::Deserialize;
+use serde::de::IgnoredAny;
 use serde_json::{Value, json};
 
 use crate::client::GitHubClient;
@@ -13,10 +13,6 @@ use crate::repo_key::{RepoKey, encode_branch};
 
 const CONVERT_TO_DRAFT: &str = "mutation($id: ID!) { convertPullRequestToDraft(input: { pullRequestId: $id }) { pullRequest { id } } }";
 const MARK_READY: &str = "mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { id } } }";
-
-/// Mutation payloads are only checked for errors.
-#[derive(Debug, Deserialize)]
-struct Ignored {}
 
 /// Merges only while the head is still the commit the user reviewed (`sha`, answered with 409
 /// when it moved), then deletes the head branch when asked and it is not a fork. Right after a
@@ -137,7 +133,7 @@ pub(crate) async fn set_draft(
         return Ok(());
     }
     let mutation = if is_draft { CONVERT_TO_DRAFT } else { MARK_READY };
-    let _: Ignored = graphql::execute(
+    let _: IgnoredAny = graphql::execute(
         client,
         "Changing the draft state",
         mutation,

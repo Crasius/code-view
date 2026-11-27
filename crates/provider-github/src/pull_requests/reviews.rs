@@ -197,11 +197,11 @@ mod tests {
             json!({ "reviewers": ["octocat"] })
         );
         assert_eq!(
-            reviewer_request_body("cli/maintainers").expect("team"),
+            reviewer_request_body("contoso/maintainers").expect("team"),
             json!({ "team_reviewers": ["maintainers"] })
         );
         assert!(reviewer_request_body(" ").is_err());
-        assert!(reviewer_request_body("cli/").is_err());
+        assert!(reviewer_request_body("contoso/").is_err());
     }
 
     #[test]
