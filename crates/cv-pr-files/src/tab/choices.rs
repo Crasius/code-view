@@ -1,6 +1,6 @@
 //! The diff choices the Files tab works with and saves: how diffs are worked out, the layout a
-//! file shows in (added and deleted files whole), Alt+N's New only, "Ignore whitespace" and
-//! "Show comments in the diff".
+//! file shows in (added and deleted files whole), Alt+N's New only, "Ignore whitespace",
+//! "Show comments in the diff" and "Scroll past the end".
 
 use review_core::DiffSide;
 use review_git::{ChangeKind, ChangedFile, DiffOptions};
@@ -24,6 +24,13 @@ pub fn toggle_ignore_whitespace(services: &mut Services) {
 /// Alt+H: "Show comments in the diff", saved like the other diff choices.
 pub fn toggle_comments_in_diff(services: &mut Services) {
     services.settings.show_comments_in_diff = !services.settings.show_comments_in_diff;
+    services.save_settings();
+}
+
+/// "Scroll past the end" switched in the overview strip's menu of the rendered diff, the text
+/// diff or a thread's original version: saved for every diff.
+pub fn switch_past_end(services: &mut Services, is_on: bool) {
+    services.settings.scroll_past_end = is_on;
     services.save_settings();
 }
 

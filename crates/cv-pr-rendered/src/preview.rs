@@ -17,7 +17,7 @@ use crate::markdown_diff::{MarkdownDiff, MarkdownModel, RenderedEvent, RenderedI
 use cv_base::theme::{self, icons, style};
 use cv_media::images::{self as image_store, Decoded};
 use cv_media::picture::Picture;
-use cv_pr_diff::diff_view::Direction;
+use cv_pr_diff::diff_view::{ChangePosition, Direction};
 use cv_pr_session::session::PullRequestSession;
 use cv_pr_session::web_link;
 use cv_pr_threads::ThreadsUi;
@@ -226,9 +226,9 @@ impl Preview {
         };
     }
 
-    /// The rendered Markdown diff's (1-based change in focus or 0, number of changes) while it
-    /// shows `file`; `None` for other previews and until it is laid out.
-    pub fn change_position(&self, file: &ChangedFile) -> Option<(usize, usize)> {
+    /// Where the rendered Markdown diff's change in focus is among its changes while it shows
+    /// `file`; `None` for other previews and until it is laid out.
+    pub fn change_position(&self, file: &ChangedFile) -> Option<ChangePosition> {
         if !is_markdown(&file.path) || !self.is_active(file) {
             return None;
         }
@@ -327,6 +327,7 @@ impl Preview {
                 can_comment: session.has_token,
                 threads,
                 show_threads: settings.show_comments_in_diff,
+                past_end: settings.scroll_past_end,
             };
             let event = self.markdown.show(
                 ui,

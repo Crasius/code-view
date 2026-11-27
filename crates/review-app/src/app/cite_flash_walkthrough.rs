@@ -12,8 +12,8 @@ use super::assistant_script::{
 };
 use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
 use super::walkthrough::{app, click_now, shows_file_view, wait_for, wait_for_link};
-use cv_code::diff_paint::{flash_asks_for_frames, flashed_lines};
 use cv_code::line_source::Pane;
+use cv_pr_diff::diff_view::{flash_asks_for_frames, flashed_lines};
 use cv_testkit::ScratchDir;
 
 /// A file whose only change is on line 2: the cited lines sit in the collapsed gap far below.

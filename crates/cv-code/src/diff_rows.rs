@@ -119,8 +119,16 @@ pub struct RangeRows {
     pub start: usize,
     pub end: usize,
     pub side: DiffSide,
-    /// The new comment being written, not a posted thread.
-    pub is_draft: bool,
+    pub owner: RangeOwner,
+}
+
+/// Whose lines a [`RangeRows`] holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RangeOwner {
+    /// A posted thread: its index into the thread list given to [`build`].
+    Thread(u32),
+    /// The new comment being written.
+    Draft,
 }
 
 impl RangeRows {
@@ -137,9 +145,6 @@ pub struct DiffRows {
     pub changes: Vec<u32>,
     /// Lines of the multi-line threads and of a multi-line draft.
     pub ranges: Vec<RangeRows>,
-    /// The thread (index into the thread list given to [`build`]) whose lines each of `ranges`
-    /// holds; `None` for the draft's.
-    pub range_threads: Vec<Option<u32>>,
 }
 
 pub struct RowInputs<'a> {
@@ -198,21 +203,17 @@ pub fn build(inputs: &RowInputs<'_>) -> DiffRows {
         rows = merged;
     }
     let changes = change_starts(diff, &rows);
-    let (ranges, range_threads) = range_rows(diff, &rows, inputs).into_iter().unzip();
-    DiffRows { rows, detached_threads, changes, ranges, range_threads }
+    let ranges = range_rows(diff, &rows, inputs);
+    DiffRows { rows, detached_threads, changes, ranges }
 }
 
 /// Where the lines of each placed active thread (and of the draft) are: from the row of its first
 /// line down to the code row its card follows, with the thread. Resolved threads leave their
 /// lines plain.
-fn range_rows(
-    diff: &FileDiff,
-    rows: &[Row],
-    inputs: &RowInputs<'_>,
-) -> Vec<(RangeRows, Option<u32>)> {
+fn range_rows(diff: &FileDiff, rows: &[Row], inputs: &RowInputs<'_>) -> Vec<RangeRows> {
     let mut ranges = Vec::new();
     for (index, row) in rows.iter().enumerate() {
-        let (range, is_new_side, thread_index) = match row.kind {
+        let (range, is_new_side, owner) = match row.kind {
             RowKind::Thread(thread_index) => {
                 let thread = inputs.threads[thread_index as usize];
                 let Some(anchor) =
@@ -220,7 +221,7 @@ fn range_rows(
                 else {
                     continue;
                 };
-                (anchor.range.as_ref(), anchor.new_line.is_some(), Some(thread_index))
+                (anchor.range.as_ref(), anchor.new_line.is_some(), RangeOwner::Thread(thread_index))
             }
             RowKind::Composer => {
                 let Some(composer) = inputs.composer else {
@@ -237,10 +238,15 @@ fn range_rows(
                         below(composer.old_line, composer.new_line),
                     )
                 {
-                    ranges.push((RangeRows { start, end, side: range.side, is_draft: true }, None));
+                    ranges.push(RangeRows {
+                        start,
+                        end,
+                        side: range.side,
+                        owner: RangeOwner::Draft,
+                    });
                     continue;
                 }
-                (composer.range.as_ref(), composer.new_line.is_some(), None)
+                (composer.range.as_ref(), composer.new_line.is_some(), RangeOwner::Draft)
             }
             _ => continue,
         };
@@ -259,8 +265,7 @@ fn range_rows(
             }
             None => (end, if is_new_side { DiffSide::New } else { DiffSide::Old }),
         };
-        ranges
-            .push((RangeRows { start, end, side, is_draft: thread_index.is_none() }, thread_index));
+        ranges.push(RangeRows { start, end, side, owner });
     }
     ranges
 }
@@ -982,7 +987,7 @@ mod tests {
         assert_eq!(placed.rows[4].kind, RowKind::Thread(0), "the card follows the last line");
         assert_eq!(
             placed.ranges,
-            [RangeRows { start: 0, end: 3, side: DiffSide::New, is_draft: false }]
+            [RangeRows { start: 0, end: 3, side: DiffSide::New, owner: RangeOwner::Thread(0) }]
         );
     }
 
@@ -1014,7 +1019,7 @@ mod tests {
         assert_eq!(below.rows[5].kind, RowKind::Composer, "below the last line");
         assert_eq!(
             below.ranges.last(),
-            Some(&RangeRows { start: 2, end: 4, side: DiffSide::New, is_draft: true })
+            Some(&RangeRows { start: 2, end: 4, side: DiffSide::New, owner: RangeOwner::Draft })
         );
 
         composer.above = true;
@@ -1027,7 +1032,7 @@ mod tests {
         );
         assert_eq!(
             above.ranges.last(),
-            Some(&RangeRows { start: 3, end: 5, side: DiffSide::New, is_draft: true }),
+            Some(&RangeRows { start: 3, end: 5, side: DiffSide::New, owner: RangeOwner::Draft }),
             "the lines below the card stay marked"
         );
     }
@@ -1040,7 +1045,7 @@ mod tests {
         let placed = rows_of(&diff, Layout::Inline, &[], &[], &threads);
         assert_eq!(
             placed.ranges,
-            [RangeRows { start: 3, end: 3, side: DiffSide::New, is_draft: false }]
+            [RangeRows { start: 3, end: 3, side: DiffSide::New, owner: RangeOwner::Thread(0) }]
         );
         let mut resolved = on_new(2);
         resolved.status = review_core::ThreadStatus::Resolved;

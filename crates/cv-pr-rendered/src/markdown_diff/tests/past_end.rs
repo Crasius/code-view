@@ -1,14 +1,18 @@
 //! "Scroll past the end" in the rendered diff: Page Down and the wheel go on until the last block
 //! is at the top of the view, End goes to where the last block meets the bottom, and off the view
-//! stops there whatever scrolls it. New only and an added file go as far.
+//! stops there whatever scrolls it. The strip's context menu switches it. New only and an added
+//! file go as far.
 
-use egui::{Key, pos2, vec2};
+use cv_testkit::Clicks;
+use egui::{Event, Key, Modifiers, PointerButton, pos2, vec2};
 use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable as _;
 use review_git::FULL_FILE_CONTEXT;
 use review_store::DiffLayout;
 
-use super::{Scene, harness, sample, wheel};
-use cv_pr_diff::diff_overview::past_end;
+use super::{RenderedEvent, Scene, harness, sample, wheel};
+use cv_pr_diff::diff_overview::PAST_END_LABEL;
+use cv_pr_diff::diff_view::OVERVIEW_WIDTH;
 
 const SIZE: [f32; 2] = [900.0, 600.0];
 
@@ -18,9 +22,9 @@ fn shown(on: bool) -> Harness<'static, Scene> {
     shown_scene(Scene::new(&old, &new, DiffLayout::SideBySide, FULL_FILE_CONTEXT), on)
 }
 
-fn shown_scene(scene: Scene, on: bool) -> Harness<'static, Scene> {
+fn shown_scene(mut scene: Scene, on: bool) -> Harness<'static, Scene> {
+    scene.doc.past_end = on;
     let mut harness = harness(scene, SIZE);
-    past_end::set_for_test(&harness.ctx, on);
     harness.run();
     harness
 }
@@ -66,6 +70,31 @@ fn off_the_view_stops_where_the_last_block_meets_the_bottom() {
     wheel(&mut harness, pos2(450.0, 300.0), vec2(0.0, -20_000.0));
     let (top, end, _) = place(harness.state());
     assert!((top - end).abs() < 1.0, "off: the view stops at the end: {top} vs {end}");
+}
+
+#[test]
+fn the_strips_menu_switches_scrolling_past_the_end() {
+    let mut harness = shown(false);
+    let strip = pos2(SIZE[0] - OVERVIEW_WIDTH / 2.0, 300.0);
+    harness.event(Event::PointerMoved(strip));
+    for pressed in [true, false] {
+        harness.event(Event::PointerButton {
+            pos: strip,
+            button: PointerButton::Secondary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        });
+        harness.step();
+    }
+    harness.run();
+    harness.click_at(harness.get_by_label(PAST_END_LABEL).rect());
+    harness.run();
+    let events = &harness.state().events;
+    assert_eq!(events[..], [RenderedEvent::SwitchPastEnd(true)], "switched on, to be saved");
+    assert!(harness.state().doc.past_end, "the saved setting is on");
+    page_to_the_end(&mut harness);
+    let (top, _, last) = place(harness.state());
+    assert!((top - last).abs() < 1.0, "the room is there: {top} vs {last}");
 }
 
 #[test]

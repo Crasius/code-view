@@ -15,7 +15,7 @@ use super::keys::{self, Unviewed};
 use super::viewed::ViewedToggle;
 use cv_base::mailbox;
 use cv_base::theme::icons;
-use cv_pr_diff::diff_view::{Direction, LineRequest};
+use cv_pr_diff::diff_view::{ChangePosition, Direction, LineRequest};
 use cv_pr_session::lifecycle::{LifecycleAction, author_refusal};
 use cv_pr_tree::{FileFilter, ReviewStep, TreeEvent, VoteOffer, goto};
 use cv_runtime::route::PullRequestKey;
@@ -44,7 +44,7 @@ struct Edge {
     /// When, in egui's input time.
     since: f64,
     /// The change position then: a step back or a scroll away ends the note.
-    position: (usize, usize),
+    position: ChangePosition,
 }
 
 impl Stepping {

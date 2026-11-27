@@ -12,7 +12,7 @@ use review_store::{DiffLayout, ThemePreference};
 use crate::tests::services_in;
 use cv_base::theme;
 use cv_pr_diff::testing::settle;
-use cv_pr_rendered::file_header::{self, HeaderInputs};
+use cv_pr_rendered::file_header::{self, ChangePosition, HeaderInputs};
 use cv_pr_rendered::preview::Preview;
 use cv_services::Services;
 use cv_testkit::ScratchDir;
@@ -30,7 +30,7 @@ struct Scene {
     preview: Preview,
     file: ChangedFile,
     is_viewed: bool,
-    changes: Option<(usize, usize)>,
+    changes: Option<ChangePosition>,
     whole_file: Option<DiffSide>,
     /// A rendered Markdown diff is on screen.
     is_rendered: bool,
@@ -53,7 +53,17 @@ fn file(
     }
 }
 
-fn scene(file: ChangedFile, changes: Option<(usize, usize)>, services: Services) -> Scene {
+/// `total` changes, none in focus.
+fn unfocused(total: usize) -> ChangePosition {
+    ChangePosition { current: None, total }
+}
+
+/// `total` changes, the one at `index` in focus.
+fn focused(index: usize, total: usize) -> ChangePosition {
+    ChangePosition { current: Some(index), total }
+}
+
+fn scene(file: ChangedFile, changes: Option<ChangePosition>, services: Services) -> Scene {
     let whole_file = super::whole_file_side(&file);
     Scene {
         services,
@@ -166,7 +176,7 @@ fn show_file(
     harness: &mut Harness<'static, Scene>,
     width: f32,
     file: ChangedFile,
-    changes: Option<(usize, usize)>,
+    changes: Option<ChangePosition>,
 ) -> Vec<(String, Rect)> {
     let scene = harness.state_mut();
     scene.whole_file = super::whole_file_side(&file);
@@ -244,7 +254,8 @@ fn assert_whole_files_keep_the_bar(
     reference: &[(String, Rect)],
 ) {
     for kind in [ChangeKind::Added, ChangeKind::Deleted] {
-        let found = show_file(harness, width, file(LONG_PATH, kind, None, (40, 0)), Some((0, 1)));
+        let found =
+            show_file(harness, width, file(LONG_PATH, kind, None, (40, 0)), Some(unfocused(1)));
         assert_eq!(
             around_layout_slot(&found),
             around_layout_slot(reference),
@@ -270,7 +281,7 @@ fn switching_files_moves_nothing_but_the_path() {
         let mut harness = harness(scene(code.clone(), None, services_in(&scratch)), width);
         // Loading, then shown: the diff's controls switch from disabled to enabled in place.
         let reference = show_file(&mut harness, width, code.clone(), None);
-        let found = show_file(&mut harness, width, code.clone(), Some((1, 4)));
+        let found = show_file(&mut harness, width, code.clone(), Some(focused(0, 4)));
         assert_eq!(
             rects(&found),
             rects(&reference),
@@ -279,13 +290,13 @@ fn switching_files_moves_nothing_but_the_path() {
         assert_choices_keep_the_bar(&mut harness, width, &reference);
 
         let files = [
-            (code.clone(), Some((3, 4))),
+            (code.clone(), Some(focused(2, 4))),
             (file("assets/brand/logo.png", ChangeKind::Modified, None, (0, 0)), None),
             (file("README.md", ChangeKind::Modified, None, (12, 4)), None),
-            (file("README.md", ChangeKind::Modified, None, (12, 4)), Some((0, 2))),
+            (file("README.md", ChangeKind::Modified, None, (12, 4)), Some(unfocused(2))),
             (
                 file("docs/changelog.md", ChangeKind::Renamed, Some("CHANGELOG.md"), (1_234, 87)),
-                Some((0, 12)),
+                Some(unfocused(12)),
             ),
         ];
         for (file, changes) in files {
@@ -314,7 +325,7 @@ fn switching_files_moves_nothing_but_the_path() {
 fn the_comments_switch_is_saved() {
     let scratch = ScratchDir::new("header-comments");
     let file = file(LONG_PATH, ChangeKind::Modified, None, (5, 0));
-    let mut harness = harness(scene(file, Some((0, 4)), services_in(&scratch)), 1600.0);
+    let mut harness = harness(scene(file, Some(unfocused(4)), services_in(&scratch)), 1600.0);
     settle(&mut harness);
     assert!(harness.state().services.settings.show_comments_in_diff, "comments show by default");
     for expected in [false, true] {
@@ -334,7 +345,7 @@ fn the_comments_switch_is_saved() {
 fn the_width_switch_takes_the_wrap_slot_and_is_saved() {
     let scratch = ScratchDir::new("header-width");
     let file = file("docs/engineering/billing-invoicing.md", ChangeKind::Modified, None, (5, 0));
-    let mut harness = harness(scene(file, Some((0, 4)), services_in(&scratch)), 1600.0);
+    let mut harness = harness(scene(file, Some(unfocused(4)), services_in(&scratch)), 1600.0);
     settle(&mut harness);
     let wrap = harness.get_by_role_and_label(Role::Switch, "Wrap long lines").rect();
     harness.state_mut().is_rendered = true;
@@ -367,7 +378,7 @@ fn long_paths_never_overlap_the_controls() {
     let fresh = |file, changes| scene(file, changes, services_in(&scratch));
     // A long path with four changes, next to the layout controls.
     check_widths(
-        || fresh(file(LONG_PATH, ChangeKind::Modified, None, (5, 0)), Some((0, 4))),
+        || fresh(file(LONG_PATH, ChangeKind::Modified, None, (5, 0)), Some(unfocused(4))),
         "modified",
     );
     check_widths(
@@ -378,18 +389,18 @@ fn long_paths_never_overlap_the_controls() {
                 Some(LONG_PATH),
                 (120, 3),
             );
-            let mut scene = fresh(renamed, Some((12, 345)));
+            let mut scene = fresh(renamed, Some(focused(11, 345)));
             scene.is_viewed = true;
             scene
         },
         "renamed-markdown",
     );
     check_widths(
-        || fresh(file(LONG_PATH, ChangeKind::Added, None, (1_234, 0)), Some((0, 1))),
+        || fresh(file(LONG_PATH, ChangeKind::Added, None, (1_234, 0)), Some(unfocused(1))),
         "added",
     );
     check_widths(
-        || fresh(file(LONG_PATH, ChangeKind::Deleted, None, (0, 87)), Some((0, 1))),
+        || fresh(file(LONG_PATH, ChangeKind::Deleted, None, (0, 87)), Some(unfocused(1))),
         "deleted",
     );
     check_widths(|| fresh(file(LONG_PATH, ChangeKind::Modified, None, (5, 0)), None), "loading");

@@ -25,6 +25,7 @@ use super::walkthrough::{
     app_with, saved_paths, saved_settings, settle_background, shows_file_view, shows_folder_view,
     wait_until,
 };
+use cv_pr_rendered::file_header::NEXT_CHANGE_HINT;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{Clicks, ScratchDir, git, samples};
@@ -231,7 +232,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     assert!(harness.state().services.settings.panes.preview_split > 0.55);
 
     // The rendered diff takes the header's diff controls like the text diff: arrows, layout, Alt+N.
-    let next = harness.get_by_label("Next change (N or F7)");
+    let next = harness.get_by_label(NEXT_CHANGE_HINT);
     assert!(!next.accesskit_node().is_disabled(), "the change arrows work on the preview");
     harness.click_at(harness.get_by_label("New only").rect());
     settle(&mut harness);

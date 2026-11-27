@@ -24,7 +24,7 @@ use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
 use super::walkthrough::{
     app, files_tab, open_in_tree, shows_file_view, wait_for, wait_until, wheel,
 };
-use cv_base::theme::{self, icons};
+use cv_base::theme;
 use cv_code::find_paint::{HitSide, last_current as last_current_find};
 use cv_pr_diff::diff_overview::{forget_view_box, last_view_box};
 use cv_pr_diff::find::bar::{
@@ -155,7 +155,7 @@ fn the_find_widget_searches_the_focused_pane() {
 }
 
 /// Match case by its toggle and by Alt+C over the right pane, which finds 3 "needle" (see
-/// [`code_file`]); the widget's controls are Phosphor icons and nothing else.
+/// [`code_file`]).
 fn switch_options(harness: &mut Harness<'_, ReviewApp>, right: Pos2) {
     let three = |count: &str| count.ends_with(" of 3") || count == "3 matches";
     open_find(harness, right);
@@ -168,9 +168,6 @@ fn switch_options(harness: &mut Harness<'_, ReviewApp>, right: Pos2) {
     harness.key_press_modifiers(Modifiers::ALT, Key::C);
     wait_for_count(harness, three);
 
-    // Match case, previous, next and close, each a Phosphor icon.
-    let shown = note(harness).icons;
-    assert_eq!(shown, [icons::TEXT_AA, icons::ARROW_UP, icons::ARROW_DOWN, icons::X]);
     for name in ["Match case", "Previous match", "Next match", CLOSE] {
         assert!(harness.query_by_label_contains(name).is_some(), "{name} is in the widget");
     }

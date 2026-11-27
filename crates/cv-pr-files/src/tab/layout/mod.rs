@@ -17,7 +17,6 @@ use review_store::DiffLayout;
 use super::review::stepping;
 use super::{origin, start};
 use crate::{Env, FilesTab, Opened, focus_strip};
-use cv_pr_diff::diff_overview::past_end;
 use cv_pr_diff::diff_view::Direction;
 use cv_pr_session::assistant_link;
 use cv_pr_tree::{TreeEvent, TreeInputs};
@@ -33,7 +32,6 @@ use cv_shell::focus_mode::{self, Surface};
 /// side is carried out at once, and the frame is laid out again before it shows.
 pub fn show(tab: &mut FilesTab, ui: &mut egui::Ui, env: &mut Env<'_>) {
     tab.poll_loads(env.services);
-    past_end::sync(ui.ctx(), env.services);
     let Some(files) = env.session.files().cloned() else {
         panels::show_preparing(ui, env.session, env.services);
         return;

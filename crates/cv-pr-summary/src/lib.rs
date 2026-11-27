@@ -770,9 +770,7 @@ impl FolderSummary {
         self.split_moved = output.split.or(self.split_moved);
         self.split_committed |= output.split_committed;
         match output.event {
-            Some(DiffEvent::Thread(thread_event)) => {
-                pass.event = Some(SummaryEvent::Thread(thread_event));
-            }
+            Some(DiffEvent::Thread(event)) => pass.event = Some(SummaryEvent::Thread(event)),
             Some(DiffEvent::Create { key, thread }) => {
                 pass.event = Some(SummaryEvent::Create { key, thread });
             }
@@ -780,7 +778,8 @@ impl FolderSummary {
                 DiffEvent::ColorAnyway
                 | DiffEvent::RetryContents
                 | DiffEvent::SwitchLayout(_)
-                | DiffEvent::SplitResized,
+                | DiffEvent::SplitResized
+                | DiffEvent::SwitchPastEnd(_),
             )
             | None => {}
         }

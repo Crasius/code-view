@@ -10,6 +10,7 @@ use review_core::{ProviderError, ProviderKind, ReviewThread, ThreadOrigin, short
 use review_git::{ChangedFile, DiffOptions, FileDiff, GitMirror};
 use review_store::DiffLayout;
 
+use crate::tab::choices;
 use cv_base::theme::{self, icons, style};
 use cv_code::contents::ContentsLoader;
 use cv_pr_diff::diff_skeleton;
@@ -294,6 +295,7 @@ impl OriginView {
             // The version a thread was written on shows that thread.
             show_threads: true,
             find: FindInputs::of(&services.settings),
+            past_end: services.settings.scroll_past_end,
         };
         // Its own id: the latest version's scroll position stays where the user left it.
         let event = ui
@@ -307,6 +309,7 @@ impl OriginView {
             }
             Some(DiffEvent::RetryContents) => self.contents.retry(),
             Some(DiffEvent::SplitResized) => services.save_settings(),
+            Some(DiffEvent::SwitchPastEnd(is_on)) => choices::switch_past_end(services, is_on),
             Some(
                 DiffEvent::ColorAnyway | DiffEvent::SwitchLayout(_) | DiffEvent::Create { .. },
             )

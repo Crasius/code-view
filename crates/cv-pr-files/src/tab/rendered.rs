@@ -1,11 +1,13 @@
 //! What the user asks of a rendered Markdown diff, in the file view or in a card of the folder
 //! summary: commenting on a block's lines or showing them goes to the file's text diff, which
-//! scrolls there once it shows; a thread's reply or status goes to the threads.
+//! scrolls there once it shows; a thread's reply or status goes to the threads; a switch of
+//! "Scroll past the end" is saved.
 
 use review_git::ChangedFile;
 use review_store::DiffLayout;
 
 use super::super::{Env, FilesTab};
+use super::choices;
 use cv_pr_diff::diff_view::LineRequest;
 use cv_pr_rendered::markdown_diff::RenderedEvent;
 
@@ -16,10 +18,9 @@ pub fn apply(tab: &mut FilesTab, env: &mut Env<'_>, path: &str, event: RenderedE
             tab.preview.show_source(path);
             tab.line_request = Some((path.to_owned(), LineRequest::Comment { side, lines }));
         }
-        RenderedEvent::ShowSource { side, lines } => {
+        RenderedEvent::ShowSource { side, line } => {
             tab.preview.show_source(path);
-            tab.line_request =
-                Some((path.to_owned(), LineRequest::Top { side, line: lines.start }));
+            tab.line_request = Some((path.to_owned(), LineRequest::Top { side, line }));
         }
         RenderedEvent::ShowThreadSource { thread_id } => tab.show_in_text_diff(path, &thread_id),
         RenderedEvent::Thread(event) => {
@@ -28,6 +29,7 @@ pub fn apply(tab: &mut FilesTab, env: &mut Env<'_>, path: &str, event: RenderedE
             }
         }
         RenderedEvent::ShowSideBySide => tab.switch_layout(env.services, DiffLayout::SideBySide),
+        RenderedEvent::SwitchPastEnd(is_on) => choices::switch_past_end(env.services, is_on),
         RenderedEvent::SplitResized | RenderedEvent::WidthResized => {}
     }
 }

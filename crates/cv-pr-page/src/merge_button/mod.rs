@@ -263,7 +263,7 @@ impl MergeButton {
         let id = ui.make_persistent_id("merge_button");
         let now = ui.input(|input| input.time);
         let kind = session.kind;
-        let runs = session.runs.ready().map(Vec::as_slice);
+        let runs = session.runs.ready().map(AsRef::as_ref);
         let mode = auto_complete::mode(detail, runs, kind, self.wants_auto);
         let has_conflicts = detail.merge_status == MergeStatus::Conflicts;
         let choice = self.choice(session, detail, services);
@@ -519,7 +519,7 @@ impl MergeButton {
         if auto_complete::offers_branch_deletion(mode, kind) {
             self.source_branch_choice(ui, page, services);
         }
-        if auto_complete::is_waiting(detail, session.runs.ready().map(Vec::as_slice), kind) {
+        if auto_complete::is_waiting(detail, session.runs.ready().map(AsRef::as_ref), kind) {
             let mut wants_auto = self.wants_auto.unwrap_or(true);
             if checkbox::checkbox(ui, &mut wants_auto, auto_complete::choice_label(kind)).changed()
             {
