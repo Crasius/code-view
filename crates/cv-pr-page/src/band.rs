@@ -9,6 +9,7 @@ use super::checkout::CheckoutButton;
 use super::header;
 use super::header_reveal::{Frame, HeaderReveal};
 use super::merge_button::MergeButton;
+use super::vote_comment::VoteComposer;
 use cv_base::platform::shortcut;
 use cv_pr_files::FilesTab;
 use cv_pr_session::actions::{ActionRunner, Write};
@@ -48,6 +49,7 @@ pub(super) struct Parts<'a> {
     /// The file it shows is offered on the platform by the header's menu.
     pub files: &'a FilesTab,
     pub merge: &'a mut Option<MergeButton>,
+    pub vote: &'a mut VoteComposer,
     pub checkout: &'a mut CheckoutButton,
 }
 
@@ -59,7 +61,7 @@ pub(super) fn show(
     reveal: &mut HeaderReveal,
     tab: &mut Tab,
 ) -> bool {
-    let Parts { session, services, actions, threads, files, merge, checkout } = parts;
+    let Parts { session, services, actions, threads, files, merge, vote, checkout } = parts;
     let frame = Frame {
         tab: *tab,
         mode: header_mode(services.settings.header_modes, *tab),
@@ -68,8 +70,8 @@ pub(super) fn show(
     };
     let file_link = if *tab == Tab::Files { files.shown_link() } else { None };
     reveal.show(ui, &frame, |ui| {
-        let parts = HeaderParts { file_link, merge: merge.as_mut(), checkout };
-        header(ui, session, services, actions, parts)
+        let buttons = header::Buttons { merge: merge.as_mut(), vote, checkout };
+        header(ui, session, services, actions, file_link, buttons)
     });
     let is_switched = tab_bar(ui, session, services, tab, threads);
     reveal.mark_content(ui);
@@ -86,29 +88,22 @@ fn header_mode(modes: HeaderModes, tab: Tab) -> HeaderMode {
     }
 }
 
-/// The header's buttons that keep state of their own, and the file the Files tab shows.
-struct HeaderParts<'a> {
-    file_link: Option<&'a WebLink>,
-    merge: Option<&'a mut MergeButton>,
-    checkout: &'a mut CheckoutButton,
-}
-
-/// The header with the review actions, and what its buttons asked for; true when one of them
-/// (or a shortcut of the header) ran, a refresh excepted, so the header shows again.
+/// The header with the review actions, `file_link` the file the Files tab shows, and what its
+/// buttons asked for; true when one of them (or a shortcut of the header) ran, a refresh
+/// excepted, so the header shows again.
 fn header(
     ui: &mut egui::Ui,
     session: &mut PullRequestSession,
     services: &mut Services,
     actions: &mut ActionRunner,
-    parts: HeaderParts<'_>,
+    file_link: Option<&WebLink>,
+    mut buttons: header::Buttons<'_>,
 ) -> bool {
-    let HeaderParts { file_link, mut merge, checkout } = parts;
-    if let Some(merge) = merge.as_deref_mut()
+    if let Some(merge) = buttons.merge.as_deref_mut()
         && let Some(reason) = actions.take_merge_failure()
     {
         merge.fail(reason);
     }
-    let buttons = header::Buttons { merge, checkout };
     let action = header::show(ui, session, actions, file_link, buttons, services);
     // A refresh (F5) leaves the header where it is: the content keeps its place on screen.
     let has_acted =

@@ -1,19 +1,18 @@
 //! Commits tab: the pull request's commits, newest first. A click opens that commit's own changes.
 
 use egui::{Align2, Id, Rect, RichText, Sense, Stroke, Ui, pos2, vec2};
-use review_core::UserIdentity;
+use review_core::{SHORT_SHA_LEN, UserIdentity, short_sha};
 use review_git::CommitInfo;
 
 use cv_base::theme::{self, icons, motion, style};
 use cv_pr_session::session::{CompareRange, PullRequestSession};
 use cv_widgets::states::{self, Action};
-use cv_widgets::{avatar, buttons, glyph, row, skeleton, time_text};
+use cv_widgets::{avatar, buttons, elide, glyph, row, skeleton, time_text};
 
 const ROW_HEIGHT: f32 = 56.0;
 const SKELETON_ROWS: usize = 8;
 const AVATAR_SIZE: f32 = 28.0;
-/// Length of `CommitInfo::short_sha`.
-const SHA_CHARS: usize = 8;
+const PAGE_MARGIN: egui::Margin = egui::Margin::same(style::PAGE_MARGIN_X);
 /// The widest outputs of `time_text::relative`, which size the time column.
 const TIME_SAMPLES: [&str; 4] = ["2026-12-30", "59 min ago", "23 h ago", "29 d ago"];
 
@@ -37,7 +36,7 @@ pub fn show(ui: &mut Ui, session: &PullRequestSession) -> Option<CommitsAction> 
             if let Some(message) = session.mirror.error().or(session.detail.error()) {
                 return retry_bar(ui, message);
             }
-            egui::Frame::new().inner_margin(egui::Margin::same(24)).show(ui, |ui| {
+            egui::Frame::new().inner_margin(PAGE_MARGIN).show(ui, |ui| {
                 style::card_frame(&palette).show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     for seed in 0..SKELETON_ROWS {
@@ -53,12 +52,11 @@ pub fn show(ui: &mut Ui, session: &PullRequestSession) -> Option<CommitsAction> 
         }
     };
     let mut picked = None;
-    egui::Frame::new().inner_margin(egui::Margin::same(24)).show(ui, |ui| {
+    egui::Frame::new().inner_margin(PAGE_MARGIN).show(ui, |ui| {
         ui.multiply_opacity(opacity);
         if let CompareRange::Commit { sha, .. } = &session.range {
             ui.horizontal(|ui| {
-                let short = &sha[..sha.len().min(8)];
-                let note = format!("Files shows commit {short}");
+                let note = format!("Files shows commit {}", short_sha(sha));
                 let label = ui.label(
                     RichText::new(format!("{}  {note}", icons::INFO)).color(palette.text_secondary),
                 );
@@ -101,7 +99,7 @@ pub fn show(ui: &mut Ui, session: &PullRequestSession) -> Option<CommitsAction> 
 fn retry_bar(ui: &mut Ui, message: &str) -> Option<CommitsAction> {
     let retry = [Action::secondary(icons::ARROW_CLOCKWISE, "Retry")];
     egui::Frame::new()
-        .inner_margin(egui::Margin::same(24))
+        .inner_margin(PAGE_MARGIN)
         .show(ui, |ui| states::error_with_actions(ui, message, &retry))
         .inner
         .map(|_| CommitsAction::Retry)
@@ -136,9 +134,7 @@ fn commit_row(
 
     // Right-hand columns have fixed widths, so SHAs and times line up from row to row.
     let sha_font = theme::fonts::code_font(12.0);
-    let sha_column =
-        painter.layout_no_wrap("0".repeat(SHA_CHARS), sha_font.clone(), palette.accent).size().x
-            + 16.0;
+    let sha_column = elide::text_width(ui, &"0".repeat(SHORT_SHA_LEN), &sha_font) + 16.0;
     let chip = Rect::from_min_size(
         pos2(rect.right() - style::SPACE_L - sha_column, rect.center().y - 11.0),
         vec2(sha_column, 22.0),
@@ -147,21 +143,14 @@ fn commit_row(
     painter.text(
         chip.center(),
         Align2::CENTER_CENTER,
-        commit.short_sha(),
+        short_sha(&commit.sha),
         sha_font,
         palette.accent,
     );
 
     let small = egui::FontId::proportional(style::SMALL_SIZE);
-    let time_column = TIME_SAMPLES
-        .iter()
-        .map(|sample| {
-            painter
-                .layout_no_wrap((*sample).to_owned(), small.clone(), palette.text_secondary)
-                .size()
-                .x
-        })
-        .fold(0.0, f32::max);
+    let time_column =
+        TIME_SAMPLES.iter().map(|sample| elide::text_width(ui, sample, &small)).fold(0.0, f32::max);
     let time_right = chip.left() - style::SPACE_L;
     let time = time_text::relative(time_text::from_unix(commit.authored_at));
     painter.text(
@@ -174,8 +163,8 @@ fn commit_row(
 
     let text_left = avatar_center.x + AVATAR_SIZE / 2.0 + style::SPACE_M;
     let text_width = (time_right - time_column - style::SPACE_L - text_left).max(0.0);
-    let subject = truncated(
-        ui,
+    let subject = elide::line(
+        &painter,
         &commit.subject,
         egui::FontId::proportional(style::BODY_SIZE),
         palette.text,
@@ -186,7 +175,8 @@ fn commit_row(
         subject,
         palette.text,
     );
-    let author = truncated(ui, &commit.author_name, small, palette.text_secondary, text_width);
+    let author =
+        elide::line(&painter, &commit.author_name, small, palette.text_secondary, text_width);
     painter.galley(
         pos2(text_left, rect.center().y + 10.0 - author.size().y / 2.0),
         author,
@@ -198,17 +188,4 @@ fn commit_row(
     response
         .clicked()
         .then(|| CompareRange::Commit { sha: commit.sha.clone(), parent: parent.clone() })
-}
-
-/// One line of text, cut with an ellipsis at `width`.
-fn truncated(
-    ui: &Ui,
-    text: &str,
-    font: egui::FontId,
-    color: egui::Color32,
-    width: f32,
-) -> std::sync::Arc<egui::Galley> {
-    let mut job = egui::text::LayoutJob::simple_singleline(text.to_owned(), font, color);
-    job.wrap = egui::text::TextWrapping::truncate_at_width(width);
-    ui.fonts_mut(|fonts| fonts.layout_job(job))
 }

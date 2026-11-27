@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use egui::{RichText, TextEdit, Ui};
 use review_core::Label;
 
@@ -163,12 +165,11 @@ impl LabelEditor {
                 .desired_width(f32::INFINITY),
         );
         let needle = self.search.trim().to_lowercase();
-        let is_in_draft =
-            |name: &str| draft.iter().any(|label| label.name.to_lowercase() == name.to_lowercase());
+        let taken: HashSet<String> = draft.iter().map(|label| label.name.to_lowercase()).collect();
         if !session.capabilities.has_label_catalog {
             let wants_add =
                 field.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
-            if wants_add && !needle.is_empty() && !is_in_draft(&needle) {
+            if wants_add && !needle.is_empty() && !taken.contains(&needle) {
                 let name = std::mem::take(&mut self.search).trim().to_owned();
                 field.request_focus();
                 return Some(Label { name, color: None, description: None });
@@ -193,10 +194,10 @@ impl LabelEditor {
         ui.add_space(style::SPACE_S);
         egui::ScrollArea::vertical().id_salt("label_catalog").max_height(220.0).show(ui, |ui| {
             chip_rows(ui, |ui| {
-                let candidates =
-                    catalog.iter().filter(|label| !is_in_draft(&label.name)).filter(|label| {
-                        needle.is_empty() || label.name.to_lowercase().contains(&needle)
-                    });
+                let candidates = catalog.iter().filter(|label| {
+                    let name = label.name.to_lowercase();
+                    !taken.contains(&name) && (needle.is_empty() || name.contains(&needle))
+                });
                 for label in candidates {
                     let chip = badges::label_chip(ui, label)
                         .interact(egui::Sense::click())

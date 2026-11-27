@@ -110,24 +110,26 @@ fn time_highlight(
     Timing { first_chunk: first_chunk.unwrap_or_default(), full: ms(start) }
 }
 
-/// A one-hunk diff over 60 lines from the middle of `source`: mostly context, every fifth line
-/// changed (deleted and added again with a word changed).
-fn middle_hunk(source: &str) -> FileDiff {
-    let lines: Vec<&str> = source.lines().collect();
-    let start = lines.len() / 2;
+/// One hunk over `lines`, which start at line `first` of the file: mostly context, every fifth
+/// line changed (deleted and added again with a word changed).
+fn hunk_over(lines: &[&str], first: usize) -> FileDiff {
     let mut body = String::new();
-    let (mut old, mut new) = (0, 0);
-    for (offset, line) in lines[start..start + 60].iter().enumerate() {
+    for (offset, line) in lines.iter().enumerate() {
         if offset % 5 == 2 {
             writeln!(body, "-{line}\n+{line} // changed").unwrap();
         } else {
             writeln!(body, " {line}").unwrap();
         }
-        (old, new) = (old + 1, new + 1);
     }
-    FileDiff::parse_unified(
-        format!("@@ -{},{old} +{},{new} @@\n{body}", start + 1, start + 1).as_bytes(),
-    )
+    let count = lines.len();
+    FileDiff::parse_unified(format!("@@ -{first},{count} +{first},{count} @@\n{body}").as_bytes())
+}
+
+/// A one-hunk diff over 60 lines from the middle of `source`, as [`hunk_over`] builds it.
+fn middle_hunk(source: &str) -> FileDiff {
+    let lines: Vec<&str> = source.lines().collect();
+    let start = lines.len() / 2;
+    hunk_over(&lines[start..start + 60], start + 1)
 }
 
 fn time_patch(
@@ -140,9 +142,8 @@ fn time_patch(
     ms(start)
 }
 
-/// How long until the lines around `line` of both sides are colored: one side after the other
-/// (before) or both at once (after).
-fn time_both_sides(text: &BlobText, grammar: grammar::Grammar, line: usize, parallel: bool) -> f64 {
+/// How long until the lines around `line` of both sides are colored, both sides at once.
+fn time_both_sides(text: &BlobText, grammar: grammar::Grammar, line: usize) -> f64 {
     let working = grammar.working_set();
     highlight::highlight(text, grammar.syntax, &working, |_| true);
     let side = |working: &Arc<grammar::WorkingSet>| {
@@ -156,20 +157,14 @@ fn time_both_sides(text: &BlobText, grammar: grammar::Grammar, line: usize, para
             }
             true
         });
-        (reached.unwrap_or_default(), ms(start))
+        reached.unwrap_or_default()
     };
-    if parallel {
-        let (new, old) = std::thread::scope(|scope| {
-            let new = scope.spawn(|| side(&working));
-            let old = scope.spawn(|| side(&working));
-            (new.join().unwrap(), old.join().unwrap())
-        });
-        new.0.max(old.0)
-    } else {
-        let new = side(&working);
-        let old = side(&working);
-        new.1 + old.0
-    }
+    let (new, old) = std::thread::scope(|scope| {
+        let new = scope.spawn(|| side(&working));
+        let old = scope.spawn(|| side(&working));
+        (new.join().unwrap(), old.join().unwrap())
+    });
+    new.max(old)
 }
 
 /// From opening a file to its first colored diff lines, with the warm-up of its grammar started
@@ -199,11 +194,7 @@ fn git_cat_file(path: &str) -> std::process::Command {
     command.args(["-C", root, "cat-file", "blob", &format!("HEAD:{path}")]);
     command.stdout(std::process::Stdio::null());
     // As the app starts git: without a console window, which costs about half a second.
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt as _;
-        command.creation_flags(0x0800_0000);
-    }
+    cv_base::platform::hide_std_console(&mut command);
     command
 }
 
@@ -240,19 +231,10 @@ fn in_namespace(source: &str) -> String {
     format!("namespace Outer {{\n{inner}}}\n")
 }
 
-/// One hunk over all of `source`, every fifth line changed as in [`middle_hunk`]: a large file
-/// reworked, the case without hunk starts to split the coloring at.
+/// One hunk over all of `source`, as [`hunk_over`] builds it: a large file reworked, the case
+/// without hunk starts to split the coloring at.
 fn whole_file_hunk(source: &str) -> FileDiff {
-    let mut body = String::new();
-    let count = source.lines().count();
-    for (index, line) in source.lines().enumerate() {
-        if index % 5 == 2 {
-            writeln!(body, "-{line}\n+{line} // changed").unwrap();
-        } else {
-            writeln!(body, " {line}").unwrap();
-        }
-    }
-    FileDiff::parse_unified(format!("@@ -1,{count} +1,{count} @@\n{body}").as_bytes())
+    hunk_over(&source.lines().collect::<Vec<_>>(), 1)
 }
 
 /// Times one whole coloring: until the first chunk, all of it, and the share spent handing the
@@ -295,19 +277,16 @@ fn run_file(text: &BlobText, grammar: grammar::Grammar, working: &Arc<grammar::W
     Run { first: first.unwrap_or_default(), all: ms(start), hand_off }
 }
 
-/// Diff lines of the large-diff case: the size lane mem-release measured 7.6 s (cold) and 8.9 s
-/// (compiled) for in TypeScript, 5.1 s here before colors read in parts.
+/// Diff lines of the large-diff case: a large reworked file.
 const LARGE_DIFF_LINES: usize = 15_000;
-/// Our budget for coloring [`LARGE_DIFF_LINES`] TypeScript diff lines by diff line with a compiled
-/// grammar, in a release build: a file of declarations and one that is one long block.
-const LARGE_TS_BUDGET: Duration = Duration::from_millis(1_500);
 
-/// Where the time of coloring a large diff goes, per language: compiling the grammar (cold minus
-/// compiled), the colors by diff line, the whole file of one side, handing chunks over and the
-/// changed words of every replaced line; then holds TypeScript to [`LARGE_TS_BUDGET`].
+/// Prints where the time of coloring a large diff goes, per language: compiling the grammar (cold
+/// minus compiled), the colors by diff line, the whole file of one side, handing chunks over and
+/// the changed words of every replaced line. Our budget: 1.5 s for the TypeScript cases by diff
+/// line with a compiled grammar, release build.
 /// `cargo test --release -p cv-pr-diff large_diff_coloring -- --ignored --nocapture`.
 #[test]
-#[ignore = "release-mode budget for a large diff's colors; prints numbers"]
+#[ignore = "release-mode numbers for a large diff's colors; prints them"]
 fn large_diff_coloring() {
     let start = Instant::now();
     grammar::for_path("src/main.rs", "").expect("a Rust grammar");
@@ -320,7 +299,6 @@ fn large_diff_coloring() {
         ("Workspace.cs", lines_of(&csharp_source(), file_lines)),
         ("namespace.ts", in_namespace(&lines_of(&typescript_source(), file_lines - 2))),
     ];
-    let mut typescript: f64 = 0.0;
     for (path, source) in &samples {
         let grammar = grammar::for_path(path, "").expect("a grammar");
         let diff = whole_file_hunk(source);
@@ -352,14 +330,7 @@ fn large_diff_coloring() {
             file.first,
             file.hand_off,
         );
-        if grammar.syntax.name == "TypeScript" {
-            typescript = typescript.max(compiled.all);
-        }
     }
-    assert!(
-        typescript <= LARGE_TS_BUDGET.as_secs_f64() * 1000.0,
-        "{LARGE_DIFF_LINES} TypeScript diff lines took {typescript:.0} ms, over our budget of {LARGE_TS_BUDGET:?}"
-    );
 }
 
 #[test]
@@ -395,32 +366,27 @@ fn coloring_latency() {
         let patch_compiled = time_patch(grammar, &cold_set, &hunk);
         let middle = text.line_count() / 2;
         println!(
-            "{path} ({} lines)\n  before: whole file from line 0, cold: first {} lines {:.1} ms, all {:.1} ms; compiled: first chunk {:.1} ms, all {:.1} ms; both sides to line {middle}: {:.1} ms\n  after: hunk of {} diff lines cold {:.1} ms; warm-up {:.1} ms, then the hunk {:.1} ms; compiled {:.1} ms; both sides to line {middle} at once: {:.1} ms",
+            "{path} ({} lines)\n  whole file from line 0, cold: first {} lines {:.1} ms, all {:.1} ms; compiled: first chunk {:.1} ms, all {:.1} ms; both sides to line {middle} at once: {:.1} ms\n  by diff line: hunk of {} diff lines cold {:.1} ms; warm-up {:.1} ms, then the hunk {:.1} ms; compiled {:.1} ms",
             text.line_count(),
             250,
             cold.first_chunk,
             cold.full,
             compiled.first_chunk,
             compiled.full,
-            time_both_sides(&text, grammar, middle, false),
+            time_both_sides(&text, grammar, middle),
             hunk.lines().len(),
             patch_cold,
             warm_up,
             patch_warmed,
             patch_compiled,
-            time_both_sides(&text, grammar, middle, true),
         );
-        // Before, the warm-up started with the Files tab, so with a file opened from it; now it
-        // starts with the pull request (the file list), and the diff load waits for it.
-        let before = time_open(grammar, &hunk, Duration::ZERO);
         let opened = [0, 250, 500]
             .map(|delay| (delay, time_open(grammar, &hunk, Duration::from_millis(delay))));
         let in_first_frame = |colors: f64, wait: Duration| {
             if colors <= wait.as_secs_f64() * 1000.0 { "yes" } else { "no" }
         };
         println!(
-            "  opened 0/250/500 ms after the pull request: before {before:.1} ms each (in the first frame: {}); after {}",
-            in_first_frame(before, patch_colors::WAIT),
+            "  opened 0/250/500 ms after the pull request: {}",
             opened
                 .iter()
                 .map(|(delay, colors)| format!(

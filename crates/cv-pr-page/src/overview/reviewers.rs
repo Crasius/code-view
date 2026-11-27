@@ -57,7 +57,7 @@ impl ReviewerEditor {
         let Some(detail) = session.detail.ready() else {
             for _ in 0..3 {
                 ui.horizontal(|ui| {
-                    skeleton::circle(ui, 28.0);
+                    skeleton::circle(ui, AVATAR_SIZE);
                     skeleton::bar(ui, 140.0, 12.0);
                 });
                 ui.add_space(6.0);

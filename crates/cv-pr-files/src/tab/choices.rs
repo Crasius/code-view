@@ -67,11 +67,11 @@ pub fn new_only_toggled(current: DiffLayout, before_new_only: DiffLayout) -> Dif
 #[cfg(test)]
 mod tests {
     use review_core::DiffSide;
-    use review_store::{AppPaths, DiffLayout};
+    use review_store::DiffLayout;
 
     use super::{file_layout, new_only_toggled, toggle_comments_in_diff};
     use cv_code::diff_rows::Layout;
-    use cv_services::Services;
+    use cv_testkit::ScratchDir;
 
     #[test]
     fn shows_added_and_deleted_files_whole_and_keeps_the_choice_for_the_rest() {
@@ -91,28 +91,18 @@ mod tests {
         assert_eq!(file_layout(None, DiffLayout::NewOnly), Layout::NewOnly);
     }
 
+    /// Alt+H calls the toggle (`review::keys`); the header's switch flips the setting itself.
     #[test]
-    fn alt_h_switches_comments_in_the_diff_and_saves_the_choice() {
-        let root =
-            std::env::temp_dir().join(format!("review-comments-in-diff-{}", std::process::id()));
-        // Left over from an earlier run, or absent.
-        let _was_absent = std::fs::remove_dir_all(&root);
-        let paths = AppPaths::new(root.join("config"), root.join("cache"));
-        let mut services =
-            Services::new(egui::Context::default(), paths.clone(), cv_providers::create_provider);
+    fn the_comments_toggle_saves_its_choice() {
+        let scratch = ScratchDir::new("comments-in-diff");
+        let mut services = crate::tests::services_in(&scratch);
         assert!(services.settings.show_comments_in_diff, "comments show by default");
         for expected in [false, true] {
             toggle_comments_in_diff(&mut services);
             assert_eq!(services.settings.show_comments_in_diff, expected);
-            let restarted = Services::new(
-                egui::Context::default(),
-                paths.clone(),
-                cv_providers::create_provider,
-            );
+            let restarted = crate::tests::services_in(&scratch);
             assert_eq!(restarted.settings.show_comments_in_diff, expected, "saved");
         }
-        // Best effort: the next run removes what is left.
-        let _best_effort = std::fs::remove_dir_all(&root);
     }
 
     #[test]

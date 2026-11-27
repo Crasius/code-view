@@ -91,7 +91,10 @@ fn new_only_marks_removals_and_shows_them_on_demand() {
     harness.state_mut().layout = Layout::Inline;
     harness.state_mut().view.relayout();
     settle(&mut harness);
-    assert_eq!(wedge_labels(&harness), [""; 0]);
+    assert!(
+        wedge_labels(&harness).is_empty(),
+        "other layouts show removals as rows, without wedges"
+    );
 }
 
 /// A click pins the popover of the wedge `loop_label` (base lines from `loop_start`): it stays
@@ -217,7 +220,36 @@ fn the_change_in_focus_survives_rows_rebuilt_for_late_contents_and_threads() {
 /// pointer: in the frame the size changes, and back again.
 #[test]
 fn a_new_code_size_keeps_the_line_under_the_pointer() {
-    // Every fourth line changed.
+    let mut harness = harness(every_fourth_changed());
+    settle(&mut harness);
+    harness.hover_at(egui::pos2(600.0, 420.0));
+    wheel_down(&mut harness, 4);
+    // A changed line in the middle of the view, the pointer on it.
+    let under = (5..=400u32)
+        .step_by(4)
+        .find(|line| text_rect(harness.state(), *line).top() > 380.0)
+        .expect("a changed line below the middle");
+    assert!(under > 60, "the view scrolled down first: line {under} in the middle");
+    let pointer = text_rect(harness.state(), under).center();
+    harness.hover_at(pointer);
+    harness.run_steps(2);
+
+    for size in [18.0, 13.0] {
+        harness.state_mut().font_size = size;
+        harness.step();
+        let moved = text_rect(harness.state(), under);
+        assert!(
+            moved.y_range().contains(pointer.y),
+            "at {size} px line {under} stays under the pointer in the same frame: {moved:?}, pointer {pointer:?}"
+        );
+        settle(&mut harness);
+        let settled = text_rect(harness.state(), under);
+        assert!(settled.y_range().contains(pointer.y), "and stays there at {size} px: {settled:?}");
+    }
+}
+
+/// 400 lines, every fourth one changed, in one pane.
+fn every_fourth_changed() -> Fixture {
     let line = |index: usize, changed: bool| {
         format!(
             "    let value_{index} = compute({index}, {});\n",
@@ -226,10 +258,12 @@ fn a_new_code_size_keeps_the_line_under_the_pointer() {
     };
     let old: String = (0..400).map(|index| line(index, false)).collect();
     let new: String = (0..400).map(|index| line(index, index % 4 == 0)).collect();
-    let mut harness = harness(fixture_of(Layout::Inline, Some(&old), Some(&new)));
-    settle(&mut harness);
-    harness.hover_at(egui::pos2(600.0, 420.0));
-    for _ in 0..4 {
+    fixture_of(Layout::Inline, Some(&old), Some(&new))
+}
+
+/// Turns the mouse wheel `notches` lines down where the pointer is, then lets the scroll ease out.
+fn wheel_down(harness: &mut Harness<'_, Fixture>, notches: usize) {
+    for _ in 0..notches {
         harness.event(egui::Event::MouseWheel {
             unit: egui::MouseWheelUnit::Line,
             delta: egui::vec2(0.0, -12.0),
@@ -240,34 +274,12 @@ fn a_new_code_size_keeps_the_line_under_the_pointer() {
         harness.step();
     }
     harness.run_steps(30);
-    let rect_of = |fixture: &Fixture, new_line: u32| {
-        fixture
-            .view
-            .text_area(Pane::Inline, fixture.view.row_of(&fixture.diff, None, Some(new_line)))
-            .rect
-    };
-    // A changed line in the middle of the view, the pointer on it.
-    let under = (5..=400u32)
-        .step_by(4)
-        .find(|line| rect_of(harness.state(), *line).top() > 380.0)
-        .expect("a changed line below the middle");
-    assert!(under > 60, "the view scrolled down first: line {under} in the middle");
-    let pointer = rect_of(harness.state(), under).center();
-    harness.hover_at(pointer);
-    harness.run_steps(2);
+}
 
-    for size in [18.0, 13.0] {
-        harness.state_mut().font_size = size;
-        harness.step();
-        let moved = rect_of(harness.state(), under);
-        assert!(
-            moved.y_range().contains(pointer.y),
-            "at {size} px line {under} stays under the pointer in the same frame: {moved:?}, pointer {pointer:?}"
-        );
-        settle(&mut harness);
-        let settled = rect_of(harness.state(), under);
-        assert!(settled.y_range().contains(pointer.y), "and stays there at {size} px: {settled:?}");
-    }
+/// Where the text of `new_line` shows in the one pane.
+fn text_rect(fixture: &Fixture, new_line: u32) -> egui::Rect {
+    let row = fixture.view.row_of(&fixture.diff, None, Some(new_line));
+    fixture.view.text_area(Pane::Inline, row).rect
 }
 
 fn thread_on_new_line(id: &str, new_line: u32, body: &str) -> ReviewThread {
@@ -369,48 +381,24 @@ fn jumping_to_a_hidden_comment_shows_it() {
 /// Hiding and showing the comments keeps the code in view where it is, with cards above it.
 #[test]
 fn switching_comments_keeps_the_view_in_place() {
-    // Every fourth line changed; threads on the first two changes.
-    let line = |index: usize, changed: bool| {
-        format!(
-            "    let value_{index} = compute({index}, {});\n",
-            if changed { index * 7 } else { index }
-        )
-    };
-    let old: String = (0..400).map(|index| line(index, false)).collect();
-    let new: String = (0..400).map(|index| line(index, index % 4 == 0)).collect();
-    let mut fixture = fixture_of(Layout::Inline, Some(&old), Some(&new));
+    // Threads on the first two changes.
+    let mut fixture = every_fourth_changed();
     fixture.threads.push(thread_on_new_line("first", 5, "A comment on the first change."));
     fixture.threads.push(thread_on_new_line("second", 9, "A comment on the second change."));
     let mut harness = harness_sized(fixture, [1180.0, 520.0]);
     settle(&mut harness);
     harness.hover_at(egui::pos2(600.0, 300.0));
-    for _ in 0..3 {
-        harness.event(egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Line,
-            delta: egui::vec2(0.0, -12.0),
-            phase: egui::TouchPhase::Move,
-            modifiers: egui::Modifiers::NONE,
-            source: egui::MouseWheelSource::Wheel,
-        });
-        harness.step();
-    }
-    harness.run_steps(30);
+    wheel_down(&mut harness, 3);
     assert!(!shows(&harness, "A comment on the first change."), "the cards are above the view");
-    let rect_of = |fixture: &Fixture, new_line: u32| {
-        fixture
-            .view
-            .text_area(Pane::Inline, fixture.view.row_of(&fixture.diff, None, Some(new_line)))
-            .rect
-    };
     let watched = (5..=400u32)
         .step_by(4)
-        .find(|line| rect_of(harness.state(), *line).top() > 200.0)
+        .find(|line| text_rect(harness.state(), *line).top() > 200.0)
         .expect("a line in the view");
-    let before = rect_of(harness.state(), watched);
+    let before = text_rect(harness.state(), watched);
     for show in [false, true] {
         harness.state_mut().show_threads = show;
         settle(&mut harness);
-        let after = rect_of(harness.state(), watched);
+        let after = text_rect(harness.state(), watched);
         assert!(
             (after.top() - before.top()).abs() < 0.5,
             "comments {}: line {watched} moved from {before:?} to {after:?}",

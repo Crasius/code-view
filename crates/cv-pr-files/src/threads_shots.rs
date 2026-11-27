@@ -1,6 +1,6 @@
-//! Threads inline in the diff (T1) and a new thread on picked lines (T2): the marked lines with
-//! their accent bar, the gutter markers, the card with a suggested change and an open reply, a
-//! resolved thread collapsed to one line, and the new-thread composer with its kept draft.
+//! Threads inline in the diff and a new thread on picked lines: the marked lines with their accent
+//! bar, the gutter markers, the card with a suggested change and an open reply, a resolved thread
+//! collapsed to one line, and the new-thread composer with its kept draft.
 
 use cv_testkit::Clicks;
 use egui::{Event, Modifiers, PointerButton, Pos2};
@@ -8,11 +8,10 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_core::{ReviewThread, ThreadStatus};
 
-use cv_base::theme;
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
 use cv_pr_diff::testing::{self as check, Fixture, NEW, PATH, line_of, settle};
-use cv_pr_threads::samples::{self, comment, erika, jonas, lines, minutes_ago};
+use cv_pr_threads::samples::{self, comment, jonas, lines};
 
 fn click(harness: &mut Harness<'_, Fixture>, pos: Pos2, modifiers: Modifiers) {
     harness.hover_at(pos);
@@ -53,28 +52,12 @@ fn threads() -> Vec<ReviewThread> {
 fn harness() -> Harness<'static, Fixture> {
     let mut fixture = check::fixture(Layout::SideBySide);
     fixture.threads = threads();
-    let threads = &mut fixture.threads_ui;
-    threads.context.author_id = Some(jonas().id);
-    threads.context.web_url = Some(samples::PULL_REQUEST_URL.into());
-    threads.set_me(erika());
-    threads.visited_at(minutes_ago(30).unix_timestamp());
-    Harness::builder()
-        .with_size([1320.0, 1240.0])
-        .with_context_setup(|ctx| {
-            theme::fonts::install(ctx);
-            theme::motion::set_reduced(ctx, false);
-        })
-        .build_ui_state(
-            |ui, state: &mut Fixture| {
-                theme::activate(ui.ctx(), state.theme);
-                check::show_diff(ui, state);
-            },
-            fixture,
-        )
+    fixture.threads_ui = samples::page_ui();
+    check::harness_sized(fixture, [1320.0, 1240.0])
 }
 
 #[test]
-fn threads_inline_in_the_diff() {
+fn inline_threads_show_status_markers_and_collapse_from_the_marker() {
     let mut harness = harness();
     harness
         .state_mut()

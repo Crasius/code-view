@@ -1,9 +1,9 @@
 //! Code rows of the diff: each pane's line painted with its changed words, its selection and the
 //! band of a multi-line comment, and in the marker column a thread's marker (or, while comments
 //! are hidden, their count), the selection's "Comment on lines X–Y" or the hovered line's comment
-//! button. The find bar's hits are marked in the text. A line the view was sent to flashes ([`flash`]); the cited lines painted tell the
-//! assistant's mini chat where they are. Painting reads the view's state and
-//! returns what the user did, for the view to carry out.
+//! button. The find bar's hits are marked in the text. A line the view was sent to flashes
+//! ([`flash`]); the cited lines painted tell the assistant's mini chat where they are. Painting
+//! reads the view's state and returns what the user did, for the view to carry out.
 
 pub(super) mod flash;
 mod gutter;

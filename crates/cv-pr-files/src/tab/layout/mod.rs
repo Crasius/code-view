@@ -14,7 +14,6 @@ use review_core::{ReviewThread, ThreadStatus};
 use review_git::ChangedFile;
 use review_store::DiffLayout;
 
-use super::choices::whole_file_side;
 use super::review::stepping;
 use super::{origin, start};
 use crate::{Env, FilesTab, Opened, focus_strip};
@@ -22,6 +21,7 @@ use cv_pr_diff::diff_overview::past_end;
 use cv_pr_diff::diff_view::Direction;
 use cv_pr_session::assistant_link;
 use cv_pr_tree::{TreeEvent, TreeInputs};
+use cv_runtime::load::Live;
 use cv_services::Services;
 use cv_shell::focus_mode::{self, Surface};
 
@@ -61,7 +61,7 @@ pub fn show(tab: &mut FilesTab, ui: &mut egui::Ui, env: &mut Env<'_>) {
         tab.selected_rank = rank;
     }
 
-    let thread_counts = count_threads(env.session.threads.ready().map_or(&[][..], Vec::as_slice));
+    let thread_counts = tab.thread_counts.of(&env.session.threads);
     let shows_tree = !is_focused || env.services.settings.focus_file_tree || tab.tree.is_going_to();
     if !shows_tree {
         tab.tree.forget_hover();
@@ -210,10 +210,7 @@ fn show_focus_strip(
 ) -> focus_strip::StripAction {
     let selected = tab.selected_index(files);
     let file = selected.map(|index| &files[index]);
-    let is_previewing = file.is_some_and(|file| tab.preview.is_active(file));
-    let diff = tab.diffs.ready().filter(|_| !is_previewing && file.is_some());
-    let shows_diff = diff.is_some_and(|diff| !diff.is_binary && !diff.is_empty());
-    let rendered_changes = file.and_then(|file| tab.preview.change_position(file));
+    let state = file.map(|file| tab.file_state(file, env.services));
     let threads = env.session.threads.ready().map_or(&[][..], Vec::as_slice);
     let listed =
         || threads.iter().filter(|thread| !thread.is_system && !thread.comments.is_empty());
@@ -221,11 +218,10 @@ fn show_focus_strip(
         file,
         folder: tab.summary.folder(),
         is_viewed: file.is_some_and(|file| tab.viewed.is_viewed(file)),
-        changes: shows_diff.then(|| tab.view.change_position()).or(rendered_changes),
-        is_rendered: rendered_changes.is_some(),
-        whole_file: file.and_then(whole_file_side),
-        hides_whitespace: env.services.settings.ignore_whitespace
-            && diff.is_some_and(|diff| !diff.is_binary),
+        changes: state.and_then(|state| state.changes),
+        is_rendered: state.is_some_and(|state| state.rendered_changes.is_some()),
+        whole_file: state.and_then(|state| state.whole_file),
+        hides_whitespace: state.is_some_and(|state| state.hides_whitespace),
         has_previous_file: stepping::neighbour(tab, selected, Direction::Previous).is_some(),
         has_next_file: stepping::neighbour(tab, selected, Direction::Next).is_some(),
         edge_hint: selected
@@ -248,6 +244,25 @@ struct Frame<'a> {
     thread_counts: &'a HashMap<String, usize>,
 }
 
+/// Open threads by the path they are on, counted again only when the threads changed.
+#[derive(Default)]
+pub struct ThreadCounts {
+    /// The version of the threads counted; `None` while none are loaded.
+    counted: Option<u64>,
+    counts: Arc<HashMap<String, usize>>,
+}
+
+impl ThreadCounts {
+    fn of(&mut self, threads: &Live<Vec<ReviewThread>>) -> Arc<HashMap<String, usize>> {
+        let version = threads.ready().map(|_| threads.version());
+        if version != self.counted {
+            self.counted = version;
+            self.counts = Arc::new(count_threads(threads.ready().map_or(&[][..], Vec::as_slice)));
+        }
+        Arc::clone(&self.counts)
+    }
+}
+
 /// Open threads by the path they are on.
 fn count_threads(threads: &[ReviewThread]) -> HashMap<String, usize> {
     let mut counts = HashMap::new();
@@ -260,4 +275,30 @@ fn count_threads(threads: &[ReviewThread]) -> HashMap<String, usize> {
         }
     }
     counts
+}
+
+#[cfg(test)]
+mod tests {
+    use review_core::{ReviewThread, ThreadStatus};
+
+    use super::ThreadCounts;
+    use cv_pr_threads::samples;
+    use cv_runtime::load::Live;
+
+    #[test]
+    fn thread_counts_follow_a_reload_and_a_clear_of_the_threads() {
+        let on = |id: &str, status| {
+            samples::thread(id, status, Some(samples::lines("src/a.rs", 1, 1)), Vec::new())
+        };
+        let mut threads: Live<Vec<ReviewThread>> = Live::default();
+        let mut counts = ThreadCounts::default();
+        assert!(counts.of(&threads).is_empty(), "nothing while the threads load");
+
+        threads.set(vec![on("t-1", ThreadStatus::Active), on("t-2", ThreadStatus::Resolved)]);
+        assert_eq!(counts.of(&threads).get("src/a.rs"), Some(&1), "open threads only");
+        threads.set(vec![on("t-1", ThreadStatus::Active), on("t-2", ThreadStatus::Active)]);
+        assert_eq!(counts.of(&threads).get("src/a.rs"), Some(&2), "a reload counts again");
+        threads.clear();
+        assert!(counts.of(&threads).is_empty(), "cleared threads count nothing");
+    }
 }

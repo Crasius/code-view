@@ -7,17 +7,17 @@ use std::time::Instant;
 use egui::{Align2, RichText, Sense, Ui, pos2, vec2};
 
 use super::Act;
-use cv_base::theme::{self, icons, motion, style};
+use cv_base::theme::{self, icons, style};
 use cv_services::checkouts::{Job, JobProgress, StepState};
-use cv_widgets::buttons;
 use cv_widgets::progress_log::{self, format_duration};
+use cv_widgets::{buttons, states};
 
 const SEGMENT_HEIGHT: f32 = 4.0;
 const SEGMENT_GAP: f32 = 4.0;
 const STEP_HEIGHT: f32 = 24.0;
 const LOG_HEIGHT: f32 = 180.0;
 
-pub(super) fn running(ui: &mut Ui, job: &Job) -> Option<Act> {
+pub(super) fn running(ui: &mut Ui, job: &Job, is_log_open: &mut bool) -> Option<Act> {
     let progress = job.progress();
     let now = Instant::now();
     let palette = theme::palette(ui.ctx());
@@ -31,18 +31,16 @@ pub(super) fn running(ui: &mut Ui, job: &Job) -> Option<Act> {
     segments(ui, &progress);
     steps(ui, &progress, now);
     let mut act = None;
-    let open_id = ui.scope_id().with("checkout_log_open");
-    let is_open = ui.data(|data| data.get_temp::<bool>(open_id)).unwrap_or(false);
     ui.horizontal(|ui| {
-        let caret = if is_open { icons::CARET_DOWN } else { icons::CARET_RIGHT };
+        let caret = if *is_log_open { icons::CARET_DOWN } else { icons::CARET_RIGHT };
         if buttons::subtle(ui, caret, "Log").clicked() {
-            ui.data_mut(|data| data.insert_temp(open_id, !is_open));
+            *is_log_open = !*is_log_open;
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             progress_log::copy_button(ui, &progress.log);
         });
     });
-    if is_open {
+    if *is_log_open {
         let panel = progress_log::Panel {
             id_salt: "checkout_log",
             name: "Checkout log",
@@ -87,7 +85,6 @@ fn segments(ui: &mut Ui, progress: &JobProgress) {
 /// The steps: their state's icon, label and duration (the running one's so far).
 pub(super) fn steps(ui: &mut Ui, progress: &JobProgress, now: Instant) {
     let palette = theme::palette(ui.ctx());
-    let reduced = motion::is_reduced(ui.ctx());
     for row in &progress.steps {
         let (rect, response) =
             ui.allocate_exact_size(vec2(ui.available_width(), STEP_HEIGHT), Sense::hover());
@@ -99,7 +96,6 @@ pub(super) fn steps(ui: &mut Ui, progress: &JobProgress, now: Instant) {
             StepState::Done => (Some(icons::CHECK), palette.success, "done"),
             StepState::Failed => (Some(icons::X), palette.error, "failed"),
             StepState::Waiting => (Some(icons::CIRCLE_DASHED), palette.text_disabled, "waiting"),
-            StepState::Running if reduced => (Some(icons::CIRCLE_NOTCH), palette.accent, "running"),
             StepState::Running => (None, palette.accent, "running"),
         };
         match icon {
@@ -112,7 +108,7 @@ pub(super) fn steps(ui: &mut Ui, progress: &JobProgress, now: Instant) {
                     color,
                 );
             }
-            None => egui::Spinner::new().size(icons::SIZE - 2.0).color(color).paint_at(ui, slot),
+            None => states::spinner(ui, slot, color),
         }
         let text_color = match row.state {
             StepState::Waiting => palette.text_secondary,

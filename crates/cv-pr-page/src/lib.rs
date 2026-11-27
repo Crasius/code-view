@@ -19,7 +19,9 @@ mod live;
 mod merge_button;
 mod overview;
 #[cfg(test)]
-mod pipelines_live_check;
+mod page_harness;
+#[cfg(test)]
+mod pipelines_follow_check;
 #[cfg(test)]
 mod update_place_walkthrough;
 mod vote_comment;
@@ -34,6 +36,7 @@ use self::header_reveal::HeaderReveal;
 use self::live::{Activity, Drafts, LiveAction, LiveUpdates};
 use self::merge_button::MergeButton;
 use self::overview::{LinkedAction, OverviewTab, PipelineRequest};
+use self::vote_comment::VoteComposer;
 use cv_base::theme::{icons, motion, style};
 use cv_editor::markdown_editor::{Person, PullRequestContext};
 use cv_pr_assistant::{Assistant, citations};
@@ -84,8 +87,8 @@ pub struct PullRequestPage {
     assistant: Assistant,
     /// How far the header slid away with the scrolling.
     header_reveal: HeaderReveal,
-    /// The vote composer under the header holds text, as of the last frame.
-    has_vote_text: bool,
+    /// The vote composer under the header and its unsent text.
+    vote: VoteComposer,
 }
 
 impl PullRequestPage {
@@ -96,8 +99,7 @@ impl PullRequestPage {
             .map_or(review_core::ProviderKind::GitHub, |connection| connection.kind);
         let threads = ThreadsUi::new(&key, kind, services);
         let assistant = Assistant::new(&key, services);
-        let session =
-            PullRequestSession::open(key.clone(), services).map_err(|error| error.to_string());
+        let session = open_session(&key, services);
         let tab = files.last_tab().map_or_else(|| start_tab(services), tab_of);
         Self {
             key,
@@ -117,7 +119,7 @@ impl PullRequestPage {
             live: LiveUpdates::default(),
             assistant,
             header_reveal: HeaderReveal::default(),
-            has_vote_text: false,
+            vote: VoteComposer::default(),
         }
     }
 
@@ -150,7 +152,7 @@ impl PullRequestPage {
     /// A comment, reply, reviewer or label edit is open, a post is on its way, or the merge
     /// button is in use: nothing should take the page away or reload it underneath.
     pub fn has_unsent_input(&self) -> bool {
-        self.has_vote_text
+        self.vote.has_unsent_text()
             || has_unsent_input(&self.overview, &self.files, &self.threads, self.merge.as_ref())
     }
 
@@ -195,15 +197,17 @@ impl PullRequestPage {
             live,
             assistant,
             header_reveal,
-            has_vote_text,
+            vote,
             checkout,
         } = self;
-        if session.is_err() {
-            failed_page(ui, services, key, session);
-            return;
-        }
-        let Ok(session) = session else {
-            return;
+        let session = match session {
+            Ok(session) => session,
+            Err(message) => {
+                if failed_page(ui, services, key, message) {
+                    *session = open_session(key, services);
+                }
+                return;
+            }
         };
         let ctx = ui.ctx().clone();
         let now = ui.input(|input| input.time);
@@ -229,13 +233,12 @@ impl PullRequestPage {
         let picked = band::tab_key(&ctx).map(|picked| *tab = picked).is_some();
         let item_spacing = ui.spacing().item_spacing.y;
         ui.spacing_mut().item_spacing.y = 0.0;
-        let parts = band::Parts { session, services, actions, threads, files, merge, checkout };
+        let parts =
+            band::Parts { session, services, actions, threads, files, merge, vote, checkout };
         let clicked = !is_focused && band::show(ui, parts, header_reveal, tab);
         if picked || clicked {
             *tab_entered_at = Some(now);
         }
-        // The composer keeps its draft in focus mode too, where the band is left out.
-        *has_vote_text = vote_comment::has_unsent_text(&ctx, key);
         threads_panel_key(ui, services, threads, *tab);
         overview.header_hidden = if is_focused { 0.0 } else { header_reveal.drawn_hidden() };
         let (card_top, card_width) = live_card_place(ui, is_focused);
@@ -454,17 +457,22 @@ impl TabParts<'_> {
     }
 }
 
-/// The page when the pull request could not be opened: the reason, Retry (opens it again), the
-/// connection check and the pull request on its platform.
+/// The session of the pull request, or why it could not be opened.
+fn open_session(
+    key: &PullRequestKey,
+    services: &mut Services,
+) -> Result<PullRequestSession, String> {
+    PullRequestSession::open(key.clone(), services).map_err(|error| error.to_string())
+}
+
+/// The page when the pull request could not be opened: the reason, Retry, the connection check
+/// and the pull request on its platform; true when Retry was picked, to open it again.
 fn failed_page(
     ui: &mut egui::Ui,
-    services: &mut Services,
+    services: &Services,
     key: &PullRequestKey,
-    session: &mut Result<PullRequestSession, String>,
-) {
-    let Err(message) = session else {
-        return;
-    };
+    message: &str,
+) -> bool {
     let web_url = services.connection(&key.connection_id).map(|connection| {
         (connection.kind, pull_request_link::web_url(connection, &key.repository_key, key.number))
     });
@@ -478,14 +486,11 @@ fn failed_page(
         actions.push(Action::secondary(provider_icon::glyph(*kind), &open_label));
     }
     let picked = egui::Frame::new()
-        .inner_margin(egui::Margin::same(24))
+        .inner_margin(egui::Margin::same(style::PAGE_MARGIN_X))
         .show(ui, |ui| states::error_with_actions(ui, message, &actions))
         .inner;
     match picked {
-        Some(0) => {
-            *session =
-                PullRequestSession::open(key.clone(), services).map_err(|error| error.to_string());
-        }
+        Some(0) => return true,
         Some(1) => intents::request_fix(ui.ctx(), &key.connection_id),
         Some(_) => {
             if let Some((_, url)) = &web_url {
@@ -494,6 +499,7 @@ fn failed_page(
         }
         None => {}
     }
+    false
 }
 
 /// A finished write reloads what it changed.

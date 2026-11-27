@@ -2,6 +2,7 @@
 //! ("what was pushed since you looked", "the version before the push"), with the way back.
 
 use egui::{RichText, Ui};
+use review_core::short_sha;
 
 use cv_base::theme::{self, icons, style};
 use cv_pr_session::session::CompareRange;
@@ -12,11 +13,11 @@ pub fn show(ui: &mut Ui, range: &CompareRange) -> bool {
     let text = match range {
         CompareRange::SinceSeen { seen, head } => format!(
             "Showing what was pushed since you last looked: {} to {}",
-            short(seen),
-            short(head)
+            short_sha(seen),
+            short_sha(head)
         ),
         CompareRange::Previous { head, .. } => {
-            format!("Showing the version before the latest push, up to {}", short(head))
+            format!("Showing the version before the latest push, up to {}", short_sha(head))
         }
         CompareRange::AllChanges | CompareRange::Commit { .. } => return false,
     };
@@ -35,8 +36,4 @@ pub fn show(ui: &mut Ui, range: &CompareRange) -> bool {
             });
         });
     back
-}
-
-fn short(sha: &str) -> &str {
-    &sha[..sha.len().min(8)]
 }

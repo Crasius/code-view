@@ -160,7 +160,7 @@ fn menu(
     for (kind, is_installed) in view.agents {
         let with = OpenWith::Agent(kind);
         let subtitle = (!is_installed).then_some("Not installed");
-        let name = checkouts::agent_name(kind);
+        let name = cv_services::agent_names::cli_name(kind);
         if entry(ui, icons::ROBOT, name, subtitle, marker(main, with), is_installed).clicked() {
             act = Some(Act::Open(with));
         }

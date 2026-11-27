@@ -8,12 +8,17 @@ use egui::{Margin, RichText, Sense, Stroke, Ui, pos2, vec2};
 use review_git::checkout::{Survey, same_folder};
 use review_store::checkouts::{CheckoutPlace, OpenWith};
 
-use super::{Act, Choice, Section, View, cards, settings_link, then_name, worktree_folder};
+use super::{Act, Choice, View, cards, settings_link, then_name, worktree_folder};
 use cv_base::theme::{self, icons, style};
-use cv_services::checkouts::{FolderPurpose, plural};
-use cv_widgets::{badges, buttons, checkbox, focus, row};
+use cv_runtime::intents::SettingsSection;
+use cv_services::agent_names::cli_name;
+use cv_services::checkouts::FolderPurpose;
+use cv_widgets::numbers::counted;
+use cv_widgets::{badges, buttons, checkbox, focus, row, states};
 
 const RADIO: f32 = 16.0;
+/// The inner margin of a "Where" option's card.
+const OPTION_MARGIN: i8 = 10;
 
 /// What the form shows about the clone.
 pub(super) struct Place<'a> {
@@ -60,7 +65,10 @@ pub(super) fn show(
     }
     if choice.place == CheckoutPlace::Worktree {
         ui.horizontal(|ui| {
-            ui.add_space(RADIO + style::SPACE_M + 10.0);
+            // Under the option's text: past its margin, its radio and the gap after the radio.
+            let indent =
+                f32::from(OPTION_MARGIN) + RADIO + ui.spacing().item_spacing.x + style::SPACE_XS;
+            ui.add_space(indent);
             if buttons::text_link(ui, "Change folder…", "Pick the folder the worktree goes into")
                 .clicked()
             {
@@ -73,10 +81,12 @@ pub(super) fn show(
     let state = match (&survey.state.branch, survey.state.tracked_changes().len()) {
         (Some(branch), 0) => format!("on {branch}, clean"),
         (Some(branch), changed) => {
-            format!("on {branch}, {changed} changed {}", plural(changed, "file"))
+            format!("on {branch}, {}", counted(changed, "changed file", "changed files"))
         }
         (None, 0) => "detached, clean".to_owned(),
-        (None, changed) => format!("detached, {changed} changed {}", plural(changed, "file")),
+        (None, changed) => {
+            format!("detached, {}", counted(changed, "changed file", "changed files"))
+        }
     };
     let your_clone = Choosable {
         title: "Your clone",
@@ -101,9 +111,12 @@ pub(super) fn looking(ui: &mut Ui, view: &View<'_>, error: Option<&str>) -> Opti
     let palette = theme::palette(ui.ctx());
     let Some(error) = error else {
         ui.horizontal(|ui| {
-            ui.add(egui::Spinner::new().size(icons::SIZE - 2.0).color(palette.text_secondary));
+            let size = egui::Vec2::splat(icons::SIZE - 2.0);
+            let (slot, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+            response.widget_info(|| egui::WidgetInfo::new(egui::Role::ProgressIndicator));
+            states::spinner(ui, slot, palette.text_secondary);
             ui.label(
-                RichText::new(format!("Looking for your clone of {}…", view.repository))
+                RichText::new(format!("Looking for your clone of {}…", view.key.repository_key))
                     .color(palette.text_secondary),
             );
         });
@@ -115,8 +128,8 @@ pub(super) fn looking(ui: &mut Ui, view: &View<'_>, error: Option<&str>) -> Opti
         if buttons::secondary_icon(ui, icons::ARROW_CLOCKWISE, "Try again").clicked() {
             act = Some(Act::Dismiss);
         }
-        act =
-            act.take().or(settings_link(ui, "Settings › Local checkouts", Section::LocalCheckouts));
+        let link = settings_link(ui, "Settings › Local checkouts", SettingsSection::LocalCheckouts);
+        act = act.take().or(link);
     });
     act
 }
@@ -151,7 +164,7 @@ fn then_open(ui: &mut Ui, view: &View<'_>, choice: &mut Choice) -> Option<Act> {
         (OpenWith::Terminal, "Terminal".to_owned(), true),
     ];
     for (kind, is_installed) in view.agents {
-        let name = cv_services::checkouts::agent_name(kind).to_owned();
+        let name = cli_name(kind).to_owned();
         options.push((OpenWith::Agent(kind), name, is_installed));
     }
     ui.horizontal_wrapped(|ui| {
@@ -179,7 +192,7 @@ fn then_open(ui: &mut Ui, view: &View<'_>, choice: &mut Choice) -> Option<Act> {
                 .size(style::SMALL_SIZE)
                 .color(palette.text_secondary),
         );
-        act = settings_link(ui, "Set up in Settings › Assistant", Section::Assistant);
+        act = settings_link(ui, "Set up in Settings › Assistant", SettingsSection::Assistant);
     });
     act
 }
@@ -228,7 +241,7 @@ fn option(ui: &mut Ui, is_selected: bool, choosable: &Choosable<'_>) -> egui::Re
         .fill(fill)
         .stroke(Stroke::new(1.0, stroke))
         .corner_radius(style::RADIUS_CARD)
-        .inner_margin(Margin::same(10));
+        .inner_margin(Margin::same(OPTION_MARGIN));
     let shown = frame.show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.horizontal_top(|ui| {

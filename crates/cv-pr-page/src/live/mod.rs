@@ -20,8 +20,6 @@
 mod banner;
 mod hold;
 mod range_bar;
-#[cfg(test)]
-mod shots;
 mod stage;
 mod summary;
 
@@ -101,9 +99,9 @@ struct Notice {
     shown_at: f64,
 }
 
-#[cfg(test)]
 impl LiveUpdates {
     /// Where the probe stands, for a walkthrough's failure message.
+    #[cfg(test)]
     pub fn describe(&self) -> String {
         format!(
             "probe loading {} ({:?}), staging {} ({:?}), pending {}, held {}, failures {}",
@@ -116,9 +114,7 @@ impl LiveUpdates {
             self.failures,
         )
     }
-}
 
-impl LiveUpdates {
     /// Each frame the page is shown: polls the probe and the read-ahead, applies what may be
     /// applied, and asks the scheduler whether the next probe is due.
     pub fn update(

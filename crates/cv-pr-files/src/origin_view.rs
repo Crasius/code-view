@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use egui::{Label, RichText, Sense, Ui, vec2};
-use review_core::{ProviderError, ProviderKind, ReviewThread, ThreadOrigin};
+use review_core::{ProviderError, ProviderKind, ReviewThread, ThreadOrigin, short_sha};
 use review_git::{ChangedFile, DiffOptions, FileDiff, GitMirror};
 use review_store::DiffLayout;
 
@@ -15,11 +15,11 @@ use cv_code::contents::ContentsLoader;
 use cv_pr_diff::diff_skeleton;
 use cv_pr_diff::diff_view::{DiffEvent, DiffInputs, DiffView};
 use cv_pr_diff::find::FindInputs;
-use cv_pr_diff::notice::{self, Action};
 use cv_pr_threads::{ThreadEvent, ThreadsUi};
 use cv_runtime::load::Load;
 use cv_services::Services;
 use cv_shell::focus_mode;
+use cv_widgets::states::{self, Action};
 use cv_widgets::{buttons, glyph, provider_icon, skeleton, time_text};
 
 const BANNER_HEIGHT: f32 = 36.0;
@@ -83,13 +83,13 @@ enum BannerAction {
 
 /// What the area below the banner shows this frame.
 enum Body {
-    Diff(Shown),
+    Diff(VersionDiff),
     Unavailable { title: &'static str, detail: String },
     Loading,
 }
 
 /// A diff below the banner: the version's, or the comment's own hunk without its contents.
-struct Shown {
+struct VersionDiff {
     diff: Arc<FileDiff>,
     path: String,
     old_path: Option<String>,
@@ -219,7 +219,7 @@ impl OriginView {
     /// nothing can show, or the skeleton while it loads.
     fn body(&self) -> Body {
         match &self.version {
-            Load::Ready(Version::Diff { file, diff, .. }) => Body::Diff(Shown {
+            Load::Ready(Version::Diff { file, diff, .. }) => Body::Diff(VersionDiff {
                 diff: diff.clone(),
                 path: file.path.clone(),
                 old_path: file.old_path.clone(),
@@ -227,7 +227,7 @@ impl OriginView {
                 has_contents: true,
             }),
             Load::Ready(Version::Missing(reason)) => match &self.hunk {
-                Some(hunk) => Body::Diff(Shown {
+                Some(hunk) => Body::Diff(VersionDiff {
                     diff: hunk.clone(),
                     path: self.origin.anchor.path.clone(),
                     old_path: None,
@@ -273,7 +273,7 @@ impl OriginView {
     fn show_diff(
         &mut self,
         ui: &mut Ui,
-        shown: &Shown,
+        shown: &VersionDiff,
         inputs: &mut OriginInputs<'_>,
         services: &mut Services,
         threads_ui: &mut ThreadsUi,
@@ -411,9 +411,9 @@ impl OriginView {
         }
         actions.push(Action { icon: icons::ARROW_LEFT, label: BACK_LABEL, is_primary: false });
         let back = actions.len() - 1;
-        match notice::show(ui, icons::WARNING, palette.warning, title, detail, &actions)? {
+        match states::notice(ui, icons::WARNING, palette.warning, title, detail, &actions)? {
             0 => {
-                self.version = Load::Idle;
+                self.retry();
                 None
             }
             picked if picked == back => Some(OriginEvent::Back),
@@ -468,8 +468,4 @@ async fn load(
     let diff = git.file_diff(&base, head, &file, options).await?;
     let authored_at = git.commit(head).await?.authored_at;
     Ok(Version::Diff { file, diff: Arc::new(diff), authored_at })
-}
-
-fn short_sha(sha: &str) -> &str {
-    sha.get(..7).unwrap_or(sha)
 }

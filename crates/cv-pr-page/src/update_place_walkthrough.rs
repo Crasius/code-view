@@ -4,42 +4,35 @@
 //! an update comes in: the live probe, the refresh after the user's own write, and F5; for changes
 //! of the pull request's metadata, a comment elsewhere, a target branch that moved on, and a push
 //! that does not touch the open file, both for a code diff and a rendered Markdown file. The header
-//! keeps its height and its slid-away state, so nothing under it moves on screen either.
+//! keeps its height and its slid-away state, so nothing under it moves on screen either. Text in
+//! the vote composer stays through F5 and a switch to another tab.
 //!
 //! Offline: a scripted provider serves the pull request from a local git repository the mirror
 //! fetches from. The clock is the harness's simulated frames; between two frames the answers get
 //! the real time they need, so a frame stands for any round trip.
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use cv_testkit::Clicks;
 use egui::{Modifiers, Pos2, Rect, Role, vec2};
-use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable};
 use review_core::{
-    Capabilities, Connection, DiffSide, GitRemote, Label, MergeOptions, MergeStatus, MergeStrategy,
-    NewThread, PipelineJob, PipelineRun, Provider, ProviderError, ProviderKind, PullRequestDetail,
-    PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result, ReviewThread,
-    ReviewVote, Reviewer, RunningLogs, ThreadComment, ThreadStatus, UserIdentity,
+    DiffSide, GitRemote, Label, MergeStatus, PullRequestDetail, PullRequestSummary, Result,
+    ReviewThread, ReviewVote, Reviewer, ThreadStatus,
 };
-use review_store::{AppPaths, ConnectionStore, DiffLayout, FilesStart, PullRequestStart};
-use time::macros::datetime;
-use tokio::io::AsyncWrite;
+use review_store::{DiffLayout, FilesStart, PullRequestStart};
 
 use crate::PullRequestPage;
-use cv_base::theme;
+use crate::page_harness::PageApp;
 use cv_pr_session::actions::Refresh;
 use cv_pr_threads::samples;
-use cv_runtime::route::{Navigator, PullRequestKey};
-use cv_services::Services;
+use cv_runtime::route::{PullRequestKey, PullRequestTab as Tab};
 use cv_services::writes::Effect;
 use cv_shell::focus_mode::{self, Surface};
-use cv_testkit::{self as test_support, ScratchDir};
-use cv_widgets::surfaces;
+use cv_testkit::provider::{Script, Scripted};
+use cv_testkit::{ScratchDir, WAIT_LIMIT};
 
 const REPOSITORY: &str = "acme/widgets";
 const NUMBER: u64 = 31;
@@ -52,11 +45,6 @@ const SMALL_FILES: usize = 48;
 const FRAME: f32 = 0.25;
 /// Simulated time an update may take to come in: the live probe's interval and its read-ahead.
 const UPDATE_SECONDS: f64 = 60.0;
-/// Real time the answers in flight may take: git's pace, which the whole suite and whatever else
-/// runs on the machine share (see `action_e2e`'s `LIMIT`).
-const REAL_LIMIT: Duration = Duration::from_secs(180);
-
-static HOSTS: Mutex<Option<HashMap<String, Arc<Mutex<Host>>>>> = Mutex::new(None);
 
 /// What the scripted platform answers.
 struct Host {
@@ -179,19 +167,14 @@ fn a_push_that_leaves_the_open_file_alone_keeps_its_place() {
 #[test]
 fn a_push_leaves_a_rendered_markdown_file_in_place() {
     let mut app = App::start("keep-place-markdown");
-    let pane = app.harness.get_by_label_contains(&format!("Diff of {BIG}")).rect();
-    app.harness.click_at(app.harness.get_by_role_and_label(Role::TreeItem, GUIDE).rect());
-    let started = Instant::now();
-    while app.rendered().1.is_none() || !app.is_settled() {
-        assert!(started.elapsed() < REAL_LIMIT, "{GUIDE} did not render");
-        app.frame();
-        test_support::let_threads_run(Duration::from_millis(10));
-    }
+    let harness = &app.kit.harness;
+    let pane = harness.get_by_label_contains(&format!("Diff of {BIG}")).rect();
+    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, GUIDE).rect());
+    app.frame_until(&format!("the rendered {GUIDE}"), |app| {
+        app.rendered().1.is_some() && app.is_settled()
+    });
     app.wheel(pane.center(), vec2(0.0, -1500.0));
-    for _ in 0..20 {
-        app.frame();
-    }
-    let place = app.rendered();
+    let place = app.frame_until_still("the rendered file's scroll", App::rendered);
     assert_eq!(place.0.as_deref(), Some(GUIDE));
     assert!(place.2.is_some_and(|(_, line)| line > 20), "the rendered file scrolled: {place:?}");
     for (step, way) in WAYS.into_iter().enumerate() {
@@ -205,6 +188,32 @@ fn a_push_leaves_a_rendered_markdown_file_in_place() {
             },
         );
     }
+}
+
+/// Text typed into the vote composer lives with the page: F5 and a switch to another tab keep it,
+/// as they keep the page.
+#[test]
+fn the_vote_composers_text_survives_a_reload_and_a_tab_switch() {
+    let mut app = App::start("keep-vote-draft");
+    assert!(!app.page().has_unsent_input(), "nothing is typed yet");
+    app.kit.harness.click_at(app.kit.harness.get_by_label("More votes").rect());
+    app.frame_until("the vote menu", |app| app.shows("Approve with comment…"));
+    app.kit.harness.click_at(app.kit.harness.get_by_label("Approve with comment…").rect());
+    app.frame_until("the focused composer", |app| app.kit.harness.ctx.text_edit_focused());
+    app.kit.harness.event(egui::Event::Text("Ship it once the cache is warm.".to_owned()));
+    app.kit.frame();
+    assert!(app.page().has_unsent_input(), "the composer holds the text");
+
+    app.update(
+        "F5 with the vote composer open",
+        Way::F5,
+        |_| {},
+        |app, what| assert!(app.page().has_unsent_input(), "{what} lost the composer's text"),
+    );
+    app.kit.page_mut().show_tab(Tab::Overview);
+    app.frame_until("the Overview", |app| app.shows("Merge status"));
+    assert_eq!(app.page().tab(), Tab::Overview);
+    assert!(app.page().has_unsent_input(), "the Overview tab lost the composer's text");
 }
 
 /// Where the user is in the Files tab.
@@ -231,26 +240,16 @@ struct Place {
 type RenderedPlace =
     (Option<String>, Option<u64>, Option<(DiffSide, u32)>, f32, Option<(String, Rect)>);
 
-/// The page with what it needs, as the app hands them to it. The services drop last: the page's
-/// last writes run on their runtime.
-struct Scene {
-    page: PullRequestPage,
-    navigator: Navigator,
-    services: Services,
-}
-
 struct App {
-    harness: Harness<'static, Option<Scene>>,
+    kit: PageApp,
     host: Arc<Mutex<Host>>,
     origin: Origin,
-    _scratch: ScratchDir,
 }
 
 impl App {
     /// The pull request open on the Files tab with [`BIG`] shown side by side, everything loaded.
     fn start(id: &str) -> Self {
-        let scratch = ScratchDir::new(id);
-        let origin = Origin::create(&scratch.path().join("origin"));
+        let origin = Origin::create(&format!("{id}-origin"));
         let host = Arc::new(Mutex::new(Host {
             detail: detail(&origin.target, &origin.head),
             threads: vec![samples::thread(
@@ -259,105 +258,47 @@ impl App {
                 Some(samples::lines(&small_file(0), 1, 1)),
                 vec![samples::comment("c-0", &samples::jonas(), 30, "Is this used?")],
             )],
-            clone_url: origin.clone_url(),
+            clone_url: cv_testkit::file_url(origin.dir.path()),
         }));
-        HOSTS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get_or_insert_with(HashMap::new)
-            .insert(id.to_owned(), host.clone());
-        let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-        let mut store = ConnectionStore::open(&paths).expect("empty store");
-        store
-            .upsert(Connection {
-                id: id.to_owned(),
-                name: "github.com".to_owned(),
-                kind: ProviderKind::GitHub,
-                base_url: "https://api.github.com".to_owned(),
-                organizations: Vec::new(),
-                token: Some("ghp_walkthrough".to_owned()),
-            })
-            .expect("store the connection");
-        drop(store);
-        let harness = Harness::builder()
-            .with_size([1500.0, 900.0])
-            .with_step_dt(FRAME)
-            .with_context_setup(theme::fonts::install)
-            .allow_missing_glyphs()
-            .build_ui_state(
-                |ui, scene: &mut Option<Scene>| {
-                    let Some(Scene { page, navigator, services }) = scene else {
-                        return;
-                    };
-                    let ctx = ui.ctx().clone();
-                    surfaces::begin_frame(&ctx);
-                    theme::activate(&ctx, services.settings.theme);
-                    focus_mode::begin_frame(&ctx, false);
-                    page.show(ui, services, navigator);
-                    focus_mode::end_frame(&ctx);
-                },
-                None,
-            );
-        let mut app = Self { harness, host, origin, _scratch: scratch };
-        let mut services = Services::new(app.harness.ctx.clone(), paths, scripted_provider);
-        services.settings.pull_request_start = PullRequestStart::Files;
-        services.settings.files_start = FilesStart::FirstFile;
-        services.settings.diff_layout = DiffLayout::SideBySide;
         let key = PullRequestKey {
             connection_id: id.to_owned(),
             repository_key: REPOSITORY.to_owned(),
             number: NUMBER,
         };
-        let page = PullRequestPage::new(key, &mut services);
-        *app.harness.state_mut() = Some(Scene { page, navigator: Navigator::default(), services });
-        let input = app.harness.input_mut();
-        input.viewports.entry(egui::ViewportId::ROOT).or_default().focused = Some(true);
-        input.focused = true;
+        let platform = host.clone();
+        let kit = PageApp::start(
+            key,
+            FRAME,
+            Some("ghp_walkthrough"),
+            |services| {
+                services.settings.pull_request_start = PullRequestStart::Files;
+                services.settings.files_start = FilesStart::FirstFile;
+                services.settings.diff_layout = DiffLayout::SideBySide;
+            },
+            move |_, _| Arc::new(Scripted(Platform(platform.clone()))),
+        );
+        let mut app = Self { kit, host, origin };
+        app.kit.set_focus(true);
         // Colors come from their own worker threads, which need real time, not frames.
-        let started = Instant::now();
-        while !(app.shows_diff() && app.is_settled()) {
-            assert!(
-                started.elapsed() < REAL_LIMIT,
-                "the open file, colored and counted, did not come: {}",
-                app.loads()
-            );
-            app.frame();
-            test_support::let_threads_run(Duration::from_millis(10));
-        }
+        app.frame_until("the open file, colored and counted", |app| {
+            app.shows_diff() && app.is_settled()
+        });
         app
     }
 
-    fn scene(&self) -> &Scene {
-        self.harness.state().as_ref().expect("the scene is set up")
-    }
-
     fn page(&self) -> &PullRequestPage {
-        &self.scene().page
+        self.kit.page()
     }
 
     fn host(&self) -> MutexGuard<'_, Host> {
         self.host.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn now(&self) -> f64 {
-        self.harness.ctx.input(|input| input.time)
-    }
-
-    /// One frame, then the real time the answers it asked for need, so the next frame has them.
-    fn frame(&mut self) {
-        self.harness.step();
-        let started = Instant::now();
-        while self.scene().services.background.running() > 0 {
-            assert!(started.elapsed() < REAL_LIMIT, "an answer never came");
-            test_support::let_threads_run(Duration::from_millis(1));
-        }
-    }
-
     /// One frame and a moment of real time, without waiting for the answers: what is on its way
     /// stays on its way for a few frames, as over a network.
     fn glance(&mut self) {
-        self.harness.step();
-        test_support::let_threads_run(Duration::from_millis(1));
+        self.kit.harness.step();
+        cv_testkit::let_threads_run(Duration::from_millis(1));
     }
 
     /// Nothing is loading: the page, the open file's colors and the line counts are in.
@@ -403,26 +344,53 @@ impl App {
         )
     }
 
+    /// Frames until `is_there` holds.
+    fn frame_until(&mut self, what: &str, is_there: impl Fn(&Self) -> bool) {
+        cv_testkit::poll_until(what, || {
+            let is_done = is_there(self);
+            if !is_done {
+                self.kit.frame();
+            }
+            is_done
+        });
+    }
+
+    /// Frames until `look` sees the same on two frames in a row, as when a smooth scroll came to
+    /// rest; returns what it saw.
+    fn frame_until_still<T: PartialEq>(&mut self, what: &str, look: impl Fn(&Self) -> T) -> T {
+        let mut last = look(self);
+        cv_testkit::poll_for(what, || {
+            self.kit.frame();
+            let now = look(self);
+            if now == last {
+                return Some(now);
+            }
+            last = now;
+            None
+        })
+    }
+
+    fn shows(&self, label: &str) -> bool {
+        self.kit.harness.query_all_by_label(label).next().is_some()
+    }
+
     fn shows_diff(&self) -> bool {
         let label = format!("Diff of {BIG}");
-        self.harness.query_all_by_label_contains(&label).next().is_some()
+        self.kit.harness.query_all_by_label_contains(&label).next().is_some()
     }
 
     /// Scrolls the file tree and the open file's diff down and its head side sideways; returns
     /// the place they came to rest at.
     fn scroll_everything(&mut self) -> Place {
         let before = self.place();
-        let tree_row = self.harness.get_by_role_and_label(Role::TreeItem, &small_file(3)).rect();
+        let tree_row =
+            self.kit.harness.get_by_role_and_label(Role::TreeItem, &small_file(3)).rect();
         self.wheel(tree_row.center(), vec2(0.0, -400.0));
-        let diff = self.harness.get_by_label_contains(&format!("Diff of {BIG}")).rect();
+        let diff = self.kit.harness.get_by_label_contains(&format!("Diff of {BIG}")).rect();
         let head_side = Pos2::new(diff.left() + diff.width() * 0.75, diff.center().y);
         self.wheel(head_side, vec2(0.0, -1500.0));
         self.wheel(head_side, vec2(-300.0, 0.0));
-        // The wheel scrolls smoothly over a few frames.
-        for _ in 0..20 {
-            self.frame();
-        }
-        let place = self.place();
+        let place = self.frame_until_still("the scrolled Files tab", Self::place);
         assert_ne!(place.tree, before.tree, "the file tree scrolled");
         assert!(place.view.0 > 1000.0, "the diff scrolled down: {:?}", place.view);
         assert!(place.view.1[1] > 100.0, "the head side scrolled sideways: {:?}", place.view);
@@ -431,26 +399,26 @@ impl App {
     }
 
     fn wheel(&mut self, at: Pos2, delta: egui::Vec2) {
-        self.harness.hover_at(at);
-        self.frame();
-        self.harness.event(egui::Event::MouseWheel {
+        self.kit.harness.hover_at(at);
+        self.kit.frame();
+        self.kit.harness.event(egui::Event::MouseWheel {
             unit: egui::MouseWheelUnit::Point,
             delta,
             phase: egui::TouchPhase::Move,
             modifiers: Modifiers::NONE,
             source: egui::MouseWheelSource::Wheel,
         });
-        self.frame();
+        self.kit.frame();
     }
 
     fn place(&self) -> Place {
         let files = &self.page().files;
         Place {
             selected: files.selected_path.clone(),
-            top_line: focus_mode::top_line(&self.harness.ctx, Surface::Files),
+            top_line: focus_mode::top_line(&self.kit.harness.ctx, Surface::Files),
             view: files.view.kept_place(),
             diff: files.diffs.ready().map_or(0, |diff| Arc::as_ptr(diff) as usize),
-            diff_rect: self.harness.get_by_label_contains(&format!("Diff of {BIG}")).rect(),
+            diff_rect: self.kit.harness.get_by_label_contains(&format!("Diff of {BIG}")).rect(),
             header_hidden: self.page().header_reveal.drawn_hidden(),
             tree: self.first_tree_row(),
         }
@@ -470,7 +438,7 @@ impl App {
     }
 
     fn first_tree_row(&self) -> Option<(String, Rect)> {
-        let node = self.harness.query_all_by_role(Role::TreeItem).next()?;
+        let node = self.kit.harness.query_all_by_role(Role::TreeItem).next()?;
         Some((node.accesskit_node().label().unwrap_or_default(), node.rect()))
     }
 
@@ -496,7 +464,7 @@ impl App {
                 // its effect shows at once, then the pull request reloads.
                 change(self);
                 let is_draft = self.host().detail.summary.is_draft;
-                let scene = self.harness.state_mut().as_mut().expect("the scene is set up");
+                let scene = self.kit.scene_mut();
                 let ticket = scene.page.actions.run(
                     &scene.services,
                     "Saved.",
@@ -508,7 +476,7 @@ impl App {
             }
             Way::F5 => {
                 change(self);
-                self.harness.key_press(egui::Key::F5);
+                self.kit.harness.key_press(egui::Key::F5);
             }
         }
         // Simulated time counts only the frames that start with nothing in flight: the host
@@ -523,22 +491,22 @@ impl App {
             }
             // The update has to come within the probe's time; its answers and counting lines take
             // real time.
-            assert!(started.elapsed() < REAL_LIMIT, "{what} did not settle: {}", self.loads());
+            assert!(started.elapsed() < WAIT_LIMIT, "{what} did not settle: {}", self.loads());
             assert!(
                 shows_host || waited_idle <= UPDATE_SECONDS,
                 "{what} did not come within {UPDATE_SECONDS} s: {}",
                 self.loads()
             );
-            let is_idle = self.scene().services.background.running() == 0;
-            let before = self.now();
+            let is_idle = self.kit.scene().services.background.running() == 0;
+            let before = self.kit.now();
             self.glance();
             if is_idle {
-                waited_idle += self.now() - before;
+                waited_idle += self.kit.now() - before;
             }
         }
         // The frames after it change nothing either (late answers, colors, the next probe).
         for _ in 0..8 {
-            self.frame();
+            self.kit.frame();
             steady(self, what);
         }
     }
@@ -571,17 +539,20 @@ impl App {
 /// The repository behind the pull request: [`BIG`] and the small files on `main`, each changed on
 /// `feature`.
 struct Origin {
-    dir: PathBuf,
+    dir: ScratchDir,
     target: String,
     head: String,
 }
 
 impl Origin {
-    fn create(dir: &Path) -> Self {
+    /// The repository in a scratch folder of its own, `name`.
+    fn create(name: &str) -> Self {
+        let scratch = ScratchDir::new(name);
+        let dir = scratch.path();
         std::fs::create_dir_all(dir.join("app")).expect("origin folder");
         std::fs::create_dir_all(dir.join("pkg")).expect("origin folder");
         std::fs::create_dir_all(dir.join("docs")).expect("origin folder");
-        let git = |args: &[&str]| test_support::git(dir, args);
+        let git = |args: &[&str]| cv_testkit::git(dir, args);
         git(&["init", "-q", "-b", "main"]);
         git(&["config", "uploadpack.allowFilter", "true"]);
         git(&["config", "uploadpack.allowAnySHA1InWant", "true"]);
@@ -606,21 +577,18 @@ impl Origin {
         }
         git(&["commit", "-q", "-am", "Cache the widgets"]);
         let head = git(&["rev-parse", "HEAD"]);
-        Self { dir: dir.to_owned(), target, head }
-    }
-
-    fn clone_url(&self) -> String {
-        format!("file:///{}", self.dir.display().to_string().replace('\\', "/"))
+        Self { dir: scratch, target, head }
     }
 
     fn git(&self, args: &[&str]) -> String {
-        test_support::git(&self.dir, args)
+        cv_testkit::git(self.dir.path(), args)
     }
 
     /// A commit on `main` that touches nothing the pull request changes; returns it.
     fn commit_on_main(&self, step: usize) -> String {
         self.git(&["switch", "-q", "main"]);
-        std::fs::write(self.dir.join("NOTES.md"), format!("Release {step}\n")).expect("notes");
+        std::fs::write(self.dir.path().join("NOTES.md"), format!("Release {step}\n"))
+            .expect("notes");
         self.git(&["add", "-A"]);
         self.git(&["commit", "-q", "-m", &format!("Release {step}")]);
         let target = self.git(&["rev-parse", "HEAD"]);
@@ -630,7 +598,7 @@ impl Origin {
 
     /// A commit on `feature` that adds a line to small file `index`; returns the new head.
     fn push_to_other_file(&self, index: usize) -> String {
-        let path = self.dir.join(small_file(index));
+        let path = self.dir.path().join(small_file(index));
         let text = std::fs::read_to_string(&path).expect("small file");
         std::fs::write(&path, format!("// Pushed.\n{text}")).expect("pushed file");
         self.git(&["commit", "-q", "-am", &format!("Document f{index}")]);
@@ -670,206 +638,43 @@ fn guide(is_head: bool) -> String {
 }
 
 fn detail(target: &str, head: &str) -> PullRequestDetail {
+    let detail = cv_testkit::samples::detail(REPOSITORY, NUMBER);
     PullRequestDetail {
         summary: PullRequestSummary {
-            repository_key: REPOSITORY.to_owned(),
-            repository_name: "widgets".to_owned(),
-            number: NUMBER,
             title: "Speed up the widget cache".to_owned(),
             author: samples::erika(),
-            state: PullRequestState::Open,
             is_draft: true,
             source_branch: "feature".to_owned(),
-            target_branch: "main".to_owned(),
-            created_at: datetime!(2026-10-27 08:30 UTC),
-            updated_at: None,
-            web_url: format!("https://github.com/{REPOSITORY}/pull/{NUMBER}"),
-            labels: Vec::new(),
-            reviewers: Vec::new(),
-            checks: None,
-            diff_stat: review_core::DiffStat::default(),
-            head_sha: None,
-            target_sha: None,
+            ..detail.summary
         },
         description: "Caches each widget once.".to_owned(),
         target_sha: target.to_owned(),
         head_sha: head.to_owned(),
-        merge_status: MergeStatus::Mergeable,
         git_fetch_refs: vec!["refs/heads/feature".to_owned(), "refs/heads/main".to_owned()],
-        closed_at: None,
-        auto_complete: None,
+        ..detail
     }
 }
 
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "a ProviderFactory, whose signature hands the connection and the client over"
-)]
-fn scripted_provider(connection: Connection, _http: reqwest::Client) -> Arc<dyn Provider> {
-    let host = HOSTS
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .as_ref()
-        .and_then(|hosts| hosts.get(&connection.id).cloned())
-        .expect("every connection of this walkthrough has a host");
-    let capabilities = Capabilities {
-        votes: vec![ReviewVote::Approved, ReviewVote::None],
-        merge_strategies: vec![MergeStrategy::Merge],
-        has_label_catalog: false,
-        running_logs: RunningLogs::WhenFinished,
-    };
-    Arc::new(ScriptedProvider { host, capabilities })
-}
+/// The platform as the page sees it: what the host has now, cloned from the origin.
+struct Platform(Arc<Mutex<Host>>);
 
-struct ScriptedProvider {
-    host: Arc<Mutex<Host>>,
-    capabilities: Capabilities,
-}
-
-impl ScriptedProvider {
-    fn unused<T>() -> Result<T> {
-        Err(ProviderError::Unsupported("Not part of the update place walkthrough.".to_owned()))
-    }
-
+impl Platform {
     fn host(&self) -> MutexGuard<'_, Host> {
-        self.host.lock().unwrap_or_else(PoisonError::into_inner)
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
 #[async_trait]
-impl Provider for ScriptedProvider {
-    fn capabilities(&self) -> &Capabilities {
-        &self.capabilities
-    }
-
-    async fn current_user(&self) -> Result<UserIdentity> {
-        Ok(samples::jonas())
-    }
-
-    async fn list_repositories(&self, _search: Option<&str>) -> Result<Vec<RepositoryInfo>> {
-        Ok(Vec::new())
-    }
-
+impl Script for Platform {
     async fn git_remote(&self, _repo: &str) -> Result<GitRemote> {
         Ok(GitRemote { clone_url: self.host().clone_url.clone(), authorization_header: None })
-    }
-
-    async fn list_pull_requests(
-        &self,
-        _query: &PullRequestQuery,
-    ) -> Result<Vec<PullRequestSummary>> {
-        Ok(Vec::new())
     }
 
     async fn pull_request(&self, _repo: &str, _number: u64) -> Result<PullRequestDetail> {
         Ok(self.host().detail.clone())
     }
 
-    async fn merge(&self, _repo: &str, _number: u64, _options: &MergeOptions) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn close(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn reopen(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_draft(&self, _repo: &str, _number: u64, _is_draft: bool) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn update_title_description(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _title: &str,
-        _description: &str,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_vote(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _vote: ReviewVote,
-        _comment: Option<&str>,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn add_reviewer(&self, _repo: &str, _number: u64, _user: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn remove_reviewer(&self, _repo: &str, _number: u64, _reviewer_id: &str) -> Result<()> {
-        Self::unused()
-    }
-
     async fn threads(&self, _repo: &str, _number: u64) -> Result<Vec<ReviewThread>> {
         Ok(self.host().threads.clone())
-    }
-
-    async fn create_thread(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread: &NewThread,
-    ) -> Result<ReviewThread> {
-        Self::unused()
-    }
-
-    async fn reply(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _body: &str,
-    ) -> Result<ThreadComment> {
-        Self::unused()
-    }
-
-    async fn set_thread_status(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _status: ThreadStatus,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn available_labels(&self, _repo: &str) -> Result<Vec<Label>> {
-        Ok(Vec::new())
-    }
-
-    async fn set_labels(&self, _repo: &str, _number: u64, _labels: &[String]) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn pipeline_runs(&self, _repo: &str, _number: u64) -> Result<Vec<PipelineRun>> {
-        Ok(Vec::new())
-    }
-
-    async fn pipeline_jobs(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _run_id: &str,
-    ) -> Result<Vec<PipelineJob>> {
-        Ok(Vec::new())
-    }
-
-    async fn download_log(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _log_id: &str,
-        _sink: &mut (dyn AsyncWrite + Unpin + Send),
-    ) -> Result<()> {
-        Self::unused()
     }
 }

@@ -135,11 +135,11 @@ impl Selecting {
         // `track_pointer`): sensing drags here would take them from splitters along the edges of
         // the diff.
         let area = ui.interact(rect, ui.scope_id().with("diff_area"), Sense::click());
-        let selected = self
-            .target
-            .as_ref()
-            .map_or_else(String::new, |target| format!(", {} selected", target.label));
         area.widget_info(|| {
+            let selected = self
+                .target
+                .as_ref()
+                .map_or_else(String::new, |target| format!(", {} selected", target.label));
             egui::WidgetInfo::labeled(
                 egui::Role::Document,
                 true,
@@ -563,7 +563,8 @@ impl Pointing<'_> {
             vec2(frame.width, offsets[row + 1] - top),
         );
         let layout = self.inputs.layout;
-        let panes = pane_rects(row_rect, layout.is_single_pane(), frame.left_width);
+        let rects = pane_rects(row_rect, layout.is_single_pane(), frame.left_width);
+        let panes = rects.as_slice();
         let found = match pane {
             Some(wanted) => panes.iter().find(|(candidate, _, _)| *candidate == wanted),
             None => panes.iter().find(|(_, _, rect)| position.x < rect.right()).or(panes.last()),

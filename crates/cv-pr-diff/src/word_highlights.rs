@@ -30,7 +30,7 @@ impl WordHighlights {
 
     /// The line diff line `index` was paired with: the added line that replaced a deleted one, or
     /// the deleted line an added one replaced.
-    pub fn partner(&self, index: u32) -> Option<u32> {
+    fn partner(&self, index: u32) -> Option<u32> {
         self.partners.get(&index).copied()
     }
 
@@ -83,7 +83,7 @@ impl WordHighlights {
 
     /// The (deleted, added) pair diff line `index`, a `kind` line, belongs to.
     fn pair(&self, index: u32, kind: LineKind) -> Option<(u32, u32)> {
-        let partner = self.partners.get(&index).copied()?;
+        let partner = self.partner(index)?;
         Some(if kind == LineKind::Deleted { (index, partner) } else { (partner, index) })
     }
 }
