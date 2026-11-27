@@ -3,7 +3,7 @@
 
 use cv_base::theme::{self, Palette, icons, motion, style};
 use cv_services::diff_stats::{self, Shown};
-use cv_widgets::numbers::{compact_count, digit_template, group_digits};
+use cv_widgets::numbers::{compact_count, digit_template, group_digits, noun};
 use cv_widgets::{row, skeleton};
 use egui::{
     Align2, Color32, CornerRadius, FontId, Id, Painter, Rect, Sense, Stroke, Ui, pos2, vec2,
@@ -295,13 +295,13 @@ fn paint_count_link(
 
 /// "1,552 lines changed in 18 files" and "1,240 added, 312 deleted" (for screen readers).
 fn size_summary(lines: LineCounts, files: Option<u64>) -> (String, String) {
-    let changed = match lines.total() {
-        1 => "1 line changed".to_owned(),
-        total => format!("{} lines changed", group_digits(total as usize)),
-    };
+    let total = lines.total() as usize;
+    let changed = format!("{} {} changed", group_digits(total), noun(total, "line", "lines"));
     let summary = match files {
-        Some(1) => format!("{changed} in 1 file"),
-        Some(files) => format!("{changed} in {} files", group_digits(files as usize)),
+        Some(files) => {
+            let files = files as usize;
+            format!("{changed} in {} {}", group_digits(files), noun(files, "file", "files"))
+        }
         None => changed,
     };
     let split = format!(
@@ -313,11 +313,8 @@ fn size_summary(lines: LineCounts, files: Option<u64>) -> (String, String) {
 }
 
 fn files_changed(files: u64) -> String {
-    if files == 1 {
-        "1 file changed".to_owned()
-    } else {
-        format!("{} files changed", group_digits(files as usize))
-    }
+    let files = files as usize;
+    format!("{} {} changed", group_digits(files), noun(files, "file", "files"))
 }
 
 /// A count in its tint; a zero carries no news, so it steps back (as in the file tree).

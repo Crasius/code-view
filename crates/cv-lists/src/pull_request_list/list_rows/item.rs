@@ -42,6 +42,10 @@ const COPY_LINK: &str = "Copy link";
 const APPROVED_TOOLTIP: &str = "The approvals it needs are in and no reviewer blocks it. The reviewers beside it show who approved.";
 /// Between the status pill's check mark and its word.
 const STATUS_ICON_GAP: f32 = 4.0;
+const STATUS_PILL_HEIGHT: f32 = 22.0;
+/// The status pill's width beyond its word.
+const STATUS_PADDING: f32 = 20.0;
+const STATUS_PADDING_WITH_ICON: f32 = 16.0;
 
 /// What a row was asked for.
 pub(crate) enum RowPick {
@@ -585,14 +589,15 @@ fn paint_status(
     job.append(text, gap, words);
     let galley = painter.layout_job(job);
     // The check mark takes some of the inset, so "Approved" fits the status column.
-    let padding = if approval.is_some() { 16.0 } else { 20.0 };
+    let padding = if approval.is_some() { STATUS_PADDING_WITH_ICON } else { STATUS_PADDING };
     let pill = Rect::from_center_size(
         pos2(f32::midpoint(left, right), y),
-        vec2(galley.size().x + padding, 22.0),
+        vec2(galley.size().x + padding, STATUS_PILL_HEIGHT),
     );
-    painter.rect_filled(pill, 11, fill);
+    let radius = STATUS_PILL_HEIGHT / 2.0;
+    painter.rect_filled(pill, radius, fill);
     if fill == palette.surface_subtle {
-        painter.rect_stroke(pill, 11, Stroke::new(1.0, palette.border), StrokeKind::Inside);
+        painter.rect_stroke(pill, radius, Stroke::new(1.0, palette.border), StrokeKind::Inside);
     }
     painter.galley(pill.center() - galley.size() / 2.0, galley, color);
     let mut lines = vec![format!("Status of {number}: {text}")];

@@ -12,6 +12,7 @@
 
 use cv_base::theme::{self, Palette, icons, motion, style};
 use cv_runtime::route::{Navigator, Route};
+use cv_widgets::numbers::counted;
 use cv_widgets::{elide, provider_icon, row, time_text};
 use egui::text::{LayoutJob, TextFormat};
 use egui::{
@@ -69,11 +70,7 @@ impl Section<'_> {
 
     /// "team/app, 3 pull requests, expanded": what the header says to a screen reader.
     fn accessible_name(&self) -> String {
-        let rows = if self.count == 1 {
-            "1 pull request".to_owned()
-        } else {
-            format!("{} pull requests", self.count)
-        };
+        let rows = counted(self.count, "pull request", "pull requests");
         let state = if self.is_open { "expanded" } else { "collapsed" };
         format!("{}, {rows}, {state}", self.place())
     }

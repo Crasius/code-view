@@ -654,9 +654,7 @@ impl PullRequestListPage {
             .flat_map(|result| {
                 let listed = result.load.ready().into_iter().flatten();
                 listed.filter(|pull_request| pull_request.repository_key == repository_key).map(
-                    move |pull_request| {
-                        list_rows::stat_row(result, pull_request, result.has_token, row.is_favorite)
-                    },
+                    move |pull_request| list_rows::stat_row(result, pull_request, row.is_favorite),
                 )
             })
             .collect();

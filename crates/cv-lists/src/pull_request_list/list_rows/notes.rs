@@ -3,6 +3,7 @@
 
 use cv_base::theme::{self, icons, style};
 use cv_runtime::intents;
+use cv_widgets::numbers::counted;
 use cv_widgets::states::{self, Action};
 use cv_widgets::{buttons, glyph, skeleton};
 use egui::{Rect, Ui, pos2, vec2};
@@ -10,7 +11,6 @@ use review_core::ProviderKind;
 
 use super::super::favorites::HiddenFavorites;
 use super::super::queries::ConnectionResult;
-use super::header::repositories_text;
 use super::indicators::{self, REVIEWER_SIZE};
 use super::{
     AVATAR_SIZE, Columns, EmptyOffer, LINE_OFFSET, ListAction, META_MARK_GAP, ROW_PADDING, size,
@@ -89,7 +89,7 @@ pub(crate) fn paint_empty(
 pub(crate) fn paint_hidden_favorites(ui: &mut Ui, rect: Rect, hidden: &HiddenFavorites) {
     let words = format!(
         "{} hidden: {} has no token to know who you are.",
-        repositories_text(hidden.repositories),
+        counted(hidden.repositories, "repository", "repositories"),
         hidden.connection_name
     );
     let text = format!("{}  {words}", icons::KEY);

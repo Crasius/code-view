@@ -2,6 +2,7 @@
 //! the last refresh failed, a retry. The Favorites card's context menu hides its lane.
 
 use cv_base::theme::{self, Palette, icons, style};
+use cv_widgets::numbers::counted;
 use cv_widgets::{buttons, elide, provider_icon, row, star};
 use egui::{Align2, Color32, CornerRadius, FontId, Painter, Rect, Sense, Ui, pos2, vec2};
 
@@ -131,17 +132,14 @@ fn text<'a>(group: &Group<'a>) -> (String, String, Option<&'a str>) {
         Header::Favorites { repositories, hidden, refresh_error } => {
             let detail = match (repositories, hidden) {
                 (0, 0) => "Starred repositories from every connection".to_owned(),
-                (listed, 0) => repositories_text(*listed),
-                (listed, hidden) => format!("{}, {hidden} hidden", repositories_text(*listed)),
+                (listed, 0) => counted(*listed, "repository", "repositories"),
+                (listed, hidden) => {
+                    format!("{}, {hidden} hidden", counted(*listed, "repository", "repositories"))
+                }
             };
             ("Favorites".to_owned(), detail, *refresh_error)
         }
     }
-}
-
-/// "1 repository", "3 repositories".
-pub(crate) fn repositories_text(count: usize) -> String {
-    if count == 1 { "1 repository".to_owned() } else { format!("{count} repositories") }
 }
 
 /// The whole header as the button that collapses or expands the card.
@@ -149,7 +147,9 @@ fn toggle(ui: &Ui, rect: Rect, group: &Group<'_>, name: &str, detail: &str) -> O
     let is_open = group.opening > 0.5;
     let response =
         ui.interact(rect, ui.scope_id().with(("group_header", group.key())), Sense::click());
-    let count = group.count.map_or_else(String::new, |count| format!(", {count} pull requests"));
+    let count = group.count.map_or_else(String::new, |count| {
+        format!(", {}", counted(count, "pull request", "pull requests"))
+    });
     let state = if is_open { "expanded" } else { "collapsed" };
     // The Favorites card's detail (how many repositories) is part of what it is; a connection's
     // platform is in its mark.
@@ -258,4 +258,40 @@ fn refresh_failed(
         .clicked()
         .then_some(ListAction::Retry);
     (target.left(), retry)
+}
+
+#[cfg(test)]
+mod tests {
+    use egui::accesskit::Role;
+    use egui::{Rect, pos2, vec2};
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+    use review_core::ProviderKind;
+
+    use super::super::{Group, Header};
+    use crate::pull_request_list::list_rows::tests::row;
+    use crate::pull_request_list::queries::ConnectionResult;
+
+    #[test]
+    fn a_card_with_one_pull_request_names_it_in_the_singular() {
+        let result = ConnectionResult::loaded_for_test("gl", ProviderKind::GitLab, vec![row(1)]);
+        let mut harness = Harness::builder()
+            .with_size([900.0, 120.0])
+            .with_context_setup(cv_base::theme::fonts::install)
+            .build_ui(|ui| {
+                let group = Group {
+                    header: Header::Connection(&result),
+                    count: Some(1),
+                    body: Vec::new(),
+                    opening: 1.0,
+                    opacity: 1.0,
+                };
+                let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 56.0));
+                super::paint(ui, rect, &group, true);
+            });
+        harness.run();
+        assert!(
+            harness.query_by_role_and_label(Role::Button, "gl, 1 pull request, expanded").is_some()
+        );
+    }
 }

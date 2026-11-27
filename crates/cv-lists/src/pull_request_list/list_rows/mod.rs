@@ -510,7 +510,7 @@ fn paint_pull_request(
     let id = ui.scope_id().with((connection_id, &pull_request.repository_key, pull_request.number));
     let is_favorite = hosts.favorites.contains(connection_id, &pull_request.repository_key);
     let has_token = result.has_token;
-    let stat_row = stat_row(result, pull_request, has_token, is_favorite);
+    let stat_row = stat_row(result, pull_request, is_favorite);
     let shown = hosts.stats.shown(&stat_row);
     let (is_running, failure) =
         hosts.requests.state_of(connection_id, &pull_request.repository_key, pull_request.number);
@@ -600,14 +600,13 @@ fn row_height(row: &Row<'_>) -> f32 {
 pub(super) fn stat_row(
     result: &ConnectionResult,
     pull_request: &PullRequestSummary,
-    has_token: bool,
     is_favorite: bool,
 ) -> StatRow {
     let storage_key = key_of(&result.connection_id, pull_request).storage_key();
     StatRow::new(
         &result.connection_id,
         result.kind,
-        has_token,
+        result.has_token,
         is_favorite,
         storage_key,
         pull_request,

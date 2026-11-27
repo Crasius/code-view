@@ -19,6 +19,17 @@ const ROW_HEIGHT: f32 = 56.0;
 /// The star button's square, left of the row's caret.
 const STAR_BUTTON: f32 = buttons::SUBTLE_HEIGHT;
 const SKELETON_ROWS: usize = 8;
+/// The repository mark: a filled circle with the books glyph.
+const ICON_RADIUS: f32 = 14.0;
+const ICON_GLYPH: f32 = 15.0;
+/// The row's caret glyph, also the room the star keeps clear for it.
+const CARET_SIZE: f32 = 14.0;
+/// With a description, the key rises and the description drops from the row's center.
+const TITLE_RISE: f32 = 9.0;
+const DESCRIPTION_DROP: f32 = 10.0;
+const SEARCH_WIDTH: f32 = 320.0;
+/// The connection picker beside the search field.
+const PICKER_WIDTH: f32 = 280.0;
 
 #[derive(Default)]
 pub struct RepositoriesPage {
@@ -160,7 +171,7 @@ impl RepositoriesPage {
         let search = ui.add(
             TextEdit::singleline(&mut self.search)
                 .hint_text(format!("{}  Search repositories", icons::MAGNIFYING_GLASS))
-                .desired_width(320.0),
+                .desired_width(SEARCH_WIDTH),
         );
         glyph::hint_as(&search, "Search repositories");
         let pressed_enter =
@@ -308,7 +319,7 @@ fn connection_picker(
     let mut picked = Some(connection_id.to_owned());
     egui::ComboBox::from_id_salt("repository_connection")
         .selected_text(selected_name)
-        .width(280.0)
+        .width(PICKER_WIDTH)
         .show_ui(ui, |ui| {
             for connection in connections {
                 ui.horizontal(|ui| {
@@ -387,23 +398,24 @@ fn repository_row(
         style::RADIUS_CONTROL,
     );
     let painter = ui.painter_at(rect);
-    let icon_center = pos2(rect.left() + style::SPACE_L + 14.0, rect.center().y);
-    painter.circle_filled(icon_center, 14.0, palette.selection);
+    let icon_center = pos2(rect.left() + style::SPACE_L + ICON_RADIUS, rect.center().y);
+    painter.circle_filled(icon_center, ICON_RADIUS, palette.selection);
     painter.text(
         icon_center,
         Align2::CENTER_CENTER,
         icons::BOOKS,
-        egui::FontId::proportional(15.0),
+        egui::FontId::proportional(ICON_GLYPH),
         palette.accent,
     );
-    let text_left = icon_center.x + 14.0 + style::SPACE_M;
+    let text_left = icon_center.x + ICON_RADIUS + style::SPACE_M;
     let caret_right = rect.right() - style::SPACE_L;
     let star_rect = Rect::from_center_size(
-        pos2(caret_right - 14.0 - style::SPACE_S - STAR_BUTTON / 2.0, rect.center().y),
+        pos2(caret_right - CARET_SIZE - style::SPACE_S - STAR_BUTTON / 2.0, rect.center().y),
         vec2(STAR_BUTTON, STAR_BUTTON),
     );
     let description = repository.description.as_deref().unwrap_or("").trim();
-    let title_y = if description.is_empty() { rect.center().y } else { rect.center().y - 9.0 };
+    let title_y =
+        if description.is_empty() { rect.center().y } else { rect.center().y - TITLE_RISE };
     let text_width = (star_rect.left() - style::SPACE_S - text_left).max(1.0);
     let key_font = theme::fonts::semibold_font(style::BODY_SIZE);
     let at = pos2(text_left, title_y);
@@ -411,7 +423,7 @@ fn repository_row(
         paint_line(&painter, &repository.key, (key_font, palette.text), at, text_width);
     if !description.is_empty() {
         let font = egui::FontId::proportional(style::SMALL_SIZE);
-        let at = pos2(text_left, rect.center().y + 10.0);
+        let at = pos2(text_left, rect.center().y + DESCRIPTION_DROP);
         is_cut |= paint_line(&painter, description, (font, palette.text_secondary), at, text_width);
     }
     // A cut key or description reads in full on hover.
@@ -426,7 +438,7 @@ fn repository_row(
         pos2(caret_right, rect.center().y),
         Align2::RIGHT_CENTER,
         icons::CARET_RIGHT,
-        egui::FontId::proportional(14.0),
+        egui::FontId::proportional(CARET_SIZE),
         palette.text_disabled.gamma_multiply(row::hover_amount(ui, &response)),
     );
     if !is_last {
