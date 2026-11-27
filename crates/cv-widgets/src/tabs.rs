@@ -180,11 +180,45 @@ fn pivot_tab(
     }
 }
 
+/// One option of a segmented control: its value, its label (the accessible name, and the tooltip's
+/// lead when an icon shows instead), an optional tooltip and an optional icon.
+#[derive(Clone, Copy)]
+pub struct Segment<'a, T> {
+    pub value: T,
+    pub label: &'a str,
+    /// Empty shows no tooltip.
+    pub hint: &'a str,
+    /// Shown instead of the label, for where the labels don't fit.
+    pub icon: Option<&'a str>,
+}
+
+impl<'a, T: Copy> Segment<'a, T> {
+    pub const fn new(value: T, label: &'a str) -> Self {
+        Self { value, label, hint: "", icon: None }
+    }
+
+    /// A tooltip, for an option whose label alone does not say enough, or that has a shortcut.
+    #[must_use]
+    pub const fn with_hint(self, hint: &'a str) -> Self {
+        Self { hint, ..self }
+    }
+
+    #[must_use]
+    pub const fn with_icon(self, icon: &'a str) -> Self {
+        Self { icon: Some(icon), ..self }
+    }
+}
+
+/// The width [`segments`] takes for these options.
+pub fn segments_width<T>(ui: &Ui, options: &[Segment<'_, T>]) -> f32 {
+    options.iter().map(|segment| segment_width(ui, segment.label, segment.icon)).sum()
+}
+
 /// Segmented control for small sets of mutually exclusive options.
 pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, &str)]) -> bool {
-    let options: Vec<(T, &str, &str)> =
-        options.iter().map(|(option, label)| (*option, *label, "")).collect();
-    segmented_with_hints(ui, value, &options)
+    let segments: Vec<Segment<'_, T>> =
+        options.iter().map(|(option, label)| Segment::new(*option, label)).collect();
+    self::segments(ui, value, &segments)
 }
 
 /// [`segmented`] with a tooltip per option (`(value, label, tooltip)`, an empty tooltip shows none),
@@ -196,9 +230,9 @@ pub fn segmented_with_hints<T: PartialEq + Copy>(
 ) -> bool {
     let segments: Vec<Segment<'_, T>> = options
         .iter()
-        .map(|(option, label, hint)| Segment { value: *option, label, hint, icon: None })
+        .map(|(option, label, hint)| Segment::new(*option, label).with_hint(hint))
         .collect();
-    show_segments(ui, value, &segments)
+    self::segments(ui, value, &segments)
 }
 
 /// [`segmented_with_hints`] showing an icon per option (`(value, icon, label, tooltip)`), for where
@@ -210,31 +244,25 @@ pub fn segmented_icons<T: PartialEq + Copy>(
 ) -> bool {
     let segments: Vec<Segment<'_, T>> = options
         .iter()
-        .map(|(option, icon, label, hint)| Segment {
-            value: *option,
-            label,
-            hint,
-            icon: Some(icon),
+        .map(|(option, icon, label, hint)| {
+            Segment::new(*option, label).with_hint(hint).with_icon(icon)
         })
         .collect();
-    show_segments(ui, value, &segments)
+    self::segments(ui, value, &segments)
 }
 
 /// The width [`segmented_with_hints`] takes for these labels.
 pub fn segmented_width(ui: &Ui, labels: &[&str]) -> f32 {
-    labels.iter().map(|label| segment_width(ui, label, None)).sum()
+    let segments: Vec<Segment<'_, ()>> =
+        labels.iter().map(|label| Segment::new((), label)).collect();
+    segments_width(ui, &segments)
 }
 
 /// The width [`segmented_icons`] takes for these icons.
 pub fn segmented_icons_width(ui: &Ui, icons: &[&str]) -> f32 {
-    icons.iter().map(|icon| segment_width(ui, "", Some(icon))).sum()
-}
-
-struct Segment<'a, T> {
-    value: T,
-    label: &'a str,
-    hint: &'a str,
-    icon: Option<&'a str>,
+    let segments: Vec<Segment<'_, ()>> =
+        icons.iter().map(|icon| Segment::new((), "").with_icon(icon)).collect();
+    segments_width(ui, &segments)
 }
 
 /// Width of one segment. An icon segment is a fixed icon slot. A label segment is sized for its
@@ -250,16 +278,17 @@ fn segment_width(ui: &Ui, label: &str, icon: Option<&str>) -> f32 {
     galley.size().x + style::SPACE_L * 2.0
 }
 
-fn show_segments<T: PartialEq + Copy>(
+/// Segmented control for small sets of mutually exclusive options; true when the value changed.
+pub fn segments<T: PartialEq + Copy>(
     ui: &mut Ui,
     value: &mut T,
-    segments: &[Segment<'_, T>],
+    options: &[Segment<'_, T>],
 ) -> bool {
     let palette = theme::palette(ui.ctx());
     let mut changed = false;
     let inner = ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
-        for segment in segments {
+        for segment in options {
             let is_selected = *value == segment.value;
             let size = vec2(segment_width(ui, segment.label, segment.icon), style::CONTROL_HEIGHT);
             let (rect, mut response) = ui.allocate_exact_size(size, Sense::click());
@@ -338,12 +367,71 @@ fn reserve_digits(label: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::reserve_digits;
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    use cv_base::theme::{self, icons};
+    use egui::{Event, Modifiers, PointerButton};
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+    use review_store::ThemePreference;
+
+    use super::{Segment, reserve_digits};
 
     #[test]
     fn counts_reserve_two_digits() {
         assert_eq!(reserve_digits("Active 3"), "Active 00");
         assert_eq!(reserve_digits("All 128"), "All 000");
         assert_eq!(reserve_digits("Light"), "Light");
+    }
+
+    const LAYOUTS: [Segment<'static, u8>; 3] = [
+        Segment::new(0, "Inline"),
+        Segment::new(1, "Side by side").with_hint("Ctrl+Shift+L"),
+        Segment::new(2, "Unified").with_icon(icons::ROWS),
+    ];
+
+    /// A press and release on the centre of `label`, where the last frame put it.
+    fn click(harness: &mut Harness<'_>, label: &str) {
+        let at = harness.get_by_label(label).rect().center();
+        for pressed in [true, false] {
+            harness.event(Event::PointerButton {
+                pos: at,
+                button: PointerButton::Primary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            });
+        }
+        harness.run();
+    }
+
+    /// A click picks its option, and the control is as wide as [`super::segments_width`] plans.
+    #[test]
+    fn segments_pick_the_clicked_option_at_their_planned_width() {
+        let picked = Rc::new(Cell::new(0_u8));
+        let widths = Rc::new(Cell::new((0.0, 0.0)));
+        let (value, planned) = (picked.clone(), widths.clone());
+        let mut harness = Harness::builder()
+            .with_size([600.0, 80.0])
+            .with_context_setup(|ctx| {
+                theme::fonts::install(ctx);
+                theme::activate(ctx, ThemePreference::Light);
+            })
+            .build_ui(move |ui| {
+                let mut current = value.get();
+                let left = ui.cursor().left();
+                let changed = super::segments(ui, &mut current, &LAYOUTS);
+                assert_eq!(changed, current != value.get());
+                value.set(current);
+                let painted = ui.min_rect().right() - left;
+                planned.set((painted, super::segments_width(ui, &LAYOUTS)));
+            });
+        harness.run();
+        click(&mut harness, "Side by side");
+        assert_eq!(picked.get(), 1);
+        click(&mut harness, "Unified");
+        assert_eq!(picked.get(), 2, "an icon segment keeps its label as its name");
+        let (painted, planned) = widths.get();
+        assert!((painted - planned).abs() < 0.5, "painted {painted}, planned {planned}");
     }
 }
