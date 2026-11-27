@@ -52,6 +52,9 @@ pub struct PanelState {
     /// only those near the view.
     heights: lazy_list::Heights,
     group_heights: lazy_list::Heights,
+    /// Each changed file's place in tree order, by path, read for `file_order_version`.
+    file_ranks: HashMap<String, usize>,
+    file_ranks_version: Option<u64>,
 }
 
 /// Who has the panel's keys.
@@ -99,8 +102,11 @@ pub enum PanelEvent {
 
 pub struct PanelInputs<'a> {
     pub threads: &'a [ReviewThread],
-    /// Changed files in tree order, for the order of the groups.
-    pub file_order: &'a [&'a str],
+    /// Changed files in tree order, for the order of the groups. The panel reads it only when
+    /// `file_order_version` changed, so the order costs nothing per frame.
+    pub file_order: &'a mut dyn Iterator<Item = &'a str>,
+    /// Changes whenever `file_order` lists other files or another order.
+    pub file_order_version: u64,
     pub filters: &'a mut ThreadFilters,
     pub width: f32,
 }
@@ -127,13 +133,14 @@ pub fn show(
     // New threads on their way are listed where they will land, marked "Posting…".
     let pending: Vec<ReviewThread> =
         threads.pending_threads().into_iter().map(|(_, thread)| thread).collect();
+    read_file_ranks(&mut threads.panel, &mut inputs);
     let panel = egui::Panel::right("threads_panel")
         .resizable(false)
         .exact_size(inputs.width)
         .frame(egui::Frame::new().fill(palette.surface).stroke(Stroke::new(1.0, palette.border)))
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            let visible = visible_entries(threads, &inputs, &pending);
+            let visible = visible_entries(threads, inputs.threads, *inputs.filters, &pending);
             header(ui, threads, &mut inputs, &mut events);
             keyboard(ui, threads, &visible, &mut events);
             egui::Panel::bottom("threads_panel_footer")
@@ -261,17 +268,30 @@ pub fn toggle_counts(all: &[ReviewThread], threads: &ThreadsUi) -> ToggleCounts 
     counts
 }
 
-/// The threads the filters let through, grouped by file in tree order, General last; `pending`
-/// (new threads on their way, the user's own and active) after the loaded ones of their place.
+/// Reads the files' places in tree order when the order changed; a path listed twice keeps its
+/// first place.
+fn read_file_ranks(panel: &mut PanelState, inputs: &mut PanelInputs<'_>) {
+    if panel.file_ranks_version == Some(inputs.file_order_version) {
+        return;
+    }
+    panel.file_ranks.clear();
+    for (index, path) in (&mut *inputs.file_order).enumerate() {
+        panel.file_ranks.entry(path.to_owned()).or_insert(index);
+    }
+    panel.file_ranks_version = Some(inputs.file_order_version);
+}
+
+/// The `loaded` threads `filters` let through, grouped by file in tree order, General last;
+/// `pending` (new threads on their way, the user's own and active) after the loaded ones of their
+/// place.
 fn visible_entries<'a>(
     threads: &ThreadsUi,
-    inputs: &PanelInputs<'a>,
+    loaded: &'a [ReviewThread],
+    filters: ThreadFilters,
     pending: &'a [ReviewThread],
 ) -> Vec<Entry<'a>> {
-    let filters = *inputs.filters;
     let any_status = !filters.active && !filters.resolved;
-    let loaded = inputs
-        .threads
+    let loaded = loaded
         .iter()
         .filter(|thread| is_listed(thread, filters, threads))
         .map(|thread| Entry { thread, group: group_of(thread), is_pending: false });
@@ -282,15 +302,12 @@ fn visible_entries<'a>(
         is_pending: true,
     });
     let mut entries: Vec<Entry<'a>> = loaded.chain(pending).collect();
-    // Reversed, so a path listed twice keeps its first place.
-    let positions: HashMap<&str, usize> =
-        inputs.file_order.iter().enumerate().rev().map(|(index, path)| (*path, index)).collect();
     // Groups outside `file_order` go after those in it, by name; General last.
     let rank = |group: &'a str| {
         if group == GENERAL {
             return (usize::MAX, "");
         }
-        (positions.get(group).copied().unwrap_or(usize::MAX - 1), group)
+        (threads.panel.file_ranks.get(group).copied().unwrap_or(usize::MAX - 1), group)
     };
     let line = |thread: &ReviewThread| {
         thread.anchor.as_ref().and_then(|anchor| anchor.new_line.or(anchor.old_line)).unwrap_or(0)

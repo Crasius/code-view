@@ -167,7 +167,7 @@ fn resolve(color: AnsiColor, palette: &Palette) -> Color32 {
         AnsiColor::Green => palette.success,
         AnsiColor::Yellow => palette.warning,
         AnsiColor::Blue | AnsiColor::Cyan => palette.accent,
-        AnsiColor::Magenta => Color32::from_rgb(0xB1, 0x46, 0xC2),
+        AnsiColor::Magenta => palette.log_magenta,
         AnsiColor::Black => palette.text_secondary,
         AnsiColor::White => palette.text,
     }

@@ -82,7 +82,7 @@ fn resolve(src: &str, base: Option<&FileBase>, context: &Origin) -> Option<Resol
             None => Resolved::Blocked("The path leaves the repository".to_owned()),
         });
     }
-    let repository = web_link::repository_url(context.kind, &context.pull_request_url);
+    let repository = pull_request_link::repository_root(context.kind, &context.pull_request_url);
     if context.kind == ProviderKind::GitLab
         && src.starts_with("/uploads/")
         && let Some(project) = &repository

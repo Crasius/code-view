@@ -2,10 +2,10 @@
 //! comments picked on that version's line numbers.
 
 use cv_testkit::{Clicks, ScratchDir};
-use egui::{Event, Key, Modifiers, Pos2, Role};
+use egui::{Key, Modifiers, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_core::{DiffSide, FileCategory, NewThread};
+use review_core::{DiffSide, FileCategory};
 use review_git::{ChangeKind, ChangedFile};
 use review_store::DiffLayout;
 
@@ -13,27 +13,12 @@ use crate::tests::services_in;
 use cv_base::theme;
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
-use cv_pr_diff::diff_view::DiffEvent;
-use cv_pr_diff::testing::{self as check, Fixture, NEW, OLD, PATH, click_with, settle};
+use cv_pr_diff::testing::{
+    self as check, Fixture, NEW, OLD, PATH, click_with, new_threads, post_comment, settle,
+};
 use cv_pr_rendered::file_header::{self, HeaderInputs};
 use cv_pr_rendered::preview::Preview;
 use cv_services::Services;
-
-/// The comments the view asked to create, in order.
-fn new_threads(events: &[DiffEvent]) -> impl Iterator<Item = &NewThread> {
-    events.iter().filter_map(|event| match event {
-        DiffEvent::Create { thread, .. } => Some(thread),
-        _ => None,
-    })
-}
-
-/// Writes `body` into the open comment and posts it.
-fn post_comment<State>(harness: &mut Harness<'_, State>, body: &str) {
-    harness.event(Event::Text(body.to_owned()));
-    harness.step();
-    harness.click_at(harness.get_by_role_and_label(Role::Button, "Comment").rect());
-    settle(harness);
-}
 
 /// The files tab around one diff: its header above the view.
 struct Page {

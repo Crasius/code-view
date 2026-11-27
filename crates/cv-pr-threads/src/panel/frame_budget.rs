@@ -29,10 +29,10 @@ fn bench_panel(pixels_per_point: f32, reports: &mut Vec<Report>) {
         Scene { ui: samples::review_ui(&threads), threads, files, filters: ThreadFilters::ALL };
     let mut bench = Bench::new(pixels_per_point, scene, |ui, scene: &mut Scene| {
         scene.ui.begin_frame_for_tests(ui.ctx(), &scene.threads, 1);
-        let file_order: Vec<&str> = scene.files.iter().map(String::as_str).collect();
         let inputs = PanelInputs {
             threads: &scene.threads,
-            file_order: &file_order,
+            file_order: &mut scene.files.iter().map(String::as_str),
+            file_order_version: 0,
             filters: &mut scene.filters,
             width: WIDTH,
         };

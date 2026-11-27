@@ -11,7 +11,7 @@ use egui_kittest::kittest::Queryable;
 use review_core::{NewThread, ReviewThread, ThreadStatus};
 
 use crate::diff_view::DiffEvent;
-use crate::testing::{Fixture, NEW, PATH, fixture, line_of};
+use crate::testing::{Fixture, NEW, PATH, fixture, line_of, settle};
 use cv_base::theme;
 use cv_code::diff_rows::Layout;
 use cv_code::line_source::Pane;
@@ -20,6 +20,8 @@ use cv_pr_threads::{Delivery, ThreadEvent, new_thread_key, samples};
 const FRAME: f32 = 1.0 / 120.0;
 /// Frames the hand-off may take: the ease plus the frame it starts in and one to land.
 const EASE_FRAMES: usize = (cv_widgets::settle::DURATION / FRAME) as usize + 3;
+/// Frames a settle may take before it fails: two eases (our own bound).
+const SETTLE_FRAMES: u64 = 2 * EASE_FRAMES as u64;
 const BODY: &str = "Prefer `iter().sum()` here, it reads as the total.";
 
 struct Scene {
@@ -37,6 +39,7 @@ fn harness() -> Harness<'static, Scene> {
     Harness::builder()
         .with_size([1180.0, 760.0])
         .with_step_dt(FRAME)
+        .with_max_steps(SETTLE_FRAMES)
         .with_context_setup(theme::fonts::install)
         .build_ui_state(
             |ui, scene: &mut Scene| {
@@ -139,7 +142,7 @@ fn assert_still(case: &str, frames: &[(f32, Option<f32>)], below: f32, comment: 
 
 /// Opens a comment on the commented line with the "+", types `BODY` and lets it settle.
 fn write_comment(harness: &mut Harness<'_, Scene>) {
-    harness.run_steps(30);
+    settle(harness);
     let row = harness.state().fixture.view.row_of(
         &harness.state().fixture.diff,
         None,
@@ -161,10 +164,10 @@ fn write_comment(harness: &mut Harness<'_, Scene>) {
         pressed: false,
         modifiers: egui::Modifiers::NONE,
     });
-    harness.run_steps(30);
+    settle(harness);
     assert!(harness.state().fixture.view.composer().is_some(), "the + opens a comment");
     harness.event(egui::Event::Text(BODY.to_owned()));
-    harness.run_steps(30);
+    settle(harness);
 }
 
 /// The thread the platform stores for `new`, as it sends it back and the reload shows it.
@@ -293,11 +296,11 @@ fn a_reply_hands_its_composer_to_the_reply_in_place() {
     let anchor = Some(samples::lines(PATH, line, line));
     let thread = samples::thread("t-1", ThreadStatus::Active, anchor, vec![question]);
     harness.state_mut().fixture.threads.push(thread);
-    harness.run_steps(30);
+    settle(&mut harness);
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Reply").rect());
-    harness.run_steps(30);
+    settle(&mut harness);
     harness.event(egui::Event::Text(BODY.to_owned()));
-    harness.run_steps(30);
+    settle(&mut harness);
     let composer_below = below_y(&harness);
 
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Reply").rect());

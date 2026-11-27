@@ -1,6 +1,7 @@
 //! Links to a changed file on its hosting platform, offered wherever the app cannot show a file
 //! itself (binary content, failed loads), named after the platform.
 
+use cv_runtime::links::pull_request_link::repository_root;
 use review_core::ProviderKind;
 use review_git::{ChangeKind, ChangedFile};
 
@@ -36,17 +37,6 @@ pub fn for_pull_request(session: &PullRequestSession) -> Option<WebLink> {
     })
 }
 
-/// The repository's (GitLab: the project's) web root, from a pull request's web address.
-pub(crate) fn repository_url(kind: ProviderKind, pull_request_url: &str) -> Option<String> {
-    let page = pull_request_url.split(['?', '#']).next()?.trim_end_matches('/');
-    let (repository, _) = match kind {
-        ProviderKind::GitHub => page.rsplit_once("/pull/")?,
-        ProviderKind::GitLab => page.rsplit_once("/-/merge_requests/")?,
-        ProviderKind::AzureDevOps => page.rsplit_once("/pullrequest/")?,
-    };
-    Some(repository.to_owned())
-}
-
 /// A repository file at `commit` as the browser shows a file itself (an image opens as the
 /// image): GitHub's and GitLab's raw view, Azure DevOps' file view.
 pub(crate) fn raw_file_url(
@@ -55,7 +45,7 @@ pub(crate) fn raw_file_url(
     path: &str,
     commit: &str,
 ) -> Option<String> {
-    let repository = repository_url(kind, pull_request_url)?;
+    let repository = repository_root(kind, pull_request_url)?;
     let path = encode_path(path);
     Some(match kind {
         ProviderKind::GitHub => format!("{repository}/blob/{commit}/{path}?raw=true"),
@@ -72,7 +62,7 @@ pub fn line_url(
     commit: &str,
     line: u32,
 ) -> Option<String> {
-    let repository = repository_url(kind, pull_request_url)?;
+    let repository = repository_root(kind, pull_request_url)?;
     let path = encode_path(path);
     Some(match kind {
         ProviderKind::GitHub => format!("{repository}/blob/{commit}/{path}#L{line}"),
@@ -92,11 +82,11 @@ fn file_url(
 ) -> Option<String> {
     match kind {
         ProviderKind::GitHub => {
-            let repository = repository_url(kind, pull_request_url)?;
+            let repository = repository_root(kind, pull_request_url)?;
             Some(format!("{repository}/blob/{commit}/{}", encode_path(path)))
         }
         ProviderKind::GitLab => {
-            let project = repository_url(kind, pull_request_url)?;
+            let project = repository_root(kind, pull_request_url)?;
             Some(format!("{project}/-/blob/{commit}/{}", encode_path(path)))
         }
         // Azure DevOps opens the pull request's Files view on that file.
@@ -209,11 +199,6 @@ mod tests {
             )
             .as_deref(),
             Some("https://dev.azure.com/org/project/_git/repo?path=%2Fimg/x.png&version=GCc0")
-        );
-        assert_eq!(
-            repository_url(ProviderKind::GitLab, "https://gitlab.com/g/p/-/merge_requests/7?x")
-                .as_deref(),
-            Some("https://gitlab.com/g/p")
         );
     }
 }

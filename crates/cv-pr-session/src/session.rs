@@ -127,7 +127,7 @@ impl PullRequestSession {
             detail: Live::seeded(detail),
             listed,
             threads: Live::seeded(cache.get(&part("threads"))),
-            runs: Live::seeded(cache.get::<Vec<PipelineRun>>(&part("runs")).map(Arc::from)),
+            runs: Live::seeded(cache.get::<Arc<[PipelineRun]>>(&part("runs"))),
             stages: HashMap::new(),
             attempts: HashMap::new(),
             repository: Repository::default(),
@@ -413,7 +413,7 @@ impl PullRequestSession {
             && let Some(runs) = self.runs.ready()
         {
             forget_unlisted(&mut self.stages, &mut self.attempts, runs);
-            cache.put(&cache_key(&storage_key, "runs"), runs.to_vec(), now);
+            cache.put(&cache_key(&storage_key, "runs"), Arc::clone(runs), now);
         }
         for load in self.stages.values_mut() {
             load.live.poll();

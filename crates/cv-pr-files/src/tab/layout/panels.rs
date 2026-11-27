@@ -150,13 +150,13 @@ pub fn show_threads_panel(
 ) -> Option<Jump> {
     let session = context.session;
     let all = session.threads.ready().map_or(&[][..], Vec::as_slice);
-    let file_order: Vec<&str> =
-        context.tree.file_order().map(|index| context.files[index].path.as_str()).collect();
+    let mut file_order = context.tree.file_order().map(|index| context.files[index].path.as_str());
     let range = threads_width_range(ui.available_width());
     let width = services.settings.panes.threads_panel.clamp(*range.start(), *range.end());
     let inputs = PanelInputs {
         threads: all,
-        file_order: &file_order,
+        file_order: &mut file_order,
+        file_order_version: context.tree.version(),
         filters: &mut services.settings.threads_panel.filters,
         width,
     };

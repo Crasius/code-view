@@ -3,7 +3,7 @@
 //! network, no tokens. Also the harness and the sample pipeline the pan and zoom checks share.
 
 use cv_base::theme;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, poll_until};
 use egui::Role;
 use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::{Harness, HarnessBuilder};
@@ -337,14 +337,19 @@ fn gitlab_stages_stand_in_columns_even_when_jobs_use_needs() {
         lefts.windows(2).all(|pair| pair[1] > pair[0] + 200.0),
         "one column per stage, in order: {lefts:?}"
     );
-    harness.get_by_label("release:dry-run").hover();
-    harness.run_steps(60);
-    assert!(
+    // The pointer rests on the job until its tooltip shows, put back when the card moved the job.
+    let mut pointer = None;
+    poll_until("the expanded card names what a job needs", || {
+        let job = harness.get_by_label("release:dry-run").rect().center();
+        if pointer != Some(job) {
+            harness.hover_at(job);
+            pointer = Some(job);
+        }
+        harness.step();
         harness
             .query_by_label_contains("Waits for: build:linux, build:windows, build:macos")
-            .is_some(),
-        "the expanded card names what a job needs"
-    );
+            .is_some()
+    });
 }
 
 /// 60 stages of 10 jobs, all expanded: only what is on screen becomes widgets.
