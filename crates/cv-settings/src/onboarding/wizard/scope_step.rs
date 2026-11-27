@@ -44,7 +44,7 @@ pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) -> Option
     };
 
     let mut saved = None;
-    ui.add_space(12.0);
+    ui.add_space(theme::style::SPACE_M);
     let vault = wizard.vault_message(ui, problem.is_none());
     if vault.wants_recheck {
         wizard.vault = VaultCheck::Idle;
@@ -125,7 +125,7 @@ fn everything_choice(ui: &mut Ui, wizard: &mut Wizard, noun: &str) {
     {
         wizard.includes_everything = true;
     }
-    ui.add_space(8.0);
+    ui.add_space(theme::style::SPACE_S);
     let only = format!("Only selected {noun}");
     if parts::choice_row(
         ui,
@@ -139,7 +139,7 @@ fn everything_choice(ui: &mut Ui, wizard: &mut Wizard, noun: &str) {
     {
         wizard.includes_everything = false;
     }
-    ui.add_space(12.0);
+    ui.add_space(theme::style::SPACE_M);
 }
 
 /// The scopes the token sees, each with a checkbox; true when the user asks to list them again.
@@ -198,7 +198,7 @@ fn candidate_row(ui: &mut Ui, selected: &mut Vec<String>, candidate: &ScopeCandi
 
 /// Scopes typed by name, for ones the list does not show.
 fn typed_scopes(ui: &mut Ui, wizard: &mut Wizard, noun: &str) {
-    ui.add_space(8.0);
+    ui.add_space(theme::style::SPACE_S);
     let label = ui.label(
         RichText::new(format!("Add {noun} by name"))
             .font(theme::fonts::semibold_font(theme::style::BODY_SIZE)),
@@ -210,7 +210,7 @@ fn typed_scopes(ui: &mut Ui, wizard: &mut Wizard, noun: &str) {
             .desired_width(f32::INFINITY),
     )
     .labelled_by(label.id);
-    ui.add_space(12.0);
+    ui.add_space(theme::style::SPACE_M);
 }
 
 /// The connection's name; typing in it keeps it from following the host.

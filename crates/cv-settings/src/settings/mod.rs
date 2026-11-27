@@ -216,7 +216,7 @@ impl SettingsPage {
         let mut side_ui = ui.new_child(UiBuilder::new().max_rect(side));
         egui::ScrollArea::vertical().id_salt("settings_sidebar").show(&mut side_ui, |ui| {
             egui::Frame::new()
-                .inner_margin(egui::Margin::symmetric(style::SPACE_M as i8, 20))
+                .inner_margin(egui::Margin::symmetric(style::SPACE_M as i8, style::SPACE_XL as i8))
                 .show(ui, |ui| self.navigation.show(ui, &categories, problems));
         });
         let palette = theme::palette(ui.ctx());

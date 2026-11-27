@@ -14,6 +14,8 @@ use crate::onboarding::parts::{self, Tone};
 
 /// Lines a setting's reason up with its name, past the checkbox.
 const SETTING_INDENT: i8 = 22;
+/// Between the parts of a token recipe: its summary, its button, its checklist.
+const RECIPE_GAP: f32 = 6.0;
 
 pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
     let Ok(host) = wizard.resolved() else {
@@ -134,7 +136,7 @@ fn recipes(wizard: &mut Wizard, ui: &mut Ui, cli_login: Option<&CliLogin>, host_
         wizard.shows_alternative = !wizard.shows_alternative;
     }
     if wizard.shows_alternative {
-        ui.add_space(4.0);
+        ui.add_space(theme::style::SPACE_XS);
         ui.indent("alternative_recipe", |ui| {
             let emphasis = Emphasis { is_recommended: false, is_primary: false };
             recipe(wizard, ui, alternative, emphasis, host_label);
@@ -214,7 +216,7 @@ fn recipe(
         }
     });
     ui.label(RichText::new(&recipe.summary).color(palette.text_secondary));
-    ui.add_space(6.0);
+    ui.add_space(RECIPE_GAP);
     let button = if recipe.is_prefilled {
         format!("Create token on {host_label}")
     } else {
@@ -229,7 +231,7 @@ fn recipe(
         };
         parts::small(ui, hint);
     });
-    ui.add_space(6.0);
+    ui.add_space(RECIPE_GAP);
     if is_recommended && !recipe.is_prefilled {
         if wizard.ticked.len() != recipe.settings.len() {
             wizard.ticked = vec![false; recipe.settings.len()];
@@ -260,7 +262,7 @@ fn recipe(
     for caveat in &recipe.caveats {
         parts::small_note(ui, caveat);
     }
-    ui.add_space(8.0);
+    ui.add_space(theme::style::SPACE_S);
 }
 
 /// A setting's name (with its checkbox or check mark) and, right under it, why the app needs it.
@@ -274,7 +276,7 @@ fn setting_row(ui: &mut Ui, reason: &str, add_name: impl FnOnce(&mut Ui)) {
                 parts::small(ui, reason);
             });
     });
-    ui.add_space(6.0);
+    ui.add_space(RECIPE_GAP);
 }
 
 /// The token input, then `vault_summary`: where the token will rest.
@@ -322,7 +324,7 @@ fn token_field(wizard: &mut Wizard, ui: &mut Ui, vault_summary: &str) {
         }
     });
     parts::small(ui, vault_summary);
-    ui.add_space(8.0);
+    ui.add_space(theme::style::SPACE_S);
 }
 
 fn check_state(

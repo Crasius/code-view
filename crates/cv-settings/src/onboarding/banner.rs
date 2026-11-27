@@ -29,7 +29,10 @@ pub fn show(ui: &mut Ui, services: &mut Services) {
         Frame::new()
             .fill(palette.warning_surface)
             .stroke(Stroke::new(1.0, palette.warning.gamma_multiply(0.4)))
-            .inner_margin(Margin::symmetric(16, 8))
+            .inner_margin(Margin::symmetric(
+                theme::style::SPACE_L as i8,
+                theme::style::SPACE_S as i8,
+            ))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {

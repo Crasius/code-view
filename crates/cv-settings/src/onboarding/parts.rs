@@ -2,30 +2,29 @@
 
 use cv_base::theme::{self, Palette, icons};
 use cv_widgets::{buttons, focus, glyph, row};
-use egui::{
-    Align, Color32, CornerRadius, Frame, Layout, Margin, Response, RichText, Sense, Stroke, Ui,
-    vec2,
-};
+use egui::{Align, Color32, Frame, Layout, Margin, Response, RichText, Sense, Stroke, Ui, vec2};
 use review_core::setup::{Access, FeatureCheck};
 
 const HEADLINE_SIZE: f32 = 22.0;
 const STEP_DOT: f32 = 22.0;
 const ROW_HEIGHT: f32 = 56.0;
+const CALLOUT_PADDING: Margin = Margin::symmetric(14, 12);
+const SHEET_PADDING: Margin = Margin::symmetric(32, 28);
 
 pub fn headline(ui: &mut Ui, title: &str, detail: &str) {
     let palette = theme::palette(ui.ctx());
     ui.label(RichText::new(title).font(theme::fonts::semibold_font(HEADLINE_SIZE)));
     if !detail.is_empty() {
-        ui.add_space(4.0);
+        ui.add_space(theme::style::SPACE_XS);
         ui.label(RichText::new(detail).color(palette.text_secondary));
     }
-    ui.add_space(20.0);
+    ui.add_space(theme::style::SPACE_XL);
 }
 
 pub fn section(ui: &mut Ui, title: &str) {
-    ui.add_space(8.0);
+    ui.add_space(theme::style::SPACE_S);
     ui.label(RichText::new(title).font(theme::fonts::semibold_font(theme::style::SECTION_SIZE)));
-    ui.add_space(4.0);
+    ui.add_space(theme::style::SPACE_XS);
 }
 
 pub fn small(ui: &mut Ui, text: &str) -> Response {
@@ -44,7 +43,7 @@ pub fn stepper(ui: &mut Ui, labels: &[&str], current: usize) -> Option<usize> {
     let palette = theme::palette(ui.ctx());
     let mut clicked = None;
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 8.0;
+        ui.spacing_mut().item_spacing.x = theme::style::SPACE_S;
         for (index, label) in labels.iter().enumerate() {
             if index > 0 {
                 let (rect, _) = ui.allocate_exact_size(vec2(28.0, STEP_DOT), Sense::hover());
@@ -238,8 +237,8 @@ fn tinted(ui: &mut Ui, tone: Tone, title: &str, body: &str, actions: Option<Acti
     Frame::new()
         .fill(fill)
         .stroke(Stroke::new(1.0, accent.gamma_multiply(0.35)))
-        .corner_radius(CornerRadius::same(4))
-        .inner_margin(Margin::symmetric(14, 12))
+        .corner_radius(theme::style::RADIUS_CONTROL)
+        .inner_margin(CALLOUT_PADDING)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal_top(|ui| {
@@ -254,13 +253,13 @@ fn tinted(ui: &mut Ui, tone: Tone, title: &str, body: &str, actions: Option<Acti
                         ui.label(RichText::new(body).color(palette.text));
                     }
                     if let Some(actions) = actions {
-                        ui.add_space(4.0);
+                        ui.add_space(theme::style::SPACE_XS);
                         ui.horizontal_wrapped(|ui| actions(ui));
                     }
                 });
             });
         });
-    ui.add_space(12.0);
+    ui.add_space(theme::style::SPACE_M);
 }
 
 /// A button that opens `url` in the browser; the arrow says it leaves the app.
@@ -293,7 +292,7 @@ pub fn access_row(ui: &mut Ui, check: &FeatureCheck, fix_url: &str, host_label: 
     let (icon, color, state) = access_icon(check.access, &palette);
     ui.horizontal(|ui| {
         ui.set_min_height(44.0);
-        ui.add_space(4.0);
+        ui.add_space(theme::style::SPACE_XS);
         let icon_response = glyph::decorative(ui, RichText::new(icon).size(20.0).color(color));
         icon_response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, state));
         row::centered_lines(ui, |ui| {
@@ -329,8 +328,8 @@ pub fn sheet<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
     Frame::new()
         .fill(palette.surface)
         .stroke(Stroke::new(1.0, palette.border))
-        .corner_radius(CornerRadius::same(4))
-        .inner_margin(Margin::symmetric(32, 28))
+        .corner_radius(theme::style::RADIUS_CONTROL)
+        .inner_margin(SHEET_PADDING)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             add_contents(ui)

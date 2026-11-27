@@ -10,6 +10,9 @@ use review_core::setup::Access;
 use super::{Check, Fix, Step, Wizard, failed_callout, footer};
 use crate::onboarding::parts::{self, Tone};
 
+/// Above each note under the checklist.
+const NOTE_GAP: f32 = 6.0;
+
 pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
     let Ok(host) = wizard.resolved() else {
         wizard.step = Step::Host;
@@ -26,13 +29,13 @@ pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) {
     let fix = match (&wizard.check, wizard.report()) {
         (_, Some(report)) => {
             signed_in(ui, report);
-            ui.add_space(16.0);
+            ui.add_space(theme::style::SPACE_L);
             let fix = report_callout(ui, report, &host_label, &fix_url);
             checklist(ui, report, &host_label, &fix_url);
             fix
         }
         (Check::Running { .. }, None) => {
-            ui.add_space(8.0);
+            ui.add_space(theme::style::SPACE_S);
             states::loading(ui, &format!("Checking the token with {host_label}…"));
             None
         }
@@ -150,8 +153,8 @@ fn checklist(ui: &mut Ui, report: &AccessReport, host_label: &str, fix_url: &str
     let palette = theme::palette(ui.ctx());
     Frame::new()
         .stroke(Stroke::new(1.0, palette.border))
-        .corner_radius(4)
-        .inner_margin(Margin::symmetric(12, 4))
+        .corner_radius(theme::style::RADIUS_CONTROL)
+        .inner_margin(Margin::symmetric(theme::style::SPACE_M as i8, theme::style::SPACE_XS as i8))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             for (index, check) in report.checks.iter().enumerate() {
@@ -162,7 +165,7 @@ fn checklist(ui: &mut Ui, report: &AccessReport, host_label: &str, fix_url: &str
             }
         });
     for note in &report.notes {
-        ui.add_space(6.0);
+        ui.add_space(NOTE_GAP);
         parts::small_note(ui, note);
     }
 }

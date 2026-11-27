@@ -36,7 +36,7 @@ pub fn platform(wizard: &mut Wizard, ui: &mut Ui) {
         {
             wizard.select_kind(kind);
         }
-        ui.add_space(8.0);
+        ui.add_space(theme::style::SPACE_S);
     }
 }
 
@@ -56,12 +56,12 @@ pub fn host(wizard: &mut Wizard, ui: &mut Ui) {
             wizard.host_input.clear();
             wizard.reset_token();
         }
-        ui.add_space(8.0);
+        ui.add_space(theme::style::SPACE_S);
     }
 
     let resolved = wizard.resolved();
     if host::needs_input(kind, wizard.hosting) {
-        ui.add_space(8.0);
+        ui.add_space(theme::style::SPACE_S);
         let (label, example) = host::field(kind, wizard.hosting);
         let label = ui
             .label(RichText::new(label).font(theme::fonts::semibold_font(theme::style::BODY_SIZE)));
