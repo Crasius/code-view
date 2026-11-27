@@ -23,7 +23,7 @@ const IDS_PER_FETCH: usize = 400;
 
 /// Fetches `head` from the mirror into `repo` as the ref `into`, after the mirror downloaded what
 /// the clone lacks of it.
-pub async fn supply(
+pub(crate) async fn supply(
     mirror: &GitMirror,
     repo: &LocalRepo,
     head: &str,
@@ -59,7 +59,7 @@ pub async fn supply(
 /// Fetches `head` from the mirror into `repo`, a new partial clone whose remote `origin` is the
 /// mirror, as the ref `into`: commits and trees only. The blobs of `head`'s tree are downloaded
 /// into the mirror first, so the clone's checkout finds them there.
-pub async fn supply_partial(
+pub(crate) async fn supply_partial(
     mirror: &GitMirror,
     repo: &LocalRepo,
     head: &str,

@@ -26,7 +26,7 @@ pub(crate) struct RepoKey<'a> {
 }
 
 impl<'a> RepoKey<'a> {
-    pub fn parse(key: &'a str) -> Result<Self> {
+    pub(crate) fn parse(key: &'a str) -> Result<Self> {
         let mut parts = key.split('/');
         let (Some(organization), Some(project), Some(repository), None) =
             (parts.next(), parts.next(), parts.next(), parts.next())
@@ -61,11 +61,11 @@ pub(crate) struct Client {
 }
 
 impl Client {
-    pub fn new(connection: Connection, http: reqwest::Client) -> Self {
+    pub(crate) fn new(connection: Connection, http: reqwest::Client) -> Self {
         Client { connection, http }
     }
 
-    pub fn organizations(&self) -> Result<&[String]> {
+    pub(crate) fn organizations(&self) -> Result<&[String]> {
         if self.connection.organizations.is_empty() {
             return Err(ProviderError::Unsupported(
                 "This Azure DevOps connection lists no organization (or collection).".to_owned(),
@@ -74,54 +74,54 @@ impl Client {
         Ok(&self.connection.organizations)
     }
 
-    pub fn has_token(&self) -> bool {
+    pub(crate) fn has_token(&self) -> bool {
         self.connection.token().is_some()
     }
 
-    pub fn require_token(&self, action: &str) -> Result<()> {
+    pub(crate) fn require_token(&self, action: &str) -> Result<()> {
         if self.has_token() { Ok(()) } else { Err(ProviderError::requires_token(action)) }
     }
 
     /// `Basic base64(":" + PAT)`, the header git and the REST API both accept.
-    pub fn authorization_header(&self) -> Option<String> {
+    pub(crate) fn authorization_header(&self) -> Option<String> {
         self.connection
             .token()
             .map(|token| format!("Basic {}", STANDARD.encode(format!(":{token}"))))
     }
 
     /// The server root (`https://dev.azure.com` or the Azure DevOps Server address).
-    pub fn base_url(&self) -> &str {
+    pub(crate) fn base_url(&self) -> &str {
         self.connection.base_url()
     }
 
-    pub fn is_services(&self) -> bool {
+    pub(crate) fn is_services(&self) -> bool {
         is_services_host(self.connection.base_url())
     }
 
     /// `{base}/{org}` — the organization (Services) or collection (Server) web root.
-    pub fn organization_root(&self, organization: &str) -> String {
+    pub(crate) fn organization_root(&self, organization: &str) -> String {
         format!("{}/{}", self.connection.base_url(), encode(organization))
     }
 
-    pub fn project_root(&self, repo: RepoKey<'_>) -> String {
+    pub(crate) fn project_root(&self, repo: RepoKey<'_>) -> String {
         format!("{}/{}", self.organization_root(repo.organization), encode(repo.project))
     }
 
-    pub fn organization_api(&self, organization: &str, path: &str) -> String {
+    pub(crate) fn organization_api(&self, organization: &str, path: &str) -> String {
         format!("{}/_apis/{path}", self.organization_root(organization))
     }
 
-    pub fn project_api(&self, repo: RepoKey<'_>, path: &str) -> String {
+    pub(crate) fn project_api(&self, repo: RepoKey<'_>, path: &str) -> String {
         format!("{}/_apis/{path}", self.project_root(repo))
     }
 
     /// `Repositories - Get`: the repository itself (by name).
-    pub fn repository_resource_api(&self, repo: RepoKey<'_>) -> String {
+    pub(crate) fn repository_resource_api(&self, repo: RepoKey<'_>) -> String {
         self.project_api(repo, &format!("git/repositories/{}", encode(repo.repository)))
     }
 
     /// The branch policies page of `branch` in the repository with GUID `repository_id`.
-    pub fn branch_policies_web_url(
+    pub(crate) fn branch_policies_web_url(
         &self,
         repo: RepoKey<'_>,
         repository_id: &str,
@@ -136,21 +136,21 @@ impl Client {
     }
 
     /// The repository's branches page, where each branch's menu leads to its policies.
-    pub fn branches_web_url(&self, repo: RepoKey<'_>) -> String {
+    pub(crate) fn branches_web_url(&self, repo: RepoKey<'_>) -> String {
         format!("{}/branches", self.clone_url(repo))
     }
 
-    pub fn repository_api(&self, repo: RepoKey<'_>, path: &str) -> String {
+    pub(crate) fn repository_api(&self, repo: RepoKey<'_>, path: &str) -> String {
         self.project_api(repo, &format!("git/repositories/{}/{path}", encode(repo.repository)))
     }
 
-    pub fn pull_request_api(&self, repo: RepoKey<'_>, number: u64, path: &str) -> String {
+    pub(crate) fn pull_request_api(&self, repo: RepoKey<'_>, number: u64, path: &str) -> String {
         let suffix = if path.is_empty() { String::new() } else { format!("/{path}") };
         self.repository_api(repo, &format!("pullrequests/{number}{suffix}"))
     }
 
     /// Identity search root: `vssps.dev.azure.com/{org}` on Services, the collection on Server.
-    pub fn identities_api(&self, organization: &str) -> String {
+    pub(crate) fn identities_api(&self, organization: &str) -> String {
         if self.is_services() {
             format!("{SERVICES_IDENTITY_HOST}/{}/_apis/identities", encode(organization))
         } else {
@@ -158,24 +158,24 @@ impl Client {
         }
     }
 
-    pub fn clone_url(&self, repo: RepoKey<'_>) -> String {
+    pub(crate) fn clone_url(&self, repo: RepoKey<'_>) -> String {
         format!("{}/_git/{}", self.project_root(repo), encode(repo.repository))
     }
 
-    pub fn pull_request_web_url(&self, repo: RepoKey<'_>, number: u64) -> String {
+    pub(crate) fn pull_request_web_url(&self, repo: RepoKey<'_>, number: u64) -> String {
         format!("{}/pullrequest/{number}", self.clone_url(repo))
     }
 
     /// The results page of build `build_id`.
-    pub fn build_web_url(&self, repo: RepoKey<'_>, build_id: u64) -> String {
+    pub(crate) fn build_web_url(&self, repo: RepoKey<'_>, build_id: u64) -> String {
         format!("{}/_build/results?buildId={build_id}", self.project_root(repo))
     }
 
-    pub fn request(&self, method: Method, url: &str) -> RequestBuilder {
+    pub(crate) fn request(&self, method: Method, url: &str) -> RequestBuilder {
         self.request_versioned(method, url, API_VERSION)
     }
 
-    pub fn request_versioned(
+    pub(crate) fn request_versioned(
         &self,
         method: Method,
         url: &str,
@@ -188,13 +188,20 @@ impl Client {
         }
     }
 
-    pub async fn get<T: DeserializeOwned>(&self, url: &str, query: &[(&str, String)]) -> Result<T> {
+    pub(crate) async fn get<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        query: &[(&str, String)],
+    ) -> Result<T> {
         self.json(self.request(Method::GET, url).query(query)).await
     }
 
     /// Like [`Client::get`], but an empty or `null` body yields `T::default()`
     /// (timelines of builds that have not started yet).
-    pub async fn get_or_default<T: DeserializeOwned + Default>(&self, url: &str) -> Result<T> {
+    pub(crate) async fn get_or_default<T: DeserializeOwned + Default>(
+        &self,
+        url: &str,
+    ) -> Result<T> {
         let fetched = self.fetch(self.request(Method::GET, url)).await?;
         let bytes = &fetched.bytes;
         if bytes.iter().all(u8::is_ascii_whitespace) || bytes.as_ref() == b"null" {
@@ -203,7 +210,7 @@ impl Client {
         fetched.json()
     }
 
-    pub async fn send_json<B: Serialize + ?Sized, T: DeserializeOwned>(
+    pub(crate) async fn send_json<B: Serialize + ?Sized, T: DeserializeOwned>(
         &self,
         method: Method,
         url: &str,
@@ -212,7 +219,7 @@ impl Client {
         self.json(self.request(method, url).json(body)).await
     }
 
-    pub async fn send_unit<B: Serialize + ?Sized>(
+    pub(crate) async fn send_unit<B: Serialize + ?Sized>(
         &self,
         method: Method,
         url: &str,
@@ -226,13 +233,13 @@ impl Client {
         self.send(request).await.map(drop)
     }
 
-    pub async fn json<T: DeserializeOwned>(&self, request: RequestBuilder) -> Result<T> {
+    pub(crate) async fn json<T: DeserializeOwned>(&self, request: RequestBuilder) -> Result<T> {
         self.fetch(request).await?.json()
     }
 
     /// Azure DevOps Services answers anonymous calls to non-public resources with a 302 to its
     /// sign-in page, which the shared client follows; that lands on a 200 HTML page. Report it as 401.
-    pub async fn send(&self, request: RequestBuilder) -> Result<Response> {
+    pub(crate) async fn send(&self, request: RequestBuilder) -> Result<Response> {
         let (http_client, request) = request.build_split();
         let request = request?;
         let path = request.url().path().to_owned();

@@ -70,7 +70,7 @@ pub fn without_credentials(url: &str) -> String {
 }
 
 /// The remotes of a git config file: `(name, url)` in the file's order.
-pub fn remotes_in(config: &str) -> Vec<(String, String)> {
+pub(crate) fn remotes_in(config: &str) -> Vec<(String, String)> {
     let mut remotes = Vec::new();
     let mut section: Option<String> = None;
     for line in config.lines().map(str::trim) {

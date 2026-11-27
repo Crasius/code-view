@@ -31,7 +31,7 @@ pub(crate) enum Squash {
 
 impl ProjectMerge {
     /// `None` when the answer left the settings out (or names a method this app does not know).
-    pub fn of(project: &ProjectDto) -> Option<Self> {
+    pub(crate) fn of(project: &ProjectDto) -> Option<Self> {
         let method = match project.merge_method.as_deref()? {
             "merge" => MergeStrategy::Merge,
             "rebase_merge" => MergeStrategy::SemiLinear,
@@ -48,7 +48,7 @@ impl ProjectMerge {
         Some(Self { method, squash })
     }
 
-    pub fn allowed(self) -> Vec<MergeStrategy> {
+    pub(crate) fn allowed(self) -> Vec<MergeStrategy> {
         match self.squash {
             Squash::Never => vec![self.method],
             Squash::Always => vec![MergeStrategy::Squash],
@@ -56,7 +56,7 @@ impl ProjectMerge {
         }
     }
 
-    pub fn policy(self) -> MergePolicy {
+    pub(crate) fn policy(self) -> MergePolicy {
         let default = match self.squash {
             Squash::Always | Squash::DefaultOn => MergeStrategy::Squash,
             Squash::Never | Squash::DefaultOff => self.method,
@@ -68,7 +68,7 @@ impl ProjectMerge {
     }
 
     /// Refuses a strategy GitLab would not carry out as asked.
-    pub fn check(self, strategy: MergeStrategy) -> Result<()> {
+    pub(crate) fn check(self, strategy: MergeStrategy) -> Result<()> {
         if self.allowed().contains(&strategy) {
             return Ok(());
         }

@@ -30,7 +30,7 @@ struct IterationShas {
 pub(crate) struct IterationCommits(HashMap<u32, IterationShas>);
 
 impl IterationCommits {
-    pub fn new(iterations: &[Iteration]) -> Self {
+    pub(crate) fn new(iterations: &[Iteration]) -> Self {
         let sha =
             |commit: &Option<CommitRef>| commit.as_ref().map(|commit| commit.commit_id.clone());
         Self(
@@ -49,7 +49,7 @@ impl IterationCommits {
 
     /// The (left, right) commits of the diff of iteration `first` against iteration `second`.
     /// Equal iterations compare the common commit with that iteration's source commit.
-    pub fn compared(&self, first: u32, second: u32) -> Option<(String, String)> {
+    pub(crate) fn compared(&self, first: u32, second: u32) -> Option<(String, String)> {
         let head = self.0.get(&second)?;
         let base =
             if first == second { head.common.clone() } else { self.0.get(&first)?.source.clone() };

@@ -4,11 +4,11 @@
 // RS-DONT-03: no FFI in this crate.
 #![forbid(unsafe_code)]
 
-pub mod assistant;
-pub mod connection;
-pub mod error;
+pub(crate) mod assistant;
+pub(crate) mod connection;
+pub(crate) mod error;
 pub mod http;
-pub mod model;
+pub(crate) mod model;
 pub mod provider;
 pub mod setup;
 

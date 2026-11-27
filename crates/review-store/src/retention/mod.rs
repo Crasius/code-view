@@ -31,10 +31,12 @@ mod sweep_tests;
 
 use std::time::Duration;
 
-pub use leases::{Lease, Leases};
+pub use leases::Lease;
+pub(crate) use leases::Leases;
 pub use mirror_stamp::{MirrorUse, record_use as record_mirror_use};
 pub use mirrors::MirrorGuard;
-pub use policy::{Limits, Outcome};
+pub(crate) use policy::Limits;
+pub use policy::Outcome;
 pub use usage::StorageUsage;
 pub use worker::{Notify, Retention, Schedule, StorageStatus};
 
@@ -49,6 +51,7 @@ pub const LOG_LIMITS: Limits = Limits { max_age: DAY.saturating_mul(7), max_tota
 pub const MIRROR_LIMITS: Limits =
     Limits { max_age: DAY.saturating_mul(30), max_total: Some(10 * GIB) };
 pub const VIEWED_LIMITS: Limits = Limits { max_age: DAY.saturating_mul(90), max_total: None };
-pub const THREAD_LIMITS: Limits = Limits { max_age: DAY.saturating_mul(90), max_total: None };
-pub const IMAGE_LIMITS: Limits =
+pub(crate) const THREAD_LIMITS: Limits =
+    Limits { max_age: DAY.saturating_mul(90), max_total: None };
+pub(crate) const IMAGE_LIMITS: Limits =
     Limits { max_age: DAY.saturating_mul(14), max_total: Some(GIB / 4) };

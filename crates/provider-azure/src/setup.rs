@@ -116,7 +116,7 @@ pub(crate) struct TokenFacts {
 }
 
 impl TokenFacts {
-    pub fn of(token: Option<&str>) -> Self {
+    pub(crate) fn of(token: Option<&str>) -> Self {
         match token {
             Some(token) if is_entra_token(token) => {
                 Self { is_entra: true, expires_at: jwt_expiry(token) }

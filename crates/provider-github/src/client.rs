@@ -28,7 +28,7 @@ pub(crate) struct ApiRoots {
 
 impl ApiRoots {
     /// `https://github.com` → `api.github.com`; any other host is GitHub Enterprise Server.
-    pub fn for_base_url(base_url: &str) -> Self {
+    pub(crate) fn for_base_url(base_url: &str) -> Self {
         let base = base_url.trim_end_matches('/');
         let is_public = PUBLIC_WEB_ROOTS.iter().any(|root| base.eq_ignore_ascii_case(root));
         if is_public {
@@ -49,7 +49,7 @@ pub(crate) struct Paging {
 }
 
 impl Paging {
-    pub const fn pages(max_pages: usize) -> Self {
+    pub(crate) const fn pages(max_pages: usize) -> Self {
         Self { limit: usize::MAX, max_pages }
     }
 }
@@ -74,7 +74,7 @@ pub(crate) struct GitHubClient {
 const MAX_LISTED_STATUSES: usize = 5000;
 
 impl GitHubClient {
-    pub fn new(connection: Connection, http: Client) -> Self {
+    pub(crate) fn new(connection: Connection, http: Client) -> Self {
         let roots = ApiRoots::for_base_url(connection.base_url());
         Self {
             http,
@@ -88,23 +88,23 @@ impl GitHubClient {
         }
     }
 
-    pub fn connection(&self) -> &Connection {
+    pub(crate) fn connection(&self) -> &Connection {
         &self.connection
     }
 
-    pub fn graphql_url(&self) -> &str {
+    pub(crate) fn graphql_url(&self) -> &str {
         &self.roots.graphql
     }
 
-    pub fn rest_url(&self) -> &str {
+    pub(crate) fn rest_url(&self) -> &str {
         &self.roots.rest
     }
 
-    pub fn has_token(&self) -> bool {
+    pub(crate) fn has_token(&self) -> bool {
         self.connection.token().is_some()
     }
 
-    pub fn require_token(&self, action: &str) -> Result<()> {
+    pub(crate) fn require_token(&self, action: &str) -> Result<()> {
         if self.has_token() {
             return Ok(());
         }
@@ -112,7 +112,7 @@ impl GitHubClient {
     }
 
     /// A request to an absolute URL with GitHub headers and, when configured, the bearer token.
-    pub fn request(&self, method: Method, url: &str) -> RequestBuilder {
+    pub(crate) fn request(&self, method: Method, url: &str) -> RequestBuilder {
         let builder = self
             .http
             .request(method, url)
@@ -125,16 +125,16 @@ impl GitHubClient {
     }
 
     /// A request to `path` (starting with `/`) below the REST root.
-    pub fn rest(&self, method: Method, path: &str) -> RequestBuilder {
+    pub(crate) fn rest(&self, method: Method, path: &str) -> RequestBuilder {
         self.request(method, &format!("{}{path}", self.roots.rest))
     }
 
-    pub async fn get_json<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+    pub(crate) async fn get_json<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         http::json(self.rest(Method::GET, path)).await
     }
 
     /// Follows `rel="next"` links, turning each decoded page into items with `extract`.
-    pub async fn collect_pages<P, T>(
+    pub(crate) async fn collect_pages<P, T>(
         &self,
         path: &str,
         query: &[(&str, String)],
@@ -179,36 +179,36 @@ impl GitHubClient {
         Err(ProviderError::Decode(format!("pagination link {url} leaves {}", self.roots.rest)))
     }
 
-    pub fn cached_owner_kind(&self, owner: &str) -> Option<OwnerKind> {
+    pub(crate) fn cached_owner_kind(&self, owner: &str) -> Option<OwnerKind> {
         lock(&self.owner_kinds).get(&owner.to_ascii_lowercase()).copied()
     }
 
-    pub fn remember_owner_kind(&self, owner: &str, kind: OwnerKind) {
+    pub(crate) fn remember_owner_kind(&self, owner: &str, kind: OwnerKind) {
         lock(&self.owner_kinds).insert(owner.to_ascii_lowercase(), kind);
     }
 
-    pub fn reach_cache(&self) -> &tokio::sync::Mutex<Option<Reach>> {
+    pub(crate) fn reach_cache(&self) -> &tokio::sync::Mutex<Option<Reach>> {
         &self.reach
     }
 
-    pub fn cached_organization_login(&self, id: u64) -> Option<String> {
+    pub(crate) fn cached_organization_login(&self, id: u64) -> Option<String> {
         lock(&self.organization_logins).get(&id).cloned()
     }
 
-    pub fn remember_organization_login(&self, id: u64, login: &str) {
+    pub(crate) fn remember_organization_login(&self, id: u64, login: &str) {
         lock(&self.organization_logins).insert(id, login.to_owned());
     }
 
-    pub fn partial(&self) -> Vec<Blocked> {
+    pub(crate) fn partial(&self) -> Vec<Blocked> {
         lock(&self.partial).clone()
     }
 
-    pub fn set_partial(&self, blocked: Vec<Blocked>) {
+    pub(crate) fn set_partial(&self, blocked: Vec<Blocked>) {
         *lock(&self.partial) = blocked;
     }
 
     /// Keeps the checks a search listed with its rows; a full cache starts over.
-    pub fn remember_statuses(&self, statuses: Vec<((String, u64), RowStatus)>) {
+    pub(crate) fn remember_statuses(&self, statuses: Vec<((String, u64), RowStatus)>) {
         let mut cache = lock(&self.listed_statuses);
         if cache.len() + statuses.len() > MAX_LISTED_STATUSES {
             cache.clear();
@@ -218,7 +218,7 @@ impl GitHubClient {
 
     /// Drops what a search listed for `rows`: a later listing without checks (REST) shows them,
     /// so their checks are asked for again instead of answered from an older search.
-    pub fn forget_statuses<'a>(&self, rows: impl IntoIterator<Item = (&'a str, u64)>) {
+    pub(crate) fn forget_statuses<'a>(&self, rows: impl IntoIterator<Item = (&'a str, u64)>) {
         let mut cache = lock(&self.listed_statuses);
         for (repo, number) in rows {
             cache.remove(&(repo.to_owned(), number));
@@ -226,7 +226,7 @@ impl GitHubClient {
     }
 
     /// The checks the latest listing of the pull request `number` of `repo` brought.
-    pub fn listed_status(&self, repo: &str, number: u64) -> Option<RowStatus> {
+    pub(crate) fn listed_status(&self, repo: &str, number: u64) -> Option<RowStatus> {
         lock(&self.listed_statuses).get(&(repo.to_owned(), number)).cloned()
     }
 }

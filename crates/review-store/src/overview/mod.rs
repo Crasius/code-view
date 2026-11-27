@@ -4,5 +4,6 @@
 pub(crate) mod favorites;
 mod sections;
 
-pub use favorites::{FavoriteRepository, Favorites};
+pub(crate) use favorites::FavoriteRepository;
+pub use favorites::Favorites;
 pub use sections::{RepositorySections, SectionCard, SectionKey};

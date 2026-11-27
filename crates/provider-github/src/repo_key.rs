@@ -15,7 +15,7 @@ pub(crate) struct RepoKey<'a> {
 }
 
 impl<'a> RepoKey<'a> {
-    pub fn parse(key: &'a str) -> Result<Self> {
+    pub(crate) fn parse(key: &'a str) -> Result<Self> {
         let parsed = key
             .split_once('/')
             .filter(|(owner, name)| !owner.is_empty() && !name.is_empty() && !name.contains('/'));
@@ -26,17 +26,17 @@ impl<'a> RepoKey<'a> {
     }
 
     /// `/repos/{owner}/{repo}`
-    pub fn api_path(&self) -> String {
+    pub(crate) fn api_path(&self) -> String {
         format!("/repos/{}/{}", encode(self.owner), encode(self.name))
     }
 
     /// `/repos/{owner}/{repo}/pulls/{number}`
-    pub fn pull_path(&self, number: u64) -> String {
+    pub(crate) fn pull_path(&self, number: u64) -> String {
         format!("{}/pulls/{number}", self.api_path())
     }
 
     /// `/repos/{owner}/{repo}/issues/{number}`; GitHub pull requests are issues too.
-    pub fn issue_path(&self, number: u64) -> String {
+    pub(crate) fn issue_path(&self, number: u64) -> String {
         format!("{}/issues/{number}", self.api_path())
     }
 }

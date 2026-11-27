@@ -45,7 +45,7 @@ pub(crate) struct PropertyValue {
 }
 
 impl PropertyValue {
-    pub fn as_text(&self) -> Option<&str> {
+    pub(crate) fn as_text(&self) -> Option<&str> {
         self.value.as_str()
     }
 }
@@ -57,14 +57,14 @@ pub(crate) mod date {
     use time::OffsetDateTime;
     use time::format_description::well_known::Rfc3339;
 
-    pub fn required<'de, D: Deserializer<'de>>(
+    pub(crate) fn required<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<OffsetDateTime, D::Error> {
         let text = String::deserialize(deserializer)?;
         OffsetDateTime::parse(&text, &Rfc3339).map_err(serde::de::Error::custom)
     }
 
-    pub fn optional<'de, D: Deserializer<'de>>(
+    pub(crate) fn optional<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Option<OffsetDateTime>, D::Error> {
         let text = Option::<String>::deserialize(deserializer)?;

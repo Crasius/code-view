@@ -93,7 +93,12 @@ impl ViewedFiles {
 
     /// Marks or unmarks `path` and saves; the file is written from the marks in place, without a
     /// copy of them per click.
-    pub fn set_viewed(&mut self, path: &str, blob_id: &str, is_viewed: bool) -> io::Result<()> {
+    pub(crate) fn set_viewed(
+        &mut self,
+        path: &str,
+        blob_id: &str,
+        is_viewed: bool,
+    ) -> io::Result<()> {
         self.set_viewed_many([(path, blob_id)], is_viewed)
     }
 

@@ -14,7 +14,7 @@
 // never indexes.
 #![warn(clippy::string_slice, clippy::indexing_slicing)]
 
-pub mod budget;
+pub(crate) mod budget;
 mod cache;
 pub mod image;
 pub mod traffic;

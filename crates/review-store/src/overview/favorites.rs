@@ -32,7 +32,7 @@ impl Favorites {
         &self.repositories
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.repositories.is_empty()
     }
 
@@ -59,7 +59,7 @@ impl Favorites {
     }
 
     /// Drops the favorites of connections that no longer exist.
-    pub fn retain_connections(&mut self, is_known: impl Fn(&str) -> bool) {
+    pub(crate) fn retain_connections(&mut self, is_known: impl Fn(&str) -> bool) {
         self.repositories.retain(|favorite| is_known(&favorite.connection_id));
     }
 

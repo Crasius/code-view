@@ -66,7 +66,7 @@ pub(crate) struct CompletionOptions {
 
 impl PullRequest {
     /// Who set auto-complete and the strategy it will use, when auto-complete is enabled.
-    pub fn auto_complete(&self) -> Option<AutoComplete> {
+    pub(crate) fn auto_complete(&self) -> Option<AutoComplete> {
         let set_by = self
             .auto_complete_set_by
             .as_ref()
@@ -90,7 +90,7 @@ impl PullRequest {
 
     /// `organization` completes the repository key (the API only names project and repository);
     /// `web_url` builds the browser link for a key and pull request id.
-    pub fn to_summary(
+    pub(crate) fn to_summary(
         &self,
         organization: &str,
         web_url: impl Fn(RepoKey<'_>, u64) -> String,
@@ -128,7 +128,7 @@ impl PullRequest {
         }
     }
 
-    pub fn to_detail(
+    pub(crate) fn to_detail(
         &self,
         organization: &str,
         web_url: impl Fn(RepoKey<'_>, u64) -> String,

@@ -135,12 +135,12 @@ impl ColdCache {
     }
 
     /// Bytes on disk.
-    pub fn size(&self) -> u64 {
+    pub(crate) fn size(&self) -> u64 {
         self.files().iter().map(|file| file.bytes).sum()
     }
 
     /// Deletes everything.
-    pub fn clear(&self) -> io::Result<()> {
+    pub(crate) fn clear(&self) -> io::Result<()> {
         match std::fs::remove_dir_all(&self.root) {
             Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
             _ => Ok(()),

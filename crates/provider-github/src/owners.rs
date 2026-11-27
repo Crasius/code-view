@@ -31,14 +31,14 @@ impl OwnerKind {
     }
 
     /// `org:` or `user:` qualifier for issue search.
-    pub fn search_qualifier(self, owner: &str) -> String {
+    pub(crate) fn search_qualifier(self, owner: &str) -> String {
         match self {
             OwnerKind::Organization => format!("org:{owner}"),
             OwnerKind::User => format!("user:{owner}"),
         }
     }
 
-    pub fn repositories_path(self, owner: &str) -> String {
+    pub(crate) fn repositories_path(self, owner: &str) -> String {
         match self {
             OwnerKind::Organization => format!("/orgs/{}/repos", encode(owner)),
             OwnerKind::User => format!("/users/{}/repos", encode(owner)),

@@ -39,7 +39,7 @@ impl PullRequestStatus {
     }
 
     /// `latest_iteration` is the pull request's newest iteration, when a status names one.
-    pub fn to_run(&self, latest_iteration: Option<u32>) -> PipelineRun {
+    pub(crate) fn to_run(&self, latest_iteration: Option<u32>) -> PipelineRun {
         let status = status_state_from_ado(self.state.as_deref());
         PipelineRun {
             id: format!("status:{}", self.id),
@@ -144,7 +144,7 @@ impl Build {
     /// in a public project that also builds GitHub repositories, each one's pull request #N lands
     /// there. Those are never the builds of an Azure Repos pull request. Builds that name no
     /// repository type count as ours.
-    pub fn is_azure_repos(&self) -> bool {
+    pub(crate) fn is_azure_repos(&self) -> bool {
         self.repository.kind.as_deref().is_none_or(|kind| kind.eq_ignore_ascii_case("TfsGit"))
     }
 
@@ -156,7 +156,7 @@ impl Build {
             .or(self.source_version.as_deref())
     }
 
-    pub fn to_run(&self, is_head: bool) -> PipelineRun {
+    pub(crate) fn to_run(&self, is_head: bool) -> PipelineRun {
         PipelineRun {
             id: format!("build:{}", self.id),
             name: self.definition.name.clone(),

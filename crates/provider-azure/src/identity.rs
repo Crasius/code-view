@@ -23,7 +23,7 @@ pub(crate) struct CurrentUsers {
 }
 
 impl CurrentUsers {
-    pub async fn get(&self, client: &Client, organization: &str) -> Result<UserIdentity> {
+    pub(crate) async fn get(&self, client: &Client, organization: &str) -> Result<UserIdentity> {
         let cell = Arc::clone(
             self.by_organization
                 .lock()
@@ -41,7 +41,7 @@ impl CurrentUsers {
     }
 
     /// The user of `organization` when an earlier [`Self::get`] already read it; never asks.
-    pub fn cached(&self, organization: &str) -> Option<UserIdentity> {
+    pub(crate) fn cached(&self, organization: &str) -> Option<UserIdentity> {
         let cache = self.by_organization.lock().unwrap_or_else(PoisonError::into_inner);
         cache.get(organization).and_then(|cell| cell.get().cloned())
     }
