@@ -4,9 +4,9 @@
 //! a click shows them there (see [`show_count`]).
 
 use cv_base::platform::shortcut;
-use cv_base::theme::{self, icons, motion};
+use cv_base::theme::{self, icons, motion, style};
 use cv_widgets::{avatar, focus};
-use egui::{Align2, Color32, FontId, Rect, Sense, Stroke, Ui, vec2};
+use egui::{Align2, FontId, Rect, Sense, Stroke, Ui, vec2};
 use review_core::{ReviewThread, ThreadStatus};
 
 use super::ThreadsUi;
@@ -60,7 +60,7 @@ pub fn show_count(ui: &mut Ui, slot: Rect, id: egui::Id, hidden: &Hidden) -> boo
         rect.center(),
         Align2::CENTER_CENTER,
         digits,
-        FontId::proportional(11.0),
+        FontId::proportional(style::TINY_SIZE),
         text,
     );
     if hidden.has_news {
@@ -87,26 +87,19 @@ pub fn show(ui: &mut Ui, slot: Rect, id: egui::Id, thread: &ReviewThread, thread
     let is_resolved = thread.status == ThreadStatus::Resolved;
     let is_collapsed = threads.is_collapsed(thread);
     let first = thread.comments.first();
-    let who = first.map_or_else(String::new, |comment| comment.author.display_name.clone());
+    let who = first.map_or("", |comment| comment.author.display_name.as_str());
     let state = if is_resolved { "Resolved thread" } else { "Thread" };
     let action = if is_collapsed { "show" } else { "collapse" };
     let label = format!("{state} by {who}, click to {action} it");
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
     if is_resolved {
-        let fill = if palette.is_dark {
-            Color32::from_rgb(0x2E, 0x5D, 0x33)
-        } else {
-            palette.success.gamma_multiply(0.18)
-        };
-        let check =
-            if palette.is_dark { Color32::from_rgb(0x9F, 0xE0, 0x9F) } else { palette.success };
-        ui.painter().circle_filled(rect.center(), SIZE / 2.0, fill);
+        ui.painter().circle_filled(rect.center(), SIZE / 2.0, palette.success_badge);
         ui.painter().text(
             rect.center(),
             Align2::CENTER_CENTER,
             icons::CHECK,
-            icons::state_font(&palette, 11.0, true),
-            check,
+            icons::state_font(&palette, style::TINY_SIZE, true),
+            palette.success_on_badge,
         );
     } else if let Some(comment) = first {
         avatar::paint(ui.painter(), rect.center(), SIZE, &comment.author);
@@ -125,9 +118,12 @@ pub fn show(ui: &mut Ui, slot: Rect, id: egui::Id, thread: &ReviewThread, thread
         );
     }
     focus::ring(ui, &response, rect.expand(3.0));
-    let tip =
-        first.map_or_else(String::new, |comment| format!("{who}: {}", excerpt(&comment.body, 120)));
-    let response = response.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tip);
+    let mut response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+    if let Some(comment) = first {
+        response = response.on_hover_ui(|ui| {
+            ui.label(format!("{who}: {}", excerpt(&comment.body, 120)));
+        });
+    }
     if response.clicked() {
         threads.toggle_collapsed(thread);
     }

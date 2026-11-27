@@ -11,10 +11,11 @@
 //! API: [`show_with`] draws the frame, the toolbar (with the caller's `leading` content first) and
 //! the text area for a `&mut String`. It parses the string on the first show and whenever it
 //! changed from outside (detected by a fingerprint of the string the editor last read or wrote:
-//! its length and its first and last 64 bytes); a caller that rewrites the middle of the text in
-//! place without changing its length calls [`reload`] (the composer does when it returns from
-//! Markdown to a changed text). [`text_id`] is the text area's focus id. Ctrl+Enter and Esc are
-//! left in the input for the caller (submit and cancel), and Esc does not take the focus away.
+//! its length and its first and last `FINGERPRINT_EDGE` bytes); a caller that rewrites the
+//! middle of the text in place without changing its length calls [`reload`] (the composer does
+//! when it returns from Markdown to a changed text). [`text_id`] is the text area's focus id.
+//! Ctrl+Enter and Esc are left in the input for the caller (submit and cancel), and Esc does not
+//! take the focus away.
 //!
 //! State (RS-PERF-01): one [`State`] per editor id in egui's temp data, behind an `Arc` so a frame
 //! clones a pointer, not the document. It holds the document, the selection, undo history
@@ -48,22 +49,16 @@ use std::sync::Arc;
 
 use cv_base::theme::{self, style};
 use egui::mutex::Mutex;
-use egui::{Context, Id, Ui, Vec2, vec2};
+use egui::{Context, Id, Ui};
 use review_core::ProviderKind;
 
 use self::history::History;
-use self::input::Frame;
+use self::input::CommandContext;
 use self::layout::LayoutCache;
 use self::model::{Document, Marks, Pos, Selection};
 use self::serialize::InlineCache;
 use crate::markdown_editor::PullRequestContext;
-
-/// Height of the text area before it starts to scroll.
-const MAX_HEIGHT: f32 = 360.0;
-/// Inside the text area, as the Markdown composer's.
-const MARGIN: Vec2 = vec2(12.0, 10.0);
-/// Height one row of `min_rows` reserves.
-const ROW_HEIGHT: f32 = 22.0;
+use crate::markdown_editor::toolbar_layout::{MAX_HEIGHT, ROW_HEIGHT, TEXT_MARGIN};
 
 /// How one rich editor looks and behaves.
 pub struct RichOptions<'a> {
@@ -158,7 +153,7 @@ pub fn show_with(
         if clicked.is_some() {
             ui.memory_mut(|memory| memory.request_focus(text_id));
         }
-        let min_height = options.min_rows as f32 * ROW_HEIGHT + 2.0 * MARGIN.y;
+        let min_height = options.min_rows as f32 * ROW_HEIGHT + TEXT_MARGIN.sum().y;
         let max_height = MAX_HEIGHT.min(ui.ctx().content_rect().height() * 0.5).max(min_height);
         egui::ScrollArea::vertical()
             .id_salt(id.with("rich_scroll"))
@@ -184,9 +179,10 @@ pub fn show_with(
     );
     let (caret_rect, origin) = shown.inner;
     let mut is_changed = state.version != state.written;
-    let frame = Frame { ui, origin, page_height: 0.0, now: ui.input(|input| input.time) };
-    if let Some(command) = popups::show(ui, id, &mut state, caret_rect, &frame) {
-        let ran = input::run(&mut state, &frame, vec![command]);
+    let context =
+        CommandContext { ui, origin, page_height: 0.0, now: ui.input(|input| input.time) };
+    if let Some(command) = popups::show(ui, id, &mut state, caret_rect, &context) {
+        let ran = input::run(&mut state, &context, vec![command]);
         is_changed |= ran.is_changed;
         ui.memory_mut(|memory| memory.request_focus(text_id));
     }
@@ -218,6 +214,9 @@ enum Popup {
     },
 }
 
+/// Bytes of the text's head and tail the fingerprint hashes.
+const FINGERPRINT_EDGE: usize = 64;
+
 /// A cheap stand-in for the text last read or written (see the module doc).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Fingerprint {
@@ -228,8 +227,8 @@ struct Fingerprint {
 impl Fingerprint {
     fn of(text: &str) -> Self {
         let bytes = text.as_bytes();
-        let head = bytes.get(..bytes.len().min(64)).unwrap_or_default();
-        let tail = bytes.get(bytes.len().saturating_sub(64)..).unwrap_or_default();
+        let head = bytes.get(..bytes.len().min(FINGERPRINT_EDGE)).unwrap_or_default();
+        let tail = bytes.get(bytes.len().saturating_sub(FINGERPRINT_EDGE)..).unwrap_or_default();
         Self { length: bytes.len(), hash: egui::epaint::util::hash((head, tail)) }
     }
 }
@@ -332,9 +331,8 @@ impl State {
                     .content
                     .runs()
                     .iter()
-                    .map(|run| match &run.atom {
-                        Some(atom) => serialize::atom_source(atom, self.platform),
-                        None => run.text.replace(model::HARD_BREAK, "\n"),
+                    .map(|run| {
+                        serialize::run_source(run, self.platform).replace(model::HARD_BREAK, "\n")
                     })
                     .collect()
             })

@@ -10,7 +10,7 @@ use review_store::TreeSide;
 use super::progress::{self, BAR_HEIGHT, PROGRESS_HEIGHT, Progress};
 use super::{FileTree, TreeEvent, TreeInputs, category_filter, flip_control, goto, rows};
 use cv_base::platform::shortcut;
-use cv_base::theme::{self, icons, style};
+use cv_base::theme::{self, Palette, icons, style};
 use cv_widgets::{buttons, glyph, skeleton};
 
 /// Inner margin of the panel.
@@ -29,64 +29,45 @@ pub fn show(
     is_counting_lines: bool,
 ) -> Option<TreeEvent> {
     let palette = theme::palette(ui.ctx());
-    let files = inputs.files;
+    let total = inputs.files.len();
     let mut event = None;
-    egui::Panel::right("files_side_panel")
-        .resizable(false)
-        .exact_size(width)
-        .frame(
-            egui::Frame::new()
-                .fill(palette.surface)
-                .inner_margin(egui::Margin { left: MARGIN, right: MARGIN, top: MARGIN, bottom: 0 })
-                .stroke(egui::Stroke::new(1.0, palette.border)),
-        )
-        .show(ui, |ui| {
-            // Exact gaps below instead of the default item spacing.
-            ui.spacing_mut().item_spacing.y = 0.0;
-            let search = ui.add(
-                TextEdit::singleline(&mut tree.filter.search)
-                    .id(goto::filter_id())
-                    .hint_text(format!("{}  Filter files", icons::MAGNIFYING_GLASS))
-                    .min_size(vec2(0.0, style::CONTROL_HEIGHT))
-                    .align(egui::Align2::LEFT_CENTER)
-                    .desired_width(f32::INFINITY),
-            );
-            glyph::hint_as(&search, "Filter files");
-            if tree.goto.take_focus_request() {
-                search.request_focus();
-            }
-            search.on_hover_text(concat!(
-                "Filter files. ",
-                shortcut!(command "P"),
-                " goes to a file: ↓ and ↑ pick it, Enter opens it"
-            ));
-            ui.add_space(style::SPACE_S);
-            let counts = category_filter::counts(files);
-            let side = tree.side();
-            let flip = filters_and_flip(ui, side, |ui| {
-                category_filter::show(ui, &mut tree.filter, &counts, files.len());
-            });
-            ui.add_space(style::SPACE_M);
-            let viewed_count = files.iter().filter(|file| (inputs.is_viewed)(file)).count();
-            let progress = Progress {
-                viewed: viewed_count,
-                total: files.len(),
-                is_counting_lines,
-                vote: inputs.vote,
-            };
-            let step = progress::show(ui, &progress, tree.breakdown());
-            ui.add_space(style::SPACE_S);
-            // Full-bleed divider: from panel edge to panel edge, not just the content width.
-            let y = ui.cursor().top() + 0.5;
-            let x_range = ui.max_rect().expand2(vec2(f32::from(MARGIN), 0.0)).x_range();
-            ui.painter().hline(x_range, y, egui::Stroke::new(1.0, palette.border));
-            ui.add_space(1.0);
-            ui.spacing_mut().item_spacing.y = 6.0;
-            event = tree
-                .show(ui, inputs)
-                .or(flip.then_some(TreeEvent::FlipSide))
-                .or(step.map(TreeEvent::Review));
+    panel(width, &palette).show(ui, |ui| {
+        // Exact gaps below instead of the default item spacing.
+        ui.spacing_mut().item_spacing.y = 0.0;
+        let search = ui.add(
+            TextEdit::singleline(&mut tree.filter.search)
+                .id(goto::filter_id())
+                .hint_text(format!("{}  Filter files", icons::MAGNIFYING_GLASS))
+                .min_size(vec2(0.0, style::CONTROL_HEIGHT))
+                .align(egui::Align2::LEFT_CENTER)
+                .desired_width(f32::INFINITY),
+        );
+        glyph::hint_as(&search, "Filter files");
+        if tree.goto.take_focus_request() {
+            search.request_focus();
+        }
+        search.on_hover_text(concat!(
+            "Filter files. ",
+            shortcut!(command "P"),
+            " goes to a file: ↓ and ↑ pick it, Enter opens it"
+        ));
+        ui.add_space(style::SPACE_S);
+        let side = tree.side();
+        let flip = filters_and_flip(ui, side, |ui| {
+            category_filter::show(ui, &mut tree.filter, &tree.category_counts, total);
         });
+        ui.add_space(style::SPACE_M);
+        let progress =
+            Progress { viewed: tree.viewed_count, total, is_counting_lines, vote: inputs.vote };
+        let step = progress::show(ui, &progress, tree.breakdown());
+        ui.add_space(style::SPACE_S);
+        divider(ui, &palette);
+        ui.spacing_mut().item_spacing.y = 6.0;
+        event = tree
+            .show(ui, inputs)
+            .or(flip.then_some(TreeEvent::FlipSide))
+            .or(step.map(TreeEvent::Review));
+    });
     event
 }
 
@@ -112,23 +93,33 @@ fn filters_and_flip(ui: &mut Ui, side: TreeSide, filters: impl FnOnce(&mut Ui)) 
 /// failure the placeholders hold still.
 pub fn show_skeleton(ui: &mut Ui, width: f32, is_failed: bool) -> Rect {
     let palette = theme::palette(ui.ctx());
-    let panel = egui::Panel::right("files_side_panel")
-        .resizable(false)
-        .exact_size(width)
-        .frame(
-            egui::Frame::new()
-                .fill(palette.surface)
-                .inner_margin(egui::Margin { left: MARGIN, right: MARGIN, top: MARGIN, bottom: 0 })
-                .stroke(egui::Stroke::new(1.0, palette.border)),
-        )
-        .show(ui, |ui| {
-            if is_failed {
-                skeleton::still(ui, skeleton_content);
-            } else {
-                skeleton_content(ui);
-            }
-        });
-    panel.response.rect
+    let shown = panel(width, &palette).show(ui, |ui| {
+        if is_failed {
+            skeleton::still(ui, skeleton_content);
+        } else {
+            skeleton_content(ui);
+        }
+    });
+    shown.response.rect
+}
+
+/// The pane's panel, `width` wide, which [`show`] and [`show_skeleton`] share.
+fn panel(width: f32, palette: &Palette) -> egui::Panel {
+    egui::Panel::right("files_side_panel").resizable(false).exact_size(width).frame(
+        egui::Frame::new()
+            .fill(palette.surface)
+            .inner_margin(egui::Margin { left: MARGIN, right: MARGIN, top: MARGIN, bottom: 0 })
+            .stroke(egui::Stroke::new(1.0, palette.border)),
+    )
+}
+
+/// The full-bleed divider under the header: from panel edge to panel edge, not just the content
+/// width.
+fn divider(ui: &mut Ui, palette: &Palette) {
+    let y = ui.cursor().top() + 0.5;
+    let x_range = ui.max_rect().expand2(vec2(f32::from(MARGIN), 0.0)).x_range();
+    ui.painter().hline(x_range, y, egui::Stroke::new(1.0, palette.border));
+    ui.add_space(1.0);
 }
 
 /// The header placeholders and the tree rows of [`show_skeleton`].
@@ -159,10 +150,7 @@ fn skeleton_content(ui: &mut Ui) {
         palette.border,
     );
     ui.add_space(style::SPACE_S);
-    let y = ui.cursor().top() + 0.5;
-    let x_range = ui.max_rect().expand2(vec2(f32::from(MARGIN), 0.0)).x_range();
-    ui.painter().hline(x_range, y, egui::Stroke::new(1.0, palette.border));
-    ui.add_space(1.0);
+    divider(ui, &palette);
     skeleton::tree_rows(ui, &rows::SKELETON);
 }
 
@@ -182,3 +170,7 @@ fn control_outline(ui: &mut Ui, width: f32, bar_width: f32) {
     );
     skeleton::paint_bar(ui, bar);
 }
+
+#[cfg(test)]
+#[path = "side_panel_tests.rs"]
+mod tests;

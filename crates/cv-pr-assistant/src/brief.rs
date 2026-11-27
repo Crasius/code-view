@@ -166,10 +166,8 @@ fn clip(text: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use review_core::{
-        DiffStat, FileCategory, MergeStatus, PullRequestState, PullRequestSummary, ThreadAnchor,
-        ThreadComment, UserIdentity,
-    };
+    use cv_testkit::samples;
+    use review_core::{PullRequestSummary, ThreadAnchor, ThreadComment, UserIdentity};
 
     use super::*;
 
@@ -178,49 +176,25 @@ mod tests {
     }
 
     fn detail(description: &str) -> PullRequestDetail {
+        let sample = samples::detail("acme/billing", 42);
         PullRequestDetail {
             summary: PullRequestSummary {
-                repository_key: "acme/billing".into(),
-                repository_name: "billing".into(),
-                number: 42,
                 title: "Reverse   charge\nfor EU".into(),
-                author: person("Ada Lovelace"),
-                state: PullRequestState::Open,
-                is_draft: false,
                 source_branch: "feat/invoicing".into(),
                 target_branch: "main".into(),
-                created_at: time::macros::datetime!(2026-10-16 09:30 UTC),
-                updated_at: None,
-                web_url: "https://github.com/acme/billing/pull/42".into(),
-                labels: Vec::new(),
-                reviewers: Vec::new(),
-                checks: None,
-                diff_stat: DiffStat::default(),
-                head_sha: None,
-                target_sha: None,
+                ..sample.summary
             },
             description: description.into(),
-            target_sha: "t".repeat(40),
             head_sha: "h".repeat(40),
-            merge_status: MergeStatus::Mergeable,
-            git_fetch_refs: Vec::new(),
-            closed_at: None,
-            auto_complete: None,
+            ..sample
         }
     }
 
     fn file(path: &str, kind: ChangeKind, counts: (u32, u32)) -> ChangedFile {
         ChangedFile {
-            path: path.into(),
-            old_path: None,
-            kind,
-            old_oid: String::new(),
-            new_oid: String::new(),
             additions: Some(counts.0),
             deletions: Some(counts.1),
-            is_binary: false,
-            category: FileCategory::Code,
-            whitespace_only: false,
+            ..ChangedFile::sample(path, kind)
         }
     }
 
@@ -256,12 +230,8 @@ mod tests {
             name: name.into(),
             status,
             description: Some("2 tests failed".into()),
-            web_url: None,
-            started_at: None,
-            finished_at: None,
-            has_jobs: false,
             is_head: true,
-            reruns: Vec::new(),
+            ..PipelineRun::default()
         }
     }
 

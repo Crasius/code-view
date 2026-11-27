@@ -16,10 +16,11 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use egui::{Rect, Ui, pos2};
+use review_core::DiffSide;
 
 use super::align::Change;
 use super::heights::RowHeights;
-use super::model::{Cell, Mode, Model, Row, Side};
+use super::model::{Cell, Mode, Model, Row};
 use cv_base::theme::Palette;
 use cv_code::find_paint::{self as paint, HitSide};
 use cv_markdown::Marks;
@@ -110,7 +111,7 @@ impl BlockFind {
         rows: &FindRows<'_>,
         model: &Model,
         overview: &mut Overview,
-    ) -> Option<(Side, usize)> {
+    ) -> Option<(DiffSide, usize)> {
         if frame.arrived || self.placed_for != rows.key {
             self.place(rows, model);
         }
@@ -133,11 +134,11 @@ impl BlockFind {
         let unit = cell.unit as u32;
         let is_column = mode == Mode::Columns;
         let found: Vec<(usize, &Hit)> = match cell.side {
-            Side::Old => hits
+            DiffSide::Old => hits
                 .on_old(unit)
                 .filter(|(_, hit)| !is_column || hit.side != HitSide::New)
                 .collect(),
-            Side::New => hits
+            DiffSide::New => hits
                 .on_new(unit)
                 .filter(|(_, hit)| !is_column || hit.side != HitSide::Old)
                 .collect(),
@@ -169,8 +170,8 @@ impl BlockFind {
         let row_of = |hit: &Hit| {
             let (side, unit) = block_of(hit)?;
             let unit_rows = match side {
-                Side::Old => rows.old_rows,
-                Side::New => rows.new_rows,
+                DiffSide::Old => rows.old_rows,
+                DiffSide::New => rows.new_rows,
             };
             unit_rows.get(unit).copied().flatten().or_else(|| {
                 let pair = model.pair_of(side, unit)?;
@@ -190,7 +191,7 @@ impl BlockFind {
     }
 
     /// The block of the current hit; nothing while it is in view already.
-    fn target(&self, rows: &FindRows<'_>) -> Option<(Side, usize)> {
+    fn target(&self, rows: &FindRows<'_>) -> Option<(DiffSide, usize)> {
         let current = self.bar.current()?;
         let hit = self.bar.hits()?.list.get(current)?;
         let row = self.hit_rows.get(current).copied().flatten();
@@ -239,17 +240,17 @@ pub(super) fn panes(content: Rect, left_width: f32, mode: Mode) -> Panes {
 }
 
 /// The block a hit goes to: its new version where it has one.
-fn block_of(hit: &Hit) -> Option<(Side, usize)> {
+fn block_of(hit: &Hit) -> Option<(DiffSide, usize)> {
     match (hit.new, hit.old) {
-        (Some(unit), _) => Some((Side::New, unit as usize)),
-        (None, Some(unit)) => Some((Side::Old, unit as usize)),
+        (Some(unit), _) => Some((DiffSide::New, unit as usize)),
+        (None, Some(unit)) => Some((DiffSide::Old, unit as usize)),
         (None, None) => None,
     }
 }
 
 /// The blocks of `model` as the search reads them, in the order of the pairs.
 fn entries(model: &Model) -> Vec<Entry<'_>> {
-    let text = |side: Side, unit: Option<usize>| {
+    let text = |side: DiffSide, unit: Option<usize>| {
         let unit = unit?;
         let text = model.units(side).units.get(unit)?.text.as_str();
         Some((u32::try_from(unit).ok()?, text))
@@ -258,8 +259,8 @@ fn entries(model: &Model) -> Vec<Entry<'_>> {
         .pairs
         .iter()
         .map(|pair| Entry {
-            old: text(Side::Old, pair.old),
-            new: text(Side::New, pair.new),
+            old: text(DiffSide::Old, pair.old),
+            new: text(DiffSide::New, pair.new),
             is_unchanged: pair.change == Change::Equal,
         })
         .collect()

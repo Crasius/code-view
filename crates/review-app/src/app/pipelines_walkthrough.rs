@@ -1,9 +1,11 @@
 //! Walks the pipelines views on a real pull request page, offline: a scripted GitLab provider
 //! reports a merge request with pipelines and status checks. The overview's merge-status card
 //! leads to a run, the breadcrumb back to the checks table, whose filters, keyboard and reruns
-//! work as the toolbar says. No network, no git. Runs with `cargo test`.
+//! work as the toolbar says. Finished job logs open from disk ([`log_reuse`]). No network, no git.
+//! Runs with `cargo test`.
 
-use std::collections::HashMap;
+mod log_reuse;
+
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -13,11 +15,9 @@ use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{
-    Capabilities, Connection, GitRemote, Label, MergeOptions, MergeStatus, MergeStrategy,
-    NewThread, PipelineJob, PipelineRun, Provider, ProviderError, ProviderKind, PullRequestDetail,
-    PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, RerunAction, RerunKind,
-    Result, ReviewThread, ReviewVote, Reviewer, RunStatus, RunningLogs, ThreadComment,
-    ThreadStatus, Timestamp, UserIdentity,
+    Capabilities, Connection, Label, MergeStatus, MergeStrategy, PipelineJob, PipelineRun,
+    ProviderError, ProviderKind, PullRequestDetail, PullRequestSummary, RerunAction, RerunKind,
+    Result, ReviewVote, Reviewer, RunStatus, RunningLogs, Timestamp, UserIdentity,
 };
 use review_store::{AppPaths, CheckFilter};
 use time::macros::datetime;
@@ -29,13 +29,14 @@ use super::walkthrough::{
     wait_until, wheel,
 };
 use cv_runtime::route::{PullRequestKey, Route};
+use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{Clicks, ScratchDir, samples};
 
 const REPOSITORY: &str = "fabrikam-logistics/fabrikam-logistics";
 const NUMBER: u64 = 17;
 const HEAD_SHA: &str = "3f9a2c1d8e7b6a5f4e3d2c1b0a9f8e7d6c5b4a39";
 
-/// Which pipelines the scripted provider reports, per connection id.
+/// Which pipelines the scripted provider reports.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Scenario {
     /// Everything passed, as the user's merge request !17.
@@ -55,6 +56,9 @@ enum Scenario {
     GitHubRunning,
     /// A GitLab pipeline whose job "rspec" runs: its trace grows by 50 lines with every request.
     GitLabLive,
+    /// A finished GitLab pipeline whose stage "test" holds build, lint and flaky; the host drops the
+    /// first download of flaky's log mid-body.
+    LogReuse,
 }
 
 #[derive(Default)]
@@ -68,10 +72,8 @@ struct Calls {
     is_job_finished: bool,
 }
 
-/// The scenario and the call log of each connection id; the provider factory is a plain function.
-type Scripts = HashMap<String, (Scenario, Arc<Mutex<Calls>>)>;
-
-static SCENARIOS: Mutex<Option<Scripts>> = Mutex::new(None);
+/// The job of [`Scenario::LogReuse`] whose first download the host drops mid-body.
+const CUT_OFF: &str = "7:3";
 
 #[test]
 #[expect(clippy::too_many_lines, reason = "one walkthrough scenario, told step by step")]
@@ -199,7 +201,7 @@ fn pipelines_overview_card_remembers_open_or_closed_across_restarts() {
     let is_listed = |harness: &Harness<'_, ReviewApp>| {
         harness.query_by_role_and_label(Role::Link, "Pipeline #2279, Succeeded").is_some()
     };
-    let App { mut harness, scratch, .. } = App::start(ID, Scenario::Green, SIZE);
+    let App { mut harness, calls, scratch } = App::start(ID, Scenario::Green, SIZE);
     wait_until(&mut harness, "the merge status", |harness| has(harness, "All pipelines succeeded"));
     assert!(!is_listed(&harness) && has(&harness, "Show pipelines"), "collapsed by default");
     let summary = harness.get_by_label("2 pipelines · 2 succeeded").rect();
@@ -216,7 +218,7 @@ fn pipelines_overview_card_remembers_open_or_closed_across_restarts() {
     );
     drop(harness);
 
-    let mut harness = App::reopen(ID, &scratch, SIZE);
+    let mut harness = App::reopen(ID, Scenario::Green, &calls, &scratch, SIZE);
     wait_until(&mut harness, "the pipelines, open after the restart", is_listed);
     harness.click_at(harness.get_by_label("Hide pipelines").rect());
     wait_until(&mut harness, "the collapsed card", |harness| {
@@ -225,7 +227,7 @@ fn pipelines_overview_card_remembers_open_or_closed_across_restarts() {
     assert!(!saved_settings(&harness).pipelines.is_overview_expanded, "the closed card is saved");
     drop(harness);
 
-    let mut harness = App::reopen(ID, &scratch, SIZE);
+    let mut harness = App::reopen(ID, Scenario::Green, &calls, &scratch, SIZE);
     wait_until(&mut harness, "the merge status", |harness| has(harness, "All pipelines succeeded"));
     settle_background(&mut harness);
     assert!(!is_listed(&harness), "closed after the restart");
@@ -699,30 +701,41 @@ struct App {
 impl App {
     fn start(id: &str, scenario: Scenario, size: [f32; 2]) -> Self {
         let calls = Arc::new(Mutex::new(Calls::default()));
-        SCENARIOS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get_or_insert_with(HashMap::new)
-            .insert(id.to_owned(), (scenario, calls.clone()));
         let scratch = ScratchDir::new(id);
         let connection = Connection {
             name: "example.com".to_owned(),
             token: Some("glpat-walkthrough".to_owned()),
             ..samples::connection(id, platform(scenario), "https://gitlab.example.com")
         };
-        let harness = Self::open(id, saved_paths(&scratch, &[connection]), size);
+        let harness = Self::open(id, scenario, &calls, saved_paths(&scratch, &[connection]), size);
         Self { harness, calls, scratch }
     }
 
-    /// The app again on the files an earlier [`App::start`] left in `scratch`, as after a restart.
-    fn reopen(id: &str, scratch: &ScratchDir, size: [f32; 2]) -> Harness<'static, ReviewApp> {
-        Self::open(id, scratch.app_paths(), size)
+    /// The app again on the files an earlier [`App::start`] left in `scratch`, as after a restart,
+    /// its provider still logging to `calls`.
+    fn reopen(
+        id: &str,
+        scenario: Scenario,
+        calls: &Arc<Mutex<Calls>>,
+        scratch: &ScratchDir,
+        size: [f32; 2],
+    ) -> Harness<'static, ReviewApp> {
+        Self::open(id, scenario, calls, scratch.app_paths(), size)
     }
 
-    fn open(id: &str, paths: AppPaths, size: [f32; 2]) -> Harness<'static, ReviewApp> {
+    fn open(
+        id: &str,
+        scenario: Scenario,
+        calls: &Arc<Mutex<Calls>>,
+        paths: AppPaths,
+        size: [f32; 2],
+    ) -> Harness<'static, ReviewApp> {
         let builder =
             Harness::builder().with_size(size).with_step_dt(1.0 / 60.0).allow_missing_glyphs();
-        let mut harness = app_with(builder, paths, scripted_provider);
+        let calls = calls.clone();
+        let mut harness = app_with(builder, paths, move |_, _| {
+            Arc::new(Scripted(PipelinesScript::new(scenario, calls.clone())))
+        });
         harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
             connection_id: id.to_owned(),
             repository_key: REPOSITORY.to_owned(),
@@ -1132,6 +1145,9 @@ fn runs(scenario: Scenario) -> Vec<PipelineRun> {
             ..run("run:900", GH_RUN, Running, "pull_request", (0, 0), true)
         }],
         Scenario::GitLabLive => vec![run("pipeline:3001", GL_RUN, Running, event, (0, 0), true)],
+        Scenario::LogReuse => {
+            vec![run("pipeline:50", "Pipeline #50", Succeeded, "merge_request_event", (4, 0), true)]
+        }
     }
 }
 
@@ -1139,10 +1155,23 @@ fn platform(scenario: Scenario) -> ProviderKind {
     match scenario {
         Scenario::Azure | Scenario::Attempts => ProviderKind::AzureDevOps,
         Scenario::GitHubRunning => ProviderKind::GitHub,
-        Scenario::Green | Scenario::Mixed | Scenario::Superseded | Scenario::GitLabLive => {
-            ProviderKind::GitLab
-        }
+        Scenario::Green
+        | Scenario::Mixed
+        | Scenario::Superseded
+        | Scenario::GitLabLive
+        | Scenario::LogReuse => ProviderKind::GitLab,
     }
+}
+
+/// Pipeline #50 of [`Scenario::LogReuse`]: one stage "test", every job finished.
+fn pipeline_50() -> Vec<PipelineJob> {
+    let finished = |id, name| job(id, name, RunStatus::Succeeded, (0, 0), Some((4, 0)));
+    vec![stage(
+        50,
+        "test",
+        None,
+        vec![finished("1", "build"), finished("2", "lint"), finished("3", "flaky")],
+    )]
 }
 
 const GH_RUN: &str = "CI #900";
@@ -1223,39 +1252,25 @@ fn rspec_trace(request: usize, is_finished: bool) -> String {
     trace
 }
 
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "a ProviderFactory, whose signature hands the connection and the client over"
-)]
-fn scripted_provider(connection: Connection, _http: reqwest::Client) -> Arc<dyn Provider> {
-    let (scenario, calls) = SCENARIOS
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .as_ref()
-        .and_then(|scenarios| scenarios.get(&connection.id).cloned())
-        .unwrap_or((Scenario::Green, Arc::new(Mutex::new(Calls::default()))));
-    let capabilities = Capabilities {
-        votes: vec![ReviewVote::Approved, ReviewVote::None],
-        merge_strategies: vec![MergeStrategy::Merge],
-        has_label_catalog: true,
-        running_logs: if platform(scenario) == ProviderKind::GitHub {
-            RunningLogs::WhenFinished
-        } else {
-            RunningLogs::Growing
-        },
-    };
-    Arc::new(ScriptedProvider { scenario, calls, capabilities })
-}
-
-struct ScriptedProvider {
+struct PipelinesScript {
     scenario: Scenario,
     calls: Arc<Mutex<Calls>>,
     capabilities: Capabilities,
 }
 
-impl ScriptedProvider {
-    fn unused<T>() -> Result<T> {
-        Err(ProviderError::Unsupported("Not part of the pipelines walkthrough.".to_owned()))
+impl PipelinesScript {
+    fn new(scenario: Scenario, calls: Arc<Mutex<Calls>>) -> Self {
+        let capabilities = Capabilities {
+            votes: vec![ReviewVote::Approved, ReviewVote::None],
+            merge_strategies: vec![MergeStrategy::Merge],
+            has_label_catalog: true,
+            running_logs: if platform(scenario) == ProviderKind::GitHub {
+                RunningLogs::WhenFinished
+            } else {
+                RunningLogs::Growing
+            },
+        };
+        Self { scenario, calls, capabilities }
     }
 }
 
@@ -1269,7 +1284,7 @@ fn person(id: &str, name: &str, login: &str) -> UserIdentity {
 }
 
 #[async_trait]
-impl Provider for ScriptedProvider {
+impl Script for PipelinesScript {
     fn capabilities(&self) -> &Capabilities {
         &self.capabilities
     }
@@ -1278,136 +1293,24 @@ impl Provider for ScriptedProvider {
         Ok(person("1", "Erika Hart", "erika"))
     }
 
-    async fn list_repositories(&self, _search: Option<&str>) -> Result<Vec<RepositoryInfo>> {
-        Ok(Vec::new())
-    }
-
-    async fn git_remote(&self, _repo: &str) -> Result<GitRemote> {
-        Err(ProviderError::Local("The pipelines walkthrough has no git remote.".to_owned()))
-    }
-
-    async fn list_pull_requests(
-        &self,
-        _query: &PullRequestQuery,
-    ) -> Result<Vec<PullRequestSummary>> {
-        Ok(Vec::new())
-    }
-
     async fn pull_request(&self, repo: &str, number: u64) -> Result<PullRequestDetail> {
         Ok(PullRequestDetail {
             summary: PullRequestSummary {
-                repository_key: repo.to_owned(),
-                repository_name: "fabrikam-logistics".to_owned(),
-                number,
                 title: "Issue an invoice for every charge".to_owned(),
                 author: person("1", "Erika Hart", "erika"),
-                state: PullRequestState::Open,
-                is_draft: false,
                 source_branch: "feat/invoicing".to_owned(),
-                target_branch: "main".to_owned(),
                 created_at: datetime!(2026-10-17 08:30 UTC),
-                updated_at: None,
                 web_url: format!("https://gitlab.example.com/{repo}/-/merge_requests/{number}"),
                 labels: vec![Label { name: "skip-deploy".to_owned(), color: Some("3b4a5c".to_owned()), description: None }],
                 reviewers: vec![Reviewer { identity: person("2", "Sam Okafor", "sam"), vote: ReviewVote::None, is_required: false, is_group: false }],
-                checks: None,
-                diff_stat: review_core::DiffStat::default(),
-                head_sha: None,
-                target_sha: None,
+                ..samples::summary(repo, number)
             },
             description: "Every successful charge now issues an invoice. Composition is keyed by (PackageId, DepotId) end to end.".to_owned(),
             target_sha: "0".repeat(40),
             head_sha: HEAD_SHA.to_owned(),
             merge_status: MergeStatus::Mergeable,
-            git_fetch_refs: Vec::new(),
-            closed_at: None,
-            auto_complete: None,
+            ..samples::detail(repo, number)
         })
-    }
-
-    async fn merge(&self, _repo: &str, _number: u64, _options: &MergeOptions) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn close(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn reopen(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_draft(&self, _repo: &str, _number: u64, _is_draft: bool) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn update_title_description(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _title: &str,
-        _description: &str,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_vote(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _vote: ReviewVote,
-        _comment: Option<&str>,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn add_reviewer(&self, _repo: &str, _number: u64, _user: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn remove_reviewer(&self, _repo: &str, _number: u64, _reviewer_id: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn threads(&self, _repo: &str, _number: u64) -> Result<Vec<ReviewThread>> {
-        Ok(Vec::new())
-    }
-
-    async fn create_thread(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread: &NewThread,
-    ) -> Result<ReviewThread> {
-        Self::unused()
-    }
-
-    async fn reply(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _body: &str,
-    ) -> Result<ThreadComment> {
-        Self::unused()
-    }
-
-    async fn set_thread_status(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _status: ThreadStatus,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn available_labels(&self, _repo: &str) -> Result<Vec<Label>> {
-        Ok(Vec::new())
-    }
-
-    async fn set_labels(&self, _repo: &str, _number: u64, _labels: &[String]) -> Result<()> {
-        Self::unused()
     }
 
     async fn pipeline_runs(&self, _repo: &str, _number: u64) -> Result<Vec<PipelineRun>> {
@@ -1432,6 +1335,7 @@ impl Provider for ScriptedProvider {
             "pipeline:3001" => gitlab_3001(
                 self.calls.lock().unwrap_or_else(PoisonError::into_inner).is_job_finished,
             ),
+            "pipeline:50" => pipeline_50(),
             _ => Vec::new(),
         })
     }
@@ -1459,6 +1363,7 @@ impl Provider for ScriptedProvider {
             calls.logs.push(log_id.to_owned());
             (calls.logs.iter().filter(|logged| *logged == log_id).count(), calls.is_job_finished)
         };
+        let written = |error: std::io::Error| ProviderError::Local(error.to_string());
         let text = match (self.scenario, log_id) {
             // What GitHub's log URL leads to while the job runs.
             (Scenario::GitHubRunning, "501") if !is_finished => {
@@ -1471,9 +1376,11 @@ impl Provider for ScriptedProvider {
             (Scenario::GitLabLive, "7:77") => rspec_trace(requests, is_finished),
             _ => format!("$ ./ci/run {log_id}\nRunning on runner-7 (docker)\nJob succeeded\n"),
         };
-        sink.write_all(text.as_bytes())
-            .await
-            .map_err(|error| ProviderError::Local(error.to_string()))
+        if self.scenario == Scenario::LogReuse && log_id == CUT_OFF && requests == 1 {
+            sink.write_all(&text.as_bytes()[..text.len() / 2]).await.map_err(written)?;
+            return Err(ProviderError::Network("connection reset by the host".to_owned()));
+        }
+        sink.write_all(text.as_bytes()).await.map_err(written)
     }
 
     async fn rerun(

@@ -57,9 +57,10 @@ impl Chunks {
             let old_range = if range.end <= prefix {
                 range.clone()
             } else if range.start >= text.len() - suffix {
-                let shift = text.len() - old_text.len().min(text.len());
-                let back = old_text.len() - text.len().min(old_text.len());
-                range.start + back - shift..range.end + back - shift
+                // The range lies in the common suffix, so moving it to the old text cannot
+                // underflow.
+                let to_old = |at: usize| at + old_text.len() - text.len();
+                to_old(range.start)..to_old(range.end)
             } else {
                 return None;
             };
@@ -202,8 +203,7 @@ mod tests {
         assert_eq!(common_ends(b"", b"x"), (0, 0));
         let long = "x".repeat(10_000);
         let edited = format!("{}y{}", &long[..5_000], &long[5_000..]);
-        let (prefix, suffix) = common_ends(long.as_bytes(), edited.as_bytes());
-        assert!(prefix + suffix == long.len() && prefix >= 5_000);
+        assert_eq!(common_ends(long.as_bytes(), edited.as_bytes()), (5_000, 5_000));
     }
 
     /// The chunked model equals a parse of the whole text, before and after edits that open
@@ -213,14 +213,15 @@ mod tests {
         let base = "# Title\n\nSome **bold** text with `code`.\n\n- a\n- [x] b\n\n> quote\n\n```rust\nlet x = 1;\n\nlet y = 2;\n```\n\n1. one\n\n2. two @someone #12\n";
         let mut chunks = Chunks::default();
         let mut text = base.to_owned();
-        let edits: [&dyn Fn(&mut String); 5] = [
-            &|text| text.insert(text.find("Some").unwrap_or(0), 'x'),
-            &|text| text.insert_str(text.find("- a").unwrap_or(0), "```\n\n"),
+        let edits: [&dyn Fn(&mut String); 6] = [
+            &|_| {},
+            &|text| text.insert(text.find("Some").expect("anchor in text"), 'x'),
+            &|text| text.insert_str(text.find("- a").expect("anchor in text"), "```\n\n"),
             &|text| text.push_str("\n```\n\ntail"),
-            &|text| text.insert_str(text.find("> quote").unwrap_or(0), "<!-- open\n\n"),
+            &|text| text.insert_str(text.find("> quote").expect("anchor in text"), "<!-- open\n\n"),
             &|text| text.insert_str(0, "[ref]: https://example.test\n\n[ref]\n\n"),
         ];
-        for edit in [&(|_: &mut String| {}) as &dyn Fn(&mut String)].into_iter().chain(edits) {
+        for edit in edits {
             edit(&mut text);
             chunks.update(&text);
             let whole = structure::parse(&text);

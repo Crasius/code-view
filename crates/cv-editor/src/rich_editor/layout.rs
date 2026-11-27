@@ -29,7 +29,7 @@ use crate::markdown_editor::PullRequestContext;
 /// Our budget of cached block layouts per editor: a few screens of a long document.
 const MAX_ENTRIES: usize = 2048;
 /// Indent of a quote's content: its bar and the gap after it, as the renderer spaces it.
-pub const QUOTE_INDENT: f32 = QUOTE_BAR_WIDTH + style::SPACE_M;
+const QUOTE_INDENT: f32 = QUOTE_BAR_WIDTH + style::SPACE_M;
 /// Width of a list item's marker column, as the renderer's.
 pub const ITEM_INDENT: f32 = style::SPACE_L + style::SPACE_M;
 /// Inside a code, HTML or table panel.
@@ -90,19 +90,36 @@ pub struct Offsets {
     pub markers: Vec<Vec<(f32, Marker)>>,
 }
 
-#[derive(Default)]
 pub struct LayoutCache {
     key: u64,
     atlas: AtlasWatch,
     atlas_epoch: u64,
     width: f32,
-    palette: Option<Palette>,
-    platform: Option<ProviderKind>,
+    palette: Palette,
+    platform: ProviderKind,
     people: Option<PullRequestContext>,
     entries: HashMap<usize, Entry>,
     frame: u64,
     offsets: Offsets,
     is_dirty: bool,
+}
+
+impl Default for LayoutCache {
+    fn default() -> Self {
+        Self {
+            key: 0,
+            atlas: AtlasWatch::default(),
+            atlas_epoch: 0,
+            width: 0.0,
+            palette: Palette::LIGHT,
+            platform: ProviderKind::GitHub,
+            people: None,
+            entries: HashMap::new(),
+            frame: 0,
+            offsets: Offsets::default(),
+            is_dirty: false,
+        }
+    }
 }
 
 impl LayoutCache {
@@ -129,8 +146,8 @@ impl LayoutCache {
             platform,
         ));
         self.width = width;
-        self.palette = Some(palette);
-        self.platform = Some(platform);
+        self.palette = palette;
+        self.platform = platform;
         self.people = people;
         if key != self.key {
             self.key = key;
@@ -160,11 +177,10 @@ impl LayoutCache {
             entry.used = self.frame;
             return entry.laid.clone();
         }
-        let palette = self.palette.unwrap_or(Palette::LIGHT);
         let laid = Arc::new(lay_out(
             ctx,
             block,
-            &palette,
+            &self.palette,
             self.width,
             self.people.as_ref(),
             self.platform,
@@ -239,15 +255,17 @@ pub fn gap(previous: &Block, next: &Block) -> f32 {
     }
 }
 
+/// How far `container` moves its content right: the text, the marker column and the quote bars.
+pub fn container_indent(container: &Container) -> f32 {
+    match container {
+        Container::Quote(_) => QUOTE_INDENT,
+        Container::Item { .. } => ITEM_INDENT,
+    }
+}
+
 /// The text column's left edge for `nesting`.
 pub fn indent(nesting: &[Container]) -> f32 {
-    nesting
-        .iter()
-        .map(|container| match container {
-            Container::Quote(_) => QUOTE_INDENT,
-            Container::Item { .. } => ITEM_INDENT,
-        })
-        .sum()
+    nesting.iter().map(container_indent).sum()
 }
 
 fn estimate(block: &Block, width: f32) -> f32 {
@@ -303,10 +321,7 @@ fn markers(doc: &Document) -> Vec<Vec<(f32, Marker)>> {
                 list_depth += 1;
             }
             continues = continues && before.is_some_and(|before| container.continues(before));
-            x += match container {
-                Container::Quote(_) => QUOTE_INDENT,
-                Container::Item { .. } => ITEM_INDENT,
-            };
+            x += container_indent(container);
         }
         out.push(here);
         previous = Some(block);
@@ -320,7 +335,7 @@ fn lay_out(
     palette: &Palette,
     width: f32,
     people: Option<&PullRequestContext>,
-    platform: Option<ProviderKind>,
+    platform: ProviderKind,
 ) -> Laid {
     let indent = indent(&block.nesting);
     let is_panel = block.kind.is_source();

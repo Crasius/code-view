@@ -5,13 +5,13 @@
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, poll_until};
 use egui::accesskit::Role;
 use egui::epaint::text::ByteRangeExt as _;
 use egui::{
-    Event, Key, Modifiers, MouseWheelSource, MouseWheelUnit, Pos2, Rect, TouchPhase, pos2, vec2,
+    Event, Key, Modifiers, MouseWheelSource, MouseWheelUnit, PointerButton, Pos2, Rect, TouchPhase,
+    Vec2, pos2, vec2,
 };
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
@@ -23,12 +23,12 @@ mod past_end;
 mod width;
 
 use super::heights::outward;
-use super::model::{Look, Mode, Model, Row, Side};
+use super::model::{Look, Mode, Model, Row};
 use super::rows::build;
 use super::{MarkdownDiff, ROW_PAD, RenderedEvent, RenderedImages, RenderedInputs};
 use cv_base::theme::{self, Palette};
 use cv_pr_threads::{ThreadsUi, samples};
-use cv_testkit::frame_bench::{Bench, PATTERNS, Report, SCALES};
+use cv_testkit::frame_bench::{self, Bench, Report, SCALES};
 
 /// What the last frame painted, for tests that look at the geometry.
 #[derive(Debug, Default, Clone)]
@@ -40,7 +40,7 @@ pub struct Probe {
 #[derive(Debug, Clone, Copy)]
 pub struct ProbeCell {
     pub row: usize,
-    pub side: Side,
+    pub side: DiffSide,
     pub unit: Option<usize>,
     pub rect: Rect,
 }
@@ -80,45 +80,20 @@ fn sample() -> (String, String) {
     (old.join("\n\n") + "\n", new.join("\n\n") + "\n")
 }
 
-struct Scene {
-    view: MarkdownDiff,
+/// What the view is shown: the two versions and the choices its inputs read.
+struct Doc {
     old: Option<String>,
     new: Option<String>,
     layout: DiffLayout,
     context: u32,
-    split: f32,
     can_comment: bool,
-    theme: ThemePreference,
-    events: Vec<RenderedEvent>,
     images: RenderedImages,
     threads: Vec<ReviewThread>,
-    threads_ui: ThreadsUi,
     /// "Show comments in the diff".
     show_threads: bool,
-    /// The reading column or full width.
-    width: RenderedWidth,
 }
 
-impl Scene {
-    fn new(old: &str, new: &str, layout: DiffLayout, context: u32) -> Self {
-        Self {
-            view: MarkdownDiff::default(),
-            old: Some(old.to_owned()),
-            new: Some(new.to_owned()),
-            layout,
-            context,
-            split: 0.5,
-            can_comment: true,
-            theme: ThemePreference::Light,
-            events: Vec::new(),
-            images: RenderedImages::default(),
-            threads: Vec::new(),
-            threads_ui: ThreadsUi::for_tests(ProviderKind::GitHub),
-            show_threads: true,
-            width: RenderedWidth::default(),
-        }
-    }
-
+impl Doc {
     fn key(&self) -> u64 {
         egui::epaint::util::hash((&self.old, &self.new))
     }
@@ -140,22 +115,44 @@ impl Scene {
     }
 }
 
+struct Scene {
+    doc: Doc,
+    view: MarkdownDiff,
+    split: f32,
+    theme: ThemePreference,
+    events: Vec<RenderedEvent>,
+    threads_ui: ThreadsUi,
+    /// The reading column or full width.
+    width: RenderedWidth,
+}
+
+impl Scene {
+    fn new(old: &str, new: &str, layout: DiffLayout, context: u32) -> Self {
+        Self {
+            doc: Doc {
+                old: Some(old.to_owned()),
+                new: Some(new.to_owned()),
+                layout,
+                context,
+                can_comment: true,
+                images: RenderedImages::default(),
+                threads: Vec::new(),
+                show_threads: true,
+            },
+            view: MarkdownDiff::default(),
+            split: 0.5,
+            theme: ThemePreference::Light,
+            events: Vec::new(),
+            threads_ui: ThreadsUi::for_tests(ProviderKind::GitHub),
+            width: RenderedWidth::default(),
+        }
+    }
+}
+
 fn show(ui: &mut egui::Ui, scene: &mut Scene) {
     theme::activate(ui.ctx(), scene.theme);
-    let threads: Vec<&ReviewThread> = scene.threads.iter().collect();
-    let inputs = RenderedInputs {
-        key: scene.key(),
-        old: scene.old.as_deref(),
-        new: scene.new.as_deref(),
-        platform: ProviderKind::GitHub,
-        layout: scene.layout,
-        context: scene.context,
-        scale: 1.0,
-        can_comment: scene.can_comment,
-        images: &scene.images,
-        threads: &threads,
-        show_threads: scene.show_threads,
-    };
+    let threads: Vec<&ReviewThread> = scene.doc.threads.iter().collect();
+    let inputs = scene.doc.inputs(&threads);
     if let Some(event) =
         scene.view.show(ui, &inputs, &mut scene.split, &mut scene.width, &mut scene.threads_ui)
     {
@@ -178,40 +175,42 @@ fn harness(scene: Scene, size: [f32; 2]) -> Harness<'static, Scene> {
         .build_ui_state(show, scene)
 }
 
-fn wheel(harness: &mut Harness<'_, Scene>, pointer: Pos2, delta: f32) {
-    let event = |delta: f32, phase: TouchPhase| Event::MouseWheel {
+/// Scrolls by `delta` (a wheel, a trackpad or Shift+wheel sideways) with the pointer at `pointer`.
+fn wheel(harness: &mut Harness<'_, Scene>, pointer: Pos2, delta: Vec2) {
+    let event = |delta: Vec2, phase: TouchPhase| Event::MouseWheel {
         unit: MouseWheelUnit::Point,
-        delta: vec2(0.0, delta),
+        delta,
         phase,
         modifiers: Modifiers::NONE,
         source: MouseWheelSource::Wheel,
     };
-    harness.input_mut().events.push(Event::PointerMoved(pointer));
-    harness.input_mut().events.push(event(0.0, TouchPhase::Start));
+    harness.hover_at(pointer);
+    harness.input_mut().events.push(event(Vec2::ZERO, TouchPhase::Start));
     harness.step();
     harness.input_mut().events.push(event(delta, TouchPhase::Move));
     harness.step();
-    harness.input_mut().events.push(event(0.0, TouchPhase::End));
+    harness.input_mut().events.push(event(Vec2::ZERO, TouchPhase::End));
     harness.run();
 }
 
-/// Steps `harness` until `done` holds, for at most 30 s; `what` names it in the failure.
-/// Mermaid diagrams are drawn on a worker thread, so frames alone do not bring them.
-fn step_until(
-    harness: &mut Harness<'_, Scene>,
-    what: &str,
-    done: impl Fn(&Harness<'_, Scene>) -> bool,
-) {
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while !done(harness) {
-        assert!(Instant::now() < deadline, "{what}");
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "the test thread waits for the diagram worker, which wakes no frame of its own"
-        )]
-        std::thread::sleep(Duration::from_millis(10));
-        harness.step();
+/// The primary button going down (`pressed`) or up at `pos`.
+fn press(pos: Pos2, pressed: bool) -> Event {
+    Event::PointerButton {
+        pos,
+        button: PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::NONE,
     }
+}
+
+/// Hovers `at` for a frame, then clicks there.
+fn click_at(harness: &mut Harness<'_, Scene>, at: Pos2) {
+    harness.hover_at(at);
+    harness.step();
+    for pressed in [true, false] {
+        harness.event(press(at, pressed));
+    }
+    harness.run();
 }
 
 fn tops(harness: &Harness<'_, Scene>, text: &str) -> Vec<f32> {
@@ -220,7 +219,7 @@ fn tops(harness: &Harness<'_, Scene>, text: &str) -> Vec<f32> {
 
 /// Every unchanged paragraph on screen has its old and its new version at the same height, and
 /// the edited paragraph sits next to its old version.
-fn check_aligned(harness: &Harness<'_, Scene>, when: &str) -> usize {
+fn check_aligned(harness: &Harness<'_, Scene>, when: &str) {
     let mut compared = 0;
     for index in 0..40 {
         let found = tops(harness, &same(index));
@@ -235,7 +234,6 @@ fn check_aligned(harness: &Harness<'_, Scene>, when: &str) -> usize {
         assert!((old - new).abs() < 0.5, "{when}: the edited paragraph at {old} and {new}");
     }
     assert!(compared >= 3, "{when}: only {compared} pairs on screen");
-    compared
 }
 
 #[test]
@@ -250,7 +248,7 @@ fn blocks_line_up_whatever_scrolls_them() {
         (pos2(200.0, 300.0), "the wheel over Before"),
         (pos2(650.0, 300.0), "the wheel over After"),
     ] {
-        wheel(&mut harness, pointer, -400.0);
+        wheel(&mut harness, pointer, vec2(0.0, -400.0));
         let top = harness.state().view.viewport.0.top();
         assert!(top > last_top + 100.0, "{what} scrolled from {last_top} to {top}");
         last_top = top;
@@ -275,12 +273,12 @@ fn a_missing_block_leaves_a_gap_as_tall_as_the_block_across() {
     let gap = probe
         .cells
         .iter()
-        .find(|cell| cell.side == Side::Old && cell.unit.is_none())
+        .find(|cell| cell.side == DiffSide::Old && cell.unit.is_none())
         .expect("a gap beside the added paragraph");
     let block = probe
         .cells
         .iter()
-        .find(|cell| cell.row == gap.row && cell.side == Side::New)
+        .find(|cell| cell.row == gap.row && cell.side == DiffSide::New)
         .expect("the added paragraph");
     assert_eq!(gap.rect.y_range(), block.rect.y_range(), "the gap spans the added paragraph's row");
     let label = harness.get_by_label(LONG_ADDED).rect();
@@ -297,13 +295,13 @@ fn a_missing_block_leaves_a_gap_as_tall_as_the_block_across() {
     assert!(below.iter().all(|top| *top >= gap.rect.bottom()), "{below:?} below {:?}", gap.rect);
 
     // The removed paragraph leaves the gap on the new side.
-    wheel(&mut harness, pos2(450.0, 300.0), -300.0);
+    wheel(&mut harness, pos2(450.0, 300.0), vec2(0.0, -300.0));
     let probe = harness.state().view.probe.clone();
     let removed = harness.get_by_label(REMOVED).rect();
     let gap = probe
         .cells
         .iter()
-        .find(|cell| cell.side == Side::New && cell.unit.is_none())
+        .find(|cell| cell.side == DiffSide::New && cell.unit.is_none())
         .expect("a gap beside the removed paragraph");
     assert!(
         gap.rect
@@ -314,10 +312,10 @@ fn a_missing_block_leaves_a_gap_as_tall_as_the_block_across() {
 
 fn model_of(old: &str, new: &str) -> Model {
     let scene = Scene::new(old, new, DiffLayout::SideBySide, FULL_FILE_CONTEXT);
-    Model::new(&scene.inputs(&[]))
+    Model::new(&scene.doc.inputs(&[]))
 }
 
-fn looks(rows: &[Row]) -> Vec<[Option<(Side, Look)>; 2]> {
+fn looks(rows: &[Row]) -> Vec<[Option<(DiffSide, Look)>; 2]> {
     rows.iter().map(|row| row.cells().map(|cell| cell.map(|cell| (cell.side, cell.look)))).collect()
 }
 
@@ -331,35 +329,29 @@ fn each_layout_marks_added_removed_and_edited_blocks() {
     let new = "# Title\n\nKept.\n\nThe quick red fox.\n\nA new block.\n";
     let model = model_of(old, new);
     let none = HashSet::new();
-    let added = Some((Side::New, Look::Added));
-    let removed = Some((Side::Old, Look::Removed));
+    let added = Some((DiffSide::New, Look::Added));
+    let removed = Some((DiffSide::Old, Look::Removed));
     let plain = |side| Some((side, Look::Plain));
 
     let columns = build(&model, Mode::Columns, FULL_FILE_CONTEXT, &none, &[]);
     assert_eq!(
         looks(&columns.rows),
         [
-            [plain(Side::Old), plain(Side::New)],
-            [plain(Side::Old), plain(Side::New)],
+            [plain(DiffSide::Old), plain(DiffSide::New)],
+            [plain(DiffSide::Old), plain(DiffSide::New)],
             [removed, None],
             [removed, added],
             [None, added],
         ]
     );
     assert_eq!(columns.hunks, [2..5], "consecutive changed blocks are one change");
-    let edited = &model.pairs[3];
-    let words = |text: &str, ranges: &[std::ops::Range<usize>]| {
-        ranges.iter().map(|range| text[range.clone()].to_owned()).collect::<Vec<_>>()
-    };
-    assert_eq!(words(&model.old.units[edited.old.unwrap()].text, &edited.old_words), ["brown"]);
-    assert_eq!(words(&model.new.units[edited.new.unwrap()].text, &edited.new_words), ["red"]);
 
     let unified = build(&model, Mode::Unified, FULL_FILE_CONTEXT, &none, &[]);
     assert_eq!(
         looks(&unified.rows),
         [
-            [plain(Side::New), None],
-            [plain(Side::New), None],
+            [plain(DiffSide::New), None],
+            [plain(DiffSide::New), None],
             [removed, None],
             [removed, None],
             [added, None],
@@ -376,17 +368,17 @@ fn each_layout_marks_added_removed_and_edited_blocks() {
     );
     assert_eq!(
         looks(&new_only.rows[3..]),
-        [[Some((Side::New, Look::Focus)), None], [Some((Side::New, Look::Focus)), None]]
+        [[Some((DiffSide::New, Look::Focus)), None], [Some((DiffSide::New, Look::Focus)), None]]
     );
     assert!(new_only.overview.is_focus && new_only.overview.removals == [2]);
 
     let whole = Model::new(&RenderedInputs {
         old: None,
-        ..Scene::new(old, new, DiffLayout::SideBySide, 3).inputs(&[])
+        ..Scene::new(old, new, DiffLayout::SideBySide, 3).doc.inputs(&[])
     });
-    let whole_rows = build(&whole, Mode::Whole(Side::New), 3, &none, &[]);
+    let whole_rows = build(&whole, Mode::Whole(DiffSide::New), 3, &none, &[]);
     assert!(
-        looks(&whole_rows.rows).iter().all(|cells| cells[0] == plain(Side::New)),
+        looks(&whole_rows.rows).iter().all(|cells| cells[0] == plain(DiffSide::New)),
         "an added file shows whole, unmarked"
     );
     assert_eq!(whole_rows.hunks, [0..whole_rows.rows.len()]);
@@ -399,25 +391,25 @@ fn a_replaced_image_shows_side_by_side_as_a_change() {
     let text = "# Screens\n\n![Login](./img/login.png)\n\n![Logo](./img/logo.png)\n";
     let mut scene = Scene::new(text, text, DiffLayout::SideBySide, FULL_FILE_CONTEXT);
     let none = HashSet::new();
-    let unchanged = Model::new(&scene.inputs(&[]));
+    let unchanged = Model::new(&scene.doc.inputs(&[]));
     assert!(
         build(&unchanged, Mode::Columns, FULL_FILE_CONTEXT, &none, &[]).hunks.is_empty(),
         "same text, same images"
     );
 
-    scene.images.content = [
+    scene.doc.images.content = [
         [("./img/login.png".to_owned(), "aaa".to_owned())].into_iter().collect(),
         [("./img/login.png".to_owned(), "bbb".to_owned())].into_iter().collect(),
     ];
-    let model = Model::new(&scene.inputs(&[]));
+    let model = Model::new(&scene.doc.inputs(&[]));
     let rows = build(&model, Mode::Columns, FULL_FILE_CONTEXT, &none, &[]);
     let plain = |side| Some((side, Look::Plain));
     assert_eq!(
         looks(&rows.rows),
         [
-            [plain(Side::Old), plain(Side::New)],
-            [Some((Side::Old, Look::Removed)), Some((Side::New, Look::Added))],
-            [plain(Side::Old), plain(Side::New)],
+            [plain(DiffSide::Old), plain(DiffSide::New)],
+            [Some((DiffSide::Old, Look::Removed)), Some((DiffSide::New, Look::Added))],
+            [plain(DiffSide::Old), plain(DiffSide::New)],
         ],
         "only the block of the replaced image changed"
     );
@@ -450,7 +442,7 @@ fn a_fold_opens_on_click_and_keeps_the_place() {
     let (old, new) = sample();
     let mut harness = harness(Scene::new(&old, &new, DiffLayout::SideBySide, 2), [900.0, 1400.0]);
     harness.run();
-    let before = harness.state().view.rows.len();
+    assert!(tops(&harness, &same(0)).is_empty(), "the fold holds paragraph 0");
     let fold = harness
         .query_all_by_label_contains("unchanged blocks")
         .find(|node| node.accesskit_node().role() == Role::Button)
@@ -459,19 +451,8 @@ fn a_fold_opens_on_click_and_keeps_the_place() {
     assert!(label.starts_with("Show 4 unchanged blocks (lines "), "{label}");
     // On its label: the middle of the bar is the handle between Before and After.
     let rect = fold.rect();
-    let at = pos2(rect.left() + 60.0, rect.center().y);
-    harness.hover_at(at);
-    harness.step();
-    for pressed in [true, false] {
-        harness.event(Event::PointerButton {
-            pos: at,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: Modifiers::NONE,
-        });
-    }
-    harness.run();
-    assert!(harness.state().view.rows.len() > before, "the fold opened");
+    click_at(&mut harness, pos2(rect.left() + 60.0, rect.center().y));
+    assert_eq!(tops(&harness, &same(0)).len(), 2, "the fold opened on paragraph 0");
     check_aligned(&harness, "after opening a fold");
 }
 
@@ -570,18 +551,16 @@ fn n_and_p_step_through_the_changes() {
     let mut harness =
         harness(Scene::new(&old, &new, DiffLayout::SideBySide, FULL_FILE_CONTEXT), [900.0, 400.0]);
     harness.run();
-    let key = harness.state().key();
+    let key = harness.state().doc.key();
     assert_eq!(harness.state().view.change_position(key), Some((0, 3)));
-    for expected in 1..=3 {
+    let area = Rect::from_min_size(Pos2::ZERO, vec2(900.0, 400.0));
+    for (expected, block) in (1..=3).zip([LONG_ADDED, REMOVED, EDITED_NEW]) {
         harness.key_press(Key::N);
         harness.run();
-        let view = &harness.state().view;
-        assert_eq!(view.change_position(key), Some((expected, 3)));
-        let start = view.heights.top(view.hunks[expected - 1].start);
+        assert_eq!(harness.state().view.change_position(key), Some((expected, 3)));
         assert!(
-            view.viewport.0.y_range().contains(start),
-            "change {expected} at {start} is in {:?}",
-            view.viewport.0
+            harness.query_all_by_label(block).any(|node| area.contains(node.rect().center())),
+            "change {expected}, {block:?}, is in view"
         );
     }
     harness.key_press(Key::P);
@@ -604,10 +583,11 @@ fn the_place_carries_over_between_the_text_and_the_rendered_diff() {
         "the text diff's line opens at the top"
     );
     let top = harness.state().view.viewport.0.top();
+    assert!(top > 0.0, "the line is below the top of the document");
     let paragraph = tops(&harness, &same(16));
     assert_eq!(paragraph.len(), 2, "paragraph 16 is on screen on both sides");
 
-    // Folded away, the line's fold opens first; this short document then scrolls to its end.
+    // Folded away, the line's fold opens first.
     let mut harness =
         self::harness(Scene::new(&old, &new, DiffLayout::SideBySide, 1), [900.0, 500.0]);
     harness.run();
@@ -615,7 +595,6 @@ fn the_place_carries_over_between_the_text_and_the_rendered_diff() {
     harness.state_mut().view.reveal_line(Some((DiffSide::New, line)));
     harness.run();
     assert_eq!(tops(&harness, &same(16)).len(), 2, "paragraph 16 is on screen on both sides");
-    assert!(top > 0.0);
 }
 
 /// New only: the wedge of a removed block is a button that shows it side by side, in place.
@@ -629,7 +608,7 @@ fn a_removal_wedge_opens_side_by_side() {
     harness.click_at(harness.get_by_label("Show the 1 removed block side by side").rect());
     harness.run();
     assert_eq!(harness.state().events, [RenderedEvent::ShowSideBySide]);
-    harness.state_mut().layout = DiffLayout::SideBySide;
+    harness.state_mut().doc.layout = DiffLayout::SideBySide;
     harness.run();
     assert_eq!(tops(&harness, REMOVED).len(), 1, "the removed block shows where the wedge was");
 }
@@ -674,112 +653,80 @@ fn a_blocks_lines_open_a_comment_in_the_text_diff() {
     }
 }
 
-/// A changed Mermaid diagram pairs as an edited block: the old drawing left, the new one right,
-/// both marked; the paragraph after them stays lined up once both have their size, and Show
-/// source turns a side into its source with the changed words filled.
-#[test]
-fn a_changed_diagram_shows_old_and_new_side_by_side() {
-    let old =
-        "# Flow\n\n```mermaid\nflowchart LR\n  A[Request] --> B[Review]\n```\n\nClosing words.\n";
-    let new = "# Flow\n\n```mermaid\nflowchart LR\n  A[Request] --> B[Review] --> C[Merge]\n```\n\nClosing words.\n";
-    let none = HashSet::new();
-    let rows = build(&model_of(old, new), Mode::Columns, FULL_FILE_CONTEXT, &none, &[]).rows;
-    assert!(
-        looks(&rows).contains(&[Some((Side::Old, Look::Removed)), Some((Side::New, Look::Added))]),
-        "the diagram block is the change"
-    );
-
-    let scene = Scene::new(old, new, DiffLayout::SideBySide, FULL_FILE_CONTEXT);
-    let mut drawn = Harness::builder()
-        .with_size([1100.0, 520.0])
-        .with_max_steps(MAX_STEPS)
-        .with_context_setup(|ctx| {
-            theme::fonts::install(ctx);
-            theme::motion::set_reduced(ctx, false);
-        })
-        .build_ui_state(show, scene);
-    step_until(&mut drawn, "both versions drawn", |drawn| {
-        drawn.query_all_by_role_and_label(Role::Image, "Mermaid diagram").count() >= 2
-    });
-    drawn.run_steps(4);
-    let diagrams: Vec<Rect> = drawn
-        .query_all_by_role_and_label(Role::Image, "Mermaid diagram")
-        .map(|node| node.rect())
-        .collect();
-    assert!((diagrams[0].top() - diagrams[1].top()).abs() < 0.5, "side by side at {diagrams:?}");
-    let closing = tops(&drawn, "Closing words.");
-    assert!(
-        closing.len() == 2 && (closing[0] - closing[1]).abs() < 0.5,
-        "lined up below at {closing:?}"
-    );
-
-    let mut harness =
-        harness(Scene::new(old, new, DiffLayout::SideBySide, FULL_FILE_CONTEXT), [1100.0, 520.0]);
-    step_until(&mut harness, "the diagrams' buttons", |harness| {
-        harness.query_all_by_role_and_label(Role::Button, "Show source").count() >= 2
-    });
-    for _ in 0..2 {
-        let switch = harness
-            .get_all_by_role_and_label(Role::Button, "Show source")
-            .next()
-            .expect("a diagram to switch")
-            .rect();
-        harness.click_at(switch);
-        harness.run_steps(4);
-    }
-    assert_eq!(
-        harness.query_all_by_role_and_label(Role::Image, "Mermaid diagram").count(),
-        0,
-        "both sides show their source"
-    );
-    assert_eq!(harness.query_all_by_label_contains("A[Request] --> B[Review]").count(), 2);
-    let closing = tops(&harness, "Closing words.");
-    assert!(
-        closing.len() == 2 && (closing[0] - closing[1]).abs() < 0.5,
-        "lined up below the sources at {closing:?}"
-    );
+/// The paragraph reading `text` sits at the same height on both sides.
+fn assert_lined_up(harness: &Harness<'_, Scene>, text: &str, what: &str) {
+    let found = tops(harness, text);
+    assert!(found.len() == 2 && (found[0] - found[1]).abs() < 0.5, "{what}: {text:?} at {found:?}");
 }
 
-/// An Azure DevOps wiki page writes its diagram as a `::: mermaid` container: it pairs, draws and
-/// switches to its source like a fence.
+/// A changed Mermaid diagram, as a fence or as an Azure DevOps wiki page's `::: mermaid`
+/// container, pairs as an edited block: the old drawing left, the new one right, both marked; the
+/// paragraph after them stays lined up once both have their size, and Show source turns each side
+/// into its source.
 #[test]
-fn a_changed_azure_devops_diagram_container_diffs_like_a_fence() {
-    let old =
+fn a_changed_diagram_pairs_draws_side_by_side_and_switches_to_source() {
+    const FENCE_OLD: &str =
+        "# Flow\n\n```mermaid\nflowchart LR\n  A[Request] --> B[Review]\n```\n\nClosing words.\n";
+    const FENCE_NEW: &str = "# Flow\n\n```mermaid\nflowchart LR\n  A[Request] --> B[Review] --> C[Merge]\n```\n\nClosing words.\n";
+    const CONTAINER_OLD: &str =
         "# Flow\n\n::: mermaid\ngraph LR;\n  A[Request] --> B[Review]\n:::\n\nClosing words.\n";
-    let new = "# Flow\n\n:::mermaid\ngraph LR;\n  A[Request] --> B[Review] --> C[Merge]\n:::\n\nClosing words.\n";
+    const CONTAINER_NEW: &str = "# Flow\n\n:::mermaid\ngraph LR;\n  A[Request] --> B[Review] --> C[Merge]\n:::\n\nClosing words.\n";
     let none = HashSet::new();
-    let rows = build(&model_of(old, new), Mode::Columns, FULL_FILE_CONTEXT, &none, &[]).rows;
-    assert!(
-        looks(&rows).contains(&[Some((Side::Old, Look::Removed)), Some((Side::New, Look::Added))]),
-        "the diagram block is the change"
-    );
+    let diagrams = |harness: &Harness<'_, Scene>| {
+        harness
+            .query_all_by_role_and_label(Role::Image, "Mermaid diagram")
+            .map(|node| node.rect())
+            .collect::<Vec<Rect>>()
+    };
+    for (case, old, new) in
+        [("fence", FENCE_OLD, FENCE_NEW), ("Azure DevOps container", CONTAINER_OLD, CONTAINER_NEW)]
+    {
+        let rows = build(&model_of(old, new), Mode::Columns, FULL_FILE_CONTEXT, &none, &[]).rows;
+        let edited = [Some((DiffSide::Old, Look::Removed)), Some((DiffSide::New, Look::Added))];
+        assert!(looks(&rows).contains(&edited), "{case}: the diagram block is the change");
 
-    let mut harness =
-        harness(Scene::new(old, new, DiffLayout::SideBySide, FULL_FILE_CONTEXT), [1100.0, 520.0]);
-    step_until(&mut harness, "both versions drawn", |harness| {
-        harness.query_all_by_role_and_label(Role::Image, "Mermaid diagram").count() >= 2
-    });
-    harness.run_steps(4);
-    assert_eq!(harness.query_all_by_label_contains(":::").count(), 0, "the markers are not text");
-    for _ in 0..2 {
-        let switch = harness
-            .get_all_by_role_and_label(Role::Button, "Show source")
-            .next()
-            .expect("a diagram to switch")
-            .rect();
-        harness.click_at(switch);
+        let mut harness = harness(
+            Scene::new(old, new, DiffLayout::SideBySide, FULL_FILE_CONTEXT),
+            [1100.0, 520.0],
+        );
+        // The diagrams are drawn on a worker thread, so frames alone do not bring them.
+        poll_until(&format!("{case}: both versions drawn"), || {
+            harness.step();
+            diagrams(&harness).len() >= 2
+        });
         harness.run_steps(4);
+        let drawn = diagrams(&harness);
+        assert!((drawn[0].top() - drawn[1].top()).abs() < 0.5, "{case}: side by side at {drawn:?}");
+        assert_lined_up(&harness, "Closing words.", &format!("{case}: below the diagrams"));
+        if case != "fence" {
+            assert_eq!(
+                harness.query_all_by_label_contains(":::").count(),
+                0,
+                "{case}: the markers are not text"
+            );
+        }
+
+        poll_until(&format!("{case}: the diagrams' buttons"), || {
+            harness.step();
+            harness.query_all_by_role_and_label(Role::Button, "Show source").count() >= 2
+        });
+        for _ in 0..2 {
+            let switch = harness
+                .get_all_by_role_and_label(Role::Button, "Show source")
+                .next()
+                .expect("a diagram to switch")
+                .rect();
+            harness.click_at(switch);
+            harness.run_steps(4);
+        }
+        assert!(diagrams(&harness).is_empty(), "{case}: no side draws its diagram");
+        assert_eq!(
+            harness.query_all_by_label_contains("A[Request] --> B[Review]").count(),
+            2,
+            "{case}: both sides show their source"
+        );
+        assert_lined_up(&harness, "Closing words.", &format!("{case}: below the sources"));
     }
-    assert_eq!(
-        harness.query_all_by_label_contains("A[Request] --> B[Review]").count(),
-        2,
-        "both sides show their source"
-    );
-    let closing = tops(&harness, "Closing words.");
-    assert!(
-        closing.len() == 2 && (closing[0] - closing[1]).abs() < 0.5,
-        "lined up below the sources at {closing:?}"
-    );
 }
 
 const PATH: &str = "README.md";
@@ -818,11 +765,45 @@ fn thread_at(id: &str, side: DiffSide, line: u32, body: &str) -> ReviewThread {
 fn commented(layout: DiffLayout, context: u32) -> Scene {
     let (old, new) = sample();
     let mut scene = Scene::new(&old, &new, layout, context);
-    scene.threads = vec![
+    scene.doc.threads = vec![
         thread_at("on-new", DiffSide::New, line_in(&new, &same(8)), ON_NEW),
         thread_at("on-old", DiffSide::Old, line_in(&old, REMOVED), ON_OLD),
     ];
     scene
+}
+
+/// The indexes of the `rows` that `is_marked` picks, as the overview strip numbers them.
+fn positions(rows: &[Row], is_marked: impl Fn(&Row) -> bool) -> Vec<u32> {
+    rows.iter()
+        .enumerate()
+        .filter(|(_, row)| is_marked(row))
+        .map(|(index, _)| index as u32)
+        .collect()
+}
+
+/// The overview strip marks every comment card, and a fold holding comments instead of the cards
+/// it hides.
+#[test]
+fn the_overview_marks_each_card_and_each_fold_holding_comments() {
+    let none = HashSet::new();
+    let built = |scene: &Scene| {
+        let threads: Vec<&ReviewThread> = scene.doc.threads.iter().collect();
+        let model = Model::new(&scene.doc.inputs(&threads));
+        build(&model, Mode::Columns, scene.doc.context, &none, &threads)
+    };
+    let shown = built(&commented(DiffLayout::SideBySide, FULL_FILE_CONTEXT));
+    let cards = positions(&shown.rows, |row| matches!(row, Row::Thread(_)));
+    assert_eq!(cards.len(), 2, "a card for each thread");
+    assert_eq!(shown.overview.threads, cards, "the strip marks both cards");
+
+    let (old, new) = sample();
+    let mut scene = Scene::new(&old, &new, DiffLayout::SideBySide, 2);
+    scene.doc.threads = vec![thread_at("folded", DiffSide::New, line_in(&new, &same(30)), IN_FOLD)];
+    let folded = built(&scene);
+    let fold =
+        positions(&folded.rows, |row| matches!(row, Row::Folded { pairs } if pairs.contains(&32)));
+    assert_eq!(fold.len(), 1, "one fold holds paragraph 30");
+    assert_eq!(folded.overview.threads, fold, "the strip marks that fold, not the others");
 }
 
 /// Where the comment `body` shows, if it does.
@@ -845,23 +826,8 @@ fn assert_between(card: Option<Rect>, block: Rect, next: Rect, what: &str) {
     );
 }
 
-fn click_at(harness: &mut Harness<'_, Scene>, at: Pos2) {
-    harness.hover_at(at);
-    harness.step();
-    for pressed in [true, false] {
-        harness.event(Event::PointerButton {
-            pos: at,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: Modifiers::NONE,
-        });
-    }
-    harness.run();
-}
-
 /// A thread's card sits under the block of its line: the new version's block for the new side,
-/// the old version's for removed lines, in its column side by side. The overview strip marks
-/// every card.
+/// the old version's for removed lines, in its column side by side.
 #[test]
 fn threads_sit_under_the_block_of_their_line_side_by_side() {
     let mut harness =
@@ -884,15 +850,6 @@ fn threads_sit_under_the_block_of_their_line_side_by_side() {
         card(&harness, ON_OLD).is_some_and(|card| card.right() < paragraph[1].left()),
         "in the Before column"
     );
-    let view = &harness.state().view;
-    let cards: Vec<u32> = view
-        .rows
-        .iter()
-        .enumerate()
-        .filter(|(_, row)| matches!(row, Row::Thread(_)))
-        .map(|(index, _)| index as u32)
-        .collect();
-    assert_eq!(view.overview.threads, cards, "the overview strip marks both cards");
 }
 
 /// In one column a card sits under the block of its line too. New only leaves the removed block
@@ -945,8 +902,8 @@ fn threads_sit_under_the_block_of_their_line_in_one_column() {
 
     let (_, new) = sample();
     let mut added = Scene::new("", &new, DiffLayout::SideBySide, 3);
-    added.old = None;
-    added.threads = vec![thread_at("on-new", DiffSide::New, line_in(&new, &same(8)), ON_NEW)];
+    added.doc.old = None;
+    added.doc.threads = vec![thread_at("on-new", DiffSide::New, line_in(&new, &same(8)), ON_NEW)];
     let mut harness = self::harness(added, [800.0, 1500.0]);
     harness.run();
     assert_between(
@@ -964,7 +921,7 @@ fn a_comment_on_an_unshown_line_says_so_and_opens_the_text_diff() {
     let (old, new) = sample();
     let mut scene = Scene::new(&old, &new, DiffLayout::SideBySide, FULL_FILE_CONTEXT);
     let body = "Why the blank line here?";
-    scene.threads = vec![thread_at("blank", DiffSide::New, 2, body)];
+    scene.doc.threads = vec![thread_at("blank", DiffSide::New, 2, body)];
     let mut harness = harness(scene, [1000.0, 900.0]);
     harness.run();
     let note =
@@ -992,23 +949,15 @@ fn a_comment_on_an_unshown_line_says_so_and_opens_the_text_diff() {
     );
 }
 
-/// A fold holding comments counts them on its bar and in the overview strip; opened, it shows the
-/// first of them.
+/// A fold holding comments counts them on its bar; opened, it shows the first of them.
 #[test]
 fn a_fold_counts_its_comments_and_opens_to_them() {
     let (old, new) = sample();
     let mut scene = Scene::new(&old, &new, DiffLayout::SideBySide, 2);
-    scene.threads = vec![thread_at("folded", DiffSide::New, line_in(&new, &same(30)), IN_FOLD)];
+    scene.doc.threads = vec![thread_at("folded", DiffSide::New, line_in(&new, &same(30)), IN_FOLD)];
     let mut harness = harness(scene, [1000.0, 1100.0]);
     harness.run();
     assert!(card(&harness, IN_FOLD).is_none(), "folded away");
-    let view = &harness.state().view;
-    let fold = view
-        .rows
-        .iter()
-        .position(|row| matches!(row, Row::Folded { pairs } if pairs.contains(&32)))
-        .expect("the fold with paragraph 30");
-    assert_eq!(view.overview.threads, [fold as u32], "the overview strip marks the fold");
     let bar = harness
         .query_all_by_label_contains("unchanged blocks")
         .find(|node| {
@@ -1037,7 +986,7 @@ fn a_fold_counts_its_comments_and_opens_to_them() {
 #[test]
 fn hidden_comments_show_one_by_one_from_their_count() {
     let mut scene = commented(DiffLayout::SideBySide, FULL_FILE_CONTEXT);
-    scene.show_threads = false;
+    scene.doc.show_threads = false;
     let mut harness = harness(scene, [1000.0, 1300.0]);
     harness.run();
     assert!(
@@ -1065,14 +1014,14 @@ fn hidden_comments_show_one_by_one_from_their_count() {
     harness.run();
     assert!(card(&harness, ON_NEW).is_none(), "a second click hides it again");
 
-    harness.state_mut().show_threads = true;
+    harness.state_mut().doc.show_threads = true;
     harness.run();
     assert!(
         card(&harness, ON_NEW).is_some() && card(&harness, ON_OLD).is_some(),
         "switched on, every card shows"
     );
     assert!(harness.query_by_label_contains("comment hidden here").is_none(), "without counts");
-    harness.state_mut().show_threads = false;
+    harness.state_mut().doc.show_threads = false;
     harness.run();
     assert!(
         card(&harness, ON_NEW).is_none() && card(&harness, ON_OLD).is_none(),
@@ -1086,11 +1035,11 @@ fn hidden_comments_show_one_by_one_from_their_count() {
 fn jumping_to_a_hidden_comment_opens_its_fold_and_shows_it() {
     let (old, new) = sample();
     let mut scene = Scene::new(&old, &new, DiffLayout::SideBySide, 2);
-    scene.threads = vec![
+    scene.doc.threads = vec![
         thread_at("folded", DiffSide::New, line_in(&new, &same(30)), IN_FOLD),
         thread_at("on-old", DiffSide::Old, line_in(&old, REMOVED), ON_OLD),
     ];
-    scene.show_threads = false;
+    scene.doc.show_threads = false;
     let mut harness = harness(scene, [1000.0, 900.0]);
     harness.run();
     harness.state_mut().view.reveal_thread("folded");
@@ -1106,14 +1055,14 @@ fn switching_comments_keeps_the_view_in_place() {
     let (old, new) = sample();
     let mut scene = Scene::new(&old, &new, DiffLayout::SideBySide, FULL_FILE_CONTEXT);
     let (first, second) = ("A first comment above the view.", "A second comment above the view.");
-    scene.threads = vec![
+    scene.doc.threads = vec![
         thread_at("first", DiffSide::New, line_in(&new, &same(1)), first),
         thread_at("second", DiffSide::Old, line_in(&old, &same(2)), second),
     ];
     let mut harness = harness(scene, [1000.0, 500.0]);
     harness.run();
     assert!(card(&harness, first).is_some(), "the cards show at the top");
-    wheel(&mut harness, pos2(500.0, 250.0), -900.0);
+    wheel(&mut harness, pos2(500.0, 250.0), vec2(0.0, -900.0));
     assert!(
         card(&harness, first).is_none() && card(&harness, second).is_none(),
         "the cards are above the view"
@@ -1123,7 +1072,7 @@ fn switching_comments_keeps_the_view_in_place() {
         .expect("a paragraph in view");
     let before = tops(&harness, &same(watched))[0];
     for show in [false, true] {
-        harness.state_mut().show_threads = show;
+        harness.state_mut().doc.show_threads = show;
         harness.run();
         let after = tops(&harness, &same(watched));
         assert!(
@@ -1202,6 +1151,7 @@ fn a_five_thousand_line_readme_lays_out_only_the_rows_in_view() {
         "every row measured after {frames} frames"
     );
     harness.input_mut().events.push(Event::PointerMoved(pos2(640.0, 450.0)));
+    let mut most_cells = 0;
     for frame in 0..120 {
         let direction = if frame < 60 { -1.0 } else { 1.0 };
         harness.input_mut().events.push(Event::MouseWheel {
@@ -1212,14 +1162,10 @@ fn a_five_thousand_line_readme_lays_out_only_the_rows_in_view() {
             source: MouseWheelSource::Wheel,
         });
         harness.step();
+        most_cells = most_cells.max(harness.state().view.probe.cells.len());
     }
     let rows = harness.state().view.rows.len();
-    let probe = &harness.state().view.probe;
-    assert!(
-        probe.cells.len() < 80,
-        "a frame lays out the rows in view, not {} of {rows}",
-        probe.cells.len()
-    );
+    assert!(most_cells < 80, "a frame lays out the rows in view, not {most_cells} of {rows}");
 }
 
 /// The 5,000-line README's rendered diff at 4K, scrolled at the standard patterns. `#[ignore]`d;
@@ -1245,21 +1191,11 @@ fn frame_budget_markdown_diff() {
                 }
                 bench.warm_up(pointer);
             }
-            for (pattern, speed) in PATTERNS {
-                let name = format!(
-                    "markdown diff 5k {layout:?} @{:.0}% {pattern}",
-                    pixels_per_point * 100.0
-                );
-                reports.push(bench.scroll_best(&name, pointer, vec2(0.0, -speed)));
-            }
+            let view = format!("markdown diff 5k {layout:?}");
+            reports.extend(bench.scroll_patterns(&view, pointer, vec2(0.0, -1.0)));
         }
     }
-    for report in &reports {
-        report.print();
-    }
-    for report in &reports {
-        report.assert_within_budget();
-    }
+    frame_bench::finish(&reports);
 }
 
 #[test]

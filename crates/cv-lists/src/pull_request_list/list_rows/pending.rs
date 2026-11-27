@@ -5,8 +5,9 @@
 //! the dimmed row gives up. Once the write lands the row is normal again, or leaves the list
 //! ([`super::leaving`]).
 
-use cv_base::theme::{self, icons, motion, style};
-use egui::{Align2, Id, Pos2, Rect, Sense, Ui, pos2, vec2};
+use cv_base::theme::{self, icons, style};
+use cv_widgets::states;
+use egui::{Id, Pos2, Rect, Sense, Ui, pos2, vec2};
 
 const HEIGHT: f32 = 18.0;
 const INSET: f32 = 7.0;
@@ -41,14 +42,7 @@ pub fn paint(ui: &Ui, row: Rect, id: Id, at: Pos2, marker: &Marker<'_>) -> f32 {
     painter.rect_filled(pill, HEIGHT / 2.0, palette.selection);
     let busy =
         Rect::from_center_size(pos2(pill.left() + INSET + glyph / 2.0, middle), vec2(glyph, glyph));
-    if motion::is_reduced(ui.ctx()) {
-        // Still, but still saying "busy".
-        let font = icons::rest_font(&palette, glyph);
-        let color = palette.accent_text;
-        painter.text(busy.center(), Align2::CENTER_CENTER, icons::CIRCLE_NOTCH, font, color);
-    } else {
-        egui::Spinner::new().size(glyph).color(palette.accent_text).paint_at(ui, busy);
-    }
+    states::spinner(ui, busy, palette.accent_text);
     let text_left = busy.right() + SPINNER_GAP;
     painter.galley(pos2(text_left, words_top), words, palette.accent_text);
     let name = format!("Pending on {}: {}", marker.number, marker.doing);

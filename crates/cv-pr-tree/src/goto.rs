@@ -10,13 +10,13 @@ use super::FileTree;
 use cv_base::theme::{self, style};
 
 /// The tree filter's id, so the keys know whether it has the keyboard.
-pub fn filter_id() -> Id {
+pub(crate) fn filter_id() -> Id {
     Id::unique("files_tree_filter")
 }
 
 /// The go-to's state, kept with the tree it filters.
 #[derive(Default)]
-pub struct GoTo {
+pub(crate) struct GoTo {
     /// The search from before Ctrl+P, while a go-to runs.
     before: Option<String>,
     /// The file the arrows moved to (by index); the first match until they move.
@@ -115,7 +115,7 @@ fn finish(tree: &mut FileTree, ctx: &Context) {
 
 /// The highlight follows the search: the first match whenever the search changed. Call once the
 /// rows are built for the search.
-pub fn follow_search(tree: &mut FileTree) {
+pub(crate) fn follow_search(tree: &mut FileTree) {
     if !tree.goto.is_active() || tree.goto.searched.as_deref() == Some(tree.filter.search.as_str())
     {
         return;
@@ -125,12 +125,12 @@ pub fn follow_search(tree: &mut FileTree) {
 }
 
 /// The file the arrows are on, while a go-to runs.
-pub fn highlighted(tree: &FileTree) -> Option<usize> {
+pub(crate) fn highlighted(tree: &FileTree) -> Option<usize> {
     tree.goto.highlighted.filter(|_| tree.goto.is_active())
 }
 
 /// Outlines the highlighted row at `rect` as the keyboard's place, like a focus ring.
-pub fn paint_highlight(ui: &Ui, rect: Rect) {
+pub(crate) fn paint_highlight(ui: &Ui, rect: Rect) {
     let palette = theme::palette(ui.ctx());
     ui.painter().rect_stroke(
         rect.shrink(1.0),

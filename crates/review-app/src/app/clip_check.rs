@@ -22,7 +22,7 @@
 
 use egui::accesskit::Role;
 use egui::epaint::{ClippedShape, Shape, TextShape};
-use egui::{Context, Id, LayerId, Order, Pos2, Rect, Ui};
+use egui::{Context, LayerId, Order, Pos2, Rect, Ui};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
@@ -34,8 +34,6 @@ use cv_widgets::surfaces;
 const TOLERANCE: f32 = 1.0;
 /// Overlaps smaller than this on either axis are glyph extents touching.
 const OVERLAP: f32 = 2.0;
-const CAPTURE: &str = "clip_check.capture";
-const CAPTURED: &str = "clip_check.captured";
 
 /// One text as painted: where its glyphs are, what clips it, and on which layer.
 #[derive(Clone)]
@@ -68,7 +66,6 @@ impl PaintedText {
     }
 }
 
-#[derive(Clone)]
 struct Captured {
     texts: Vec<PaintedText>,
     /// Filled rects on layers above the panels (popup and tooltip frames, their rows): rect and clip.
@@ -105,21 +102,36 @@ const EXPAND_LINE: egui::Color32 = egui::Color32::from_rgb(200, 0, 0);
 
 /// Captures the shapes of every layer at the end of each pass while [`inspect`] asks for them.
 pub fn install(ctx: &Context) {
-    ctx.on_end_pass("clip_check", std::sync::Arc::new(capture));
+    ctx.add_plugin(ClipCapture::default());
 }
 
-fn capture(ui: &mut Ui) {
-    let ctx = ui.ctx().clone();
-    if !ctx.data(|data| data.get_temp::<bool>(Id::unique(CAPTURE)).unwrap_or(false)) {
-        return;
+/// Holds the frame [`frame`] armed it for, captured at the end of that pass.
+#[derive(Default)]
+struct ClipCapture {
+    is_capturing: bool,
+    captured: Option<Captured>,
+}
+
+impl egui::Plugin for ClipCapture {
+    fn debug_name(&self) -> &'static str {
+        "clip_check"
     }
+
+    fn on_end_pass(&mut self, ui: &mut Ui) {
+        if self.is_capturing {
+            self.captured = Some(capture(ui.ctx()));
+        }
+    }
+}
+
+fn capture(ctx: &Context) -> Captured {
     let mut layers: Vec<LayerId> = ctx.memory(|memory| memory.layer_ids().collect());
     if !layers.contains(&LayerId::background()) {
         layers.insert(0, LayerId::background());
     }
     let mut captured = Captured {
-        exempt: surfaces::clipping_regions(&ctx),
-        covers: find_widget_now(&ctx).into_iter().collect(),
+        exempt: surfaces::clipping_regions(ctx),
+        covers: find_widget_now(ctx).into_iter().collect(),
         screen: ctx.content_rect(),
         ..Captured::default()
     };
@@ -138,7 +150,7 @@ fn capture(ui: &mut Ui) {
             collect(layer, clipped.clip_rect, &clipped.shape, &mut captured);
         }
     }
-    ctx.data_mut(|data| data.insert_temp(Id::unique(CAPTURED), captured));
+    captured
 }
 
 #[expect(
@@ -216,24 +228,33 @@ fn painted_text(layer: LayerId, clip: Rect, shape: &TextShape) -> Option<Painted
 
 /// Paints one frame and returns it as the checks see it.
 fn frame(harness: &mut Harness<'_, ReviewApp>) -> Captured {
-    harness.ctx.data_mut(|data| data.insert_temp(Id::unique(CAPTURE), true));
+    harness
+        .ctx
+        .with_plugin(|capture: &mut ClipCapture| capture.is_capturing = true)
+        .expect("clip_check::install was called on this harness");
     harness.ctx.all_styles_mut(|style| style.debug.show_expand_width = true);
     harness.step();
     harness.ctx.all_styles_mut(|style| style.debug.show_expand_width = false);
-    let captured = harness.ctx.data_mut(|data| {
-        data.insert_temp(Id::unique(CAPTURE), false);
-        data.remove_temp::<Captured>(Id::unique(CAPTURED)).unwrap_or_default()
-    });
-    // One more frame without the debug marks, so a screenshot taken next does not show them.
-    harness.step();
-    captured
+    harness
+        .ctx
+        .with_plugin(|capture: &mut ClipCapture| {
+            capture.is_capturing = false;
+            capture.captured.take()
+        })
+        .flatten()
+        .expect("the armed pass captured its shapes")
 }
 
-/// Name and rect (in points) of the accessibility nodes whose role is wanted, with their parent's id.
-fn nodes(
-    harness: &Harness<'_, ReviewApp>,
-    is_wanted: impl Fn(Role) -> bool,
-) -> Vec<(String, Rect, Option<String>)> {
+/// An accessibility node as the checks see it: its name, its rect in points and its parent.
+struct Control {
+    name: String,
+    rect: Rect,
+    /// The parent's id in the tree, as accesskit's consumer packs it into a number.
+    parent: Option<u128>,
+}
+
+/// The accessibility nodes whose role is wanted.
+fn nodes(harness: &Harness<'_, ReviewApp>, is_wanted: impl Fn(Role) -> bool) -> Vec<Control> {
     let pixels_per_point = harness.ctx.pixels_per_point();
     harness
         .query_all_by(|node| is_wanted(node.role()))
@@ -248,11 +269,11 @@ fn nodes(
                 .label()
                 .or_else(|| accesskit.value())
                 .unwrap_or_else(|| format!("{:?}", accesskit.role()));
-            Some((
+            Some(Control {
                 name,
                 rect,
-                node.parent().map(|parent| format!("{:?}", parent.accesskit_node().id())),
-            ))
+                parent: node.parent().map(|parent| u128::from(parent.accesskit_node().id())),
+            })
         })
         .collect()
 }
@@ -286,7 +307,7 @@ fn is_text_input(role: Role) -> bool {
 pub fn inspect(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
     let captured = frame(harness);
     let inputs: Vec<Rect> =
-        nodes(harness, is_text_input).into_iter().map(|(_, rect, _)| rect).collect();
+        nodes(harness, is_text_input).into_iter().map(|control| control.rect).collect();
     // A cover's own content is checked although it lies in a code region.
     let is_covered = |rect: Rect| captured.covers.iter().any(|cover| cover.contains_rect(rect));
     let is_exempt = |rect: Rect| {
@@ -421,12 +442,12 @@ fn popups_leaving_the_window(captured: &Captured) -> Vec<String> {
 
 /// Controls that run past the window's sides, and sibling controls that overlap.
 fn stray_controls(
-    controls: &[(String, Rect, Option<String>)],
+    controls: &[Control],
     screen: Rect,
     is_exempt: &dyn Fn(Rect) -> bool,
 ) -> Vec<String> {
     let mut findings = Vec::new();
-    for (name, rect, _) in controls {
+    for Control { name, rect, .. } in controls {
         let sideways =
             rect.left() < screen.left() - TOLERANCE || rect.right() > screen.right() + TOLERANCE;
         if sideways && rect.intersects(screen) && !is_exempt(*rect) {
@@ -438,19 +459,20 @@ fn stray_controls(
             ));
         }
     }
-    for (index, (a_name, a, a_parent)) in controls.iter().enumerate() {
-        for (b_name, b, b_parent) in &controls[index + 1..] {
-            if a_parent != b_parent || a.contains_rect(*b) || b.contains_rect(*a) {
+    for (index, a) in controls.iter().enumerate() {
+        for b in &controls[index + 1..] {
+            if a.parent != b.parent || a.rect.contains_rect(b.rect) || b.rect.contains_rect(a.rect)
+            {
                 continue;
             }
-            let overlap = a.intersect(*b);
+            let overlap = a.rect.intersect(b.rect);
             if overlap.width() > OVERLAP && overlap.height() > OVERLAP && !is_exempt(overlap) {
                 findings.push(format!(
                     "controls {:?} {} and {:?} {} overlap",
-                    short(a_name),
-                    show(*a),
-                    short(b_name),
-                    show(*b)
+                    short(&a.name),
+                    show(a.rect),
+                    short(&b.name),
+                    show(b.rect)
                 ));
             }
         }

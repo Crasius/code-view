@@ -12,8 +12,9 @@
 use std::fmt::Write as _;
 use std::time::Duration;
 
-use cv_base::theme::{self, icons, motion, style};
-use cv_widgets::{buttons, elide, focus, row};
+use cv_base::theme::{self, icons, style};
+use cv_widgets::numbers::counted;
+use cv_widgets::{buttons, elide, focus, row, states};
 use egui::collapsing_header::CollapsingState;
 use egui::{
     Align2, Color32, FontId, Id, Rect, Response, RichText, Sense, Ui, WidgetInfo, pos2, vec2,
@@ -106,7 +107,7 @@ fn line(ui: &mut Ui, text: &str, open: Option<bool>) -> Response {
     let inset = style::SPACE_S;
     let room = (ui.available_width() - 2.0 * inset - chevron).max(0.0);
     let shown = elide::reference(ui, text, &font, room);
-    let text_width = text_width(ui, &shown, &font);
+    let text_width = elide::text_width(ui, &shown, &font);
     let size = vec2(2.0 * inset + chevron + text_width, buttons::SUBTLE_HEIGHT);
     let sense = if open.is_some() { Sense::click() } else { Sense::hover() };
     let (rect, response) = ui.allocate_exact_size(size, sense);
@@ -210,16 +211,14 @@ fn step_row(ui: &mut Ui, step: &ChatStep, status: Status) {
     response.on_hover_text(label);
 }
 
-/// Check in the success colour, an error mark, or a spinner in the accent colour (a still ring
-/// under reduced motion).
+/// Check in the success colour, an error mark, or the busy mark in the accent colour.
 fn status_icon(ui: &Ui, rect: Rect, status: Status) {
     let palette = theme::palette(ui.ctx());
     let (glyph, color) = match status {
         Status::Done => (icons::CHECK, palette.success),
         Status::Failed => (icons::X, palette.error),
-        Status::Running if motion::is_reduced(ui.ctx()) => (icons::CIRCLE_NOTCH, palette.accent),
         Status::Running => {
-            egui::Spinner::new().size(rect.height()).color(palette.accent).paint_at(ui, rect);
+            states::spinner(ui, rect, palette.accent);
             return;
         }
     };
@@ -264,7 +263,7 @@ fn working_line(elapsed_ms: u64, steps: &[ChatStep]) -> String {
     let count = steps.iter().filter(|step| step.kind != THINKING).count();
     if count > 0 {
         // Writing to a String cannot fail.
-        let _infallible = write!(text, " · {}", plural(count, "step", "steps"));
+        let _infallible = write!(text, " · {}", counted(count, "step", "steps"));
     }
     text
 }
@@ -284,29 +283,25 @@ fn finished_line(steps: &[ChatStep]) -> Option<String> {
     let kinds: Vec<StepKind> =
         steps.iter().filter(|step| step.kind != THINKING).map(kind_of).collect();
     let count = |kind: StepKind| kinds.iter().filter(|seen| **seen == kind).count();
-    let counted = [
+    let kinds_shown = [
         (StepKind::Read, "read", "file", "files"),
         (StepKind::Search, "", "search", "searches"),
         (StepKind::Run, "ran", "command", "commands"),
         (StepKind::Edit, "edited", "file", "files"),
         (StepKind::Other, "used", "tool", "tools"),
     ];
-    for (kind, verb, one, many) in counted {
+    for (kind, verb, one, many) in kinds_shown {
         let count = count(kind);
         if count == 0 {
             continue;
         }
-        let counted = plural(count, one, many);
-        parts.push(if verb.is_empty() { counted } else { format!("{verb} {counted}") });
+        let calls = counted(count, one, many);
+        parts.push(if verb.is_empty() { calls } else { format!("{verb} {calls}") });
     }
     let text = parts.join(" · ");
     let mut chars = text.chars();
     let first = chars.next()?;
     Some(first.to_uppercase().chain(chars).collect())
-}
-
-fn plural(count: usize, one: &str, many: &str) -> String {
-    format!("{count} {}", if count == 1 { one } else { many })
 }
 
 /// "6 s", "1 min 5 s"; at least a second, so a short stretch never reads as none.
@@ -330,15 +325,9 @@ fn tail(text: &str, max: usize) -> String {
     format!("…{}", kept.trim_start())
 }
 
-fn text_width(ui: &Ui, text: &str, font: &FontId) -> f32 {
-    ui.fonts_mut(|fonts| {
-        fonts.layout_no_wrap(text.to_owned(), font.clone(), Color32::PLACEHOLDER).size().x
-    })
-}
-
 /// `text` cut in the middle to fit `width` in `font`: a path keeps its start and its file name.
 fn middle(ui: &Ui, text: &str, font: &FontId, width: f32) -> String {
-    fit_middle(text, width, |candidate| text_width(ui, candidate, font))
+    fit_middle(text, width, |candidate| elide::text_width(ui, candidate, font))
 }
 
 /// The longest form of `text`, cut in the middle, that `measure` says fits `width`.

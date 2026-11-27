@@ -335,41 +335,27 @@ impl RowStatuses {
     /// `row`'s answer as if it had arrived.
     #[cfg(test)]
     pub fn answered_for_test(&mut self, row: &StatusRow, status: RowStatus) {
-        self.entries.insert(
-            row.storage_key.clone(),
-            Entry {
-                requested_at: row.listed_at,
-                fingerprint: row.fingerprint,
-                phase: Phase::Done,
-                latest: Some(status),
-            },
-        );
+        self.insert_for_test(row, Phase::Done, Some(status));
     }
 
     /// `row`'s request as if it had just left.
     #[cfg(test)]
     pub fn running_for_test(&mut self, row: &StatusRow) {
-        let entry = Entry {
-            requested_at: row.listed_at,
-            fingerprint: row.fingerprint,
-            phase: Phase::Running,
-            latest: None,
-        };
-        self.entries.insert(row.storage_key.clone(), entry);
+        self.insert_for_test(row, Phase::Running, None);
     }
 
     /// `row`'s request as if it had failed with `message`.
     #[cfg(test)]
     pub fn failed_for_test(&mut self, row: &StatusRow, message: &str) {
-        self.entries.insert(
-            row.storage_key.clone(),
-            Entry {
-                requested_at: row.listed_at,
-                fingerprint: row.fingerprint,
-                phase: Phase::Failed(message.to_owned()),
-                latest: None,
-            },
-        );
+        self.insert_for_test(row, Phase::Failed(message.to_owned()), None);
+    }
+
+    /// `row`'s entry in `phase` with the answer `latest`, asked for when its listing answered.
+    #[cfg(test)]
+    fn insert_for_test(&mut self, row: &StatusRow, phase: Phase, latest: Option<RowStatus>) {
+        let entry =
+            Entry { requested_at: row.listed_at, fingerprint: row.fingerprint, phase, latest };
+        self.entries.insert(row.storage_key.clone(), entry);
     }
 }
 

@@ -1,25 +1,23 @@
 //! The conversation's state as the agent's events and the user's actions move it, without a page:
 //! the events go in as the runner hands them out, the actions through their functions.
 
-use std::time::{Duration, Instant};
-
 use cv_runtime::route::PullRequestKey;
 use cv_services::Services;
-use cv_testkit::ScratchDir;
+use cv_testkit::{ScratchDir, poll_until};
 use review_agent::{AgentError, AgentEvent, AgentKind, Usage};
-use review_store::{AppPaths, TurnEnd, TurnKind};
+use review_store::{TurnEnd, TurnKind};
 
+use super::checkout::{self, Checkout};
 use super::runner::RunnerEvent;
-use super::{Assistant, Block, actions, checkout, links, transcript};
+use super::{Assistant, Block, actions, links, transcript};
 
 const REPOSITORY: &str = "Acme/app";
 const NUMBER: u64 = 7;
 
 fn scene(name: &str) -> (ScratchDir, Services, Assistant) {
     let scratch = ScratchDir::new(name);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
     let mut services =
-        Services::new(egui::Context::default(), paths, cv_providers::create_provider);
+        Services::new(egui::Context::default(), scratch.app_paths(), cv_providers::create_provider);
     let key = PullRequestKey {
         connection_id: "gh".into(),
         repository_key: REPOSITORY.into(),
@@ -69,12 +67,10 @@ fn a_retried_answer_never_shows_the_links_of_the_answer_before() {
         AgentEvent::TurnDone(Usage::default()),
     ]);
     assistant.take_in_all(events, &mut services);
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while assistant.links.get(0, &assistant.chat.turns[0].answer).is_none() {
-        assert!(Instant::now() < deadline, "the failed answer's citation gets its link");
+    poll_until("the failed answer's citation's link", || {
         links::check_links(&mut assistant, &services);
-        std::thread::yield_now();
-    }
+        assistant.links.get(0, &assistant.chat.turns[0].answer).is_some()
+    });
 
     actions::retry(&mut assistant);
     assistant.take_in_all(agent(vec![AgentEvent::Text("Nothing".into())]), &mut services);
@@ -98,18 +94,17 @@ fn moving_to_new_commits_is_dropped_with_the_conversation_that_asked_for_it() {
     let note = super::brief::update_note(&old, &new);
     transcript::begin(&mut assistant.chat, TurnKind::Update, "Moved", None, note.clone());
     assistant.move_to = Some(new.clone());
-    assistant.preparing = Some(new.clone());
     assistant.pending = Some(note);
 
     assistant.save(&mut services);
     assistant.show_conversation(second, &services);
-    assistant.take_in(RunnerEvent::CheckoutReady(dir.clone()), &mut services);
+    let moved = Checkout { dir: dir.clone(), head: new.clone() };
+    assistant.take_in(RunnerEvent::CheckoutReady(moved), &mut services);
     assert_eq!(assistant.chat.head.as_deref(), Some(new.as_str()), "a new conversation starts");
     assistant.save(&mut services);
     assistant.show_conversation(first, &services);
     // A checkout landing now (the next question's) does not move this conversation on.
-    assistant.preparing = Some(new);
-    assistant.take_in(RunnerEvent::CheckoutReady(dir), &mut services);
+    assistant.take_in(RunnerEvent::CheckoutReady(Checkout { dir, head: new }), &mut services);
 
     assert_eq!(assistant.chat.head, Some(old));
 }
@@ -144,11 +139,10 @@ fn a_stopped_move_to_new_commits_keeps_the_head_the_agent_knows() {
     let note = super::brief::update_note(&old, &new);
     transcript::begin(&mut assistant.chat, TurnKind::Update, "Moved", None, note.clone());
     assistant.move_to = Some(new.clone());
-    assistant.preparing = Some(new);
     assistant.pending = Some(note);
 
     actions::stop(&mut assistant);
-    assistant.take_in(RunnerEvent::CheckoutReady(dir), &mut services);
+    assistant.take_in(RunnerEvent::CheckoutReady(Checkout { dir, head: new }), &mut services);
 
     assert_eq!(assistant.chat.turns[0].end, TurnEnd::Stopped);
     assert_eq!(assistant.chat.head, Some(old));

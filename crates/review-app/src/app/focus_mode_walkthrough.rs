@@ -14,7 +14,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
-use super::github_mock::{ExtraFile, FILE, GitHubHost, open_pull_request};
+use super::github_mock::{ExtraFile, FILE, GitHubHost, ReplacedHead, open_pull_request};
 use super::walkthrough::{self, wait_until};
 use cv_base::platform::{self, hit_test, shortcut};
 use cv_shell::focus_mode::{self, ENTER_HINT, EXIT_HINT, Surface, strip};
@@ -384,7 +384,7 @@ fn focus_mode_folds_the_original_versions_banner_into_its_strip() {
     });
     let replaced = host.force_push_outdating_the_thread(
         &format!("{documented}pub fn greeting() -> &'static str {{\n    \"Hello, world\"\n}}\n"),
-        true,
+        ReplacedHead::Kept,
     );
     let banner = format!("Showing the version from {}", &replaced[..7]);
     let mut harness = walkthrough::app(&scratch, &[host.connection("gh", "Acme")]);

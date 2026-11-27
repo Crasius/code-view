@@ -2,13 +2,19 @@
 //! the last refresh failed, a retry. The Favorites card's context menu hides its lane.
 
 use cv_base::theme::{self, Palette, icons, style};
-use cv_widgets::{buttons, provider_icon, row, star};
+use cv_widgets::{buttons, elide, provider_icon, row, star};
 use egui::{Align2, Color32, CornerRadius, FontId, Painter, Rect, Sense, Ui, pos2, vec2};
 
-use super::{Group, Header, ListAction, ROW_PADDING};
+use super::{CHIP_HEIGHT, Group, Header, ListAction, ROW_PADDING, chip_width, paint_chip};
 
 /// The Favorites card's menu entry; the overview's star tool and Settings bring the lane back.
 const HIDE_LANE: &str = "Hide the Favorites lane";
+/// The size of a header's caret glyph.
+const CARET_SIZE: f32 = 14.0;
+/// From the caret's left edge to the mark after it.
+const CARET_TO_MARK: f32 = 24.0;
+/// From a header's mark to its title.
+pub(super) const MARK_TO_TITLE: f32 = 26.0;
 
 /// In the overview the whole header toggles the card (click, Enter, Space). A connection's card
 /// names the connection and its platform; the Favorites card leads with a filled star and counts
@@ -26,15 +32,7 @@ pub fn paint(
     let painter = ui.painter_at(rect);
     let mut left = rect.left() + ROW_PADDING;
     if is_collapsible {
-        let chevron = if group.opening > 0.5 { icons::CARET_DOWN } else { icons::CARET_RIGHT };
-        painter.text(
-            pos2(left + 7.0, rect.center().y),
-            Align2::CENTER_CENTER,
-            chevron,
-            FontId::proportional(14.0),
-            palette.text_secondary,
-        );
-        left += 24.0;
+        left = paint_caret(&painter, &palette, left, rect.center().y, group.opening > 0.5);
     }
     let mark = Rect::from_center_size(
         pos2(left + icons::SIZE / 2.0, rect.center().y),
@@ -63,8 +61,29 @@ pub fn paint(
         right = left_end - style::SPACE_S;
         retry = picked;
     }
-    paint_title(ui, &painter, (left + 26.0)..=right, rect.center().y, (&name, &detail), key);
+    let title_left = left + MARK_TO_TITLE;
+    paint_title(ui, &painter, title_left..=right, rect.center().y, (&name, &detail), key);
     retry.or(action)
+}
+
+/// The caret of a header that opens and closes, at `left`; returns the left of the mark after
+/// it. The card headers and the section headers share it, so their marks and titles line up.
+pub(super) fn paint_caret(
+    painter: &Painter,
+    palette: &Palette,
+    left: f32,
+    center_y: f32,
+    is_open: bool,
+) -> f32 {
+    let caret = if is_open { icons::CARET_DOWN } else { icons::CARET_RIGHT };
+    painter.text(
+        pos2(left + CARET_SIZE / 2.0, center_y),
+        Align2::CENTER_CENTER,
+        caret,
+        FontId::proportional(CARET_SIZE),
+        palette.text_secondary,
+    );
+    left + CARET_TO_MARK
 }
 
 /// The card's name and the detail after it, between `room`'s ends: a wide font or a narrow
@@ -79,12 +98,8 @@ fn paint_title(
 ) {
     let palette = theme::palette(ui.ctx());
     let (left, right) = (*room.start(), *room.end());
-    let mut job = egui::text::LayoutJob::single_section(
-        name.to_owned(),
-        egui::TextFormat::simple(theme::fonts::semibold_font(style::BODY_SIZE), palette.text),
-    );
-    job.wrap = egui::text::TextWrapping::truncate_at_width((right - left).max(0.0));
-    let title = painter.layout_job(job);
+    let font = theme::fonts::semibold_font(style::BODY_SIZE);
+    let title = elide::line(painter, name, font, palette.text, right - left);
     let title_rect = Rect::from_min_size(pos2(left, center_y - title.size().y / 2.0), title.size());
     let is_cut = title.elided;
     painter.galley(title_rect.min, title, palette.text);
@@ -162,8 +177,10 @@ fn toggle(ui: &Ui, rect: Rect, group: &Group<'_>, name: &str, detail: &str) -> O
         return None;
     }
     Some(match group.header {
-        Header::Connection(result) => ListAction::Toggle(result.connection_id.clone()),
-        Header::Favorites { .. } => ListAction::ToggleFavorites,
+        Header::Connection(result) => {
+            ListAction::ToggleConnectionCard(result.connection_id.clone())
+        }
+        Header::Favorites { .. } => ListAction::ToggleFavoritesCard,
     })
 }
 
@@ -190,12 +207,12 @@ fn paint_count(painter: &Painter, palette: &Palette, rect: Rect, count: Option<u
         FontId::proportional(style::SMALL_SIZE),
         palette.text_secondary,
     );
+    let width = chip_width(&galley);
     let chip = Rect::from_min_size(
-        pos2(right - galley.size().x - 16.0, rect.center().y - 10.0),
-        vec2(galley.size().x + 16.0, 20.0),
+        pos2(right - width, rect.center().y - CHIP_HEIGHT / 2.0),
+        vec2(width, CHIP_HEIGHT),
     );
-    painter.rect_filled(chip, 10, palette.surface_subtle);
-    painter.galley(chip.center() - galley.size() / 2.0, galley, palette.text_secondary);
+    paint_chip(painter, chip, galley, (palette.surface_subtle, palette.text_secondary), None);
     chip.left() - style::SPACE_S
 }
 

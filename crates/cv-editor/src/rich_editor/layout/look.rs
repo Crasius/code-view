@@ -86,12 +86,12 @@ impl Look {
 pub fn chip_label(
     atom: &Atom,
     people: Option<&PullRequestContext>,
-    platform: Option<ProviderKind>,
+    platform: ProviderKind,
 ) -> (String, ChipKind) {
     match atom {
         Atom::Mention { key } => {
             let name = match platform {
-                Some(ProviderKind::AzureDevOps) => people
+                ProviderKind::AzureDevOps => people
                     .and_then(|context| {
                         context.people.iter().find(|person| person.id.eq_ignore_ascii_case(key))
                     })

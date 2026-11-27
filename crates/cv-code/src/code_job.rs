@@ -146,7 +146,7 @@ pub fn paint(
                 word_index += 1;
             }
             let in_word = words.get(word_index).is_some_and(|range| range.start <= byte_index);
-            let width = if byte == b'\t' { TAB_WIDTH - column % TAB_WIDTH } else { 1 };
+            let width = if byte == b'\t' { tab_stop(column) } else { 1 };
             match (in_word, word_start) {
                 (true, None) => word_start = Some(column),
                 (false, Some(start)) => {
@@ -185,8 +185,13 @@ pub fn paint(
 }
 
 /// Columns per visual row of a stamped line wrapped at `width` points.
-fn wrap_columns(width: Option<f32>, advance: f32) -> Option<usize> {
+pub(crate) fn wrap_columns(width: Option<f32>, advance: f32) -> Option<usize> {
     width.map(|width| ((width / advance).floor() as usize).max(1))
+}
+
+/// Columns a tab at `column` takes: up to the next tab stop.
+pub(crate) fn tab_stop(column: usize) -> usize {
+    TAB_WIDTH - column % TAB_WIDTH
 }
 
 /// Where the laid-out columns `selected` (tabs expanded) of `text` sit as [`paint`] draws it: per
@@ -264,7 +269,7 @@ pub fn expanded_index(text: &str, index: usize) -> usize {
     }
     let mut column = 0;
     for character in text.chars().take(index) {
-        column += if character == '\t' { TAB_WIDTH - column % TAB_WIDTH } else { 1 };
+        column += if character == '\t' { tab_stop(column) } else { 1 };
     }
     column
 }
@@ -276,7 +281,7 @@ pub fn char_index(text: &str, expanded: usize) -> usize {
     }
     let mut column = 0;
     for (index, character) in text.chars().enumerate() {
-        let width = if character == '\t' { TAB_WIDTH - column % TAB_WIDTH } else { 1 };
+        let width = if character == '\t' { tab_stop(column) } else { 1 };
         if expanded < column + width {
             return if (expanded - column) * 2 >= width { index + 1 } else { index };
         }
@@ -289,7 +294,7 @@ fn expand_tabs(text: &str, column: &mut usize) -> String {
     let mut expanded = String::with_capacity(text.len() + 8);
     for character in text.chars() {
         if character == '\t' {
-            let spaces = TAB_WIDTH - *column % TAB_WIDTH;
+            let spaces = tab_stop(*column);
             expanded.extend(std::iter::repeat_n(' ', spaces));
             *column += spaces;
         } else {

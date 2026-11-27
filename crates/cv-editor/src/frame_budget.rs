@@ -6,7 +6,7 @@
 use std::fmt::Write as _;
 
 use cv_markdown::{self as markdown, RenderOptions};
-use cv_testkit::frame_bench::{Bench, PATTERNS, Report, SCALES};
+use cv_testkit::frame_bench::{Bench, Report, SCALES, finish};
 use egui::text::{CCursor, CCursorRange};
 use egui::text_edit::TextEditState;
 use egui::{Event, Id, pos2, vec2};
@@ -127,19 +127,7 @@ fn bench_description(pixels_per_point: f32, reports: &mut Vec<Report>) {
     let rect = bench.ctx.content_rect();
     let pointer = pos2(rect.left() + 300.0, rect.center().y);
     bench.warm_up(pointer);
-    for (pattern, speed) in PATTERNS {
-        let name = format!("description 2k lines @{:.0}% {pattern}", pixels_per_point * 100.0);
-        reports.push(bench.scroll_best(&name, pointer, vec2(0.0, -speed)));
-    }
-}
-
-fn finish(reports: &[Report]) {
-    for report in reports {
-        report.print();
-    }
-    for report in reports {
-        report.assert_within_budget();
-    }
+    reports.extend(bench.scroll_patterns("description 2k lines", pointer, vec2(0.0, -1.0)));
 }
 
 #[test]

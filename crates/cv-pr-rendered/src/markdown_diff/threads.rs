@@ -12,9 +12,10 @@ use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use egui::{Rect, RichText, Ui, pos2, vec2};
-use review_core::ReviewThread;
+use review_core::{DiffSide, ReviewThread};
 
-use super::{GUTTER, Model, RIGHT_PADDING, Row, Side};
+use super::model::{other, slot};
+use super::{GUTTER, Model, RIGHT_PADDING, Row};
 use cv_base::theme::{self, icons, style};
 use cv_pr_diff::diff_composer;
 use cv_pr_diff::diff_view::cards::{CARD_GAP, CARD_MAX_WIDTH, measure_card};
@@ -27,7 +28,7 @@ pub(super) struct ThreadRow {
     /// Index into the threads the rows were built for.
     pub thread: usize,
     /// The lane of the block the card is under.
-    pub lane: Side,
+    pub lane: DiffSide,
     pub note: Option<Note>,
 }
 
@@ -78,10 +79,10 @@ pub(super) fn threads_key(threads: &[&ReviewThread]) -> u64 {
 
 /// The block of `thread`'s line: its side and unit, and the line when the rendered text does not
 /// show it (the unit is then the next block, or the last). `None` without a line or blocks.
-fn locate(model: &Model, thread: &ReviewThread) -> Option<(Side, usize, Option<u32>)> {
+fn locate(model: &Model, thread: &ReviewThread) -> Option<(DiffSide, usize, Option<u32>)> {
     let anchor = thread.anchor.as_ref()?;
-    let wanted = if diff_composer::is_right(anchor) { Side::New } else { Side::Old };
-    let line = anchor.line_in(wanted.diff_side()).or(anchor.new_line).or(anchor.old_line)?;
+    let wanted = if diff_composer::is_right(anchor) { DiffSide::New } else { DiffSide::Old };
+    let line = anchor.line_in(wanted).or(anchor.new_line).or(anchor.old_line)?;
     // A side the file does not have (an added file's old side): its one version.
     let side = if model.units(wanted).is_empty() { other(wanted) } else { wanted };
     let units = &model.units(side).units;
@@ -92,13 +93,6 @@ fn locate(model: &Model, thread: &ReviewThread) -> Option<(Side, usize, Option<u
         Some(_) => (side, index, Some(line)),
         None => (side, last, Some(line)),
     })
-}
-
-fn other(side: Side) -> Side {
-    match side {
-        Side::Old => Side::New,
-        Side::New => Side::Old,
-    }
 }
 
 /// Where `thread` goes in `rows`: under the row showing its block, or the block's other version
@@ -115,8 +109,8 @@ pub(super) fn place(
     let (side, unit, unshown) = locate(model, thread)?;
     let line =
         thread.anchor.as_ref().and_then(|anchor| anchor.new_line.or(anchor.old_line)).unwrap_or(0);
-    let row_of = |side: Side, unit: usize| unit_rows[slot(side)].get(unit).copied().flatten();
-    let under = |row: usize, lane: Side, note: Option<Note>| Placement::Under {
+    let row_of = |side: DiffSide, unit: usize| unit_rows[slot(side)].get(unit).copied().flatten();
+    let under = |row: usize, lane: DiffSide, note: Option<Note>| Placement::Under {
         row,
         thread: ThreadRow { thread: index, lane, note },
         line,
@@ -128,8 +122,8 @@ pub(super) fn place(
     let pair_index = model.pair_of(side, unit)?;
     let pair = &model.pairs[pair_index];
     let across = match side {
-        Side::Old => pair.new.map(|unit| (Side::New, unit)),
-        Side::New => pair.old.map(|unit| (Side::Old, unit)),
+        DiffSide::Old => pair.new.map(|unit| (DiffSide::New, unit)),
+        DiffSide::New => pair.old.map(|unit| (DiffSide::Old, unit)),
     };
     if let Some(row) = across.and_then(|(side, unit)| Some((side, row_of(side, unit)?))) {
         return Some(under(row.1, row.0, note));
@@ -146,18 +140,15 @@ pub(super) fn place(
             let host = below.or_else(|| {
                 (0..row).rev().find(|index| matches!(rows[*index], Row::Blocks { .. }))
             })?;
-            let lane =
-                rows[host].cells().into_iter().flatten().next().map_or(Side::New, |cell| cell.side);
+            let lane = rows[host]
+                .cells()
+                .into_iter()
+                .flatten()
+                .next()
+                .map_or(DiffSide::New, |cell| cell.side);
             Some(under(host, lane, removed))
         }
         Row::Blocks { .. } | Row::Thread(_) => None,
-    }
-}
-
-fn slot(side: Side) -> usize {
-    match side {
-        Side::Old => 0,
-        Side::New => 1,
     }
 }
 

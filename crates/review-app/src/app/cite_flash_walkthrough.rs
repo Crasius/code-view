@@ -4,35 +4,20 @@
 //! only then flashes them, on the cited side alone in side by side; the flash fades and ends on
 //! its own and stops asking for frames. Needs `git` on PATH, no network, no real CLI.
 
-use std::fmt::Write as _;
-
-use egui::Key;
 use egui_kittest::kittest::Queryable;
-use review_agent::{AgentEvent, AgentKind, FakeAgent, ModelInfo, Usage};
 use review_store::DiffLayout;
 
+use super::assistant_script::{
+    answer_text, ask, install_claude, long_file, wait_for_prompts, wait_for_session,
+};
 use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
-use super::walkthrough::{app, click_now, shows_file_view, type_into, wait_for, wait_for_link};
+use super::walkthrough::{app, click_now, shows_file_view, wait_for, wait_for_link};
 use cv_code::diff_paint::{flash_asks_for_frames, flashed_lines};
 use cv_code::line_source::Pane;
-use cv_services::agents::FakeCli;
 use cv_testkit::ScratchDir;
 
-const PLACEHOLDER: &str = "Ask anything about this pull request";
 /// A file whose only change is on line 2: the cited lines sit in the collapsed gap far below.
 const LONG: &str = "src/long.rs";
-const LINES: usize = 120;
-
-/// Line `line` of the long file; the head changes line 2.
-fn long_file(head: bool) -> Vec<u8> {
-    (1..=LINES)
-        .fold(String::new(), |mut text, line| {
-            let word = if head && line == 2 { "Changed" } else { "Line" };
-            writeln!(text, "/// {word} {line} of the long file.").unwrap();
-            text
-        })
-        .into_bytes()
-}
 
 /// Inline: the three cited lines flash in the only pane, once they are on screen.
 #[test]
@@ -56,28 +41,15 @@ fn cite_and_flash(layout: DiffLayout, range: &str) -> Vec<u32> {
     let long = ExtraFile { path: LONG, base: long_file(false), head: long_file(true) };
     let host = GitHubHost::with_pull_request_files(scratch.path(), &[long]);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    let cli = FakeCli::Installed { models: models(), is_signed_in: true };
-    harness.state().services.agents.fake.set(AgentKind::Claude, cli);
+    install_claude(&harness, true);
     harness.state_mut().services.settings.diff_layout = layout;
     open_pull_request(&mut harness);
 
-    type_into(&mut harness, PLACEHOLDER, "Where are the docs?");
-    harness.key_press(Key::Enter);
-    harness.step();
+    ask(&mut harness, "Where are the docs?");
     let citation = format!("{LONG}:{range}");
-    let mut agent = wait_for(
-        &mut harness,
-        "a session",
-        |harness| harness.state().services.agents.fake.take_session().map(|(_, agent)| agent),
-        |_| {},
-    );
-    wait_for(
-        &mut harness,
-        "the prompt",
-        |_| Some(agent.take_prompts()).filter(|asked| !asked.is_empty()),
-        |_| {},
-    );
-    answer(&agent, &format!("Here:\n\n{citation}"));
+    let (_, mut agent) = wait_for_session(&mut harness);
+    wait_for_prompts(&mut harness, &mut agent);
+    answer_text(&agent, &format!("Here:\n\n{citation}"));
     wait_for_link(&mut harness, &citation);
     // The answer's layout settles before the click.
     for _ in 0..10 {
@@ -133,21 +105,4 @@ fn cite_and_flash(layout: DiffLayout, range: &str) -> Vec<u32> {
     }
     assert!(!flash_asks_for_frames(&harness.ctx), "the ended flash asks for no more frames");
     arrived.iter().map(|(_, line, _)| *line).collect()
-}
-
-fn models() -> Vec<ModelInfo> {
-    vec![ModelInfo {
-        id: "claude-haiku".into(),
-        display_name: "Haiku".into(),
-        description: String::new(),
-        is_default: false,
-        efforts: Vec::new(),
-    }]
-}
-
-/// The agent's whole answer to the running question: `text`, and the turn's end.
-fn answer(agent: &FakeAgent, text: &str) {
-    agent.emit(AgentEvent::Started { session_id: "s-1".into(), model: "claude-haiku".into() });
-    agent.emit(AgentEvent::Text(text.to_owned()));
-    agent.emit(AgentEvent::TurnDone(Usage::default()));
 }

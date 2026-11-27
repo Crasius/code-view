@@ -2,9 +2,10 @@
 //! Diff lines map to the base blob (deleted lines, the left pane) or the head blob (added lines,
 //! the right and inline panes); revealed gap lines come straight from the blobs.
 
+use review_core::DiffSide;
 use review_git::{FileDiff, LineKind};
 
-use super::contents::{FileContents, Side};
+use super::contents::FileContents;
 use super::diff_rows::{Row, RowKind};
 use cv_syntax::highlight::Span;
 
@@ -49,8 +50,11 @@ pub fn code_line<'a>(
         }
         RowKind::Expanded => {
             let (old_line, new_line) = (row.left?, row.right?);
-            let (side, number) =
-                if pane == Pane::Left { (Side::Old, old_line) } else { (Side::New, new_line) };
+            let (side, number) = if pane == Pane::Left {
+                (DiffSide::Old, old_line)
+            } else {
+                (DiffSide::New, new_line)
+            };
             let side_contents = contents?.side(side)?;
             let index = number.checked_sub(1)? as usize;
             let spans = side_contents.spans.line(index);
@@ -83,8 +87,8 @@ pub fn diff_line<'a>(
     let line = &diff.lines()[index];
     let text = diff.text(line);
     let (side, number) = match (line.kind, pane) {
-        (LineKind::Deleted, _) | (LineKind::Context, Pane::Left) => (Side::Old, line.old_line),
-        _ => (Side::New, line.new_line),
+        (LineKind::Deleted, _) | (LineKind::Context, Pane::Left) => (DiffSide::Old, line.old_line),
+        _ => (DiffSide::New, line.new_line),
     };
     let spans = spans_for(contents, side, number, text);
     CodeLine {
@@ -101,7 +105,7 @@ pub fn diff_line<'a>(
 /// The file's spans for its line `number` on `side`, once highlighted and only while it reads `text`.
 fn spans_for<'a>(
     contents: Option<&'a FileContents>,
-    side: Side,
+    side: DiffSide,
     number: u32,
     text: &str,
 ) -> Option<&'a [Span]> {
@@ -119,7 +123,7 @@ mod tests {
     use cv_syntax::highlight::LineSpans;
 
     use crate::contents::{Coloring, SideContents};
-    use crate::diff_rows::{Layout, RowInputs, build};
+    use crate::diff_rows::{Layout, rows_of};
     use crate::gaps::{self, Expand, Reveal};
 
     const OLD: &str = "one\ntwo\nthree\nfour\nfive\nsix\n";
@@ -157,15 +161,7 @@ mod tests {
     fn maps_diff_lines_to_their_blob_lines() {
         let diff = diff();
         let contents = contents();
-        let rows = build(&RowInputs {
-            diff: &diff,
-            layout: Layout::SideBySide,
-            gaps: &[],
-            reveals: &[],
-            threads: &[],
-            composer: None,
-        })
-        .rows;
+        let rows = rows_of(&diff, Layout::SideBySide, &[], &[], &[]).rows;
         let line = |row: usize, pane| code_line(&diff, Some(&contents), &rows[row], pane).unwrap();
 
         assert_eq!(
@@ -192,15 +188,7 @@ mod tests {
     #[test]
     fn numbers_each_pane_by_its_own_side() {
         let diff = FileDiff::parse_unified(b"@@ -1,2 +1,3 @@\n a\n+b\n c\n");
-        let rows = build(&RowInputs {
-            diff: &diff,
-            layout: Layout::SideBySide,
-            gaps: &[],
-            reveals: &[],
-            threads: &[],
-            composer: None,
-        })
-        .rows;
+        let rows = rows_of(&diff, Layout::SideBySide, &[], &[], &[]).rows;
         let number = |pane| code_line(&diff, None, &rows[2], pane).unwrap().number;
         assert_eq!((number(Pane::Left), number(Pane::Right)), (2, 3), "context after an insertion");
     }
@@ -212,15 +200,7 @@ mod tests {
         let gaps = gaps::find(&diff, Some(6));
         let mut reveals = vec![Reveal::default(); gaps.len()];
         reveals[0].expand(&gaps[0], Expand::All);
-        let rows = build(&RowInputs {
-            diff: &diff,
-            layout: Layout::SideBySide,
-            gaps: &gaps,
-            reveals: &reveals,
-            threads: &[],
-            composer: None,
-        })
-        .rows;
+        let rows = rows_of(&diff, Layout::SideBySide, &gaps, &reveals, &[]).rows;
         assert_eq!(rows[0].kind, RowKind::Expanded);
         let left = code_line(&diff, Some(&contents), &rows[2], Pane::Left).unwrap();
         let right = code_line(&diff, Some(&contents), &rows[2], Pane::Right).unwrap();
@@ -241,15 +221,7 @@ mod tests {
     #[test]
     fn falls_back_to_plain_text() {
         let diff = diff();
-        let rows = build(&RowInputs {
-            diff: &diff,
-            layout: Layout::Inline,
-            gaps: &[],
-            reveals: &[],
-            threads: &[],
-            composer: None,
-        })
-        .rows;
+        let rows = rows_of(&diff, Layout::Inline, &[], &[], &[]).rows;
         let unhighlighted = code_line(&diff, None, &rows[0], Pane::Inline).unwrap();
         assert_eq!(
             (unhighlighted.text, unhighlighted.spans, unhighlighted.has_file_spans),
