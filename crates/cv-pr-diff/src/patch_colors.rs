@@ -41,11 +41,11 @@ const MAX_LINES: usize = 50_000;
 const FIRST_CHUNK_LINES: usize = 120;
 const CHUNK_LINES: usize = 1_000;
 /// How long a diff load waits for its first colored lines before it shows the diff without them.
-pub const WAIT: Duration = Duration::from_millis(150);
+pub(crate) const WAIT: Duration = Duration::from_millis(150);
 /// How long it waits instead while a warm-up compiles the diff's grammar (a file opened right
 /// after the pull request): the colors are on their way, so the diff shows with them. TypeScript,
 /// the slowest grammar, warms in about 0.3 to 0.5 s.
-pub const WARMING_WAIT: Duration = Duration::from_millis(1000);
+pub(crate) const WARMING_WAIT: Duration = Duration::from_millis(1000);
 /// Colors kept per pull request, the least recently used dropped first: our number, the open file
 /// and the neighbours worked out ahead (a 15,000-line file takes about 1 MB), so stepping back and
 /// forth shows colored at once. A file further away colors again: small ones in milliseconds,
@@ -475,18 +475,18 @@ impl PatchColors {
 
     /// Diff loads wait `wait` instead of [`WAIT`] for their first colors, so a test of that wait
     /// does not depend on how soon a pool busy with other tests' colors gets to them.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     #[must_use]
-    pub fn with_wait(mut self, wait: Duration) -> Self {
+    pub(crate) fn with_wait(mut self, wait: Duration) -> Self {
         self.wait = wait;
         self
     }
 
     /// Diff loads wait `wait` instead of [`WARMING_WAIT`] while a warm-up compiles their grammar,
     /// so a test of that wait does not depend on how fast a loaded machine compiles.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     #[must_use]
-    pub fn with_warming_wait(mut self, wait: Duration) -> Self {
+    pub(crate) fn with_warming_wait(mut self, wait: Duration) -> Self {
         self.warming_wait = wait;
         self
     }
@@ -553,20 +553,20 @@ impl PatchColors {
 
     /// Test driver: polls on every repaint request of the workers (see
     /// [`cv_syntax::color_worker::observe_repaints`]) until all colors of `key` are worked out,
-    /// for at most 30 seconds.
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn wait_finished(
+    /// for at most [`cv_testkit::WAIT_LIMIT`].
+    #[cfg(test)]
+    pub(crate) fn wait_finished(
         &mut self,
         repaints: &Receiver<()>,
         key: &DiffKey,
     ) -> Option<Arc<LineSpans>> {
-        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        let deadline = Instant::now() + cv_testkit::WAIT_LIMIT;
         loop {
             self.poll();
             if let Some(spans) = self.finished(key) {
                 return Some(spans);
             }
-            let left = deadline.checked_duration_since(std::time::Instant::now())?;
+            let left = deadline.checked_duration_since(Instant::now())?;
             repaints.recv_timeout(left).ok()?;
         }
     }
@@ -636,8 +636,6 @@ impl Drop for PatchColors {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
-
     use cv_base::theme::syntax::TokenKind;
     use cv_syntax::color_worker::observe_repaints;
     use review_git::{DiffOptions, FileDiff};
@@ -774,7 +772,7 @@ mod tests {
     #[test]
     fn a_diff_load_hands_over_its_first_colors_before_it_finishes() {
         let ctx = egui::Context::default();
-        let mut colors = PatchColors::default().with_wait(Duration::from_secs(30));
+        let mut colors = PatchColors::default().with_wait(cv_testkit::WAIT_LIMIT);
         let colorer = colors.colorer(&ctx);
         let diff =
             Arc::new(FileDiff::parse_unified(b"@@ -1,1 +1,1 @@\n-fn old() {}\n+fn new() {}\n"));
@@ -828,15 +826,10 @@ mod tests {
         let (key, ctx) = (key("src/cold.rs"), egui::Context::default());
         let repaints = observe_repaints(&ctx);
         let stored_is = |wanted: &LineSpans| {
-            let deadline = Instant::now() + cv_testkit::WAIT_LIMIT;
-            loop {
+            cv_testkit::poll_until("the colors reach the disk tier", || {
                 let stored = cold.read(COLD_KIND, COLD_VERSION, &cold_key(&key));
-                if stored.and_then(|bytes| decode(&bytes)).as_ref() == Some(wanted) {
-                    return;
-                }
-                assert!(Instant::now() < deadline, "the colors reach the disk tier");
-                repaints.recv_timeout(Duration::from_millis(20)).ok();
-            }
+                stored.and_then(|bytes| decode(&bytes)).as_ref() == Some(wanted)
+            });
         };
         let mut colors = PatchColors::default();
         colors.cold_worthy = Duration::ZERO;

@@ -12,7 +12,7 @@ use cv_code::diff_paint::{Invisibles, LineStyle};
 use cv_code::diff_rows;
 
 #[derive(Default)]
-pub struct WordHighlights {
+pub(crate) struct WordHighlights {
     /// Deleted ↔ added line pairs (indices into the diff lines), both ways.
     partners: HashMap<u32, u32>,
     /// By the deleted line of a pair.
@@ -20,7 +20,7 @@ pub struct WordHighlights {
 }
 
 impl WordHighlights {
-    pub fn new(diff: &FileDiff) -> Self {
+    pub(crate) fn new(diff: &FileDiff) -> Self {
         let partners = diff_rows::change_pairs(diff)
             .into_iter()
             .flat_map(|(deleted, added)| [(deleted, added), (added, deleted)])
@@ -37,7 +37,7 @@ impl WordHighlights {
     /// The invisible characters diff line `index` shows: on a changed line paired with the line it
     /// replaced, its spaces and tabs inside the changed words, and its line ending or byte order
     /// mark where they differ from the partner's; on any line, a missing final newline.
-    pub fn invisibles(&self, diff: &FileDiff, index: u32, style: LineStyle) -> Invisibles {
+    pub(crate) fn invisibles(&self, diff: &FileDiff, index: u32, style: LineStyle) -> Invisibles {
         let lines = diff.lines();
         let line = &lines[index as usize];
         let partner = self.partner(index).map(|partner| &lines[partner as usize]);
@@ -57,7 +57,7 @@ impl WordHighlights {
     /// Works out the changed words of the pair diff line `index` (a `kind` line) belongs to, once
     /// per pair; [`Self::words`] reads them. Split from the read so that a caller can borrow the
     /// words while it reads its other state (the diff view paints them every frame).
-    pub fn compute(&mut self, diff: &FileDiff, index: u32, kind: LineKind) {
+    pub(crate) fn compute(&mut self, diff: &FileDiff, index: u32, kind: LineKind) {
         let Some((deleted, added)) = self.pair(index, kind) else {
             return;
         };
@@ -72,7 +72,7 @@ impl WordHighlights {
 
     /// The changed words (byte ranges) of diff line `index`, which is a `kind` line, as
     /// [`Self::compute`] worked them out; empty for a line without a partner and before `compute`.
-    pub fn words(&self, index: u32, kind: LineKind) -> &[Range<usize>] {
+    pub(crate) fn words(&self, index: u32, kind: LineKind) -> &[Range<usize>] {
         let Some(highlights) =
             self.pair(index, kind).and_then(|(deleted, _)| self.computed.get(&deleted))
         else {

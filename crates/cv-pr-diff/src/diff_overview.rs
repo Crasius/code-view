@@ -43,7 +43,7 @@ pub struct Overview {
     pub occurrences: Vec<u32>,
 }
 
-pub fn build(diff: &FileDiff, rows: &[Row], layout: Layout) -> Overview {
+pub(crate) fn build(diff: &FileDiff, rows: &[Row], layout: Layout) -> Overview {
     let lines = diff.lines();
     let mut overview = Overview { is_focus: layout == Layout::NewOnly, ..Overview::default() };
     // A whole added or deleted file is one change; the strip then only shows the comments.

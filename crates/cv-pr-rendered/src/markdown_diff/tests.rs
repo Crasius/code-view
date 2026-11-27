@@ -184,8 +184,7 @@ fn show(ui: &mut egui::Ui, scene: &mut Scene) {
     }
 }
 
-/// Frames until the view settles: rows out of view are measured in `MEASURE_BUDGET` of wall-clock
-/// time per frame, so how many frames that takes depends on the machine's load.
+/// Frames until the view settles once its rows are measured.
 const MAX_STEPS: u64 = 1_000;
 
 fn harness(scene: Scene, size: [f32; 2]) -> Harness<'static, Scene> {
@@ -228,12 +227,10 @@ fn press(pos: Pos2, pressed: bool) -> Event {
 }
 
 /// Hovers `at` for a frame, then clicks there.
-fn click_at(harness: &mut Harness<'_, Scene>, at: Pos2) {
+fn hover_and_click(harness: &mut Harness<'_, Scene>, at: Pos2) {
     harness.hover_at(at);
     harness.step();
-    for pressed in [true, false] {
-        harness.event(press(at, pressed));
-    }
+    harness.click_point(at, PointerButton::Primary);
     harness.run();
 }
 
@@ -485,7 +482,7 @@ fn a_fold_opens_on_click_and_keeps_the_place() {
     assert!(label.starts_with("Show 4 unchanged blocks (lines "), "{label}");
     // On its label: the middle of the bar is the handle between Before and After.
     let rect = fold.rect();
-    click_at(&mut harness, pos2(rect.left() + 60.0, rect.center().y));
+    hover_and_click(&mut harness, pos2(rect.left() + 60.0, rect.center().y));
     assert_eq!(tops(&harness, &same(0)).len(), 2, "the fold opened on paragraph 0");
     check_aligned(&harness, "after opening a fold");
 }
@@ -963,7 +960,7 @@ fn a_fold_counts_its_comments_and_opens_to_them() {
         })
         .expect("the fold names its comment");
     let rect = bar.rect();
-    click_at(&mut harness, pos2(rect.left() + 60.0, rect.center().y));
+    hover_and_click(&mut harness, pos2(rect.left() + 60.0, rect.center().y));
     let shown = card(&harness, IN_FOLD).expect("the comment shows");
     assert!(shown.top() >= 0.0 && shown.bottom() <= 1100.0, "and is in view: {shown:?}");
     assert_between(
@@ -1134,16 +1131,10 @@ fn a_five_thousand_line_readme_lays_out_only_the_rows_in_view() {
     assert!(new.lines().count() >= 5_000, "{} lines", new.lines().count());
     let mut harness =
         harness(Scene::new(&old, &new, DiffLayout::SideBySide, FULL_FILE_CONTEXT), [1280.0, 900.0]);
-    harness.step();
-    let mut frames = 1;
-    while !harness.state().view.heights.is_all_measured() && frames < 2_000 {
+    poll_until("every row of the README measured", || {
         harness.step();
-        frames += 1;
-    }
-    assert!(
-        harness.state().view.heights.is_all_measured(),
-        "every row measured after {frames} frames"
-    );
+        harness.state().view.heights.is_all_measured()
+    });
     harness.input_mut().events.push(Event::PointerMoved(pos2(640.0, 450.0)));
     let mut most_cells = 0;
     for frame in 0..120 {

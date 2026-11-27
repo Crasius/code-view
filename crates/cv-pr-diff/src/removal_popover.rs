@@ -37,13 +37,13 @@ const NUMBER_GAP: f32 = 8.0;
 const MAX_ACCESSIBLE_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PopoverAction {
+pub(crate) enum PopoverAction {
     Copy,
     Comment,
 }
 
 #[derive(Default)]
-pub struct RemovalPopover {
+pub(crate) struct RemovalPopover {
     open: Option<Open>,
     /// The wedge under the pointer and since when, until the hover delay has passed.
     resting: Option<(usize, f64)>,
@@ -78,7 +78,7 @@ struct Anchor {
     hit: Rect,
 }
 
-pub struct PopoverInputs<'a> {
+pub(crate) struct PopoverInputs<'a> {
     pub id: Id,
     pub diff: &'a FileDiff,
     pub contents: Option<&'a FileContents>,
@@ -93,24 +93,24 @@ pub struct PopoverInputs<'a> {
 }
 
 impl RemovalPopover {
-    pub fn close(&mut self) {
+    pub(crate) fn close(&mut self) {
         self.open = None;
         self.resting = None;
     }
 
     /// The removal row whose popover is open.
-    pub fn open_row(&self) -> Option<usize> {
+    pub(crate) fn open_row(&self) -> Option<usize> {
         self.open.map(|open| open.row)
     }
 
     /// Call once per frame before the wedges are painted.
-    pub fn begin_frame(&mut self) {
+    pub(crate) fn begin_frame(&mut self) {
         self.anchor = None;
     }
 
     /// Paints the wedge of removal row `row`, pointing at boundary `y` of `pane`, and handles
     /// hovering and clicking it. `label` names it for screen readers.
-    pub fn wedge(
+    pub(crate) fn wedge(
         &mut self,
         ui: &mut Ui,
         row: usize,
@@ -174,7 +174,7 @@ impl RemovalPopover {
     }
 
     /// Shows the open popover above the rows; call after the rows were painted.
-    pub fn show(&mut self, ui: &Ui, inputs: &PopoverInputs<'_>) -> Option<PopoverAction> {
+    pub(crate) fn show(&mut self, ui: &Ui, inputs: &PopoverInputs<'_>) -> Option<PopoverAction> {
         let mut open = self.open?;
         let Some(anchor) = self.anchor else {
             // Its wedge scrolled out of view.
@@ -462,13 +462,13 @@ fn accessible_text(inputs: &PopoverInputs<'_>) -> String {
 }
 
 /// The removed lines as plain text, for the clipboard.
-pub fn removed_text(diff: &FileDiff, lines: Range<usize>) -> String {
+pub(crate) fn removed_text(diff: &FileDiff, lines: Range<usize>) -> String {
     let diff_lines = diff.lines();
     lines.map(|index| diff.text(&diff_lines[index])).collect::<Vec<_>>().join("\n")
 }
 
 /// Screen reader name of a wedge.
-pub fn wedge_label(diff: &FileDiff, lines: Range<usize>) -> String {
+pub(crate) fn wedge_label(diff: &FileDiff, lines: Range<usize>) -> String {
     let diff_lines = diff.lines();
     let count = lines.len();
     let first = diff_lines[lines.start].old_line;

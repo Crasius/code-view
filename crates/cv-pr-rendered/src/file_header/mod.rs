@@ -27,7 +27,7 @@ use review_store::{AppSettings, DiffLayout};
 use crate::preview::Preview;
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, icons, style};
-pub use cv_pr_diff::diff_view::ChangePosition;
+pub(crate) use cv_pr_diff::diff_view::ChangePosition;
 use cv_pr_diff::diff_view::Direction;
 use cv_services::Services;
 use cv_widgets::elide::text_width;

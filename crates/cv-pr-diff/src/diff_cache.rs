@@ -66,7 +66,7 @@ impl DiffKey {
 const DEFAULT_BUDGET_BYTES: usize = 24 * 1024 * 1024;
 /// Diffs loaded ahead and not opened yet: the files around the open one and a hovered one or
 /// two, with room for the last plan's files while the next plan's files load.
-pub const MAX_UNOPENED: usize = 8;
+pub(crate) const MAX_UNOPENED: usize = 8;
 
 impl Default for DiffCache {
     fn default() -> Self {

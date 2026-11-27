@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashSet};
 use super::FolderMark;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TreeRow {
+pub(crate) enum TreeRow {
     Folder {
         path: String,
         label: String,
@@ -29,7 +29,7 @@ struct Node {
 
 /// The rows of the files `paths` yields as (file index, path), and every file in the order the
 /// rows would list them with no folder collapsed.
-pub fn build_with_order<'a>(
+pub(crate) fn build_with_order<'a>(
     paths: impl Iterator<Item = (usize, &'a str)>,
     collapsed: &HashSet<String>,
 ) -> (Vec<TreeRow>, Vec<u32>) {

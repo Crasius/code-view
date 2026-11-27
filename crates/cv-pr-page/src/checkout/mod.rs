@@ -130,12 +130,12 @@ impl<'a> View<'a> {
 
 impl CheckoutButton {
     /// The popover is open: the header stays on screen.
-    pub fn is_engaged(&self, ctx: &egui::Context, key: &PullRequestKey) -> bool {
+    pub(crate) fn is_engaged(&self, ctx: &egui::Context, key: &PullRequestKey) -> bool {
         egui::Popup::is_id_open(ctx, popover_id(key)) || self.opens
     }
 
     /// The button in the header's command bar (laid out right to left), its popover and menu.
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut Ui,
         session: &PullRequestSession,

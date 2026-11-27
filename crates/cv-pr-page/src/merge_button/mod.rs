@@ -6,8 +6,9 @@
 //! The chevron opens a dropdown right below the button (above it when the window ends too soon),
 //! right-aligned with it: the strategies the target branch allows (number keys pick), why one is
 //! preselected, "Always use for <repo>", what the branch forbids with the way to its policies, the
-//! commit message (for strategies that write a commit) and the source branch choice. Ctrl+Enter there arms the button, so keyboard and
-//! mouse confirm the same way. Edits stay for as long as the pull request page lives.
+//! commit message (for strategies that write a commit) and the source branch choice. Ctrl+Enter
+//! there arms the button, so keyboard and mouse confirm the same way. Edits stay for as long as
+//! the pull request page lives.
 //!
 //! While policies still block the pull request, the same button sets the platform's auto-complete
 //! with the chosen strategy and options, and once that is set it cancels it ([`auto_complete`]);
@@ -46,7 +47,7 @@ use self::placement::MenuPlacement;
 use self::split::{SplitParts, main_width};
 
 /// How long the armed button waits for the second click.
-pub const CONFIRM_WINDOW: f64 = 4.0;
+pub(crate) const CONFIRM_WINDOW: f64 = 4.0;
 const MENU_WIDTH: f32 = 400.0;
 /// The main part's label after a refused merge.
 const FAILED_LABEL: &str = "Merge failed";
@@ -64,7 +65,7 @@ const NUMBER_KEYS: [Key; 9] = [
 ];
 
 /// The merge choices of one pull request page.
-pub struct MergeButton {
+pub(crate) struct MergeButton {
     /// The strategy the user picked in the dropdown; `None` follows the preselection.
     picked: Option<MergeStrategy>,
     message: String,
@@ -86,7 +87,7 @@ pub struct MergeButton {
 }
 
 /// The overview card's merge type: what the button would run, and what else is allowed.
-pub enum MergeTypeLine {
+pub(crate) enum MergeTypeLine {
     Pending,
     Ready {
         strategy: MergeStrategy,
@@ -120,7 +121,7 @@ struct MenuAnchor {
 }
 
 impl MergeButton {
-    pub fn new(session: &PullRequestSession, detail: &PullRequestDetail) -> Self {
+    pub(crate) fn new(session: &PullRequestSession, detail: &PullRequestDetail) -> Self {
         let key = PolicyKey {
             connection_id: session.key.connection_id.clone(),
             repository: session.key.repository_key.clone(),
@@ -145,7 +146,7 @@ impl MergeButton {
     }
 
     /// Asks for the target branch's policy (only while the window is active) once per frame.
-    pub fn update(
+    pub(crate) fn update(
         &mut self,
         ctx: &egui::Context,
         session: &PullRequestSession,
@@ -187,13 +188,13 @@ impl MergeButton {
     }
 
     /// The platform refused the merge: the button says so until its next click.
-    pub fn fail(&mut self, reason: String) {
+    pub(crate) fn fail(&mut self, reason: String) {
         self.failure = Some(reason);
         self.armed_at = None;
     }
 
     /// The dropdown is open or the button armed: live updates must not pull the page away.
-    pub fn is_engaged(&self) -> bool {
+    pub(crate) fn is_engaged(&self) -> bool {
         self.armed_at.is_some() || self.is_menu_open
     }
 
@@ -228,7 +229,7 @@ impl MergeButton {
     }
 
     /// The overview card's merge type: the button's strategy once the policy is known.
-    pub fn line(
+    pub(crate) fn line(
         &self,
         session: &PullRequestSession,
         detail: &PullRequestDetail,
@@ -251,7 +252,7 @@ impl MergeButton {
 
     /// The split button, laid out right to left. Returns the merge to run once confirmed.
     /// `can_write`: a token and no other write running; `is_busy`: a write runs.
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut Ui,
         session: &PullRequestSession,

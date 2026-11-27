@@ -167,7 +167,7 @@ impl FileFilter {
         Self { categories, ..self.clone() }
     }
 
-    pub fn accepts(&self, file: &ChangedFile, is_viewed: bool) -> bool {
+    pub(crate) fn accepts(&self, file: &ChangedFile, is_viewed: bool) -> bool {
         let category_matches =
             self.categories.is_empty() || self.categories.contains(&file.category);
         let needle = self.search.trim();
@@ -322,7 +322,7 @@ impl FileTree {
         self.version
     }
 
-    pub fn breakdown(&self) -> &ChangeBreakdown {
+    pub(crate) fn breakdown(&self) -> &ChangeBreakdown {
         &self.breakdown
     }
 
@@ -331,7 +331,7 @@ impl FileTree {
         self.side = side;
     }
 
-    pub fn side(&self) -> TreeSide {
+    pub(crate) fn side(&self) -> TreeSide {
         self.side
     }
 
@@ -363,7 +363,7 @@ impl FileTree {
         self.hovered_file = None;
     }
 
-    pub fn show(&mut self, ui: &mut Ui, inputs: &TreeInputs<'_>) -> Option<TreeEvent> {
+    pub(crate) fn show(&mut self, ui: &mut Ui, inputs: &TreeInputs<'_>) -> Option<TreeEvent> {
         let mut event = None;
         let mut toggled_folder = None;
         let scroll_target = self.scroll_to_file.take().and_then(|file_index| {
@@ -711,7 +711,6 @@ mod tests {
         assert!(harness.query_by_label("scripts").is_some());
     }
 
-    /// The tri-state counts every file below a folder, deeper ones too, and only those.
     /// A folder's viewed mark sits in the files' viewed column, left of the folder glyph, with the
     /// same hit area as a file's checkbox at the same depth.
     #[test]
@@ -737,6 +736,7 @@ mod tests {
         assert!(harness.query_by_label("Move the file tree to the right").is_none());
     }
 
+    /// The tri-state counts every file below a folder, deeper ones too, and only those.
     #[test]
     fn folder_marks_count_every_file_below_the_folder() {
         use super::{FolderMark, folder_counts, is_below};
@@ -863,8 +863,8 @@ mod tests {
         assert_eq!(harness.state().last_event.as_deref(), Some("review Approve"));
     }
 
-    /// The change kind stays readable without the old letter badges: in words for assistive
-    /// technology, and the rename source in the row's description.
+    /// The change kind is named in words in the row's accessible description, with the rename
+    /// source and the line counts.
     #[test]
     fn change_kinds_are_named_in_the_description() {
         let mut harness = build(icon_scene(ThemePreference::Light), [760.0, 1880.0]);

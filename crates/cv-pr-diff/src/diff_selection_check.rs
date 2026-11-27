@@ -42,8 +42,7 @@ fn multi_click<State>(harness: &mut Harness<'_, State>, pos: Pos2, count: usize)
 
 fn right_click<State>(harness: &mut Harness<'_, State>, pos: Pos2) {
     harness.hover_at(pos);
-    harness.event(button(pos, PointerButton::Secondary, true, Modifiers::NONE));
-    harness.event(button(pos, PointerButton::Secondary, false, Modifiers::NONE));
+    harness.click_point(pos, PointerButton::Secondary);
     harness.step();
 }
 

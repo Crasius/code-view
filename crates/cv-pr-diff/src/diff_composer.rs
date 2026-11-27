@@ -19,7 +19,7 @@ use cv_editor::markdown_editor::{self, Outcome};
 use cv_pr_threads::{self as threads, CardOptions, PostState, ThreadsUi, suggestion};
 use cv_widgets::glyph;
 
-pub enum ComposerOutcome {
+pub(crate) enum ComposerOutcome {
     Open,
     /// Post the thread; the card shows it as it will be posted until the post is through.
     Create {
@@ -45,7 +45,7 @@ pub struct Composer {
 impl Composer {
     /// A composer the user just opened, taking the focus; `above` puts it over the first line of
     /// a range picked dragging up, where the pointer is (a single line keeps it below).
-    pub fn new(thread_anchor: ThreadAnchor, above: bool) -> Self {
+    pub(crate) fn new(thread_anchor: ThreadAnchor, above: bool) -> Self {
         let mut composer = Self::restored(thread_anchor);
         composer.anchor.above = above && composer.anchor.range.is_some();
         composer.needs_focus = true;
@@ -53,7 +53,7 @@ impl Composer {
     }
 
     /// A composer for a draft kept from an earlier visit: it opens without taking the focus.
-    pub fn restored(thread_anchor: ThreadAnchor) -> Self {
+    pub(crate) fn restored(thread_anchor: ThreadAnchor) -> Self {
         Self {
             anchor: ComposerAnchor {
                 old_line: thread_anchor.old_line,
@@ -70,7 +70,7 @@ impl Composer {
     }
 
     /// Side by side puts the card under the head pane, unless the lines are in the base.
-    pub fn is_right(&self) -> bool {
+    pub(crate) fn is_right(&self) -> bool {
         is_right(&self.thread_anchor)
     }
 
@@ -80,16 +80,16 @@ impl Composer {
     }
 
     /// The draft key of the comment.
-    pub fn key(&self) -> &str {
+    pub(crate) fn key(&self) -> &str {
         &self.key
     }
 
     /// The thread was sent, and the threads loaded since show it: the loaded card takes over.
-    pub fn has_landed(&self, threads: &ThreadsUi) -> bool {
+    pub(crate) fn has_landed(&self, threads: &ThreadsUi) -> bool {
         self.is_handed_off && threads.post_state(&self.key).is_none()
     }
 
-    pub fn show(&mut self, ui: &mut Ui, threads: &mut ThreadsUi) -> ComposerOutcome {
+    pub(crate) fn show(&mut self, ui: &mut Ui, threads: &mut ThreadsUi) -> ComposerOutcome {
         let state = threads.post_state(&self.key).cloned();
         if let Some(state) = state.as_ref().filter(|state| state.is_pending()) {
             self.is_handed_off = true;
@@ -167,7 +167,7 @@ impl Composer {
     /// The diff of the file was replaced (a live update): the draft follows its line into `new`,
     /// found by text, and says so when the line moved or changed. The text is never touched; its
     /// draft moves to the key of the new lines.
-    pub fn follow(&mut self, old: &FileDiff, new: &FileDiff, threads: &mut ThreadsUi) {
+    pub(crate) fn follow(&mut self, old: &FileDiff, new: &FileDiff, threads: &mut ThreadsUi) {
         let anchor =
             line_anchor::for_numbers(old, self.thread_anchor.old_line, self.thread_anchor.new_line);
         let Some(target) = line_anchor::locate(&anchor, new) else {

@@ -30,35 +30,35 @@ pub(super) struct RowOffsets {
 
 impl RowOffsets {
     /// The rows' height: code, comment cards and all.
-    pub fn height(&self) -> f32 {
+    pub(crate) fn height(&self) -> f32 {
         self.tops.last().copied().unwrap_or(0.0)
     }
 
-    pub fn get(&self, row: usize) -> Option<f32> {
+    pub(crate) fn get(&self, row: usize) -> Option<f32> {
         self.tops.get(row).copied()
     }
 
-    pub fn as_slice(&self) -> &[f32] {
+    pub(crate) fn as_slice(&self) -> &[f32] {
         &self.tops
     }
 
     /// The tops are those of `rows` rows: they were placed since the rows were last built.
-    pub fn is_placed(&self, rows: usize) -> bool {
+    pub(crate) fn is_placed(&self, rows: usize) -> bool {
         self.tops.len() == rows + 1
     }
 
     /// The row at content height `y`: the last one starting at or above it.
-    pub fn row_at(&self, y: f32) -> usize {
+    pub(crate) fn row_at(&self, y: f32) -> usize {
         self.tops.partition_point(|top| *top <= y).saturating_sub(1)
     }
 
     /// The first row reaching below `y`.
-    pub fn first_below(&self, y: f32) -> usize {
+    pub(crate) fn first_below(&self, y: f32) -> usize {
         self.tops.partition_point(|top| *top < y).saturating_sub(1)
     }
 
     /// The row of `rows` rows at content height `y` and how far into it `y` lies (0..1).
-    pub fn anchor_at(&self, y: f32, rows: usize) -> Option<(usize, f32)> {
+    pub(crate) fn anchor_at(&self, y: f32, rows: usize) -> Option<(usize, f32)> {
         if rows == 0 || !self.is_placed(rows) {
             return None;
         }
@@ -67,24 +67,24 @@ impl RowOffsets {
         Some((row, ((y - self.tops[row]) / height).clamp(0.0, 1.0)))
     }
 
-    pub fn is_dirty(&self) -> bool {
+    pub(crate) fn is_dirty(&self) -> bool {
         self.is_dirty
     }
 
     /// A row's height changed: the tops are worked out again before the next paint.
-    pub fn mark_dirty(&mut self) {
+    pub(crate) fn mark_dirty(&mut self) {
         self.is_dirty = true;
     }
 
     /// The rows were built anew: wrapped lines are estimated again.
-    pub fn rows_rebuilt(&mut self) {
+    pub(crate) fn rows_rebuilt(&mut self) {
         self.wrapped.clear();
         self.is_dirty = true;
     }
 
     /// Takes the heights of `key`; when they differ from the last ones every wrapped line is
     /// estimated again. Returns the heights `key` replaced (none the first time).
-    pub fn rekey(&mut self, key: HeightKey) -> Option<HeightKey> {
+    pub(crate) fn rekey(&mut self, key: HeightKey) -> Option<HeightKey> {
         if self.key == Some(key) {
             return None;
         }
@@ -95,7 +95,7 @@ impl RowOffsets {
 
     /// Code row `row` wrapped to `rows` visual rows where `estimate` were counted; true when that
     /// moves the rows below.
-    pub fn note_wrapped(&mut self, row: usize, rows: usize, estimate: usize) -> bool {
+    pub(crate) fn note_wrapped(&mut self, row: usize, rows: usize, estimate: usize) -> bool {
         if rows == estimate {
             return false;
         }
@@ -107,7 +107,7 @@ impl RowOffsets {
     /// The tops of `rows`, code rows `row_columns` wide, with `metrics` and `wrap_columns`
     /// columns per visual row when wrapping; `card` gives the height of a thread's or the new
     /// comment's card row.
-    pub fn recompute(
+    pub(crate) fn recompute(
         &mut self,
         rows: &[Row],
         row_columns: &[[u32; 2]],

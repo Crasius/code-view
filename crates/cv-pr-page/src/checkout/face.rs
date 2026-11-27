@@ -107,7 +107,7 @@ pub(super) fn face(ui: &mut Ui, state: Face, is_open: bool, compact: bool) -> Re
 /// colors; the path in its tooltip. Nothing without a checkout. Once the pull request is merged or
 /// closed (`is_finished`), a worktree the app made offers its removal beside it when it did not go
 /// by itself ([`cv_services::checkouts::finished`]); the tooltip says why.
-pub fn chip(ui: &mut Ui, key: &PullRequestKey, services: &Services, is_finished: bool) {
+pub(crate) fn chip(ui: &mut Ui, key: &PullRequestKey, services: &Services, is_finished: bool) {
     let Some(record) = services.checkouts.record(key) else {
         return;
     };
@@ -135,7 +135,12 @@ pub fn chip(ui: &mut Ui, key: &PullRequestKey, services: &Services, is_finished:
 }
 
 /// The chip's width (and its removal link's), reserved before the branches take the line's room.
-pub fn chip_width(ui: &Ui, key: &PullRequestKey, services: &Services, is_finished: bool) -> f32 {
+pub(crate) fn chip_width(
+    ui: &Ui,
+    key: &PullRequestKey,
+    services: &Services,
+    is_finished: bool,
+) -> f32 {
     let Some(record) = services.checkouts.record(key) else {
         return 0.0;
     };

@@ -24,7 +24,7 @@ pub(super) struct SplitParts {
 impl SplitParts {
     /// Places the button and its two halves, named `label` and "Merge options"; returns the
     /// whole button's rect, the main part and the chevron.
-    pub fn interact(self, ui: &mut Ui, label: &str) -> (Rect, Response, Response) {
+    pub(crate) fn interact(self, ui: &mut Ui, label: &str) -> (Rect, Response, Response) {
         let (rect, _) = ui.allocate_exact_size(
             vec2(self.main_width + CHEVRON_WIDTH, style::CONTROL_HEIGHT),
             Sense::hover(),

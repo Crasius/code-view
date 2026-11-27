@@ -25,7 +25,7 @@ use cv_base::theme::icons;
 
 /// The glyph and color family of one file type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FileIcon {
+pub(crate) struct FileIcon {
     pub glyph: &'static str,
     pub hue: FileHue,
 }
@@ -35,7 +35,7 @@ const fn icon(glyph: &'static str, hue: FileHue) -> FileIcon {
 }
 
 /// Unknown files: a plain page in the quiet hue.
-pub const FALLBACK: FileIcon = icon(icons::FILE, Slate);
+pub(crate) const FALLBACK: FileIcon = icon(icons::FILE, Slate);
 
 /// File names up to this length are matched whole; longer ones by their extension alone.
 const NAME_CAPACITY: usize = 64;
@@ -43,7 +43,7 @@ const NAME_CAPACITY: usize = 64;
 const EXTENSION_CAPACITY: usize = 16;
 
 /// The icon for the file at `path` (`/`-separated, as git reports it), ignoring case.
-pub fn file_icon(path: &str) -> FileIcon {
+pub(crate) fn file_icon(path: &str) -> FileIcon {
     let name = path.rsplit_once('/').map_or(path, |(_, name)| name);
     let mut name_buffer = [0; NAME_CAPACITY];
     if let Some(lower) = ascii_lowercase(name, &mut name_buffer) {

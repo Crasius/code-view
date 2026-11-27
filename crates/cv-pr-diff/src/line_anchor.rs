@@ -10,7 +10,7 @@ const CONTEXT: usize = 3;
 
 /// One line of a diff, remembered well enough to find it in another diff of the same file.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LineAnchor {
+pub(crate) struct LineAnchor {
     pub old_line: Option<u32>,
     pub new_line: Option<u32>,
     /// The line's text when the diff has it (revealed unchanged lines carry only numbers).
@@ -21,7 +21,7 @@ pub struct LineAnchor {
 
 /// Where an anchor's line is in the new diff.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Target {
+pub(crate) struct Target {
     pub old_line: Option<u32>,
     pub new_line: Option<u32>,
     /// The same text was found; false when the line itself changed and the closest line stands in.
@@ -30,7 +30,7 @@ pub struct Target {
 
 impl LineAnchor {
     /// The diff line at `index` (into [`FileDiff::lines`]).
-    pub fn of_line(diff: &FileDiff, index: usize) -> Option<Self> {
+    pub(crate) fn of_line(diff: &FileDiff, index: usize) -> Option<Self> {
         let lines = diff.lines();
         let line = lines.get(index).filter(|line| line.kind != LineKind::Hunk)?;
         let above = lines[..index]
@@ -45,7 +45,7 @@ impl LineAnchor {
     }
 
     /// A line known only by its numbers (revealed from a gap).
-    pub fn of_numbers(old_line: Option<u32>, new_line: Option<u32>) -> Self {
+    pub(crate) fn of_numbers(old_line: Option<u32>, new_line: Option<u32>) -> Self {
         Self { old_line, new_line, text: None, above: Vec::new() }
     }
 
@@ -68,7 +68,7 @@ enum Side {
 /// The anchor's line in `diff`: the line with the same text whose lines above match best, the
 /// nearest one among equals; the nearest line on the same side when the text is gone; `None` for
 /// an empty diff.
-pub fn locate(anchor: &LineAnchor, diff: &FileDiff) -> Option<Target> {
+pub(crate) fn locate(anchor: &LineAnchor, diff: &FileDiff) -> Option<Target> {
     let (side, wanted) = anchor.wanted()?;
     let lines = diff.lines();
     let on_side = |line: &DiffLine| match side {
@@ -108,7 +108,11 @@ pub fn locate(anchor: &LineAnchor, diff: &FileDiff) -> Option<Target> {
 
 /// The anchor of the line numbered like a comment anchor: from the diff when it holds that line,
 /// else by its numbers.
-pub fn for_numbers(diff: &FileDiff, old_line: Option<u32>, new_line: Option<u32>) -> LineAnchor {
+pub(crate) fn for_numbers(
+    diff: &FileDiff,
+    old_line: Option<u32>,
+    new_line: Option<u32>,
+) -> LineAnchor {
     let index = diff
         .lines()
         .iter()

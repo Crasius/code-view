@@ -43,7 +43,7 @@ pub(super) struct Areas {
 
 impl Areas {
     /// `strip` is the overview strip's width (none where the rendered diff is embedded in a card).
-    pub fn new(full: Rect, mode: Mode, has_banner: bool, split: f32, strip: f32) -> Self {
+    pub(crate) fn new(full: Rect, mode: Mode, has_banner: bool, split: f32, strip: f32) -> Self {
         let header = (mode == Mode::Columns)
             .then(|| Rect::from_min_size(full.min, vec2(full.width(), HEADER_HEIGHT)));
         let top = full.top()
@@ -83,7 +83,7 @@ impl Lanes {
     /// With a `column` width (Reading) the text is a column of that width centered in each lane,
     /// and tables may grow past it up to the lane's room; a column as wide as the room, or none,
     /// fills the lane (tables share it out, code scrolls in its box).
-    pub fn new(mode: Mode, width: f32, left_width: f32, column: Option<f32>) -> Self {
+    pub(crate) fn new(mode: Mode, width: f32, left_width: f32, column: Option<f32>) -> Self {
         let (first, second) = match mode {
             Mode::Columns => (Rangef::new(0.0, left_width), Some(Rangef::new(left_width, width))),
             Mode::Unified | Mode::NewOnly | Mode::Whole(_) => (Rangef::new(0.0, width), None),
@@ -111,34 +111,34 @@ impl Lanes {
         }
     }
 
-    pub fn lane(&self, side: DiffSide) -> Rangef {
+    pub(crate) fn lane(&self, side: DiffSide) -> Rangef {
         match (side, self.second) {
             (DiffSide::New, Some(second)) => second,
             _ => self.first,
         }
     }
 
-    pub fn text(&self, side: DiffSide) -> Rangef {
+    pub(crate) fn text(&self, side: DiffSide) -> Rangef {
         self.texts[slot(side)]
     }
 
-    pub fn text_width(&self, side: DiffSide) -> f32 {
+    pub(crate) fn text_width(&self, side: DiffSide) -> f32 {
         self.text(side).span()
     }
 
     /// The text with its gutter and right padding: where a block's marker and its cards go.
-    pub fn column(&self, side: DiffSide) -> Rangef {
+    pub(crate) fn column(&self, side: DiffSide) -> Rangef {
         let text = self.text(side);
         Rangef::new(text.min - GUTTER, text.max + RIGHT_PADDING)
     }
 
     /// `options` for the blocks of `side`: how far its tables may grow.
-    pub fn options(&self, options: RenderOptions, side: DiffSide) -> RenderOptions {
+    pub(crate) fn options(&self, options: RenderOptions, side: DiffSide) -> RenderOptions {
         RenderOptions { breakout: self.wides[slot(side)], ..options }
     }
 
     /// Every lane fills its width: the toggle shows "Full width".
-    pub fn fills(&self) -> bool {
+    pub(crate) fn fills(&self) -> bool {
         !self.reading.contains(&true)
     }
 }

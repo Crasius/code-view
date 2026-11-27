@@ -12,7 +12,7 @@ use cv_widgets::{buttons, glyph};
 
 /// What the Files tab opened on: undecided until its files show for the first time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Start {
+pub(crate) enum Start {
     Undecided,
     /// A file, a comment's version or a folder was asked for before the files showed.
     Asked,
@@ -22,7 +22,7 @@ pub enum Start {
 /// The first time the files show, "First file" (the user's choice) opens the first file in the
 /// tree's order, before anything is drawn, so the folder view never flashes. A file, a comment or
 /// a folder asked for before that wins; the folder view stays a click on a folder away.
-pub fn open_start_file(
+pub(crate) fn open_start_file(
     start: &mut Start,
     tree: &mut FileTree,
     selected_path: &mut Option<String>,
@@ -42,7 +42,7 @@ pub fn open_start_file(
 
 /// The open file is no longer in the list (an update reverted it, another comparison): the file at
 /// its place in the tree opens instead. Returns the path that left.
-pub fn stay_near_vanished_file(
+pub(crate) fn stay_near_vanished_file(
     tree: &mut FileTree,
     selected_path: &mut Option<String>,
     rank: usize,
@@ -63,7 +63,7 @@ pub fn stay_near_vanished_file(
 
 /// "x.rs is no longer changed" with a way back to it in the version before the update. Returns the
 /// comparison to switch to.
-pub fn show_vanished_hint(
+pub(crate) fn show_vanished_hint(
     ui: &mut egui::Ui,
     vanished: &mut Option<String>,
     selected_path: &mut Option<String>,

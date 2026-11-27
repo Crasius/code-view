@@ -12,12 +12,16 @@ use cv_widgets::{buttons, glyph, states};
 /// Files with fewer lines color fast enough that a progress note would only flicker.
 const PROGRESS_MIN_LINES: usize = 20_000;
 
-pub enum StatusAction {
+pub(crate) enum StatusAction {
     ColorAnyway,
     Retry,
 }
 
-pub fn show(ui: &Ui, viewport: Rect, contents: Option<&FileContents>) -> Option<StatusAction> {
+pub(crate) fn show(
+    ui: &Ui,
+    viewport: Rect,
+    contents: Option<&FileContents>,
+) -> Option<StatusAction> {
     let contents = contents?;
     let status = if let Some(error) = &contents.error {
         Status::Failed(error)

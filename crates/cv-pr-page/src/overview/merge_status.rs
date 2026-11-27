@@ -36,7 +36,7 @@ const MERGE_TYPE_WIDTH: f32 = 150.0;
 const SHOW_LABEL: &str = "Show pipelines";
 const HIDE_LABEL: &str = "Hide pipelines";
 
-pub enum MergeStatusAction {
+pub(crate) enum MergeStatusAction {
     /// "Show pipelines" / "Hide pipelines", or a click anywhere on the pipelines line.
     Toggle,
     /// Show this run full width in the Pipelines tab.
@@ -49,7 +49,7 @@ pub enum MergeStatusAction {
     OpenOnPlatform,
 }
 
-pub struct CardInput<'a> {
+pub(crate) struct CardInput<'a> {
     pub is_expanded: bool,
     /// The user may approve here (token, open pull request, the platform takes votes).
     pub can_approve: bool,
@@ -58,7 +58,7 @@ pub struct CardInput<'a> {
     pub merge_type: Option<&'a MergeTypeLine>,
 }
 
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     session: &mut PullRequestSession,
     input: &CardInput<'_>,

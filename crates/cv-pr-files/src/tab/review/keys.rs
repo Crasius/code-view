@@ -9,7 +9,7 @@ use cv_pr_diff::diff_view::Direction;
 use cv_services::Services;
 
 /// The keys that act on the open file or move to another one, pressed this frame.
-pub struct Pressed {
+pub(crate) struct Pressed {
     pub toggle_viewed: bool,
     pub step: Option<Direction>,
     /// Shift+J or Shift+K: the next or previous file not viewed yet.
@@ -18,7 +18,7 @@ pub struct Pressed {
 
 /// Consumes the tab's keys and switches the settings they stand for. J and K only while no text
 /// field has the keyboard.
-pub fn read(ui: &egui::Ui, services: &mut Services) -> Pressed {
+pub(crate) fn read(ui: &egui::Ui, services: &mut Services) -> Pressed {
     let is_typing = ui.ctx().text_edit_focused();
     if ui.input_mut(|input| input.consume_key(Modifiers::ALT, Key::W)) {
         super::super::choices::toggle_ignore_whitespace(services);
@@ -53,7 +53,7 @@ pub fn read(ui: &egui::Ui, services: &mut Services) -> Pressed {
 }
 
 /// The file after or before `selected` in the tree's `order`; with none open, "next" is the first.
-pub fn neighbour(
+pub(crate) fn neighbour(
     mut order: impl Iterator<Item = usize>,
     selected: Option<usize>,
     direction: Direction,
@@ -77,7 +77,7 @@ pub fn neighbour(
 
 /// Where the next file still to review is, in the tree's `order` from `selected`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Unviewed {
+pub(crate) enum Unviewed {
     /// This file (by index) is the next one not viewed.
     Open(usize),
     /// The open file is the only one left.
@@ -91,7 +91,7 @@ pub enum Unviewed {
 /// The next (or previous) file of `order` that is not viewed, from `selected` on and wrapping
 /// around once; without an open file in the order, from its start (or its end). `total_left`
 /// counts the files not viewed over all changed files, the filtered ones too.
-pub fn next_unviewed(
+pub(crate) fn next_unviewed(
     order: &[u32],
     selected: Option<usize>,
     direction: Direction,

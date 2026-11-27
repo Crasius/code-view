@@ -22,7 +22,7 @@ const RETRY_ID: &str = "files.download.retry";
 
 /// The download running or just finished, one at a time.
 #[derive(Default)]
-pub struct Download {
+pub(crate) struct Download {
     load: Load<PathBuf>,
     /// What runs or ran last, for Retry.
     blob: Option<Blob>,
@@ -37,12 +37,17 @@ struct Blob {
 }
 
 impl Download {
-    pub fn is_loading(&self) -> bool {
+    pub(crate) fn is_loading(&self) -> bool {
         self.load.is_loading()
     }
 
     /// Saves `file` from the mirror, unless a download is running already.
-    pub fn start(&mut self, session: &PullRequestSession, services: &Services, file: &ChangedFile) {
+    pub(crate) fn start(
+        &mut self,
+        session: &PullRequestSession,
+        services: &Services,
+        file: &ChangedFile,
+    ) {
         let Some(mirror) = session.mirror.ready() else {
             return;
         };
@@ -67,7 +72,7 @@ impl Download {
 
     /// Starts the download a failure toast's Retry asked for, then says where a finished
     /// download went, or why it failed.
-    pub fn poll(&mut self, services: &mut Services) {
+    pub(crate) fn poll(&mut self, services: &mut Services) {
         let ctx = services.background.ctx();
         if toasts::take_retry(&ctx, egui::Id::unique(RETRY_ID))
             && let Some(blob) = self.blob.clone()

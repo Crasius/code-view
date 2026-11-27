@@ -17,14 +17,14 @@ use cv_widgets::{badges, buttons, elide, glyph, provider_icon, row, skeleton};
 const ROW_HEIGHT: f32 = 30.0;
 const ICON_SIZE: f32 = 15.0;
 
-pub enum LinkedAction {
+pub(crate) enum LinkedAction {
     Open { target: Target, browser: bool },
     OpenUrl(String),
     Retry,
 }
 
 /// Shows the rows; returns what the user picked.
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     entries: &[LinkedEntry],
     cache: &LinkedCache,

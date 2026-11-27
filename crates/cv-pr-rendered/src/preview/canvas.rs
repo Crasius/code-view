@@ -12,7 +12,7 @@ use cv_widgets::buttons;
 
 /// The uploaded sides of a preview, and when they arrived on egui's clock.
 #[derive(Default)]
-pub struct Textures {
+pub(crate) struct Textures {
     pub old: Option<Picture>,
     pub new: Option<Picture>,
     pub since: f64,
@@ -29,7 +29,7 @@ fn frame(ui: &Ui, picture: &Picture, since: f64) -> TextureId {
     texture
 }
 
-pub fn image_column(ui: &mut Ui, title: &str, picture: Option<&Picture>, since: f64) {
+pub(crate) fn image_column(ui: &mut Ui, title: &str, picture: Option<&Picture>, since: f64) {
     let palette = theme::palette(ui.ctx());
     ui.label(RichText::new(title).font(theme::fonts::semibold_font(theme::style::BODY_SIZE)));
     ui.add_space(theme::style::SPACE_XS);
@@ -66,7 +66,13 @@ fn copy_menu(response: &Response, entries: &[(&str, &Picture)]) {
     });
 }
 
-pub fn paint_overlay(ui: &mut Ui, [old, new]: [&Picture; 2], since: f64, mix: f32, is_swipe: bool) {
+pub(crate) fn paint_overlay(
+    ui: &mut Ui,
+    [old, new]: [&Picture; 2],
+    since: f64,
+    mix: f32,
+    is_swipe: bool,
+) {
     let natural = old.size_vec2().max(new.size_vec2());
     let size = fit(natural, ui.available_width());
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());

@@ -16,7 +16,7 @@ use review_core::{DiffSide, ProviderKind};
 use review_git::ChangedFile;
 use review_store::{DiffLayout, TreeSide};
 
-use super::origin_view::{self, Face};
+use super::origin_view::{self, Face, OriginAction};
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, icons, style};
 use cv_pr_diff::diff_view::{ChangePosition, Direction};
@@ -32,7 +32,7 @@ const COUNTER_WIDTH: f32 = 64.0;
     clippy::struct_excessive_bools,
     reason = "independent per-frame facts the tab hands the bar, each read on its own"
 )]
-pub struct StripInputs<'a> {
+pub(crate) struct StripInputs<'a> {
     /// The open file; `None` while the summary of `folder` shows.
     pub file: Option<&'a ChangedFile>,
     pub folder: &'a str,
@@ -55,20 +55,14 @@ pub struct StripInputs<'a> {
 
 /// What the bar asks of the tab: the file header's actions, and a step to another file.
 #[derive(Default)]
-pub struct StripAction {
+pub(crate) struct StripAction {
     pub header: HeaderAction,
     pub step_file: Option<Direction>,
 }
 
-/// What the bar asks of a comment's original version.
-pub enum OriginAction {
-    Back,
-    Retry,
-}
-
 /// Draws the bar at the top of `ui`. Switches that are settings (layout, whitespace, the file tree,
 /// the threads panel) change and save them right away, as the file header does.
-pub fn show(ui: &mut Ui, inputs: &StripInputs<'_>, services: &mut Services) -> StripAction {
+pub(crate) fn show(ui: &mut Ui, inputs: &StripInputs<'_>, services: &mut Services) -> StripAction {
     let mut action = StripAction::default();
     let wants_tree = wants_tree(ui);
     let side = services.settings.file_tree_side;
@@ -199,7 +193,7 @@ fn file_steps(ui: &mut Ui, inputs: &StripInputs<'_>) -> Option<Direction> {
 /// The bar while a comment's original version shows: what the banner says (where dragging moves
 /// the window), Retry while the version is missing, the comment on the platform, Back to latest,
 /// the way out of focus mode, and the file tree switch at the end of the tree's side.
-pub fn show_origin(
+pub(crate) fn show_origin(
     ui: &mut Ui,
     face: &Face,
     web_url: Option<&str>,

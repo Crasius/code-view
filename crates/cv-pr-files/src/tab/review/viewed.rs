@@ -12,14 +12,14 @@ use cv_services::Services;
 
 /// A viewed mark the tree, a key or a header switched this frame.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ViewedToggle {
+pub(crate) enum ViewedToggle {
     /// The file at this index.
     File(usize),
     /// Every changed file below the folder at this path.
     Folder(String),
 }
 
-pub struct ViewedMarks {
+pub(crate) struct ViewedMarks {
     /// `None` when the saved marks could not be read: nothing shows as viewed, nothing is saved.
     store: Option<ViewedFiles>,
     /// Bumped with every change.
@@ -28,7 +28,7 @@ pub struct ViewedMarks {
 
 impl ViewedMarks {
     /// The pull request's saved marks; a failure to read them shows as a toast.
-    pub fn load(key: &PullRequestKey, services: &mut Services) -> Self {
+    pub(crate) fn load(key: &PullRequestKey, services: &mut Services) -> Self {
         let store = match ViewedFiles::load(&services.paths, &key.connection_id, &key.storage_key())
         {
             Ok(viewed) => Some(viewed),
@@ -42,22 +42,22 @@ impl ViewedMarks {
     }
 
     /// This version of `file` was marked viewed.
-    pub fn is_viewed(&self, file: &ChangedFile) -> bool {
+    pub(crate) fn is_viewed(&self, file: &ChangedFile) -> bool {
         self.store.as_ref().is_some_and(|store| store.is_viewed(&file.path, &file.new_oid))
     }
 
-    pub fn version(&self) -> u64 {
+    pub(crate) fn version(&self) -> u64 {
         self.version
     }
 
     /// Where the user left the pull request, kept with its marks.
-    pub fn last_place(&self) -> Option<&LastPlace> {
+    pub(crate) fn last_place(&self) -> Option<&LastPlace> {
         self.store.as_ref().and_then(ViewedFiles::last_place)
     }
 
     /// Saves `tab` and `file` as where the user is, when that changed; a failure to save shows as
     /// a toast, once (the place is kept in memory and not tried again until it changes).
-    pub fn remember_place(
+    pub(crate) fn remember_place(
         &mut self,
         services: &mut Services,
         tab: PullRequestTab,
@@ -81,14 +81,19 @@ impl ViewedMarks {
     }
 
     /// Switches `file`'s mark and saves it; a failure to save shows as a toast.
-    pub fn toggle(&mut self, services: &mut Services, file: &ChangedFile) {
+    pub(crate) fn toggle(&mut self, services: &mut Services, file: &ChangedFile) {
         let is_viewed = self.is_viewed(file);
         self.set(services, std::slice::from_ref(file).iter(), !is_viewed);
     }
 
     /// Switches what `toggle` names: a folder becomes viewed unless all its files already are,
     /// then it becomes unviewed.
-    pub fn apply(&mut self, services: &mut Services, files: &[ChangedFile], toggle: &ViewedToggle) {
+    pub(crate) fn apply(
+        &mut self,
+        services: &mut Services,
+        files: &[ChangedFile],
+        toggle: &ViewedToggle,
+    ) {
         match toggle {
             ViewedToggle::File(index) => self.toggle(services, &files[*index]),
             ViewedToggle::Folder(folder) => {

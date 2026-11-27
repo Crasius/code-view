@@ -12,7 +12,7 @@ use cv_pr_session::session::{Mirror, PullRequestSession};
 use cv_runtime::load::Load;
 use cv_services::Services;
 
-pub struct Staged {
+pub(crate) struct Staged {
     /// The probe answer that asked for this update.
     pub revision: PullRequestRevision,
     pub detail: PullRequestDetail,
@@ -28,7 +28,7 @@ pub struct Staged {
     pub changed_files: Option<HashSet<String>>,
 }
 
-pub fn start(
+pub(crate) fn start(
     staging: &mut Load<Staged>,
     session: &PullRequestSession,
     services: &Services,

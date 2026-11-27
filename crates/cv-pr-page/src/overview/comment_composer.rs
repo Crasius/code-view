@@ -13,7 +13,7 @@ use cv_widgets::settle;
 /// comment shows at the end of the discussion, where the posted one lands. A failure brings the
 /// text back with the reason and Retry. The box's height eases through each hand-off, so the
 /// discussion below slides instead of jumping.
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     session: &PullRequestSession,
     services: &Services,

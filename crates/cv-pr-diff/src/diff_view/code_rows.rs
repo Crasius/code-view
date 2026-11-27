@@ -105,7 +105,7 @@ struct PaneShown {
 
 impl CodeRows<'_> {
     /// Code row `row_index` at `rect`: each pane's line and gutter, and the divider between the panes.
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut Ui,
         rect: Rect,

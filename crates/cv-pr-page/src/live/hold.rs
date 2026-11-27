@@ -11,7 +11,7 @@ use review_core::ReviewThread;
 
 /// The comments the user is writing where an update could move them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Drafts {
+pub(crate) struct Drafts {
     /// Files whose diff holds an open new-comment composer.
     pub files: Vec<String>,
     /// Threads with an open reply box.
@@ -20,7 +20,7 @@ pub struct Drafts {
 
 /// What an update changes on the page.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Reach {
+pub(crate) struct Reach {
     /// Paths whose diff changes (both paths of a rename); `None` when the commits moved but the
     /// files could not be worked out (the page's own git data was not ready), so any may have.
     pub files: Option<HashSet<String>>,
@@ -29,7 +29,7 @@ pub struct Reach {
 }
 
 impl Reach {
-    pub fn new(
+    pub(crate) fn new(
         files: Option<HashSet<String>>,
         shown: &[ReviewThread],
         newer: &[ReviewThread],
@@ -50,7 +50,7 @@ impl Reach {
 
     /// True when applying the update would move or change something the user is writing in.
     /// `threads` are the shown ones, which place each reply.
-    pub fn disturbs(&self, drafts: &Drafts, threads: &[ReviewThread]) -> bool {
+    pub(crate) fn disturbs(&self, drafts: &Drafts, threads: &[ReviewThread]) -> bool {
         let file_of = |id: &str| {
             threads
                 .iter()

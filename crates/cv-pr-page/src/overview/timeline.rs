@@ -23,7 +23,7 @@ enum Filter {
 }
 
 /// All conversations, newest last. Returns where a card asked the Files tab to go.
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     session: &mut PullRequestSession,
     services: &Services,

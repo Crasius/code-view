@@ -179,15 +179,8 @@ fn the_strips_menu_switches_scrolling_past_the_end() {
     let mut harness = shown(LINES, false);
     let strip = pos2(WIDTH - OVERVIEW_WIDTH / 2.0, 300.0);
     harness.event(Event::PointerMoved(strip));
-    for pressed in [true, false] {
-        harness.event(Event::PointerButton {
-            pos: strip,
-            button: PointerButton::Secondary,
-            pressed,
-            modifiers: Modifiers::NONE,
-        });
-        harness.step();
-    }
+    harness.click_point(strip, PointerButton::Secondary);
+    harness.step();
     settle(&mut harness);
     assert!(harness.state().view.view_top().abs() < 0.01, "the right click leaves the view");
     harness.click_at(harness.get_by_label(PAST_END_LABEL).rect());

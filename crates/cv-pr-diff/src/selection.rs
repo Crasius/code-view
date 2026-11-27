@@ -6,11 +6,11 @@ use cv_code::diff_rows::Row;
 use cv_code::line_source::Pane;
 use cv_widgets::text_selection::{self, Unit};
 
-pub type Selection = text_selection::Selection<Pane>;
+pub(crate) type Selection = text_selection::Selection<Pane>;
 
 /// What the diff adds to the shared selection model; a trait because the model lives in
 /// `cv-widgets`.
-pub trait DiffSelection {
+pub(crate) trait DiffSelection {
     /// First and last code row the selection covers, for a comment on those lines. A text
     /// selection that ends at the very start of a line does not include that line.
     fn line_rows(&self, rows: &[Row], has_line: impl FnMut(&Row) -> bool)

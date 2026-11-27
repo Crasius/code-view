@@ -13,7 +13,7 @@ const MENU_MIN_HEIGHT: f32 = 240.0;
 /// the window, keeps off the button (whose click must not land on a menu row) and scrolls within
 /// the room of its side; in a narrow window it narrows too.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MenuPlacement {
+pub(crate) struct MenuPlacement {
     pub align: RectAlign,
     pub max_height: f32,
     pub width: f32,
@@ -22,7 +22,7 @@ pub struct MenuPlacement {
 impl MenuPlacement {
     /// `chrome`: what the menu's frame, the gap and the margin to the window's edges add around
     /// its content, sideways and in height.
-    pub fn new(window: Rect, button: Rect, chrome: egui::Vec2) -> Self {
+    pub(crate) fn new(window: Rect, button: Rect, chrome: egui::Vec2) -> Self {
         let below = window.bottom() - button.bottom() - chrome.y;
         let above = button.top() - window.top() - chrome.y;
         let (align, room) = if below >= MENU_MIN_HEIGHT || below >= above {

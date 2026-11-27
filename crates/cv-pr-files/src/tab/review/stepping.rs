@@ -28,7 +28,7 @@ use cv_widgets::badges;
 const EDGE_SECONDS: f64 = 4.0;
 
 /// The tab's part of the review's steps.
-pub struct Stepping {
+pub(crate) struct Stepping {
     /// Where the toasts' buttons leave their [`ReviewStep`] for this pull request's tab.
     requests: egui::Id,
     /// The last step past the last or first change, while its note shows.
@@ -48,7 +48,7 @@ struct Edge {
 }
 
 impl Stepping {
-    pub fn new(key: &PullRequestKey) -> Self {
+    pub(crate) fn new(key: &PullRequestKey) -> Self {
         Self {
             requests: egui::Id::unique(("files_review_step", key)),
             edge: None,
@@ -57,19 +57,23 @@ impl Stepping {
     }
 
     /// Whether "Overview" was asked for since the last call.
-    pub fn take_overview_request(&mut self) -> bool {
+    pub(crate) fn take_overview_request(&mut self) -> bool {
         std::mem::take(&mut self.wants_overview)
     }
 }
 
 /// The file after or before `selected` in the tree's order; with none open, "next" is the first.
-pub fn neighbour(tab: &FilesTab, selected: Option<usize>, direction: Direction) -> Option<usize> {
+pub(crate) fn neighbour(
+    tab: &FilesTab,
+    selected: Option<usize>,
+    direction: Direction,
+) -> Option<usize> {
     keys::neighbour(tab.tree.file_order(), selected, direction)
 }
 
 /// The tab's keys ([`keys`]): a step to the next or previous file (or the next one not viewed),
 /// or the viewed mark of the open file, else of the folder whose summary shows.
-pub fn keyboard(
+pub(crate) fn keyboard(
     tab: &mut FilesTab,
     ui: &Ui,
     selected: Option<usize>,
@@ -96,7 +100,7 @@ pub fn keyboard(
 }
 
 /// Ctrl+P's go to file: opens what Enter picked.
-pub fn go_to_keys(tab: &mut FilesTab, ctx: &Context, files: &[ChangedFile]) {
+pub(crate) fn go_to_keys(tab: &mut FilesTab, ctx: &Context, files: &[ChangedFile]) {
     if let Some(index) = goto::keys(&mut tab.tree, ctx, files) {
         open(tab, files, index);
     }
@@ -158,14 +162,19 @@ fn next_unviewed(
 }
 
 /// Carries out what a toast's button asked for since the last frame.
-pub fn take_requests(tab: &mut FilesTab, ctx: &Context, env: &mut Env<'_>, files: &[ChangedFile]) {
+pub(crate) fn take_requests(
+    tab: &mut FilesTab,
+    ctx: &Context,
+    env: &mut Env<'_>,
+    files: &[ChangedFile],
+) {
     if let Some(step) = mailbox::take::<ReviewStep>(ctx, tab.stepping.requests) {
         run(tab, ctx, env, files, step);
     }
 }
 
 /// Carries out `step`, from the progress line or a toast.
-pub fn run(
+pub(crate) fn run(
     tab: &mut FilesTab,
     ctx: &Context,
     env: &mut Env<'_>,
@@ -199,7 +208,7 @@ pub fn run(
 /// What the review can offer for the vote: "Approve" on an open pull request whose platform
 /// takes approvals, with a token; the user's vote once the platform lists one, so a second
 /// approval never goes out. Nothing where the platform refuses the author's vote.
-pub fn vote_offer(env: &Env<'_>) -> VoteOffer {
+pub(crate) fn vote_offer(env: &Env<'_>) -> VoteOffer {
     let session = &*env.session;
     let Some(detail) = session.detail.ready() else {
         return VoteOffer::None;
@@ -226,14 +235,14 @@ pub fn vote_offer(env: &Env<'_>) -> VoteOffer {
 }
 
 /// The open file and whether it is viewed, before the frame acts on it.
-pub fn watch(tab: &FilesTab, files: &[ChangedFile]) -> Option<(usize, bool)> {
+pub(crate) fn watch(tab: &FilesTab, files: &[ChangedFile]) -> Option<(usize, bool)> {
     let index = tab.selected_index(files)?;
     Some((index, tab.viewed.is_viewed(&files[index])))
 }
 
 /// After the frame: the open file (`watched` before it) just became viewed, and Settings asks for
 /// the next unviewed file to open then.
-pub fn after_viewed(
+pub(crate) fn after_viewed(
     tab: &mut FilesTab,
     ctx: &Context,
     env: &mut Env<'_>,
@@ -257,7 +266,7 @@ pub fn after_viewed(
 /// After the open file showed (`index`): a step past its last (or first) change notes so; the
 /// same step again while the note shows opens the next (or previous) file at its first (or last)
 /// change. Any other step, another file or the note's time ends it.
-pub fn follow_edge(tab: &mut FilesTab, ui: &Ui, files: &[ChangedFile], index: usize) {
+pub(crate) fn follow_edge(tab: &mut FilesTab, ui: &Ui, files: &[ChangedFile], index: usize) {
     let now = ui.input(|input| input.time);
     let path = &files[index].path;
     let position = tab.view.change_position();
@@ -291,7 +300,7 @@ pub fn follow_edge(tab: &mut FilesTab, ui: &Ui, files: &[ChangedFile], index: us
 }
 
 /// The note under the change arrows of the open file (`index`) while it shows.
-pub fn edge_hint(tab: &FilesTab, ui: &Ui, index: usize, path: &str) -> Option<&'static str> {
+pub(crate) fn edge_hint(tab: &FilesTab, ui: &Ui, index: usize, path: &str) -> Option<&'static str> {
     let now = ui.input(|input| input.time);
     let edge = tab
         .stepping

@@ -20,7 +20,7 @@ const AVATAR_SIZE: f32 = 28.0;
 
 /// Reviewer list with votes, plus add/remove when a token is configured.
 #[derive(Default)]
-pub struct ReviewerEditor {
+pub(crate) struct ReviewerEditor {
     new_reviewer: String,
     adding: Option<PendingAdd>,
 }
@@ -39,12 +39,12 @@ struct PendingAdd {
 
 impl ReviewerEditor {
     /// A reviewer name is typed but not added yet.
-    pub fn has_unsent_input(&self) -> bool {
+    pub(crate) fn has_unsent_input(&self) -> bool {
         !self.new_reviewer.trim().is_empty()
     }
 
     /// `add_clicked`: the card's add button (in its title line) was clicked this frame.
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut Ui,
         session: &PullRequestSession,

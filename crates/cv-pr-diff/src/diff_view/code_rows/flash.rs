@@ -16,7 +16,7 @@ use cv_base::theme::motion;
 use cv_code::line_source::{CodeLine, Pane};
 
 /// How long the tint shows, hold and fade (our own choice).
-pub const DURATION: f64 = 2.8;
+pub(crate) const DURATION: f64 = 2.8;
 /// The tint stays at full strength this long before it fades (our own choice).
 const HOLD: f64 = 0.7;
 /// How long the lines may take to come on screen once asked for; later the view went elsewhere,
@@ -25,7 +25,7 @@ const ARRIVAL: f64 = 5.0;
 
 /// Lines to flash: `lines` (1-based) counted in `side`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Target {
+pub(crate) struct Target {
     pub side: DiffSide,
     pub lines: RangeInclusive<u32>,
 }
@@ -44,7 +44,7 @@ impl Target {
 
 /// The view's flash: none, waiting for its lines to show, or running since they did.
 #[derive(Default)]
-pub struct Flash {
+pub(crate) struct Flash {
     state: Option<(Target, Phase)>,
     /// The lines the assistant cited last in this view.
     cited: Option<Target>,
@@ -63,25 +63,30 @@ enum Phase {
 impl Flash {
     /// Flashes `target` once its lines are on screen, in place of a flash still running; `None`
     /// leaves the flash as it is.
-    pub fn start(&mut self, target: Option<Target>) {
+    pub(crate) fn start(&mut self, target: Option<Target>) {
         if let Some(target) = target {
             self.state = Some((target, Phase::Asked));
         }
     }
 
     /// Keeps `target`, lines the assistant cited, as the view's cited lines.
-    pub fn cite(&mut self, target: &Target) {
+    pub(crate) fn cite(&mut self, target: &Target) {
         self.cited = Some(target.clone());
     }
 
     /// Whether `pane` shows one of the lines cited last with `line`.
-    pub fn is_cited(&self, pane: Pane, line: Option<&CodeLine<'_>>) -> bool {
+    pub(crate) fn is_cited(&self, pane: Pane, line: Option<&CodeLine<'_>>) -> bool {
         self.cited.as_ref().zip(line).is_some_and(|(cited, line)| cited.covers(pane, line))
     }
 
     /// The tint's strength (0 to 1) on `line` painted in `pane` this frame. The first line of the
     /// target painted starts the flash; while it runs, the next frame is asked for.
-    pub fn strength(&mut self, ctx: &Context, pane: Pane, line: Option<&CodeLine<'_>>) -> f32 {
+    pub(crate) fn strength(
+        &mut self,
+        ctx: &Context,
+        pane: Pane,
+        line: Option<&CodeLine<'_>>,
+    ) -> f32 {
         let Some((target, phase)) = &mut self.state else {
             return 0.0;
         };
@@ -125,7 +130,7 @@ impl Flash {
 
 /// The tint's strength `elapsed` seconds after the lines came on screen: full while it holds,
 /// then easing out to 0 at [`DURATION`]. Under reduced motion it stays full until then.
-pub fn fade(elapsed: f64, is_reduced: bool) -> f32 {
+pub(crate) fn fade(elapsed: f64, is_reduced: bool) -> f32 {
     if !(0.0..DURATION).contains(&elapsed) {
         return if elapsed < 0.0 { 1.0 } else { 0.0 };
     }

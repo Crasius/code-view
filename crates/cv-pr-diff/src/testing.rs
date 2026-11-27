@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+#[cfg(test)]
 use cv_base::theme;
 use cv_code::contents::{Coloring, FileContents, SideContents};
 use cv_code::diff_rows::Layout;
@@ -168,7 +169,7 @@ pub struct Fixture {
 
 impl Fixture {
     /// Shows the diff the way the Files tab does and answers what the view asks for.
-    pub fn show(&mut self, ui: &mut egui::Ui) -> Option<DiffEvent> {
+    pub(crate) fn show(&mut self, ui: &mut egui::Ui) -> Option<DiffEvent> {
         let Self {
             view,
             diff,
@@ -207,12 +208,13 @@ impl Fixture {
     }
 }
 
-pub fn fixture(layout: Layout) -> Fixture {
+#[cfg(test)]
+pub(crate) fn fixture(layout: Layout) -> Fixture {
     fixture_of(layout, Some(OLD), Some(NEW))
 }
 
 /// The unified diff of two texts as the app parses it, with 3 lines of context.
-pub fn diff_of(old: &str, new: &str) -> Arc<FileDiff> {
+pub(crate) fn diff_of(old: &str, new: &str) -> Arc<FileDiff> {
     let unified =
         similar::TextDiff::from_lines(old, new).unified_diff().context_radius(3).to_string();
     Arc::new(FileDiff::parse_unified(unified.as_bytes()))
@@ -227,8 +229,8 @@ pub fn whole_file_fixture(side: DiffSide) -> Fixture {
     }
 }
 
-/// [`fixture`] for other texts: `None` is a side the file does not have.
-pub fn fixture_of(layout: Layout, old: Option<&str>, new: Option<&str>) -> Fixture {
+/// `fixture` for other texts: `None` is a side the file does not have.
+pub(crate) fn fixture_of(layout: Layout, old: Option<&str>, new: Option<&str>) -> Fixture {
     Fixture {
         view: DiffView::default(),
         diff: diff_of(old.unwrap_or_default(), new.unwrap_or_default()),
@@ -255,7 +257,7 @@ pub fn fixture_of(layout: Layout, old: Option<&str>, new: Option<&str>) -> Fixtu
 }
 
 /// One side of the file, highlighted the way the app does it.
-pub fn side(source: &str) -> SideContents {
+pub(crate) fn side(source: &str) -> SideContents {
     let text = BlobText::from_bytes(source.as_bytes().to_vec());
     let grammar =
         grammar::for_path(PATH, text.line(0).unwrap_or_default()).expect("a Rust grammar");
@@ -267,13 +269,15 @@ pub fn side(source: &str) -> SideContents {
     SideContents { text: Arc::new(text), spans: Arc::new(spans) }
 }
 
-pub fn harness(fixture: Fixture) -> Harness<'static, Fixture> {
+#[cfg(test)]
+pub(crate) fn harness(fixture: Fixture) -> Harness<'static, Fixture> {
     harness_sized(fixture, [1180.0, 760.0])
 }
 
 /// [`harness`] with a window of another `size`. Eight steps, 2 s simulated, cover the hover delay
 /// and the eased transitions; [`settle`] fails past them.
-pub fn harness_sized(fixture: Fixture, size: [f32; 2]) -> Harness<'static, Fixture> {
+#[cfg(test)]
+pub(crate) fn harness_sized(fixture: Fixture, size: [f32; 2]) -> Harness<'static, Fixture> {
     Harness::builder()
         .with_size(size)
         .with_max_steps(8)
@@ -289,6 +293,12 @@ pub fn harness_sized(fixture: Fixture, size: [f32; 2]) -> Harness<'static, Fixtu
             fixture,
         )
 }
+
+/// Steps of kittest's default 0.25 s that outlast the flash of a line jumped to
+/// (`flash::DURATION`); the flash repaints every frame, so [`settle`] alone would exceed its
+/// step limit.
+#[cfg(test)]
+pub(crate) const FLASH_STEPS: usize = 12;
 
 /// Shows the fixture's diff the way the files tab does and records what the view asks for; a
 /// switch of "Scroll past the end" sets it, as the tab saves it.
@@ -337,7 +347,8 @@ pub fn post_comment<State>(harness: &mut Harness<'_, State>, body: &str) {
 }
 
 /// 1-based line of `needle` in `text`.
-pub fn line_of(text: &str, needle: &str) -> u32 {
+#[cfg(test)]
+pub(crate) fn line_of(text: &str, needle: &str) -> u32 {
     text.lines().position(|line| line.contains(needle)).expect("line in the sample") as u32 + 1
 }
 

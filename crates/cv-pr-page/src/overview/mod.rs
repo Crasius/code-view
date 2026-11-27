@@ -15,7 +15,7 @@ use egui::{Id, RichText, Ui};
 use review_core::{ItemRef, Provider, ProviderKind, PullRequestState, ReviewVote};
 use review_store::PaneSizes;
 
-pub use self::linked::LinkedAction;
+pub(crate) use self::linked::LinkedAction;
 use cv_base::platform;
 use cv_base::theme::{self, icons, motion, style};
 use cv_markdown::{self as markdown, RenderOptions};
@@ -25,13 +25,12 @@ use cv_pr_session::links::{self, LinkedEntry, Sources};
 use cv_pr_session::session::PullRequestSession;
 use cv_pr_threads::ThreadsUi;
 use cv_runtime::background::Background;
-use cv_runtime::intents;
 use cv_runtime::load::Live;
 use cv_services::Services;
 use cv_services::linked::LinkedCache;
 use cv_services::self_review;
 use cv_widgets::splitter::Splitter;
-use cv_widgets::states::{self, Action};
+use cv_widgets::states;
 use cv_widgets::{buttons, scroll, skeleton};
 
 const COLUMN_GAP: f32 = 24.0;
@@ -56,7 +55,7 @@ fn side_splitter(range: std::ops::RangeInclusive<f32>) -> Splitter {
 }
 
 #[derive(Default)]
-pub struct OverviewTab {
+pub(crate) struct OverviewTab {
     reviewers: reviewers::ReviewerEditor,
     labels: labels::LabelEditor,
     linked: LinkedRows,
@@ -70,7 +69,7 @@ pub struct OverviewTab {
 }
 
 /// Where the merge-status card asks the Pipelines tab to go.
-pub enum PipelineRequest {
+pub(crate) enum PipelineRequest {
     Checks,
     Run(String),
 }
@@ -101,13 +100,13 @@ struct LinkedRows {
 
 impl OverviewTab {
     /// Something the user is writing or editing here that a reload must not pull away.
-    pub fn has_unsent_input(&self) -> bool {
+    pub(crate) fn has_unsent_input(&self) -> bool {
         // Thread replies and the general comment are drafts of [`ThreadsUi`], which answers for them.
         self.reviewers.has_unsent_input() || self.labels.is_editing()
     }
 
     /// Returns where a thread card asked the Files tab to go.
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut Ui,
         session: &mut PullRequestSession,
@@ -116,36 +115,14 @@ impl OverviewTab {
         threads: &mut ThreadsUi,
         assistant: &mut Assistant,
     ) -> Option<cv_pr_threads::Jump> {
-        // The header already shows the error text; skeletons here would wait forever.
+        // The header shows the error and its actions; skeletons here would wait forever.
         if session.detail.error().is_some() {
-            let open_label = states::open_on_platform(session.kind);
-            let actions = [
-                Action::primary(icons::ARROW_CLOCKWISE, "Retry"),
-                Action::secondary(cv_widgets::provider_icon::glyph(session.kind), &open_label),
-                Action::secondary(icons::GEAR, "Check connection"),
-            ];
-            let picked = states::message_with_actions(
+            states::message(
                 ui,
                 icons::WARNING,
                 "Pull request unavailable",
                 "Check the number and whether this connection can read the repository.",
-                &actions,
             );
-            match picked {
-                Some(0) => session.refresh(services),
-                Some(1) => {
-                    if let Some(connection) = services.connection(&session.key.connection_id) {
-                        let url = cv_runtime::links::pull_request_link::web_url(
-                            connection,
-                            &session.key.repository_key,
-                            session.key.number,
-                        );
-                        ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-                    }
-                }
-                Some(_) => intents::request_fix(ui.ctx(), &session.key.connection_id),
-                None => {}
-            }
             return None;
         }
         if assistant.is_expanded() && services.settings.assistant.enabled {
@@ -281,7 +258,7 @@ impl OverviewTab {
     }
 
     /// Where the merge-status card asked the Pipelines tab to go this frame, once.
-    pub fn take_pipeline_request(&mut self) -> Option<PipelineRequest> {
+    pub(crate) fn take_pipeline_request(&mut self) -> Option<PipelineRequest> {
         self.pipeline_request.take()
     }
 
@@ -355,7 +332,7 @@ impl OverviewTab {
     }
 
     /// What the user picked in the Linked card this frame, once.
-    pub fn take_linked_action(&mut self) -> Option<LinkedAction> {
+    pub(crate) fn take_linked_action(&mut self) -> Option<LinkedAction> {
         self.linked_action.take()
     }
 
@@ -527,14 +504,18 @@ fn without_leading_heading<'a>(text: &'a str, title: &str) -> &'a str {
 }
 
 /// Card with a section title, the building block of the overview.
-pub fn section_card(ui: &mut Ui, title: &str, content: impl FnOnce(&mut Ui)) -> egui::Response {
+pub(crate) fn section_card(
+    ui: &mut Ui,
+    title: &str,
+    content: impl FnOnce(&mut Ui),
+) -> egui::Response {
     section_card_with_action(ui, title, |_| (), |ui, ()| content(ui))
 }
 
 /// [`section_card`] with a control at the right end of the title line (an edit toggle, say),
 /// centred on the title. The control does not make the title line taller, so the content starts
 /// at the same height in every card; its result goes to `content`.
-pub fn section_card_with_action<A>(
+pub(crate) fn section_card_with_action<A>(
     ui: &mut Ui,
     title: &str,
     action: impl FnOnce(&mut Ui) -> A,
