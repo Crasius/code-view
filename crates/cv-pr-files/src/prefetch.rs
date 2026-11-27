@@ -117,8 +117,7 @@ impl Prefetch {
         rested: Option<&ChangedFile>,
         is_wanted: impl Fn(&ChangedFile) -> bool,
     ) -> bool {
-        let thread_rested = self.thread_rested.clone();
-        let rested = rested.or(thread_rested.as_ref());
+        let rested = rested.or(self.thread_rested.as_ref());
         let wanted = wanted(order, open, rested, is_wanted, can_load_ahead);
         // The count does not know sizes before it counted: the near files whatever their size.
         let near = self::wanted(order, open, rested, |_| true, |_| true);
@@ -332,16 +331,10 @@ mod tests {
 
     fn file(path: &str, changed_lines: Option<u32>) -> ChangedFile {
         ChangedFile {
-            path: path.into(),
-            old_path: None,
-            kind: ChangeKind::Modified,
-            old_oid: "1".repeat(40),
-            new_oid: "2".repeat(40),
             additions: changed_lines,
             deletions: changed_lines.map(|_| 0),
-            is_binary: false,
             category: FileCategory::Code,
-            whitespace_only: false,
+            ..ChangedFile::sample(path, ChangeKind::Modified)
         }
     }
 
@@ -458,8 +451,8 @@ mod tests {
         assert_eq!(queued(&prefetch).len(), left, "the same plan next frame goes on where it was");
     }
 
-    /// Regression for the owner's note: what was loaded ahead for one place in the tree is
-    /// released once the user moves on, unless they opened it.
+    /// Regression: what was loaded ahead for one place in the tree is released once the user moves
+    /// on, unless they opened it.
     #[test]
     fn moving_away_releases_the_unopened_diffs_of_the_last_plan() {
         let files: Vec<ChangedFile> =
@@ -491,8 +484,8 @@ mod tests {
         );
     }
 
-    /// Regression for the owner's note: opening a file in another folder releases every
-    /// unopened diff loaded ahead in the folder left behind at once; the opened ones stay.
+    /// Regression: opening a file in another folder releases every unopened diff loaded ahead in
+    /// the folder left behind at once; the opened ones stay.
     #[test]
     fn opening_a_file_in_another_folder_releases_the_old_folders_unopened_diffs() {
         let paths = ["src/cart/a.rs", "src/cart/b.rs", "src/cart/c.rs", "src/cart/d.rs"];
@@ -567,7 +560,8 @@ mod tests {
                 "src/cart/c_huge.rs",
                 "src/cart/b.rs"
             ],
-            "the open file, the rested one, the next and the previous, uncounted or huge, then              what loads ahead"
+            "the open file, the rested one, the next and the previous, uncounted or huge, then \
+             what loads ahead"
         );
         let ahead = ["web/util.ts", "src/cart/f.rs", "src/cart/g.rs", "src/cart/b.rs"];
         assert_eq!(queued(&prefetch), ahead);
@@ -575,8 +569,8 @@ mod tests {
         assert_eq!(prefetch.count_wanted, Vec::<String>::new());
     }
 
-    /// Item 7 of the performance audit: a thread row the pointer rested on loads its file ahead,
-    /// and a row of the tree rested on goes before it.
+    /// A thread row the pointer rested on loads its file ahead, and a row of the tree rested on
+    /// goes before it.
     #[test]
     fn a_thread_row_rested_on_loads_its_file_ahead() {
         let files = tree();

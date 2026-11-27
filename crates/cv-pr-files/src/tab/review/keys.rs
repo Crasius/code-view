@@ -61,13 +61,17 @@ pub fn neighbour(
     let Some(index) = selected else {
         return if direction == Direction::Next { order.next() } else { None };
     };
-    let order: Vec<usize> = order.collect();
-    let position = order.iter().position(|candidate| *candidate == index)?;
-    match direction {
-        Direction::Next => order.get(position + 1).copied(),
-        Direction::Previous => {
-            position.checked_sub(1).and_then(|previous| order.get(previous).copied())
+    let mut previous = None;
+    loop {
+        let candidate = order.next()?;
+        if candidate == index {
+            break;
         }
+        previous = Some(candidate);
+    }
+    match direction {
+        Direction::Next => order.next(),
+        Direction::Previous => previous,
     }
 }
 

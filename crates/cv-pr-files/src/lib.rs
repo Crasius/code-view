@@ -45,16 +45,15 @@ use self::tab::choices::{
 };
 use self::tab::download::Download;
 use self::tab::file_diffs::{FileDiffs, threads_on};
-use self::tab::layout;
 use self::tab::layout::panels::{self, PanelContext};
 use self::tab::notices::{self, NoChanges};
 use self::tab::origin::{self, Shown};
-use self::tab::rendered;
 use self::tab::resume::{self, Resume};
 use self::tab::review::stepping::{self, Stepping};
 use self::tab::review::viewed::{ViewedMarks, ViewedToggle};
 use self::tab::start::{self, Start};
 use self::tab::summary_pane::SummaryPane;
+use self::tab::{layout, rendered};
 use cv_code::diff_rows::Layout;
 use cv_editor::markdown_editor;
 use cv_pr_diff::diff_view::{DiffEvent, DiffInputs, DiffView, LineRequest};
@@ -110,6 +109,7 @@ pub struct FilesTab {
     stepping: Stepping,
     /// The file the user left open and the settings' start file ([`tab::resume`]).
     resume: Resume,
+    thread_counts: layout::ThreadCounts,
 }
 
 impl FilesTab {
@@ -138,6 +138,7 @@ impl FilesTab {
             thread_request: None,
             stepping: Stepping::new(key),
             resume,
+            thread_counts: layout::ThreadCounts::default(),
         };
         tab.adopt_filters(&services.settings.file_filters);
         tab
@@ -194,7 +195,7 @@ impl FilesTab {
     /// Opens `path` and scrolls to the thread once the diff is there, showing it while comments
     /// are hidden in the diff. A rendered Markdown diff shows it under its block; an SVG file shows
     /// its text diff for that, where the comment sits, and previews stay on for the other files.
-    pub fn reveal(&mut self, path: &str, thread_id: &str) {
+    fn reveal(&mut self, path: &str, thread_id: &str) {
         self.mark_asked();
         self.origin = None;
         if !self.preview.shows_rendered(path) {
@@ -394,17 +395,17 @@ impl FilesTab {
 
     fn file_state(&self, file: &ChangedFile, services: &Services) -> FileState {
         let is_previewing = self.preview.is_active(file);
-        let shows_diff = !is_previewing
-            && self.diffs.ready().is_some_and(|diff| !diff.is_binary && !diff.is_empty());
+        let diff = self.diffs.ready().filter(|_| !is_previewing);
+        let shows_diff = diff.is_some_and(|diff| !diff.is_binary && !diff.is_empty());
+        let rendered_changes = self.preview.change_position(file);
         FileState {
             is_previewing,
             shows_diff,
-            // A rendered Markdown diff counts and steps through its changes as the text diff does.
-            rendered_changes: self.preview.change_position(file),
+            changes: shows_diff.then(|| self.view.change_position()).or(rendered_changes),
+            rendered_changes,
             whole_file: whole_file_side(file),
             hides_whitespace: services.settings.ignore_whitespace
-                && !is_previewing
-                && self.diffs.ready().is_some_and(|diff| !diff.is_binary),
+                && diff.is_some_and(|diff| !diff.is_binary),
         }
     }
 
@@ -423,10 +424,7 @@ impl FilesTab {
         let header_inputs = file_header::HeaderInputs {
             file,
             is_viewed: self.viewed.is_viewed(file),
-            changes: state
-                .shows_diff
-                .then(|| self.view.change_position())
-                .or(state.rendered_changes),
+            changes: state.changes,
             is_rendered: state.rendered_changes.is_some(),
             whole_file: state.whole_file,
             hides_whitespace: state.hides_whitespace,
@@ -449,10 +447,7 @@ impl FilesTab {
             self.view.relayout();
         }
         // A whole added or deleted file has no layouts to switch between.
-        if (state.shows_diff || state.rendered_changes.is_some())
-            && state.whole_file.is_none()
-            && toggles_new_only(ui)
-        {
+        if state.changes.is_some() && state.whole_file.is_none() && toggles_new_only(ui) {
             let target =
                 new_only_toggled(services.settings.diff_layout, self.layout_before_new_only);
             self.switch_layout(services, target);
@@ -766,6 +761,9 @@ struct FileState {
     is_previewing: bool,
     /// A text diff with changes is on screen.
     shows_diff: bool,
+    /// (change in focus, number of changes) of the text diff on screen, else of the rendered one:
+    /// a rendered Markdown diff counts and steps through its changes as the text diff does.
+    changes: Option<(usize, usize)>,
     /// (change in focus, number of changes) of the rendered diff on screen.
     rendered_changes: Option<(usize, usize)>,
     whole_file: Option<DiffSide>,
@@ -779,20 +777,22 @@ mod tests {
 
     use review_core::FileCategory;
     use review_git::{ChangeKind, ChangedFile};
-    use review_store::{AppPaths, FileFilters, ImageCompare};
+    use review_store::{FileFilters, ImageCompare};
 
     use super::FilesTab;
     use cv_runtime::route::PullRequestKey;
     use cv_services::Services;
+    use cv_testkit::ScratchDir;
+
+    /// The app's services on the data folders below `scratch`.
+    pub(crate) fn services_in(scratch: &ScratchDir) -> Services {
+        Services::new(egui::Context::default(), scratch.app_paths(), cv_providers::create_provider)
+    }
 
     #[test]
     fn filters_stay_for_other_pull_requests_and_after_a_restart() {
-        let root = std::env::temp_dir().join(format!("review-file-filters-{}", std::process::id()));
-        // Left over from an earlier run, or absent.
-        let _was_absent = std::fs::remove_dir_all(&root);
-        let paths = AppPaths::new(root.join("config"), root.join("cache"));
-        let mut services =
-            Services::new(egui::Context::default(), paths.clone(), cv_providers::create_provider);
+        let scratch = ScratchDir::new("file-filters");
+        let mut services = services_in(&scratch);
         let key = |number| PullRequestKey {
             connection_id: "ado".into(),
             repository_key: "Shop/web".into(),
@@ -831,11 +831,8 @@ mod tests {
         already_open.adopt_filters(&services.settings.file_filters);
         assert_eq!(shown(&already_open), expected);
 
-        let restarted =
-            Services::new(egui::Context::default(), paths, cv_providers::create_provider);
+        let restarted = services_in(&scratch);
         assert_eq!(restarted.settings.file_filters, chosen, "the filters were saved");
-        // Best effort: the next run removes what is left.
-        let _best_effort = std::fs::remove_dir_all(&root);
     }
 
     /// Regression: a click in the tree was dropped when a newer file list (the line counts of the
@@ -848,15 +845,8 @@ mod tests {
         use super::TreeEvent;
         use super::tab::layout::apply_pending_tree_event;
 
-        let root =
-            std::env::temp_dir().join(format!("review-tree-click-list-{}", std::process::id()));
-        // Left over from an earlier run, or absent.
-        let _was_absent = std::fs::remove_dir_all(&root);
-        let mut services = Services::new(
-            egui::Context::default(),
-            AppPaths::new(root.join("config"), root.join("cache")),
-            cv_providers::create_provider,
-        );
+        let scratch = ScratchDir::new("tree-click-list");
+        let mut services = services_in(&scratch);
         let key = PullRequestKey {
             connection_id: "gh".into(),
             repository_key: "acme/widgets".into(),
@@ -896,22 +886,14 @@ mod tests {
             Some("z/last.md"),
             "a file that left the list opens nothing"
         );
-        // Best effort: the next run removes what is left.
-        let _best_effort = std::fs::remove_dir_all(&root);
     }
 
     fn markdown_file(path: &str) -> ChangedFile {
         ChangedFile {
-            path: path.into(),
-            old_path: None,
-            kind: ChangeKind::Modified,
-            old_oid: "1".repeat(40),
-            new_oid: "2".repeat(40),
             additions: Some(2),
             deletions: Some(1),
-            is_binary: false,
             category: FileCategory::Docs,
-            whitespace_only: false,
+            ..ChangedFile::sample(path, ChangeKind::Modified)
         }
     }
 
@@ -919,15 +901,8 @@ mod tests {
     /// does not, so its text diff shows, as does a Markdown file's when its card asks for it.
     #[test]
     fn jumping_to_a_comment_in_a_previewed_file_shows_it_where_it_shows() {
-        let root =
-            std::env::temp_dir().join(format!("review-reveal-source-{}", std::process::id()));
-        // Left over from an earlier run, or absent.
-        let _was_absent = std::fs::remove_dir_all(&root);
-        let mut services = Services::new(
-            egui::Context::default(),
-            AppPaths::new(root.join("config"), root.join("cache")),
-            cv_providers::create_provider,
-        );
+        let scratch = ScratchDir::new("reveal-source");
+        let mut services = services_in(&scratch);
         let key = PullRequestKey {
             connection_id: "ado".into(),
             repository_key: "Shop/web".into(),
@@ -978,8 +953,6 @@ mod tests {
         // The header's Preview switch brings the preview back.
         tab.preview.set_enabled(true);
         assert!(tab.preview.is_active(&readme) && tab.preview.is_active(&logo));
-        // Best effort: the next run removes what is left.
-        let _best_effort = std::fs::remove_dir_all(&root);
     }
 
     /// "First file" opens the first file of the tree once, when the files first show; a file, a

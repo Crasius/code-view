@@ -2,11 +2,14 @@
 //! Downloads folder, under a name no file there has yet. A download that failed offers Retry (the
 //! same file once more) and the Downloads folder.
 
-use std::path::PathBuf;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use review_core::ProviderError;
 use review_git::{ChangedFile, GitMirror};
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncWriteExt as _;
 
 use cv_base::platform;
 use cv_pr_session::session::PullRequestSession;
@@ -56,9 +59,9 @@ impl Download {
         let Blob { git, oid, name } = blob;
         self.load.start(&services.background, async move {
             let bytes = git.blob(&oid).await?;
-            let target = download_target(&name)?;
-            tokio::fs::write(&target, bytes).await?;
-            Ok(target)
+            let folder = platform::downloads_dir()
+                .ok_or_else(|| ProviderError::Local("the user profile folder is unknown".into()))?;
+            Ok(write_new(&folder, &name, &bytes).await?)
         });
     }
 
@@ -71,35 +74,64 @@ impl Download {
         {
             self.save(services, blob);
         }
-        if !self.load.poll() {
-            return;
-        }
-        match std::mem::take(&mut self.load) {
-            Load::Ready(path) => services.toasts.success(format!("Saved to {}", path.display())),
-            Load::Failed(message) => {
+        match self.load.take_finished() {
+            Some(Ok(path)) => services.toasts.success(format!("Saved to {}", path.display())),
+            Some(Err(message)) => {
                 let retry = ToastAction::retry(egui::Id::unique(RETRY_ID));
                 let folder = platform::downloads_dir().map(ToastAction::open_folder);
                 let ways_out = WaysOut::new(retry).and_some(folder);
                 services.toasts.error(format!("Download failed: {message}"), ways_out);
             }
-            Load::Idle | Load::Loading(_) => {}
+            None => {}
         }
     }
 }
 
-/// `Downloads/name`, or `name (2).ext` and so on when that file exists.
-fn download_target(name: &str) -> Result<PathBuf, ProviderError> {
-    let folder = platform::downloads_dir()
-        .ok_or_else(|| ProviderError::Local("the user profile folder is unknown".into()))?;
+/// Writes `bytes` to `folder/name`, or to `name (2).ext` and so on when that file exists. Each name
+/// is taken by creating its file, so a download of the same name beside this one never overwrites
+/// it.
+async fn write_new(folder: &Path, name: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
     let (stem, extension) = match name.rsplit_once('.') {
         Some((stem, extension)) if !stem.is_empty() => (stem, format!(".{extension}")),
         _ => (name, String::new()),
     };
     let mut candidate = folder.join(name);
     let mut counter = 2;
-    while candidate.exists() {
-        candidate = folder.join(format!("{stem} ({counter}){extension}"));
-        counter += 1;
-    }
+    let mut file = loop {
+        let created = OpenOptions::new().write(true).create_new(true).open(&candidate).await;
+        match created {
+            Ok(file) => break file,
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+                candidate = folder.join(format!("{stem} ({counter}){extension}"));
+                counter += 1;
+            }
+            Err(error) => return Err(error),
+        }
+    };
+    file.write_all(bytes).await?;
+    file.flush().await?;
     Ok(candidate)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write_new;
+    use cv_testkit::ScratchDir;
+
+    #[test]
+    fn a_download_takes_the_next_free_name_and_keeps_the_files_there() {
+        let scratch = ScratchDir::new("download-names");
+        let folder = scratch.path();
+        std::fs::write(folder.join("logo.png"), b"there before").expect("a file in the folder");
+        let runtime = tokio::runtime::Builder::new_current_thread().build().expect("a runtime");
+        let save = |bytes: &'static [u8]| {
+            runtime.block_on(write_new(folder, "logo.png", bytes)).expect("the download is saved")
+        };
+        assert_eq!(save(b"first"), folder.join("logo (2).png"));
+        assert_eq!(save(b"second"), folder.join("logo (3).png"));
+        let read = |name: &str| std::fs::read(folder.join(name)).expect("a saved file");
+        assert_eq!(read("logo.png"), b"there before", "the file there before is kept");
+        assert_eq!(read("logo (2).png"), b"first", "a later download keeps the earlier one");
+        assert_eq!(read("logo (3).png"), b"second");
+    }
 }

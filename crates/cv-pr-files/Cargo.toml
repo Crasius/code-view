@@ -73,5 +73,3 @@ cv-testkit.workspace = true
 cv-widgets = { workspace = true, features = ["test-support"] }
 egui_kittest.workspace = true
 review-git = { workspace = true, features = ["test-support"] }
-similar.workspace = true
-time = { workspace = true, features = ["local-offset"] }
