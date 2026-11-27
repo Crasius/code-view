@@ -202,18 +202,7 @@ async fn counts_local_blobs_at_once_without_publishing() {
 }
 
 fn file(path: &str) -> ChangedFile {
-    ChangedFile {
-        path: path.to_owned(),
-        old_path: None,
-        kind: ChangeKind::Modified,
-        old_oid: "1".repeat(40),
-        new_oid: "2".repeat(40),
-        additions: None,
-        deletions: None,
-        is_binary: false,
-        category: review_core::FileCategory::classify(path),
-        whitespace_only: false,
-    }
+    ChangedFile::sample(path, ChangeKind::Modified)
 }
 
 #[test]

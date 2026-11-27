@@ -86,6 +86,28 @@ impl ChangedFile {
             || (self.kind == ChangeKind::Added && is_empty_blob(&self.new_oid))
             || (self.kind == ChangeKind::Deleted && is_empty_blob(&self.old_oid))
     }
+
+    /// `path` changed as `kind`: old blob "1" x 40, new blob "2" x 40, the missing side of an added
+    /// or deleted file "0" x 40, no counts, not binary, categorised by its path.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn sample(path: &str, kind: ChangeKind) -> Self {
+        let blob = |digit: char, missing: ChangeKind| {
+            let digit = if kind == missing { ZERO_OID_CHAR } else { digit };
+            digit.to_string().repeat(40)
+        };
+        Self {
+            path: path.to_owned(),
+            old_path: None,
+            kind,
+            old_oid: blob('1', ChangeKind::Added),
+            new_oid: blob('2', ChangeKind::Deleted),
+            additions: None,
+            deletions: None,
+            is_binary: false,
+            category: FileCategory::classify(path),
+            whitespace_only: false,
+        }
+    }
 }
 
 /// The empty blob's id in SHA-1 and SHA-256 repositories.
