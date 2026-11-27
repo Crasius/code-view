@@ -26,8 +26,7 @@
 //! repositories), [`ScratchDir`] and [`remove_dir`], [`samples`] (model values a test fills in by
 //! struct update), [`provider`] (the scripted provider of a test that is not about HTTP) and
 //! [`use_bundled_fonts`] (the same text widths on every machine). [`Clicks`] is the one way a
-//! kittest test clicks. [`frame_bench`] holds the headless frame-budget
-//! benchmarks.
+//! kittest test clicks. [`frame_bench`] holds the headless frame-budget benchmarks.
 //!
 //! A dev-only crate: the crates above `cv-widgets` take it as a dev-dependency, `cv-services` also as an
 //! optional dependency under its `test-support` feature (for its watchdog and hermetic checks).
@@ -284,7 +283,7 @@ pub fn use_bundled_fonts(ctx: &egui::Context) {
 /// Runs `git` in `dir` with a fixed identity and line endings, for fixture repositories; the
 /// trimmed standard output. Panics with git's message when it fails.
 pub fn git(dir: &Path, args: &[&str]) -> String {
-    let mut command = std::process::Command::new("git");
+    let mut command = Command::new("git");
     command.arg("-C").arg(dir);
     git_output(command.args(GIT_FIXTURE_CONFIG).args(args), args)
 }
@@ -292,7 +291,7 @@ pub fn git(dir: &Path, args: &[&str]) -> String {
 /// `git` on the repository `git_dir` (`--git-dir`), or in the current folder without one, with
 /// the user's own configuration (streams for `fast-import` name their own committer).
 pub fn git_in(git_dir: Option<&Path>, args: &[&str]) -> String {
-    let mut command = std::process::Command::new("git");
+    let mut command = Command::new("git");
     if let Some(git_dir) = git_dir {
         command.arg("--git-dir").arg(git_dir);
     }
@@ -307,7 +306,7 @@ const GIT_FIXTURE_CONFIG: &[&str] =
     clippy::disallowed_methods,
     reason = "test fixtures build real repositories; the test thread owns the wait for git"
 )]
-fn git_output(command: &mut std::process::Command, args: &[&str]) -> String {
+fn git_output(command: &mut Command, args: &[&str]) -> String {
     take_process_slot();
     let output = command.output().expect("git runs");
     assert!(output.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&output.stderr));
@@ -424,6 +423,8 @@ mod tests {
         let parent = git_in(Some(&git_dir), &["rev-parse", "refs/heads/main~1"]);
         assert_eq!(head.len(), 40, "rev-parse names the branch's commit: {head}");
         assert_ne!(head, parent, "the branch holds both commits");
+        let content = git_in(Some(&git_dir), &["show", "refs/heads/main:a.txt"]);
+        assert_eq!(content, "b", "the branch's tree is the second commit's");
         let listed = git_in(None, &["ls-remote", &file_url(&git_dir), "refs/heads/main"]);
         assert!(listed.starts_with(&head), "git reaches the repository by its URL: {listed}");
     }
