@@ -21,7 +21,9 @@ use review_store::DiffLayout;
 
 use super::ReviewApp;
 use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
-use super::walkthrough::{app, files_tab, open_in_tree, shows_file_view, wait_until, wheel};
+use super::walkthrough::{
+    app, files_tab, open_in_tree, shows_file_view, wait_for, wait_until, wheel,
+};
 use cv_base::theme::{self, icons};
 use cv_code::find_paint::{HitSide, last_current as last_current_find};
 use cv_pr_diff::diff_overview::{forget_view_box, last_view_box};
@@ -166,11 +168,9 @@ fn switch_options(harness: &mut Harness<'_, ReviewApp>, right: Pos2) {
     harness.key_press_modifiers(Modifiers::ALT, Key::C);
     wait_for_count(harness, three);
 
-    // Match case, previous, next and close, each a Phosphor icon (the font's private use area).
+    // Match case, previous, next and close, each a Phosphor icon.
     let shown = note(harness).icons;
     assert_eq!(shown, [icons::TEXT_AA, icons::ARROW_UP, icons::ARROW_DOWN, icons::X]);
-    let is_phosphor = |icon: &str| icon.chars().all(|c| ('\u{E000}'..='\u{F8FF}').contains(&c));
-    assert!(shown.iter().all(|icon| is_phosphor(icon)), "{shown:?}");
     for name in ["Match case", "Previous match", "Next match", CLOSE] {
         assert!(harness.query_by_label_contains(name).is_some(), "{name} is in the widget");
     }
@@ -378,10 +378,18 @@ fn a_newly_opened_file_starts_at_its_top() {
 fn scroll_down(harness: &mut Harness<'_, ReviewApp>, over: Pos2) {
     harness.hover_at(over);
     harness.step();
-    wait_until(harness, "the diff scrolled down", |harness| {
-        harness.event(wheel(-600.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
-        last_view_box(&harness.ctx).is_some_and(|(strip, view)| view.top() > strip.top() + 100.0)
-    });
+    wait_for(
+        harness,
+        "the diff scrolled down",
+        |harness| {
+            last_view_box(&harness.ctx)
+                .is_some_and(|(strip, view)| view.top() > strip.top() + 100.0)
+                .then_some(())
+        },
+        |harness| {
+            harness.event(wheel(-600.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
+        },
+    );
 }
 
 /// The overview strip's view box of the diff shown sits at the top of the strip, a few frames

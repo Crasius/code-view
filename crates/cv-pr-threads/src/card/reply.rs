@@ -75,14 +75,22 @@ pub(super) fn failure_frame(ui: &mut Ui, tone: egui::Color32, content: impl FnOn
         });
 }
 
-/// The reply box: one line ("Reply…" and Resolve) until used, then the composer. `is_inert`: the
-/// line under a comment on its way, laid out as it will be once the comment is posted.
+/// Whether a reply box takes input.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ReplyBox {
+    Live,
+    /// The line under a comment on its way, laid out as it will be once the comment is posted.
+    Inert,
+}
+
+/// The reply box: one line ("Reply…" and Resolve) until used, then the composer.
 pub(super) fn reply_area(
     ui: &mut Ui,
     thread: &ReviewThread,
     threads: &mut ThreadsUi,
-    is_inert: bool,
+    reply_box: ReplyBox,
 ) -> Option<ThreadEvent> {
+    let is_inert = reply_box == ReplyBox::Inert;
     let palette = theme::palette(ui.ctx());
     if !threads.context.can_write {
         section(ui, Margin::symmetric(16, 12), |ui| {
@@ -234,19 +242,18 @@ fn composer(
                 let id = egui::Id::unique(("thread_reply", &thread.id));
                 let text = threads.text_mut(key);
                 let output = markdown_editor::show(ui, id, text, &options);
-                if let Some(Outcome::Submitted { with_secondary }) = output {
-                    let body = text.clone();
-                    threads.keep_draft(key, None);
-                    event = Some(ThreadEvent::Reply {
-                        thread_id: thread.id.clone(),
-                        body,
-                        resolve: with_secondary,
-                    });
-                } else {
-                    threads.keep_draft(key, None);
-                    if output == Some(Outcome::Dismissed) {
-                        threads.reply_open.remove(&thread.id);
+                let submitted = match output {
+                    Some(Outcome::Submitted { with_secondary }) => {
+                        Some((text.clone(), with_secondary))
                     }
+                    _ => None,
+                };
+                threads.keep_draft(key, None);
+                if let Some((body, resolve)) = submitted {
+                    let thread_id = thread.id.clone();
+                    event = Some(ThreadEvent::Reply { thread_id, body, resolve });
+                } else if output == Some(Outcome::Dismissed) {
+                    threads.reply_open.remove(&thread.id);
                 }
                 // Not sent: the text stays in the editor, with the reason and Retry under it.
                 if let Some((message, needs_token)) = &failure {

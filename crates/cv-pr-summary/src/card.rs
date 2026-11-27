@@ -18,7 +18,9 @@ use cv_pr_tree::rows;
 use cv_widgets::numbers::group_digits;
 use cv_widgets::{focus, row};
 
-const PAD_X: f32 = 12.0;
+const PAD_X: f32 = style::SPACE_M;
+/// The gap between the added and the deleted count, and between View's icon and label.
+const SMALL_GAP: f32 = 6.0;
 const CARET_WIDTH: f32 = 16.0;
 const ICON_WIDTH: f32 = 18.0;
 const VIEW_WIDTH: f32 = 72.0;
@@ -129,7 +131,7 @@ fn header_row(
         pos2(x + CARET_WIDTH / 2.0, center_y),
         Align2::CENTER_CENTER,
         caret,
-        FontId::proportional(12.0),
+        FontId::proportional(style::SMALL_SIZE),
         palette.text_secondary,
     );
     x += CARET_WIDTH + style::SPACE_XS;
@@ -263,7 +265,7 @@ fn paint_counts(
         font,
         palette.error,
     );
-    let counts_right = x + added.size().x + 6.0 + deleted.size().x;
+    let counts_right = x + added.size().x + SMALL_GAP + deleted.size().x;
     if counts_right > right {
         return None;
     }
@@ -305,7 +307,7 @@ fn view_button(
     let font = FontId::proportional(style::BODY_SIZE);
     let label = ui.painter().layout_no_wrap("View".to_owned(), font, palette.text);
     let icon_font = icons::rest_font(palette, icons::SIZE_SMALL);
-    let content = icons::SIZE_SMALL + 6.0 + label.size().x;
+    let content = icons::SIZE_SMALL + SMALL_GAP + label.size().x;
     let left = rect.center().x - content / 2.0;
     ui.painter().text(
         pos2(left + icons::SIZE_SMALL / 2.0, rect.center().y),
@@ -315,7 +317,7 @@ fn view_button(
         palette.text,
     );
     ui.painter().galley(
-        pos2(left + icons::SIZE_SMALL + 6.0, rect.center().y - label.size().y / 2.0),
+        pos2(left + icons::SIZE_SMALL + SMALL_GAP, rect.center().y - label.size().y / 2.0),
         label,
         palette.text,
     );
@@ -514,8 +516,7 @@ fn pending_rows(
         return;
     };
     let painter = ui.painter().with_clip_rect(clip);
-    let shade =
-        if palette.is_dark { Color32::from_white_alpha(14) } else { Color32::from_black_alpha(12) };
+    let shade = if palette.is_dark { palette.surface_subtle } else { palette.pressed };
     let first = ((clip.top() - body.top()) / geometry.line).floor().max(0.0) as u32;
     let last = (((clip.bottom() - body.top()) / geometry.line).ceil().max(0.0) as u32).min(lines);
     for index in first..last {

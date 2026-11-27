@@ -5,9 +5,11 @@
 //! works; the one-line follow-up. The pill: "Assistant · N of M" with the reference arrows and
 //! "Open the answer". Each returns what the user did as an [`Event`]; [`super`] carries it out.
 
+use std::time::Duration;
+
 use cv_base::theme::{self, icons, motion, style};
 use cv_widgets::states::{self, Action as StateAction};
-use cv_widgets::{buttons, row};
+use cv_widgets::{buttons, elide, row};
 use egui::{
     Align, Align2, CursorIcon, FontId, Id, Key, Layout, Rect, RichText, Sense, TextEdit, Ui,
     UiBuilder, Vec2, vec2,
@@ -37,6 +39,8 @@ const SLOT: f32 = 32.0;
 const PADDING: f32 = 16.0;
 /// One cycle of the working dot's pulse.
 const PULSE_SECONDS: f64 = 1.2;
+/// How often the working dot repaints, about 30 Hz: our own choice, smooth for a slow pulse.
+const PULSE_FRAME: Duration = Duration::from_millis(33);
 
 /// What the user did in the mini chat this frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -173,10 +177,7 @@ fn footer_parts(ui: &mut Ui, view: &Card<'_>, composer: &mut String) -> Option<E
 fn reference_bar(ui: &mut Ui, current: Option<usize>, count: usize) -> Option<Event> {
     let label = count_label(current, count);
     let font = FontId::proportional(style::BODY_SIZE);
-    let text_width = ui
-        .fonts_mut(|fonts| fonts.layout_no_wrap(label.clone(), font, egui::Color32::PLACEHOLDER))
-        .size()
-        .x;
+    let text_width = elide::text_width(ui, &label, &font);
     let spacing = style::SPACE_S;
     let total = 2.0 * SLOT + text_width + 2.0 * spacing;
     ui.add_space(((ui.available_width() - total) / 2.0).max(0.0));
@@ -234,7 +235,7 @@ fn working_line(ui: &mut Ui, text: &str) {
         1.0
     } else {
         let time = ui.input(|input| input.time);
-        ui.ctx().request_repaint();
+        ui.ctx().request_repaint_after(PULSE_FRAME);
         let phase = (time % PULSE_SECONDS / PULSE_SECONDS) as f32 * std::f32::consts::TAU;
         0.35 + 0.65 * (0.5 + 0.5 * phase.cos())
     };
@@ -242,7 +243,7 @@ fn working_line(ui: &mut Ui, text: &str) {
     let font = FontId::proportional(style::SMALL_SIZE);
     let anchor = egui::pos2(dot.x + style::SPACE_M, rect.center().y);
     let room = (rect.right() - anchor.x).max(0.0);
-    let shown = cv_widgets::elide::reference(ui, text, &font, room);
+    let shown = elide::reference(ui, text, &font, room);
     ui.painter().text(anchor, Align2::LEFT_CENTER, shown, font, palette.text_secondary);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
 }

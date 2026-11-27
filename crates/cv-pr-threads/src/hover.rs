@@ -53,34 +53,17 @@ pub fn file(ctx: &egui::Context) -> Option<ChangedFile> {
 
 #[cfg(test)]
 mod tests {
-    use review_core::FileCategory;
     use review_git::{ChangeKind, ChangedFile};
 
     use super::super::samples;
 
-    fn changed(path: &str) -> ChangedFile {
-        ChangedFile {
-            path: path.into(),
-            old_path: None,
-            kind: ChangeKind::Modified,
-            old_oid: "1".repeat(40),
-            new_oid: "2".repeat(40),
-            additions: Some(1),
-            deletions: Some(1),
-            is_binary: false,
-            category: FileCategory::Code,
-            whitespace_only: false,
-        }
-    }
-
     #[test]
     fn a_hovered_thread_row_names_its_file_for_this_frame_and_the_next() {
         let ctx = egui::Context::default();
-        let file = changed("src/a.rs");
+        let file = ChangedFile::sample("src/a.rs", ChangeKind::Modified);
         let thread = samples::discussion("t1", samples::lines("src/a.rs", 3, 4));
         let pass = |ctx: &egui::Context| {
-            let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
-            output.textures_delta.clear();
+            ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
         };
         super::name(&ctx, &thread, |path| (path == file.path).then_some(&file));
         assert_eq!(super::file(&ctx).map(|named| named.path), Some("src/a.rs".to_owned()));

@@ -21,16 +21,17 @@ pub fn delete_range(doc: &mut Document, from: Pos, to: Pos) -> Pos {
         doc.block_mut(from.block).content.remove(from.offset..to.offset);
         return from;
     }
-    let last = doc.block(to.block).clone();
+    let last = doc.block(to.block);
     let tail = last.content.slice(to.offset..last.len());
+    let (last_kind, last_nesting) = (last.kind.clone(), last.nesting.clone());
     let first = doc.block_mut(from.block);
     if first.kind == Kind::Rule {
-        first.kind.clone_from(&last.kind);
-        first.nesting.clone_from(&last.nesting);
+        first.kind.clone_from(&last_kind);
+        first.nesting = last_nesting;
     }
     let keep = first.content.slice(0..from.offset);
     first.content = keep;
-    append_content(first, tail, &last.kind);
+    append_content(first, tail, &last_kind);
     doc.blocks.drain(from.block + 1..=to.block);
     doc.normalize();
     from
@@ -105,16 +106,15 @@ pub fn continuation(nesting: &[Container]) -> Vec<Container> {
 pub fn enter(doc: &mut Document, selection: Selection) -> Pos {
     let (from, to) = selection.ordered();
     let at = delete_range(doc, from, to);
-    let block = doc.block(at.block).clone();
-    if let Kind::Code(_) = block.kind {
-        let text = block.content.text();
-        if at.offset == block.len() && text.ends_with("\n\n") {
-            let length = block.len();
-            doc.block_mut(at.block).content.remove(length - 2..length);
-            let nesting = continuation(&block.nesting);
-            doc.blocks.insert(at.block + 1, Arc::new(Block::paragraph(nesting, Inline::default())));
-            return Pos::new(at.block + 1, 0);
-        }
+    let block = doc.block(at.block);
+    let is_code_end = matches!(block.kind, Kind::Code(_))
+        && at.offset == block.len()
+        && block.content.text().ends_with("\n\n");
+    if is_code_end {
+        let (length, nesting) = (block.len(), continuation(&block.nesting));
+        doc.block_mut(at.block).content.remove(length - 2..length);
+        doc.blocks.insert(at.block + 1, Arc::new(Block::paragraph(nesting, Inline::default())));
+        return Pos::new(at.block + 1, 0);
     }
     if block.kind.is_source() {
         return insert_text(doc, Selection::caret(at), "\n", &Marks::default());
@@ -173,20 +173,23 @@ pub fn backspace(doc: &mut Document, selection: Selection) -> Pos {
     if at.offset > 0 {
         return delete_range(doc, Pos::new(at.block, at.offset - 1), at);
     }
-    let block = doc.block(at.block).clone();
-    match block.nesting.last() {
+    let block = doc.block(at.block);
+    let last = block.nesting.last().copied();
+    let is_heading = matches!(block.kind, Kind::Heading(_));
+    let is_source = block.kind.is_source();
+    let is_empty = block.content.is_empty();
+    match last {
         Some(Container::Item { head: true, .. } | Container::Quote(_)) => {
             structure::lift(doc, at.block);
             return at;
         }
         Some(Container::Item { head: false, .. }) | None => {}
     }
-    let is_empty_source = block.kind.is_source() && block.content.is_empty();
-    if matches!(block.kind, Kind::Heading(_)) || is_empty_source {
+    if is_heading || (is_source && is_empty) {
         doc.block_mut(at.block).kind = Kind::Paragraph;
         return at;
     }
-    if block.kind.is_source() || at.block == 0 {
+    if is_source || at.block == 0 {
         return at;
     }
     join_backward(doc, at.block)
@@ -194,13 +197,16 @@ pub fn backspace(doc: &mut Document, selection: Selection) -> Pos {
 
 /// Joins block `index` into the one before it; a rule before it is deleted instead.
 fn join_backward(doc: &mut Document, index: usize) -> Pos {
-    let previous = doc.block(index - 1).clone();
-    if previous.kind == Kind::Rule {
+    let (is_rule, length) = {
+        let previous = doc.block(index - 1);
+        (previous.kind == Kind::Rule, previous.len())
+    };
+    if is_rule {
         doc.blocks.remove(index - 1);
         doc.normalize();
         return Pos::new(index - 1, 0);
     }
-    let end = Pos::new(index - 1, previous.len());
+    let end = Pos::new(index - 1, length);
     delete_range(doc, end, Pos::new(index, 0))
 }
 
@@ -250,8 +256,8 @@ pub fn has_mark(doc: &Document, selection: Selection, mark: Mark) -> bool {
         })
 }
 
-/// Adds `mark` to the selection, or removes it where all of the selection has it. Subscript and
-/// superscript exclude each other. Returns whether anything changed.
+/// Adds `mark` to the selection, or removes it where all of the selection has it (see
+/// [`Marks::switch`]). Returns whether anything changed.
 pub fn toggle_mark(doc: &mut Document, selection: Selection, mark: Mark) -> bool {
     let ranges = text_ranges(doc, selection);
     if ranges.is_empty() {
@@ -259,16 +265,7 @@ pub fn toggle_mark(doc: &mut Document, selection: Selection, mark: Mark) -> bool
     }
     let is_on = !has_mark(doc, selection, mark);
     for (index, range) in ranges {
-        doc.block_mut(index).content.map_marks(range, |marks| {
-            marks.set(mark, is_on);
-            if is_on {
-                match mark {
-                    Mark::Subscript => marks.set(Mark::Superscript, false),
-                    Mark::Superscript => marks.set(Mark::Subscript, false),
-                    _ => {}
-                }
-            }
-        });
+        doc.block_mut(index).content.map_marks(range, |marks| marks.switch(mark, is_on));
     }
     true
 }
@@ -277,14 +274,7 @@ pub fn toggle_mark(doc: &mut Document, selection: Selection, mark: Mark) -> bool
 pub fn toggled(marks: &Marks, mark: Mark) -> Marks {
     let is_on = !marks.has(mark);
     let mut marks = marks.clone();
-    marks.set(mark, is_on);
-    if is_on {
-        match mark {
-            Mark::Subscript => marks.set(Mark::Superscript, false),
-            Mark::Superscript => marks.set(Mark::Subscript, false),
-            _ => {}
-        }
-    }
+    marks.switch(mark, is_on);
     marks
 }
 
@@ -331,17 +321,17 @@ pub fn insert_fragment(doc: &mut Document, selection: Selection, fragment: &Docu
     let deleted = delete_range(doc, from, to);
     let at = leave_rule(doc, deleted);
     let Some((first, rest)) = fragment.blocks.split_first() else { return at };
-    let target = doc.block(at.block).clone();
+    let target = doc.block(at.block);
+    let is_source = target.kind.is_source();
     let is_inline = rest.is_empty() && first.kind == Kind::Paragraph && first.nesting.is_empty();
-    if is_inline || target.kind.is_source() {
-        let content =
-            if target.kind.is_source() { source_lines(fragment) } else { first.content.clone() };
+    if is_inline || is_source {
+        let content = if is_source { source_lines(fragment) } else { first.content.clone() };
         let length = content.len();
         doc.block_mut(at.block).content.insert(at.offset, content);
         return Pos::new(at.block, at.offset + length);
     }
+    let (kind, base) = (target.kind.clone(), continuation(&target.nesting));
     let tail = doc.block_mut(at.block).content.split_off(at.offset);
-    let base = continuation(&target.nesting);
     let mut index = at.block;
     let mut caret = at;
     let starts_inline = first.kind == Kind::Paragraph && first.nesting.is_empty();
@@ -363,10 +353,7 @@ pub fn insert_fragment(doc: &mut Document, selection: Selection, fragment: &Docu
         caret = Pos::new(index, length);
     }
     if !tail.is_empty() {
-        doc.blocks.insert(index + 1, Arc::new(Block { content: tail, ..target }));
-        if let Some(block) = doc.blocks.get_mut(index + 1) {
-            Arc::make_mut(block).nesting = base;
-        }
+        doc.blocks.insert(index + 1, Arc::new(Block { kind, nesting: base, content: tail }));
     }
     doc.normalize();
     caret

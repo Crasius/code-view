@@ -4,7 +4,7 @@
 //! the button's measures live in `cv-pr-session`, below both.
 
 use cv_base::theme::{self, icons, motion, style};
-use cv_widgets::{focus, merge_strategy_icon, row};
+use cv_widgets::{focus, merge_strategy_icon, row, states};
 use egui::epaint::CornerRadius;
 use egui::{Align2, Color32, Rect, Response, Sense, Stroke, Ui, pos2, vec2};
 use review_core::{MergeStrategy, ProviderKind};
@@ -14,11 +14,15 @@ use crate::merge_choice;
 /// The width of the split button's chevron part.
 pub const CHEVRON_WIDTH: f32 = 30.0;
 /// The padding left and right of the main part's content.
-pub const PADDING_X: f32 = 12.0;
+pub const PADDING_X: f32 = style::SPACE_M;
 /// The gap between the main part's icon and its label.
 pub const ICON_GAP: f32 = 6.0;
 const DRAIN_HEIGHT: f32 = 3.0;
+/// How far the divider between the two parts stays off the button's top and bottom.
+const DIVIDER_INSET: f32 = 6.0;
 const ROW_ICON: f32 = 20.0;
+const BADGE_PADDING: egui::Vec2 = vec2(6.0, 1.0);
+const BADGE_RADIUS: u8 = 8;
 
 pub struct Look<'a> {
     pub strategy: Option<MergeStrategy>,
@@ -99,7 +103,7 @@ pub fn paint_in(
     let divider_x = main.rect.right();
     ui.painter().vline(
         divider_x,
-        rect.y_range().shrink(6.0),
+        rect.y_range().shrink(DIVIDER_INSET),
         Stroke::new(1.0, foreground.gamma_multiply(0.4)),
     );
     paint_label(ui, main.rect, look, (foreground, main_fill), tone);
@@ -149,7 +153,7 @@ fn paint_label(
     );
     match look.strategy {
         _ if look.is_busy => {
-            egui::Spinner::new().size(icons::SIZE - 2.0).color(foreground).paint_at(ui, slot);
+            states::spinner(ui, slot, foreground);
         }
         _ if tone != Tone::Normal => {
             let icon = if tone == Tone::Failed { icons::WARNING_CIRCLE } else { icons::CLOCK };
@@ -246,7 +250,7 @@ pub fn strategy_row(ui: &mut Ui, shown: &Row) -> Response {
     if selected > 0.0 {
         let bar = Rect::from_center_size(
             pos2(rect.left() + 1.5, rect.center().y),
-            vec2(3.0, (rect.height() - 12.0) * selected),
+            vec2(3.0, (rect.height() - style::SPACE_M) * selected),
         );
         ui.painter().rect_filled(bar, 2, palette.accent.gamma_multiply(selected));
     }
@@ -294,17 +298,16 @@ fn default_badge(ui: &Ui, left_center: egui::Pos2) {
         egui::FontId::proportional(style::SMALL_SIZE),
         palette.text_secondary,
     );
-    let padding = vec2(6.0, 1.0);
     let rect = Rect::from_min_size(
-        pos2(left_center.x, left_center.y - galley.size().y / 2.0 - padding.y),
-        galley.size() + padding * 2.0,
+        pos2(left_center.x, left_center.y - galley.size().y / 2.0 - BADGE_PADDING.y),
+        galley.size() + BADGE_PADDING * 2.0,
     );
     ui.painter().rect(
         rect,
-        8,
+        BADGE_RADIUS,
         palette.surface_subtle,
         Stroke::new(1.0, palette.border),
         egui::StrokeKind::Inside,
     );
-    ui.painter().galley(rect.min + padding, galley, palette.text_secondary);
+    ui.painter().galley(rect.min + BADGE_PADDING, galley, palette.text_secondary);
 }

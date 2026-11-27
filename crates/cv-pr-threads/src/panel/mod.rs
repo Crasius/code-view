@@ -14,7 +14,7 @@ mod list_row;
 #[cfg(test)]
 mod walkthrough;
 
-use std::sync::Arc;
+use std::collections::HashMap;
 
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, icons, style};
@@ -46,8 +46,10 @@ pub struct PanelState {
     pub(super) is_writing_general: bool,
     /// Scroll the selected row into view next frame.
     scroll_to_selected: bool,
-    /// The heights of the list's rows and group headers, for laying out only those near the view.
+    /// The heights of the list's rows by thread, and of its group headers by group, for laying out
+    /// only those near the view.
     heights: lazy_list::Heights,
+    group_heights: lazy_list::Heights,
 }
 
 /// Who has the panel's keys.
@@ -104,7 +106,7 @@ pub struct PanelInputs<'a> {
 /// One row of the list: a thread and the group it is in.
 struct Entry<'a> {
     thread: &'a ReviewThread,
-    group: Arc<str>,
+    group: &'a str,
     /// A new thread on its way: listed as it will be, without actions.
     is_pending: bool,
 }
@@ -207,11 +209,8 @@ pub fn panel_toggle(
     toggle(ui, all, threads, is_open)
 }
 
-fn group_of(thread: &ReviewThread) -> Arc<str> {
-    thread
-        .anchor
-        .as_ref()
-        .map_or_else(|| Arc::from(GENERAL), |anchor| Arc::from(anchor.path.as_str()))
+fn group_of(thread: &ReviewThread) -> &str {
+    thread.anchor.as_ref().map_or(GENERAL, |anchor| anchor.path.as_str())
 }
 
 fn is_mine(thread: &ReviewThread, me: Option<&str>) -> bool {
@@ -246,18 +245,20 @@ fn visible_entries<'a>(
         is_pending: true,
     });
     let mut entries: Vec<Entry<'a>> = loaded.chain(pending).collect();
-    let rank = |group: &str| {
+    // Reversed, so a path listed twice keeps its first place.
+    let positions: HashMap<&str, usize> =
+        inputs.file_order.iter().enumerate().rev().map(|(index, path)| (*path, index)).collect();
+    // Groups outside `file_order` go after those in it, by name; General last.
+    let rank = |group: &'a str| {
         if group == GENERAL {
-            return (usize::MAX, String::new());
+            return (usize::MAX, "");
         }
-        let position =
-            inputs.file_order.iter().position(|path| *path == group).unwrap_or(usize::MAX - 1);
-        (position, group.to_owned())
+        (positions.get(group).copied().unwrap_or(usize::MAX - 1), group)
     };
     let line = |thread: &ReviewThread| {
         thread.anchor.as_ref().and_then(|anchor| anchor.new_line.or(anchor.old_line)).unwrap_or(0)
     };
-    entries.sort_by_cached_key(|entry| (rank(&entry.group), line(entry.thread)));
+    entries.sort_by_key(|entry| (rank(entry.group), line(entry.thread)));
     entries
 }
 
@@ -298,17 +299,13 @@ fn header(
                     );
                 });
             });
-            let listed: Vec<&ReviewThread> = inputs
-                .threads
-                .iter()
-                .filter(|thread| !thread.is_system && !thread.comments.is_empty())
-                .collect();
-            let active =
-                listed.iter().filter(|thread| thread.status == ThreadStatus::Active).count();
-            let resolved = listed.len() - active;
-            let unread = listed.iter().filter(|thread| threads.is_unread(thread)).count();
-            let mine =
-                me.map(|me| listed.iter().filter(|thread| is_mine(thread, Some(me))).count());
+            let all = inputs.threads;
+            let listed =
+                || all.iter().filter(|thread| !thread.is_system && !thread.comments.is_empty());
+            let active = listed().filter(|thread| thread.status == ThreadStatus::Active).count();
+            let resolved = listed().count() - active;
+            let unread = listed().filter(|thread| threads.is_unread(thread)).count();
+            let mine = me.map(|me| listed().filter(|thread| is_mine(thread, Some(me))).count());
             let filters = &mut *inputs.filters;
             let mut changed = false;
             ui.horizontal_wrapped(|ui| {
@@ -454,35 +451,21 @@ fn list(
     inputs: &mut PanelInputs<'_>,
     events: &mut Vec<PanelEvent>,
 ) {
-    let palette = theme::palette(ui.ctx());
     if visible.is_empty() {
-        egui::Frame::new().inner_margin(Margin::same(MARGIN)).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.spacing_mut().item_spacing.y = 8.0;
-            let has_any = inputs.threads.iter().any(|thread| !thread.is_system && !thread.comments.is_empty());
-            if has_any {
-                ui.label(RichText::new("No thread matches these filters.").color(palette.text_secondary));
-                if ui.link("Show all threads").clicked() {
-                    *inputs.filters = ThreadFilters { active: false, resolved: false, unread: false, mine: false };
-                    events.push(PanelEvent::FiltersChanged);
-                }
-            } else {
-                ui.label(RichText::new("No comments yet. Select lines in the diff to start a thread, or leave a general comment below.").color(palette.text_secondary));
-            }
-        });
+        empty_list(ui, inputs, events);
         return;
     }
     // Only the rows near the view are laid out; the selected one also when it scrolls into view.
     let mut heights = std::mem::take(&mut threads.panel.heights);
+    let mut group_heights = std::mem::take(&mut threads.panel.group_heights);
     egui::ScrollArea::vertical().id_salt("threads_panel_list").auto_shrink(false).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         let mut index = 0;
         while index < visible.len() {
-            let group = visible[index].group.clone();
+            let group = visible[index].group;
             let count = visible[index..].iter().take_while(|entry| entry.group == group).count();
-            let header_key = format!("group:{group}");
-            lazy_list::block(ui, &mut heights, &header_key, false, |ui| {
-                group_header(ui, &group, count);
+            lazy_list::block(ui, &mut group_heights, group, false, |ui| {
+                group_header(ui, group, count);
             });
             for entry in &visible[index..index + count] {
                 let thread = entry.thread;
@@ -494,9 +477,36 @@ fn list(
             }
             index += count;
         }
-        ui.add_space(8.0);
+        ui.add_space(style::SPACE_S);
     });
     threads.panel.heights = heights;
+    threads.panel.group_heights = group_heights;
+}
+
+const NO_MATCH: &str = "No thread matches these filters.";
+const SHOW_ALL: &str = "Show all threads";
+const NO_COMMENTS: &str = "No comments yet. Select lines in the diff to start a thread, or leave a \
+                           general comment below.";
+
+/// What the list says when it lists nothing: no thread passes the filters (with the way back to
+/// all of them), or the pull request has none yet.
+fn empty_list(ui: &mut Ui, inputs: &mut PanelInputs<'_>, events: &mut Vec<PanelEvent>) {
+    let palette = theme::palette(ui.ctx());
+    egui::Frame::new().inner_margin(Margin::same(MARGIN)).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.spacing_mut().item_spacing.y = 8.0;
+        let has_any =
+            inputs.threads.iter().any(|thread| !thread.is_system && !thread.comments.is_empty());
+        if has_any {
+            ui.label(RichText::new(NO_MATCH).color(palette.text_secondary));
+            if ui.link(SHOW_ALL).clicked() {
+                *inputs.filters = ThreadFilters::ALL;
+                events.push(PanelEvent::FiltersChanged);
+            }
+        } else {
+            ui.label(RichText::new(NO_COMMENTS).color(palette.text_secondary));
+        }
+    });
 }
 
 fn group_header(ui: &mut Ui, group: &str, count: usize) {
@@ -611,7 +621,7 @@ fn general_composer(ui: &mut Ui, threads: &mut ThreadsUi, events: &mut Vec<Panel
         threads.panel.is_writing_general = false;
     }
     if let Some(PostState::Failed { message, needs_token }) = &state {
-        ui.add_space(8.0);
+        ui.add_space(style::SPACE_S);
         threads.failure_actions(ui, GENERAL_KEY, message, *needs_token);
     }
 }

@@ -18,17 +18,17 @@ const MAX_CHECKED_BYTES: u64 = 8 * 1024 * 1024;
 
 /// One citation in an answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Citation {
-    pub path: String,
+pub(crate) struct Citation {
+    pub(crate) path: String,
     /// 1-based, inclusive.
-    pub start: u32,
-    pub end: u32,
+    pub(crate) start: u32,
+    pub(crate) end: u32,
     /// What the link replaces: the citation, or the whole code span around it.
-    pub bytes: Range<usize>,
+    pub(crate) bytes: Range<usize>,
 }
 
 /// Every citation of `text` outside fenced code, in order.
-pub fn find(text: &str) -> Vec<Citation> {
+pub(crate) fn find(text: &str) -> Vec<Citation> {
     let mut found = Vec::new();
     let mut fence: Option<&str> = None;
     let mut line_start = 0;
@@ -144,16 +144,11 @@ fn number_at(line: &str, at: usize) -> Option<(u32, usize)> {
     Some((number, at + digits))
 }
 
-/// `text` with the citations `is_linked` accepts as Markdown links to [`target`].
-/// `is_linked` is asked once per citation, in order.
-pub fn link(
-    text: &str,
-    citations: &[Citation],
-    mut is_linked: impl FnMut(&Citation) -> bool,
-) -> String {
+/// `text` with `citations`, found in it, as Markdown links to [`target`].
+pub(crate) fn link(text: &str, citations: &[Citation]) -> String {
     let mut linked = String::with_capacity(text.len() + citations.len() * 32);
     let mut at = 0;
-    for citation in citations.iter().filter(|citation| is_linked(citation)) {
+    for citation in citations {
         let (Some(before), Some(shown)) =
             (text.get(at..citation.bytes.start), text.get(citation.bytes.clone()))
         else {
@@ -172,7 +167,7 @@ pub fn link(
 }
 
 /// The link target of a citation.
-pub fn target(path: &str, start: u32, end: u32) -> String {
+pub(crate) fn target(path: &str, start: u32, end: u32) -> String {
     format!("{SCHEME}{path}#{start}-{end}")
 }
 
@@ -185,18 +180,18 @@ pub fn parse_target(target: &str) -> Option<(String, u32, u32)> {
 
 /// A citation link [`link`] wrote into an answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Linked {
+pub(crate) struct Linked {
     /// The link's text as it reads, without the backticks of a code span.
-    pub shown: String,
-    pub path: String,
-    pub start: u32,
-    pub end: u32,
+    pub(crate) shown: String,
+    pub(crate) path: String,
+    pub(crate) start: u32,
+    pub(crate) end: u32,
     /// Where the link starts in the text.
-    pub at: usize,
+    pub(crate) at: usize,
 }
 
 /// Every citation link of an answer [`link`] wrote, in order.
-pub fn linked(text: &str) -> Vec<Linked> {
+pub(crate) fn linked(text: &str) -> Vec<Linked> {
     let opener = format!("](<{SCHEME}");
     let mut found = Vec::new();
     let mut from = 0;
@@ -219,7 +214,7 @@ pub fn linked(text: &str) -> Vec<Linked> {
 
 /// Whether `path` is a file of `checkout` with at least `start` lines. Runs on the background
 /// runtime: it reads the file. A path that leads out of the checkout is never a citation.
-pub fn is_in_checkout(checkout: &Path, path: &str, start: u32) -> bool {
+pub(crate) fn is_in_checkout(checkout: &Path, path: &str, start: u32) -> bool {
     if path.split('/').any(|part| part == "..") {
         return false;
     }
@@ -282,8 +277,9 @@ mod tests {
     #[test]
     fn links_only_what_was_accepted_and_keeps_the_rest() {
         let text = "See `src/a.rs:3` and src/gone.rs:9 or src/b.rs:1-2.";
-        let citations = find(text);
-        let linked = link(text, &citations, |citation| citation.path != "src/gone.rs");
+        let mut citations = find(text);
+        citations.retain(|citation| citation.path != "src/gone.rs");
+        let linked = link(text, &citations);
         assert_eq!(
             linked,
             "See [`src/a.rs:3`](<codeview-cite:src/a.rs#3-3>) and src/gone.rs:9 or \
@@ -296,7 +292,7 @@ mod tests {
     #[test]
     fn reads_the_links_it_wrote_back_in_order() {
         let text = "See `src/a.rs:3` and src/b.rs:1-2, [a page](https://x.test).";
-        let linked = linked(&link(text, &find(text), |_| true));
+        let linked = linked(&link(text, &find(text)));
         let read: Vec<(&str, &str, u32, u32)> = linked
             .iter()
             .map(|link| (link.shown.as_str(), link.path.as_str(), link.start, link.end))

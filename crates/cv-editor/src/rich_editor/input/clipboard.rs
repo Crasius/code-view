@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use super::{Frame, edit, set_link};
+use super::{CommandContext, edit, set_link};
 use crate::rich_editor::edit::{self as edit_ops};
 use crate::rich_editor::history::EditKind;
 use crate::rich_editor::model::{Block, Document, HARD_BREAK, Inline, Link, Marks};
@@ -20,19 +20,19 @@ pub fn copy(state: &State) -> Option<String> {
 
 /// A URL pasted over a selection links it; Markdown is read as Markdown; other text is plain,
 /// one paragraph per line.
-pub fn paste(state: &mut State, frame: &Frame<'_>, text: &str) {
+pub fn paste(state: &mut State, context: &CommandContext<'_>, text: &str) {
     let text = text.replace("\r\n", "\n").replace('\r', "\n");
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return;
     }
     if !state.selection.is_empty() && is_url(trimmed) {
-        set_link(state, frame, Some(Link { url: trimmed.to_owned(), title: String::new() }));
+        set_link(state, context, Some(Link { url: trimmed.to_owned(), title: String::new() }));
         return;
     }
     let target = state.doc.block(state.selection.head.block);
     if target.kind.is_source() {
-        edit(state, frame, EditKind::Other, |doc, selection| {
+        edit(state, context, EditKind::Other, |doc, selection| {
             edit_ops::insert_text(doc, selection, &text, &Marks::default())
         });
         return;
@@ -42,7 +42,7 @@ pub fn paste(state: &mut State, frame: &Frame<'_>, text: &str) {
     } else {
         plain_fragment(&text)
     };
-    edit(state, frame, EditKind::Other, |doc, selection| {
+    edit(state, context, EditKind::Other, |doc, selection| {
         edit_ops::insert_fragment(doc, selection, &fragment)
     });
 }

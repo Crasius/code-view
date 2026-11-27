@@ -32,7 +32,7 @@ fn frame(ui: &Ui, picture: &Picture, since: f64) -> TextureId {
 pub fn image_column(ui: &mut Ui, title: &str, picture: Option<&Picture>, since: f64) {
     let palette = theme::palette(ui.ctx());
     ui.label(RichText::new(title).font(theme::fonts::semibold_font(theme::style::BODY_SIZE)));
-    ui.add_space(4.0);
+    ui.add_space(theme::style::SPACE_XS);
     let Some(picture) = picture else {
         ui.label(RichText::new("No file on this side.").color(palette.text_secondary));
         return;

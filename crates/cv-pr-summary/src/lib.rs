@@ -57,9 +57,11 @@ mod rendered;
 #[cfg(test)]
 mod rendered_check;
 #[cfg(test)]
-mod shots;
-#[cfg(test)]
 mod split_check;
+#[cfg(test)]
+mod summary_walkthrough;
+#[cfg(test)]
+mod testing;
 #[cfg(test)]
 mod zoom_check;
 
@@ -75,7 +77,7 @@ use self::bodies::{BodyCache, CardBody};
 use self::card::{Body, CardAction, CardView, Content};
 use self::code::{CardCode, CodeOutput, ThreadsByPath};
 use self::header::HeaderAction;
-use self::layout::{CardIndex, Geometry, Shape, Shapes};
+use self::layout::{CardIndex, Geometry, HEIGHT_EPSILON, Shape, Shapes, note_height};
 use self::loads::Loads;
 use self::rendered::{RenderedCards, RenderedFrame};
 use cv_base::theme::{self, style};
@@ -107,9 +109,7 @@ pub trait DiffSource {
     fn start_rendered(&mut self, file: &ChangedFile) -> Option<Load<Arc<Loaded>>>;
     /// The syntax colors by diff line of `file`'s diff, when they are all worked out already (the
     /// file view's, or the ones its load waited for).
-    fn spans(&mut self, _file: &ChangedFile) -> Option<Arc<LineSpans>> {
-        None
-    }
+    fn spans(&mut self, file: &ChangedFile) -> Option<Arc<LineSpans>>;
 }
 
 #[expect(
@@ -195,15 +195,6 @@ struct Slot {
     shape: Shape,
 }
 
-/// What the last frame did, for the tests that hold the summary to O(screen) work.
-#[cfg(test)]
-#[derive(Debug, Default, Clone, Copy)]
-pub struct FrameStats {
-    pub cards_shown: usize,
-    pub rows_painted: usize,
-    pub wanted: usize,
-}
-
 pub struct FolderSummary {
     slots: Vec<Slot>,
     index: CardIndex,
@@ -247,8 +238,9 @@ pub struct FolderSummary {
     rendered: RenderedCards,
     /// Cards of Markdown files, for the header's Preview.
     markdown: usize,
+    /// Code rows the last pass painted, for the tests that hold the summary to O(screen) work.
     #[cfg(test)]
-    stats: FrameStats,
+    rows_painted: usize,
     /// Where the cards showed on screen in the last pass: the pointer's place among them.
     screen: Rect,
 }
@@ -282,7 +274,7 @@ impl Default for FolderSummary {
             rendered: RenderedCards::default(),
             markdown: 0,
             #[cfg(test)]
-            stats: FrameStats::default(),
+            rows_painted: 0,
             screen: Rect::NOTHING,
         }
     }
@@ -293,11 +285,6 @@ impl FolderSummary {
     pub fn hide(&mut self) {
         self.bodies.cancel_coloring();
         self.loads.forget_motion();
-    }
-
-    #[cfg(test)]
-    pub fn stats(&self) -> FrameStats {
-        self.stats
     }
 
     #[cfg(test)]
@@ -316,10 +303,6 @@ impl FolderSummary {
         split: &mut f32,
     ) -> Option<SummaryEvent> {
         self.frame += 1;
-        #[cfg(test)]
-        {
-            self.stats = FrameStats::default();
-        }
         self.follow_compare(inputs.compare);
         self.loads.receive_spans(&mut self.bodies);
         diffs::finish_loads(self, inputs, source);
@@ -550,10 +533,14 @@ impl FolderSummary {
         }
     }
 
+    /// The largest scroll offset of the cards.
+    fn scroll_limit(&self) -> f32 {
+        (self.index.total() + 2.0 * MARGIN - self.viewport.height()).max(0.0)
+    }
+
     /// `offset` within the scroll range of the cards.
     fn clamp_offset(&self, offset: f32) -> f32 {
-        let limit = (self.index.total() + 2.0 * MARGIN - self.viewport.height()).max(0.0);
-        offset.clamp(0.0, limit)
+        offset.clamp(0.0, self.scroll_limit())
     }
 
     /// Lays out the rows of the loaded cards near the view before the view scrolls, as in the
@@ -606,14 +593,7 @@ impl FolderSummary {
             if let Some(y) = view.take_scroll_request() {
                 requests.push((card, y));
             }
-            let height = view.height();
-            if self
-                .heights
-                .insert(file.path.clone(), height)
-                .is_none_or(|previous| (previous - height).abs() > 0.5)
-            {
-                self.index_dirty = true;
-            }
+            self.index_dirty |= note_height(&mut self.heights, &file.path, view.height());
         }
         requests
     }
@@ -633,7 +613,7 @@ impl FolderSummary {
             && self.scroll_to.is_none()
         {
             let new_top = self.index.top(card);
-            if (new_top - old_top).abs() > 0.5 {
+            if (new_top - old_top).abs() > HEIGHT_EPSILON {
                 let height = self.index.bottom(card) - new_top;
                 self.scroll_to = Some(new_top + below.min(height) + MARGIN);
             }
@@ -687,18 +667,12 @@ impl FolderSummary {
         self.width = frame.width;
         let mut pass = Pass::default();
         let cards = self.index.overlapping(frame.viewport.top(), frame.viewport.bottom());
-        #[cfg(test)]
-        let shown = cards.len();
         for card in cards {
             self.paint_card(ui, frame, threads_ui, card, &mut pass);
         }
         #[cfg(test)]
         {
-            self.stats = FrameStats {
-                cards_shown: shown,
-                rows_painted: pass.rows,
-                wanted: self.stats.wanted,
-            };
+            self.rows_painted = pass.rows;
         }
         self.finish_pass(ui.ctx(), pass.newly_selected, pass.is_measured);
         pass.event
@@ -803,7 +777,7 @@ impl FolderSummary {
             pass.rows += output.rows;
         }
         self.heights.insert(path.to_owned(), output.height);
-        if (output.height - laid_out).abs() > 0.5 {
+        if (output.height - laid_out).abs() > HEIGHT_EPSILON {
             // Comment cards were measured: the index changes, and this pass is redone.
             self.index_dirty = true;
             pass.is_measured = true;

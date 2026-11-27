@@ -5,8 +5,8 @@
 # A file back within 700 lines leaves the list. Never add a line here: split the file instead.
 # A file moved with `git mv` keeps its cap under the new path (RL002 follows git's rename).
 911 crates/cv-pr-diff/src/diff_view.rs
-983 crates/cv-pr-rendered/src/markdown_diff.rs
+975 crates/cv-pr-rendered/src/markdown_diff.rs
 753 crates/cv-pr-files/src/lib.rs
-868 crates/cv-pr-summary/src/lib.rs
+861 crates/cv-pr-summary/src/lib.rs
 769 crates/cv-pr-pipelines/src/lib.rs
 821 crates/cv-markdown/src/render.rs

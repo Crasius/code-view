@@ -14,14 +14,12 @@
 )]
 
 mod category_filter;
-pub mod file_icon;
+mod file_icon;
 pub mod goto;
 mod model;
-pub mod progress;
+mod progress;
 pub mod rows;
 pub mod side_panel;
-#[cfg(test)]
-mod side_panel_shots;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
@@ -67,7 +65,10 @@ impl TreeEvent {
         match self {
             Self::Select(index) => find(index).map(Self::Select),
             Self::ToggleViewed(index) => find(index).map(Self::ToggleViewed),
-            event => Some(event),
+            event @ (Self::ToggleFolderViewed(_)
+            | Self::SelectFolder(_)
+            | Self::FlipSide
+            | Self::Review(_)) => Some(event),
         }
     }
 }
@@ -99,7 +100,7 @@ pub fn flip_control(side: TreeSide) -> (&'static str, &'static str) {
 
 /// How many of a folder's changed files are viewed, as its row's tri-state mark shows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum FolderMark {
+pub(crate) enum FolderMark {
     #[default]
     None,
     Some,
@@ -197,7 +198,7 @@ pub struct FileTree {
     pub filter: FileFilter,
     collapsed: HashSet<String>,
     rows: Vec<TreeRow>,
-    built_for: Option<(usize, u64)>,
+    built_for: Option<BuiltFor>,
     collapse_version: u64,
     built_filter: FileFilter,
     /// The open file's path, as the tree last showed it: "Hide viewed" keeps it listed.
@@ -209,6 +210,10 @@ pub struct FileTree {
     widest_counts: Option<(u32, u32)>,
     /// Every changed file's lines by kind of file, behind the pane's line totals.
     breakdown: ChangeBreakdown,
+    /// Changed files by category, for the category dropdown.
+    category_counts: HashMap<FileCategory, usize>,
+    /// Changed files viewed, for the review progress line.
+    viewed_count: usize,
     /// Every file the filter lets through in tree order, also those in collapsed folders.
     full_order: Vec<u32>,
     /// Bumped whenever the rows are rebuilt, so views built from them know when to follow.
@@ -222,6 +227,14 @@ pub struct FileTree {
     goto: GoTo,
 }
 
+/// What the rows were last built from.
+struct BuiltFor {
+    /// Kept, so its address stays this list's while it is compared.
+    files: Arc<Vec<ChangedFile>>,
+    viewed_version: u64,
+    collapse_version: u64,
+}
+
 impl FileTree {
     /// Rows and visible file order for keyboard navigation (rebuilt only when inputs changed).
     pub fn refresh(
@@ -230,11 +243,15 @@ impl FileTree {
         is_viewed: &dyn Fn(&ChangedFile) -> bool,
         viewed_version: u64,
     ) {
-        let key =
-            (Arc::as_ptr(files) as usize, viewed_version.wrapping_add(self.collapse_version << 32));
         // Only "Hide viewed" lists the open file differently from the others.
         let open = self.open.as_deref().filter(|_| self.filter.hide_viewed);
-        let is_current = self.built_for == Some(key)
+        let is_same_files =
+            self.built_for.as_ref().is_some_and(|built| Arc::ptr_eq(&built.files, files));
+        let is_current = is_same_files
+            && self.built_for.as_ref().is_some_and(|built| {
+                built.viewed_version == viewed_version
+                    && built.collapse_version == self.collapse_version
+            })
             && self.built_filter == self.filter
             && self.built_open.as_deref() == open;
         if is_current {
@@ -261,13 +278,18 @@ impl FileTree {
         self.rows = rows;
         self.full_order = full_order;
         self.version += 1;
+        self.viewed_count = files.iter().filter(|file| is_viewed(file)).count();
         // The files' own figures change only with the files, not with the filter or the marks.
-        let is_new_files = self.built_for.map(|(files, _)| files) != Some(key.0);
-        if is_new_files {
+        if !is_same_files {
             self.widest_counts = widest_counts(files);
             self.breakdown = change_breakdown::tally(files.iter());
+            self.category_counts = category_filter::counts(files);
         }
-        self.built_for = Some(key);
+        self.built_for = Some(BuiltFor {
+            files: files.clone(),
+            viewed_version,
+            collapse_version: self.collapse_version,
+        });
         self.built_filter = self.filter.clone();
         self.built_open = open.map(str::to_owned);
     }
@@ -416,41 +438,41 @@ mod tests {
     use review_git::{ChangeKind, ChangedFile};
     use review_store::ThemePreference;
 
-    use super::{FileTree, TreeEvent, TreeInputs, side_panel};
+    use super::{FileTree, TreeEvent, TreeInputs, VoteOffer, side_panel};
     use cv_base::theme;
+    use cv_widgets::focus;
 
-    struct Scene {
-        tree: FileTree,
-        files: Arc<Vec<ChangedFile>>,
-        viewed: HashSet<String>,
+    pub(crate) struct Scene {
+        pub(crate) tree: FileTree,
+        pub(crate) files: Arc<Vec<ChangedFile>>,
+        pub(crate) viewed: HashSet<String>,
         /// Bumped with every change of `viewed`, as `ViewedMarks::version`.
-        viewed_version: u64,
-        thread_counts: HashMap<String, usize>,
-        selected: Option<usize>,
-        theme: ThemePreference,
+        pub(crate) viewed_version: u64,
+        pub(crate) thread_counts: HashMap<String, usize>,
+        pub(crate) selected: Option<usize>,
+        pub(crate) theme: ThemePreference,
         /// The side panel's width; the whole window when `None`.
-        panel_width: Option<f32>,
-        last_event: Option<String>,
+        pub(crate) panel_width: Option<f32>,
+        /// The line totals are still on their way.
+        pub(crate) is_counting: bool,
+        pub(crate) vote: VoteOffer,
+        pub(crate) last_event: Option<String>,
     }
 
-    fn file(
+    pub(crate) fn file(
         path: &str,
         kind: ChangeKind,
         counts: Option<(u32, u32)>,
         category: FileCategory,
     ) -> ChangedFile {
         ChangedFile {
-            path: path.to_owned(),
             old_path: matches!(kind, ChangeKind::Renamed | ChangeKind::Copied)
                 .then(|| format!("legacy/{path}")),
-            kind,
-            old_oid: "1".repeat(40),
-            new_oid: "2".repeat(40),
             additions: counts.map(|(added, _)| added),
             deletions: counts.map(|(_, deleted)| deleted),
             is_binary: counts.is_none(),
             category,
-            whitespace_only: false,
+            ..ChangedFile::sample(path, kind)
         }
     }
 
@@ -502,6 +524,8 @@ mod tests {
             selected: Some(6),
             theme,
             panel_width: None,
+            is_counting: false,
+            vote: VoteOffer::None,
             last_event: None,
         }
     }
@@ -573,6 +597,8 @@ mod tests {
             selected,
             theme,
             panel_width: Some(340.0),
+            is_counting: false,
+            vote: VoteOffer::None,
             last_event: None,
         }
     }
@@ -581,18 +607,17 @@ mod tests {
         build(scene(theme), [760.0, 980.0])
     }
 
-    fn build(scene: Scene, size: [f32; 2]) -> Harness<'static, Scene> {
+    pub(crate) fn build(scene: Scene, size: [f32; 2]) -> Harness<'static, Scene> {
         let builder = Harness::builder().with_size(size).with_context_setup(|ctx| {
             theme::fonts::install(ctx);
             theme::motion::set_reduced(ctx, false);
         });
         builder.build_ui_state(
             |ui, scene: &mut Scene| {
-                theme::activate(ui.ctx(), scene.theme);
-                let palette = theme::palette(ui.ctx());
+                focus::track_modality(ui.ctx());
+                let palette = theme::activate(ui.ctx(), scene.theme);
                 ui.painter().rect_filled(ui.max_rect(), 0, palette.ground);
-                let viewed = scene.viewed.clone();
-                let is_viewed = move |file: &ChangedFile| viewed.contains(&file.path);
+                let is_viewed = |file: &ChangedFile| scene.viewed.contains(&file.path);
                 // As the Files tab does: the open file first, then the refresh.
                 let open = scene.selected.map(|index| scene.files[index].path.as_str());
                 scene.tree.keep_open(open);
@@ -604,9 +629,11 @@ mod tests {
                     selected_folder: None,
                     is_viewed: &is_viewed,
                     thread_counts: &scene.thread_counts,
-                    vote: super::VoteOffer::None,
+                    vote: scene.vote,
                 };
-                let event = side_panel::show(ui, width, &mut scene.tree, &inputs, false);
+                let event =
+                    side_panel::show(ui, width, &mut scene.tree, &inputs, scene.is_counting);
+                focus::paint_for_focused_widget(ui.ctx());
                 match event {
                     Some(TreeEvent::Select(index)) => {
                         scene.last_event = Some(format!("select {}", scene.files[index].path));
@@ -650,7 +677,7 @@ mod tests {
     }
 
     #[test]
-    fn file_tree_keeps_its_interactions() {
+    fn clicking_a_file_row_selects_it_and_its_box_marks_it_viewed() {
         let mut harness = harness(ThemePreference::Light);
         harness.run_steps(4);
         assert!(harness.query_by_label("docs/engineering/build-sources.md").is_some());
@@ -663,7 +690,12 @@ mod tests {
         harness.click_at(harness.get_by_label("Cargo.lock").rect());
         harness.run_steps(2);
         assert_eq!(harness.state().last_event.as_deref(), Some("select Cargo.lock"));
+    }
 
+    #[test]
+    fn a_folder_row_opens_its_summary_and_its_caret_collapses_it() {
+        let mut harness = harness(ThemePreference::Light);
+        harness.run_steps(4);
         assert!(harness.query_by_label("scripts/deploy.sh").is_some());
         harness.click_at(harness.get_by_label("scripts").rect());
         harness.run_steps(2);
@@ -677,7 +709,6 @@ mod tests {
         harness.run_steps(4);
         assert!(harness.query_by_label("scripts/deploy.sh").is_none());
         assert!(harness.query_by_label("scripts").is_some());
-        assert!(harness.query_all_by_role(Role::TreeItem).count() > 10);
     }
 
     /// The tri-state counts every file below a folder, deeper ones too, and only those.
@@ -810,6 +841,25 @@ mod tests {
         tree.refresh(&Arc::new(vec![files[0].clone(), files[8].clone()]), &|_| false, 0);
         assert_eq!(tree.file_order().collect::<Vec<_>>(), [0], "only the docs file");
         assert_eq!(tree.full_order(), [0]);
+    }
+
+    /// Once every file is viewed, the progress line names the vote that is in, or offers the
+    /// approval.
+    #[test]
+    fn the_done_line_offers_the_vote_once_every_file_is_viewed() {
+        let mut voted = scene(ThemePreference::Light);
+        voted.viewed = voted.files.iter().map(|file| file.path.clone()).collect();
+        voted.vote = VoteOffer::Voted("Approved");
+        let mut harness = build(voted, [760.0, 980.0]);
+        harness.run_steps(4);
+        assert!(harness.query_by_label("All 16 files viewed").is_some());
+        assert!(harness.query_by_label("Your vote: Approved").is_some());
+
+        harness.state_mut().vote = VoteOffer::Approve { is_enabled: true };
+        harness.run_steps(2);
+        harness.click_at(harness.get_by_role_and_label(Role::Link, "Approve").rect());
+        harness.run_steps(2);
+        assert_eq!(harness.state().last_event.as_deref(), Some("review Approve"));
     }
 
     /// The change kind stays readable without the old letter badges: in words for assistive

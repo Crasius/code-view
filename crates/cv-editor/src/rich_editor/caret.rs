@@ -44,8 +44,11 @@ pub fn block_at_y(layout: &mut LayoutCache, doc: &Document, y: f32) -> usize {
     }
 }
 
-fn cursor(offset: usize) -> CCursor {
-    CCursor::new(offset)
+/// Which way a caret move goes: up, to the row's start or to the char before, or the reverse.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    Backward,
+    Forward,
 }
 
 /// The position under `point` (screen coordinates).
@@ -71,11 +74,11 @@ pub fn caret_rect(
     pos: Pos,
 ) -> Rect {
     let placed = place(layout, ctx, doc, origin, pos.block);
-    let rect = placed.laid.galley.pos_from_cursor(cursor(pos.offset));
+    let rect = placed.laid.galley.pos_from_cursor(CCursor::new(pos.offset));
     rect.translate(placed.galley_origin.to_vec2())
 }
 
-/// One row up (`down` false) or down, keeping the column `x` (screen coordinates), across
+/// One row up (`Backward`) or down, keeping the column `x` (screen coordinates), across
 /// blocks. Returns the new position and the column to keep.
 pub fn vertical(
     layout: &mut LayoutCache,
@@ -84,20 +87,22 @@ pub fn vertical(
     origin: Pos2,
     pos: Pos,
     x: Option<f32>,
-    down: bool,
+    direction: Direction,
 ) -> (Pos, f32) {
+    let down = direction == Direction::Forward;
+    let at = CCursor::new(pos.offset);
     let placed = place(layout, ctx, doc, origin, pos.block);
     let galley = &placed.laid.galley;
-    let here = galley.pos_from_cursor(cursor(pos.offset)).translate(placed.galley_origin.to_vec2());
+    let here = galley.pos_from_cursor(at).translate(placed.galley_origin.to_vec2());
     let x = x.unwrap_or(here.center().x);
-    let row = galley.layout_from_cursor(cursor(pos.offset)).row;
+    let row = galley.layout_from_cursor(at).row;
     let galley_x = x - placed.galley_origin.x;
     let within = if down { row + 1 < galley.rows.len() } else { row > 0 };
     if within {
         let (moved, _) = if down {
-            galley.cursor_down_one_row(&cursor(pos.offset), Some(galley_x))
+            galley.cursor_down_one_row(&at, Some(galley_x))
         } else {
-            galley.cursor_up_one_row(&cursor(pos.offset), Some(galley_x))
+            galley.cursor_up_one_row(&at, Some(galley_x))
         };
         return (Pos::new(pos.block, moved.index.0), x);
     }
@@ -113,25 +118,25 @@ pub fn vertical(
     (Pos::new(next, hit.index.0.min(doc.block(next).len())), x)
 }
 
-/// The start (`end` false) or end of the row `pos` is on.
+/// The start (`Backward`) or end of the row `pos` is on.
 pub fn row_edge(
     layout: &mut LayoutCache,
     ctx: &Context,
     doc: &Document,
     pos: Pos,
-    end: bool,
+    direction: Direction,
 ) -> Pos {
     let laid = layout.get(ctx, doc, pos.block);
     let galley: &Galley = &laid.galley;
-    let edge = if end {
-        galley.cursor_end_of_row(&cursor(pos.offset))
-    } else {
-        galley.cursor_begin_of_row(&cursor(pos.offset))
+    let at = CCursor::new(pos.offset);
+    let edge = match direction {
+        Direction::Forward => galley.cursor_end_of_row(&at),
+        Direction::Backward => galley.cursor_begin_of_row(&at),
     };
     Pos::new(pos.block, edge.index.0.min(doc.block(pos.block).len()))
 }
 
-/// A page up or down: the position `height` above or below the caret.
+/// A page up (`Backward`) or down: the position `height` above or below the caret.
 pub fn page(
     layout: &mut LayoutCache,
     ctx: &Context,
@@ -139,10 +144,13 @@ pub fn page(
     origin: Pos2,
     pos: Pos,
     height: f32,
-    down: bool,
+    direction: Direction,
 ) -> Pos {
     let here = caret_rect(layout, ctx, doc, origin, pos);
-    let y = if down { here.center().y + height } else { here.center().y - height };
+    let y = match direction {
+        Direction::Forward => here.center().y + height,
+        Direction::Backward => here.center().y - height,
+    };
     let total = layout.offsets(doc).total;
     if y - origin.y < 0.0 {
         return Pos::new(0, 0);
@@ -230,10 +238,10 @@ pub fn word_at(doc: &Document, pos: Pos) -> Selection {
     Selection { anchor: Pos::new(pos.block, start), head: Pos::new(pos.block, end) }
 }
 
-/// The char before (`forward` false) or after `pos`, across block boundaries.
-pub fn step(doc: &Document, pos: Pos, forward: bool) -> Pos {
+/// The char before (`Backward`) or after `pos`, across block boundaries.
+pub fn step(doc: &Document, pos: Pos, direction: Direction) -> Pos {
     let pos = doc.clamp(pos);
-    if forward {
+    if direction == Direction::Forward {
         if pos.offset < doc.block(pos.block).len() {
             Pos::new(pos.block, pos.offset + 1)
         } else if pos.block + 1 < doc.blocks.len() {

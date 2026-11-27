@@ -50,10 +50,9 @@ use self::keys::Requests;
 use self::layout::WriteCache;
 pub use self::preference::{publish as publish_editors, take_chosen as take_chosen_editors};
 use self::toolbar::{Action, Features, Mode};
+use self::toolbar_layout::{MAX_HEIGHT, ROW_HEIGHT, TEXT_MARGIN};
 use crate::rich_editor::{self, RichOptions};
 
-/// Height of the text area before it starts to scroll.
-const MAX_HEIGHT: f32 = 360.0;
 /// Posts the text.
 const SUBMIT_SHORTCUT: &str = shortcut!(command Enter);
 
@@ -81,7 +80,8 @@ pub struct Options<'a> {
     pub suggestion: Option<&'a str>,
     /// Renders Preview as this platform does; `None` uses the pull request's platform if known.
     pub platform: Option<ProviderKind>,
-    /// A second, outlined submit button beside the primary one, e.g. "Reply & resolve".
+    /// A second, outlined submit button beside the primary one, e.g. "Reply & resolve". Thread
+    /// layout only (`leading_buttons`).
     pub secondary_label: Option<&'a str>,
     /// Replaces the shortcut hint in the footer, e.g. "Draft saved".
     pub footer_hint: Option<&'a str>,
@@ -365,8 +365,8 @@ impl Pass<'_> {
         if requests.enter {
             is_changed |= newline(ui, edit_id, text, cache);
         }
-        if let Some(is_outdent) = requests.tab {
-            is_changed |= indent(ui, edit_id, text, cache, is_outdent);
+        if let Some(direction) = requests.tab {
+            is_changed |= indent(ui, edit_id, text, cache, direction);
         }
         is_changed
     }
@@ -379,7 +379,7 @@ impl Pass<'_> {
         cache: &mut WriteCache,
         state: &mut EditorState,
     ) -> bool {
-        let min_height = self.options.min_rows as f32 * 22.0 + 20.0;
+        let min_height = self.options.min_rows as f32 * ROW_HEIGHT + TEXT_MARGIN.sum().y;
         let max_height = MAX_HEIGHT.min(ui.ctx().content_rect().height() * 0.5).max(min_height);
         egui::ScrollArea::vertical()
             .id_salt(self.id.with("scroll"))
@@ -392,16 +392,16 @@ impl Pass<'_> {
     /// The comment as it will be posted, rendered as its platform renders it.
     fn preview(&self, ui: &mut Ui, text: &str) {
         let palette = theme::palette(ui.ctx());
-        egui::Frame::new().inner_margin(egui::Margin::symmetric(12, 10)).show(ui, |ui| {
+        egui::Frame::new().inner_margin(TEXT_MARGIN).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.set_min_height(self.options.min_rows as f32 * 22.0);
+            ui.set_min_height(self.options.min_rows as f32 * ROW_HEIGHT);
             ui.spacing_mut().item_spacing.y = 6.0;
             if text.trim().is_empty() {
                 ui.label(RichText::new("Nothing to preview yet.").color(palette.text_secondary));
                 return;
             }
-            let platform = self.options.platform.or(self.people.map(|context| context.kind));
-            let render = platform.map_or_else(RenderOptions::default, RenderOptions::for_platform);
+            let render =
+                self.platform.map_or_else(RenderOptions::default, RenderOptions::for_platform);
             cv_markdown::render(ui, self.id.with("preview"), text, render);
         });
     }
@@ -434,7 +434,7 @@ impl Pass<'_> {
                 .hint_text(options.hint)
                 .desired_rows(options.min_rows)
                 .desired_width(f32::INFINITY)
-                .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(12, 10)))
+                .frame(egui::Frame::NONE.inner_margin(TEXT_MARGIN))
                 .event_filter(event_filter)
                 .layouter(&mut layouter);
             match self.people {

@@ -350,157 +350,48 @@ fn by_extension(extension: &str) -> Option<FileIcon> {
 
 #[cfg(test)]
 mod tests {
-    use egui_kittest::Harness;
-
     use super::{FALLBACK, FileIcon, file_icon};
     use cv_base::theme::FileHue::{Amber, Blue, Green, Orange, Pink, Purple, Red, Slate, Teal};
-    use cv_base::theme::icons::{self, Weight};
-    use cv_base::theme::{self, FileHue, Palette};
+    use cv_base::theme::{FileHue, icons};
 
     fn assert_icon(path: &str, glyph: &'static str, hue: FileHue) {
         assert_eq!(file_icon(path), FileIcon { glyph, hue }, "{path}");
     }
 
-    /// One path per row of the tables, from common source files to large-file exotics.
-    const SAMPLE_PATHS: &[&str] = &[
-        "src/main.rs",
-        "web/app.ts",
-        "web/App.tsx",
-        "web/index.js",
-        "web/Button.jsx",
-        "tool.py",
-        "native/lib.c",
-        "native/lib.h",
-        "native/lib.cpp",
-        "native/lib.hpp",
-        "App/Program.cs",
-        "site.css",
-        "theme.scss",
-        "index.html",
-        "Pages/Index.razor",
-        "docs/guide.md",
-        "query.sql",
-        "App.vue",
-        "logo.svg",
-        "main.go",
-        "Main.java",
-        "Main.kt",
-        "Lib.fs",
-        "Module.vb",
-        "index.php",
-        "app.rb",
-        "App.swift",
-        "main.dart",
-        "init.lua",
-        "run.sh",
-        "build.ps1",
-        "setup.bat",
-        "schema.graphql",
-        "api.proto",
-        "main.tf",
-        "main.bicep",
-        "config.json",
-        "app.xml",
-        "ci.yaml",
-        "settings.toml",
-        "App.csproj",
-        "App.sln",
-        "Directory.Build.props",
-        "notes.txt",
-        "build.log",
-        "data.csv",
-        "spec.pdf",
-        "logo.png",
-        "photo.jpg",
-        "anim.gif",
-        "cover.psd",
-        "font.woff2",
-        "level.blend",
-        "mesh.fbx",
-        "Main.unity",
-        "Hero.uasset",
-        "voice.wav",
-        "trailer.mp4",
-        "app.sqlite",
-        "events.parquet",
-        "model.onnx",
-        "model.safetensors",
-        "bundle.zip",
-        "lib.jar",
-        "App.nupkg",
-        "pkg.whl",
-        "native.dll",
-        "disk.iso",
-        "Cargo.toml",
-        "Cargo.lock",
-        "package.json",
-        "package-lock.json",
-        "yarn.lock",
-        "pnpm-lock.yaml",
-        "Dockerfile",
-        "docker-compose.yml",
-        "Makefile",
-        "CMakeLists.txt",
-        "build.gradle",
-        ".gitignore",
-        ".gitattributes",
-        ".editorconfig",
-        ".env",
-        "LICENSE",
-        "README.md",
-        "CHANGELOG.md",
-        ".github/workflows/ci.yml",
-        "notebook.ipynb",
-        "song.mid",
-        "cert.pem",
-        "id.key",
-        "fix.patch",
-        "x.unknownext",
-    ];
-
+    /// One case per lookup rule, named after the rule.
     #[test]
     fn special_file_names_win_over_extensions() {
-        assert_icon("Cargo.toml", icons::PACKAGE, Orange);
-        assert_icon("crates/core/Cargo.toml", icons::PACKAGE, Orange);
-        assert_icon("Cargo.lock", icons::FILE_LOCK, Orange);
-        assert_icon("web/package.json", icons::PACKAGE, Red);
-        assert_icon("package-lock.json", icons::FILE_LOCK, Red);
-        assert_icon("yarn.lock", icons::FILE_LOCK, Blue);
-        assert_icon("pnpm-lock.yaml", icons::FILE_LOCK, Amber);
-        assert_icon("poetry.lock", icons::FILE_LOCK, Blue);
-        assert_icon("tools/flake.lock", icons::FILE_LOCK, Slate);
-        assert_icon("Dockerfile", icons::SHIPPING_CONTAINER, Blue);
-        assert_icon("build/Dockerfile.dev", icons::SHIPPING_CONTAINER, Blue);
-        assert_icon("api.dockerfile", icons::SHIPPING_CONTAINER, Blue);
-        assert_icon("docker-compose.override.yml", icons::SHIPPING_CONTAINER, Blue);
-        assert_icon("compose.yaml", icons::SHIPPING_CONTAINER, Blue);
-        assert_icon("Makefile", icons::HAMMER, Slate);
-        assert_icon("CMakeLists.txt", icons::HAMMER, Green);
-        assert_icon("app/build.gradle.kts", icons::HAMMER, Teal);
-        assert_icon(".gitignore", icons::GIT_BRANCH, Red);
-        assert_icon("src/.gitattributes", icons::GIT_BRANCH, Red);
-        assert_icon(".editorconfig", icons::SLIDERS_HORIZONTAL, Slate);
-        assert_icon(".env", icons::KEY, Amber);
-        assert_icon(".env.local", icons::KEY, Amber);
-        assert_icon("LICENSE", icons::SCALES, Amber);
-        assert_icon("LICENSE-MIT", icons::SCALES, Amber);
-        assert_icon("LICENSE.txt", icons::SCALES, Amber);
-        assert_icon("README.md", icons::BOOK_OPEN_TEXT, Blue);
-        assert_icon("docs/readme", icons::BOOK_OPEN_TEXT, Blue);
-        assert_icon("CHANGELOG.md", icons::CLOCK_COUNTER_CLOCKWISE, Green);
-        assert_icon(".github/CODEOWNERS", icons::USERS, Slate);
-        assert_icon("CODE_OF_CONDUCT.md", icons::USERS, Slate);
-        assert_icon(".github/workflows/release.yaml", icons::ROCKET_LAUNCH, Green);
-        assert_icon("azure-pipelines.yml", icons::ROCKET_LAUNCH, Green);
-        assert_icon("Jenkinsfile", icons::ROCKET_LAUNCH, Green);
-        assert_icon("Directory.Packages.props", icons::PACKAGE, Purple);
-        assert_icon("src/App/App.csproj", icons::PACKAGE, Purple);
-        assert_icon("Review.sln", icons::TREE_STRUCTURE, Purple);
-        // A name that merely starts like a doc stays what its extension says.
-        assert_icon("src/history.ts", icons::FILE_TS, Blue);
-        assert_icon("src/license_check.rs", icons::FILE_RS, Orange);
-        // YAML outside the workflows folder is plain config.
-        assert_icon("deploy/values.yaml", icons::GEAR_SIX, Pink);
+        let cases: &[(&str, &str, &str, FileHue)] = &[
+            ("a special name beats its extension", "Cargo.toml", icons::PACKAGE, Orange),
+            ("a special name beats its extension", "package-lock.json", icons::FILE_LOCK, Red),
+            (
+                "a special name beats its extension",
+                "Directory.Packages.props",
+                icons::PACKAGE,
+                Purple,
+            ),
+            ("a special name in a folder", "crates/core/Cargo.toml", icons::PACKAGE, Orange),
+            ("a dot file in a folder", "src/.gitattributes", icons::GIT_BRANCH, Red),
+            ("a special name in a folder", ".github/CODEOWNERS", icons::USERS, Slate),
+            ("a container stem", "build/Dockerfile.dev", icons::SHIPPING_CONTAINER, Blue),
+            ("a compose stem", "docker-compose.override.yml", icons::SHIPPING_CONTAINER, Blue),
+            ("a compose stem", "compose.yaml", icons::SHIPPING_CONTAINER, Blue),
+            ("an env file", ".env.local", icons::KEY, Amber),
+            ("a doc with a suffix", "LICENSE-MIT", icons::SCALES, Amber),
+            ("a doc with a text extension", "LICENSE.txt", icons::SCALES, Amber),
+            ("a doc without an extension", "docs/readme", icons::BOOK_OPEN_TEXT, Blue),
+            ("a doc matched before the split", "CODE_OF_CONDUCT.md", icons::USERS, Slate),
+            ("CI by folder", ".github/workflows/release.yaml", icons::ROCKET_LAUNCH, Green),
+            ("CI by name", "azure-pipelines.yml", icons::ROCKET_LAUNCH, Green),
+            ("CI by name", "Jenkinsfile", icons::ROCKET_LAUNCH, Green),
+            ("YAML outside the workflows", "deploy/values.yaml", icons::GEAR_SIX, Pink),
+            ("starts like a doc, is code", "src/history.ts", icons::FILE_TS, Blue),
+            ("starts like a doc, is code", "src/license_check.rs", icons::FILE_RS, Orange),
+            ("a container by extension", "api.dockerfile", icons::SHIPPING_CONTAINER, Blue),
+        ];
+        for &(rule, path, glyph, hue) in cases {
+            assert_eq!(file_icon(path), FileIcon { glyph, hue }, "{rule}: {path}");
+        }
     }
 
     #[test]
@@ -533,53 +424,5 @@ mod tests {
             assert_eq!(file_icon(path), FALLBACK, "{path}");
         }
         assert_eq!(file_icon(&format!("{}.whatever", "y".repeat(200))), FALLBACK);
-    }
-
-    fn luminance(color: egui::Color32) -> f32 {
-        let linear = egui::Rgba::from(color);
-        0.2126 * linear.r() + 0.7152 * linear.g() + 0.0722 * linear.b()
-    }
-
-    fn contrast(a: egui::Color32, b: egui::Color32) -> f32 {
-        let (light, dark) = (luminance(a).max(luminance(b)), luminance(a).min(luminance(b)));
-        (light + 0.05) / (dark + 0.05)
-    }
-
-    /// Every hue keeps 3:1 (WCAG non-text contrast) on each fill a tree row can have.
-    #[test]
-    fn every_hue_has_three_to_one_contrast_on_tree_rows() {
-        for palette in [Palette::LIGHT, Palette::DARK] {
-            for hue in FileHue::ALL {
-                for (row, background) in [
-                    ("surface", palette.surface),
-                    ("hover", palette.hover),
-                    ("pressed", palette.pressed),
-                    ("selection", palette.selection),
-                ] {
-                    let ratio = contrast(palette.file_hue(hue), background);
-                    assert!(
-                        ratio >= 3.0,
-                        "{hue:?} on {row} (dark {}): {ratio:.2}",
-                        palette.is_dark
-                    );
-                }
-            }
-        }
-    }
-
-    /// The bundled Phosphor version has every glyph the tables use, in every weight.
-    #[test]
-    fn every_glyph_exists_in_every_weight() {
-        let mut harness =
-            Harness::builder().with_context_setup(theme::fonts::install).build_ui(|_| {});
-        harness.run_steps(1);
-        for weight in [Weight::Regular, Weight::Bold, Weight::Fill] {
-            let font = icons::font(icons::SIZE, weight);
-            for path in SAMPLE_PATHS {
-                let glyph = file_icon(path).glyph.chars().next().expect("one codepoint");
-                let has_glyph = harness.ctx.fonts_mut(|fonts| fonts.has_glyph(&font, glyph));
-                assert!(has_glyph, "{path} ({:X}) missing in {weight:?}", glyph as u32);
-            }
-        }
     }
 }

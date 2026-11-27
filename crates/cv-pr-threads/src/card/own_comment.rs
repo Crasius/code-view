@@ -112,7 +112,7 @@ pub(super) fn delete_question(
     let palette = theme::palette(ui.ctx());
     let grab_focus = threads.edits.take_focus(&thread.id, &comment.id);
     let (mut confirmed, mut cancelled, mut fix_token) = (false, false, false);
-    ui.add_space(8.0);
+    ui.add_space(style::SPACE_S);
     failure_frame(ui, palette.error, |ui| {
         ui.horizontal(|ui| {
             glyph::decorative(
@@ -165,11 +165,6 @@ pub(super) fn delete_question(
     })
 }
 
-/// Space the menu button takes in the comment's header line.
-pub(super) fn menu_width() -> f32 {
-    buttons::icon_width()
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -182,7 +177,7 @@ mod tests {
     use review_core::{Connection, Provider, ProviderKind, ReviewThread, ThreadStatus};
     use review_store::ThemePreference;
 
-    use super::super::super::samples::{comment, erika, jonas};
+    use super::super::super::samples::{self, comment, erika, jonas};
     use super::super::super::{CardOptions, ThreadEvent, ThreadsUi, show_card};
 
     struct Scene {
@@ -205,20 +200,15 @@ mod tests {
     }
 
     fn harness() -> Harness<'static, Scene> {
-        let thread = ReviewThread {
-            id: "PRRT_one".into(),
-            status: ThreadStatus::Active,
-            anchor: None,
-            is_outdated: false,
-            origin: None,
-            is_system: false,
-            can_reply: true,
-            can_resolve: true,
-            comments: vec![
+        let thread = samples::thread(
+            "PRRT_one",
+            ThreadStatus::Active,
+            None,
+            vec![
                 comment("1", &jonas(), 30, "Why a Vec here?"),
                 comment("2", &erika(), 20, "It grows while parsing."),
             ],
-        };
+        );
         let mut threads = ThreadsUi::for_tests(ProviderKind::GitHub);
         threads.set_me(erika());
         threads.edits.set_provider(&github());

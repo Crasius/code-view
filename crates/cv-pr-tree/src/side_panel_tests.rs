@@ -1,6 +1,6 @@
 //! The Files side panel with a change list shaped like a large pull request (356 files, about
-//! +10,900 −5,100 lines): its header never overlaps itself at any width, and the category
-//! dropdown works with the mouse and the keyboard. No network, no tokens.
+//! +10,900 −5,100 lines): its header never overlaps itself at any width, the tree stays put when
+//! the counting ends, and the category dropdown works with the mouse and the keyboard.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -13,18 +13,8 @@ use review_core::FileCategory;
 use review_git::{ChangeKind, ChangedFile};
 use review_store::ThemePreference;
 
-use super::{FileTree, TreeInputs, side_panel};
-use cv_base::theme;
-use cv_widgets::focus;
-
-struct Scene {
-    tree: FileTree,
-    files: Arc<Vec<ChangedFile>>,
-    viewed: HashSet<String>,
-    width: f32,
-    theme: ThemePreference,
-    is_counting: bool,
-}
+use crate::tests::{Scene, build, file};
+use crate::{FileTree, VoteOffer};
 
 /// 356 files: 300 code, 44 tests, 7 docs, 3 config, 1 generated, 1 asset.
 fn files() -> Vec<ChangedFile> {
@@ -32,18 +22,9 @@ fn files() -> Vec<ChangedFile> {
     let mut push =
         |count: usize, folder: &str, extension: &str, category: FileCategory, lines: (u32, u32)| {
             for index in 0..count {
-                files.push(ChangedFile {
-                    path: format!("{folder}/file_{index:03}.{extension}"),
-                    old_path: None,
-                    kind: ChangeKind::Modified,
-                    old_oid: "1".repeat(40),
-                    new_oid: "2".repeat(40),
-                    additions: Some(lines.0 + index as u32 % 7),
-                    deletions: Some(lines.1 + index as u32 % 5),
-                    is_binary: false,
-                    category,
-                    whitespace_only: false,
-                });
+                let counts = (lines.0 + index as u32 % 7, lines.1 + index as u32 % 5);
+                let path = format!("{folder}/file_{index:03}.{extension}");
+                files.push(file(&path, ChangeKind::Modified, Some(counts), category));
             }
         };
     push(300, "src/app", "rs", FileCategory::Code, (30, 15));
@@ -55,41 +36,22 @@ fn files() -> Vec<ChangedFile> {
     files
 }
 
-fn harness(theme: ThemePreference, width: f32) -> Harness<'static, Scene> {
-    let builder = Harness::builder().with_size([640.0, 720.0]).with_context_setup(|ctx| {
-        theme::fonts::install(ctx);
-        theme::motion::set_reduced(ctx, false);
-    });
+/// The panel `width` wide over the 356 files, nothing viewed or open.
+fn harness(width: f32) -> Harness<'static, Scene> {
     let scene = Scene {
         tree: FileTree::default(),
         files: Arc::new(files()),
         viewed: HashSet::new(),
-        width,
-        theme,
+        viewed_version: 0,
+        thread_counts: HashMap::new(),
+        selected: None,
+        theme: ThemePreference::Light,
+        panel_width: Some(width),
         is_counting: false,
+        vote: VoteOffer::None,
+        last_event: None,
     };
-    builder.build_ui_state(
-        |ui, scene: &mut Scene| {
-            focus::track_modality(ui.ctx());
-            let palette = theme::activate(ui.ctx(), scene.theme);
-            ui.painter().rect_filled(ui.max_rect(), 0, palette.ground);
-            let viewed = scene.viewed.clone();
-            let is_viewed = move |file: &ChangedFile| viewed.contains(&file.path);
-            scene.tree.refresh(&scene.files, &is_viewed, scene.viewed.len() as u64);
-            let threads = HashMap::new();
-            let inputs = TreeInputs {
-                files: &scene.files,
-                selected: None,
-                selected_folder: None,
-                is_viewed: &is_viewed,
-                thread_counts: &threads,
-                vote: super::VoteOffer::None,
-            };
-            side_panel::show(ui, scene.width, &mut scene.tree, &inputs, scene.is_counting);
-            focus::paint_for_focused_widget(ui.ctx());
-        },
-        scene,
-    )
+    build(scene, [640.0, 720.0])
 }
 
 /// Leaf widgets of the header (everything above the first tree row).
@@ -140,11 +102,11 @@ fn assert_no_overlap(harness: &Harness<'_, Scene>, width: f32) {
 
 #[test]
 fn side_panel_header_never_overlaps_from_240_to_600() {
-    let mut harness = harness(ThemePreference::Light, 240.0);
+    let mut harness = harness(240.0);
     for is_counting in [false, true] {
         harness.state_mut().is_counting = is_counting;
         for width in (240..=600).step_by(4) {
-            harness.state_mut().width = width as f32;
+            harness.state_mut().panel_width = Some(width as f32);
             harness.run_steps(2);
             assert_no_overlap(&harness, width as f32);
         }
@@ -161,7 +123,7 @@ fn tree_top(harness: &Harness<'_, Scene>) -> f32 {
 
 #[test]
 fn side_panel_tree_stays_put_when_the_counting_ends_from_220_to_600() {
-    let mut harness = harness(ThemePreference::Light, 220.0);
+    let mut harness = harness(220.0);
     // Five times the change list, most of it viewed: long texts beside the totals.
     let files: Vec<ChangedFile> = (0..5)
         .flat_map(|copy| {
@@ -170,10 +132,12 @@ fn side_panel_tree_stays_put_when_the_counting_ends_from_220_to_600() {
                 .map(move |file| ChangedFile { path: format!("copy_{copy}/{}", file.path), ..file })
         })
         .collect();
-    harness.state_mut().viewed = files.iter().take(1_500).map(|file| file.path.clone()).collect();
-    harness.state_mut().files = Arc::new(files);
+    let scene = harness.state_mut();
+    scene.viewed = files.iter().take(1_500).map(|file| file.path.clone()).collect();
+    scene.viewed_version += 1;
+    scene.files = Arc::new(files);
     for width in 220..=600 {
-        harness.state_mut().width = width as f32;
+        harness.state_mut().panel_width = Some(width as f32);
         harness.state_mut().is_counting = true;
         harness.run_steps(2);
         let counting = tree_top(&harness);
@@ -185,7 +149,7 @@ fn side_panel_tree_stays_put_when_the_counting_ends_from_220_to_600() {
 
 #[test]
 fn category_dropdown_filters_with_mouse_and_keyboard() {
-    let mut harness = harness(ThemePreference::Light, 320.0);
+    let mut harness = harness(320.0);
     harness.run_steps(2);
     let dropdown = harness.get_by_role(Role::ComboBox);
     assert_eq!(dropdown.accesskit_node().value().as_deref(), Some("All files, 356 files"));

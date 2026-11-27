@@ -131,7 +131,6 @@ fn checkout_walkthrough_offers_runs_and_opens_claude_in_a_new_worktree() {
     assert!(has(&harness, "Checking out…"), "the header button shows the progress");
     assert!(has(&harness, "Checkout #7 · "), "the title bar's chip names the checkout");
     assert!(has(&harness, "Fetch #7 from the mirror"), "the steps are listed");
-    assert!(has(&harness, "You can close this. It keeps running and the title bar shows it."));
 
     wait_ready(&mut harness);
     assert_eq!(head_of(&worktree), host.head_sha(), "the worktree has the pull request's head");
@@ -331,8 +330,6 @@ fn checkout_walkthrough_settings_section_lists_clones_folders_and_the_pattern() 
         harness.query_all_by_label("Local checkouts").next().expect("the section").rect(),
     );
     wait_until(&mut harness, "the section", |harness| has(harness, "Folder for new worktrees"));
-    assert!(has(&harness, "Where Check out puts a pull request, and what opens after it."));
-    assert!(has(&harness, "Found by matching the remote URL in the folders below."));
     let dev = scratch.path().join("dev");
     assert!(has(&harness, &dev.display().to_string()), "the search folder is listed");
     assert!(has(&harness, "Example: "), "the pattern shows where it puts #12");

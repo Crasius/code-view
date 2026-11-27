@@ -9,17 +9,23 @@ use egui::{
     UiBuilder, pos2, vec2,
 };
 
+use cv_base::theme::motion::mix;
 use cv_base::theme::{Palette, icons, style};
-use cv_code::diff_paint::mix;
 use cv_markdown::Marks;
 use cv_pr_threads::markers;
 use cv_widgets::focus;
 
 use super::align::Change;
-use super::model::{Cell, Look, Mode, Side};
+use review_core::DiffSide;
+
+use super::model::{Cell, Look, Mode};
 use super::{Frame, GUTTER, ROW_PAD, RenderedEvent, STRIPE_WIDTH};
 
 const BUTTON_SIZE: f32 = 18.0;
+/// The gutter's "+" or "−", at zoom 1.
+const MARKER_SIZE: f32 = 13.0;
+/// How far down the first line of body text the gutter control is centered, in body sizes.
+const MARKER_LINE_CENTER: f32 = 0.72;
 
 /// (tint, bar and marker color, marker) of a block.
 pub(super) fn look_colors(
@@ -78,8 +84,8 @@ pub(super) fn show_cell(
     let changed = (pair.change == Change::Modified
         && matches!(cell.look, Look::Added | Look::Removed))
     .then(|| match cell.side {
-        Side::Old => Marks { ranges: pair.old_words.clone(), color: palette.diff_deleted_word },
-        Side::New => Marks { ranges: pair.new_words.clone(), color: palette.diff_added_word },
+        DiffSide::Old => Marks { ranges: pair.old_words.clone(), color: palette.diff_deleted_word },
+        DiffSide::New => Marks { ranges: pair.new_words.clone(), color: palette.diff_added_word },
     });
     // The find bar's hits are layered over the changed words.
     let found = frame.find.marks(cell, frame.mode, palette);
@@ -122,7 +128,10 @@ pub(super) fn show_cell(
         cv_code::find_paint::note_current(ui.ctx(), lane, lane);
     }
     let gutter = Gutter {
-        center: pos2(text_left - GUTTER / 2.0 + 1.0, text_top + style::BODY_SIZE * scale * 0.72),
+        center: pos2(
+            text_left - GUTTER / 2.0 + 1.0,
+            text_top + style::BODY_SIZE * scale * MARKER_LINE_CENTER,
+        ),
         is_hovered: !frame.is_resizing && ui.rect_contains_pointer(lane),
         marker,
         color: bar,
@@ -133,34 +142,21 @@ pub(super) fn show_cell(
 
 /// Notes the fills of a rendered block that carries layered marks (see [`last_layers`]).
 #[cfg(any(test, feature = "test-support"))]
-pub fn note_layers(ctx: &egui::Context, layers: &[Marks]) {
-    let pass = ctx.cumulative_pass_nr();
+fn note_layers(ctx: &egui::Context, layers: &[Marks]) {
     let colors: Vec<Color32> =
         layers.iter().filter(|layer| !layer.ranges.is_empty()).map(|layer| layer.color).collect();
-    ctx.data_mut(|data| {
-        let notes = data.get_temp_mut_or_default::<LayerNotes>(egui::Id::unique(LAYER_NOTE));
-        if notes.0 != pass {
-            *notes = (pass, Vec::new());
-        }
-        notes.1.push(colors);
-    });
+    cv_base::frame_probe::note(ctx, LAYER_NOTE, colors);
 }
 
 /// The fill colors, layer by layer, of each rendered block the last frame painted with more than
 /// one layer of marks.
 #[cfg(any(test, feature = "test-support"))]
 pub fn last_layers(ctx: &egui::Context) -> Vec<Vec<Color32>> {
-    let (pass, notes) = ctx
-        .data(|data| data.get_temp::<LayerNotes>(egui::Id::unique(LAYER_NOTE)))
-        .unwrap_or_default();
-    if pass + 1 == ctx.cumulative_pass_nr() { notes } else { Vec::new() }
+    cv_base::frame_probe::last(ctx, LAYER_NOTE)
 }
 
 #[cfg(any(test, feature = "test-support"))]
-pub type LayerNotes = (u64, Vec<Vec<Color32>>);
-
-#[cfg(any(test, feature = "test-support"))]
-pub const LAYER_NOTE: &str = "diff_find_layers";
+const LAYER_NOTE: &str = "diff_find_layers";
 
 /// Where a block's gutter control is centered, whether the block is hovered, and the change
 /// marker it shows otherwise, in `color`.
@@ -195,7 +191,7 @@ fn show_gutter(
         return (lines_button(ui, frame, cell, button, unit.lines.clone(), palette), false);
     }
     if let Some(marker) = gutter.marker {
-        let font = FontId::monospace(13.0 * frame.options.scale);
+        let font = FontId::monospace(MARKER_SIZE * frame.options.scale);
         ui.painter().text(gutter.center, Align2::CENTER_CENTER, marker, font, gutter.color);
     }
     (None, false)
@@ -212,8 +208,8 @@ fn lines_button(
     palette: &Palette,
 ) -> Option<RenderedEvent> {
     let version = match (frame.mode, cell.side) {
-        (Mode::Columns | Mode::Whole(_), _) | (_, Side::New) => "",
-        (_, Side::Old) => " of the old version",
+        (Mode::Columns | Mode::Whole(_), _) | (_, DiffSide::New) => "",
+        (_, DiffSide::Old) => " of the old version",
     };
     let (glyph, label) = if frame.can_comment {
         (icons::CHAT_CIRCLE_TEXT, format!("Comment on {}{version}", lines_label(&lines)))
@@ -235,11 +231,10 @@ fn lines_button(
         palette.on_accent,
     );
     focus::ring(ui, &response, button.expand(2.0));
-    let side = cell.side.diff_side();
     let event = if frame.can_comment {
-        RenderedEvent::Comment { side, lines }
+        RenderedEvent::Comment { side: cell.side, lines }
     } else {
-        RenderedEvent::ShowSource { side, lines }
+        RenderedEvent::ShowSource { side: cell.side, lines }
     };
     response.clicked().then_some(event)
 }

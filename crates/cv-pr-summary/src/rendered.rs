@@ -16,7 +16,7 @@ use review_git::ChangedFile;
 use review_store::{AppSettings, DiffLayout};
 
 use super::code::{self, CodeOutput, ThreadsByPath};
-use super::layout::Geometry;
+use super::layout::{self, Geometry};
 use super::{FolderSummary, SummaryInputs};
 use cv_code::compaction::SUMMARY_CONTEXT;
 use cv_pr_rendered::markdown_diff::embedded::{self, Embedding};
@@ -283,13 +283,7 @@ pub fn lay_out_rendered(
         if let Some(y) = scroll {
             requests.push((card, y));
         }
-        if summary
-            .heights
-            .insert(file.path.clone(), height)
-            .is_none_or(|previous| (previous - height).abs() > 0.5)
-        {
-            summary.index_dirty = true;
-        }
+        summary.index_dirty |= layout::note_height(&mut summary.heights, &file.path, height);
     }
     requests
 }

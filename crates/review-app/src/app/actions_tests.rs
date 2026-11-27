@@ -7,9 +7,9 @@ use std::sync::{Arc, LazyLock};
 use async_trait::async_trait;
 use review_core::{
     Capabilities, Connection, DiffStat, GitRemote, Label, MergeOptions, MergeStatus, MergeStrategy,
-    NewThread, PipelineJob, PipelineRun, Provider, ProviderError, ProviderKind, PullRequestDetail,
-    PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result, ReviewThread,
-    ReviewVote, Reviewer, ThreadComment, ThreadStatus, UserIdentity,
+    NewThread, ProviderError, ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestState,
+    PullRequestSummary, Result, ReviewThread, ReviewVote, Reviewer, ThreadComment, ThreadStatus,
+    UserIdentity,
 };
 use review_store::ConnectionStore;
 use tokio::io::AsyncWrite;
@@ -23,6 +23,7 @@ use cv_runtime::route::PullRequestKey;
 use cv_services::Services;
 use cv_services::self_review::Identities;
 use cv_services::writes::Effect;
+use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{ScratchDir, poll_until};
 
 mod overview;
@@ -117,7 +118,7 @@ fn scripted_services(dir: &ScratchDir, ctx: egui::Context) -> Services {
             token: Some("scripted".to_owned()),
         })
         .expect("store the connection");
-    let services = Services::new(ctx, paths, scripted_provider);
+    let services = Services::new(ctx, paths, |_, _| Arc::new(Scripted(LaggingHost)));
     Identities::of(&services.background.ctx()).learned(CONNECTION, me());
     services
 }
@@ -308,10 +309,6 @@ fn summary() -> PullRequestSummary {
     }
 }
 
-fn scripted_provider(_connection: Connection, _http: reqwest::Client) -> Arc<dyn Provider> {
-    Arc::new(LaggingHost)
-}
-
 /// Accepts every write and keeps answering every read as before it.
 struct LaggingHost;
 
@@ -323,17 +320,13 @@ static CAPABILITIES: LazyLock<Capabilities> = LazyLock::new(|| Capabilities {
 });
 
 #[async_trait]
-impl Provider for LaggingHost {
+impl Script for LaggingHost {
     fn capabilities(&self) -> &Capabilities {
         &CAPABILITIES
     }
 
     async fn current_user(&self) -> Result<UserIdentity> {
         Ok(me())
-    }
-
-    async fn list_repositories(&self, _search: Option<&str>) -> Result<Vec<RepositoryInfo>> {
-        Ok(Vec::new())
     }
 
     async fn git_remote(&self, _repo: &str) -> Result<GitRemote> {
@@ -453,19 +446,6 @@ impl Provider for LaggingHost {
 
     async fn set_labels(&self, _repo: &str, _number: u64, _labels: &[String]) -> Result<()> {
         Ok(())
-    }
-
-    async fn pipeline_runs(&self, _repo: &str, _number: u64) -> Result<Vec<PipelineRun>> {
-        Ok(Vec::new())
-    }
-
-    async fn pipeline_jobs(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _run_id: &str,
-    ) -> Result<Vec<PipelineJob>> {
-        Ok(Vec::new())
     }
 
     async fn download_log(

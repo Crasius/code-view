@@ -4,30 +4,26 @@
 //! a local git repository is the remote and a scripted provider describes the pull request and
 //! answers the linked items. No network, no tokens. Runs with `cargo test`.
 
-use std::collections::HashMap;
-use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use egui::{Event, Key, Modifiers, PointerButton, Role, pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{
-    Capabilities, Connection, GitRemote, ItemKind, ItemRef, Label, LinkedItem, LinkedState,
-    MergeOptions, MergeStatus, MergeStrategy, NewThread, PipelineJob, PipelineRun, Provider,
-    ProviderError, ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestState,
-    PullRequestSummary, RepositoryInfo, Result, ReviewThread, ReviewVote, RunStatus, ThreadComment,
-    ThreadStatus, UserIdentity,
+    Capabilities, Connection, GitRemote, ItemKind, ItemRef, LinkedItem, LinkedState, MergeStatus,
+    ProviderKind, PullRequestDetail, PullRequestState, PullRequestSummary, Result, RunStatus,
 };
 use review_store::AppPaths;
-use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::scripted_platforms::{Origin, origin};
 use super::walkthrough::{app_with, saved_paths, settle_background, wait_until};
 use cv_base::platform;
 use cv_runtime::route::{PullRequestKey, PullRequestTab, Route};
-use cv_testkit::{Clicks, ScratchDir, git, samples};
+use cv_testkit::provider::{Script, Scripted};
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const CONNECTION_ID: &str = "local-navigation";
 const CONNECTION_NAME: &str = "Acme GitHub";
@@ -39,29 +35,12 @@ Follows #59 and needs acme/infra#3 first. Fixes #60.\n\n\
 Tracked in [WEB-12](https://jira.example.com/browse/WEB-12); the follow-up is WEB-14.\n\n\
 Upstream: https://github.com/acme/widgets/pull/61";
 
-/// The local remote and the provider's call counter per connection id; the provider factory is
-/// a plain function.
-static FIXTURES: Mutex<Option<HashMap<String, Fixture>>> = Mutex::new(None);
-
-#[derive(Clone)]
-pub(super) struct Fixture {
-    pub(super) clone_url: String,
-    pub(super) target: String,
-    pub(super) head: String,
-    linked_calls: Arc<AtomicUsize>,
-}
-
 #[test]
 fn navigation_breadcrumbs_back_and_linked_items() {
     let scratch = ScratchDir::new("navigation");
-    let fixture = create_origin(&scratch.path().join("origin"));
-    let linked_calls = fixture.linked_calls.clone();
-    FIXTURES
-        .lock()
-        .unwrap()
-        .get_or_insert_with(HashMap::new)
-        .insert(CONNECTION_ID.to_owned(), fixture);
-    let mut harness = harness(saved_paths(&scratch, &[connection()]));
+    let origin = origin(&scratch);
+    let linked_calls = Arc::new(AtomicUsize::new(0));
+    let mut harness = harness(saved_paths(&scratch, &[connection()]), origin, linked_calls.clone());
 
     // From outside (a link from another app): the trail is the pull request's structure.
     harness.state_mut().navigator.jump(Route::PullRequest(key(NUMBER)));
@@ -270,37 +249,23 @@ fn key(number: u64) -> PullRequestKey {
     }
 }
 
-fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
+fn harness(
+    paths: AppPaths,
+    origin: Origin,
+    linked_calls: Arc<AtomicUsize>,
+) -> Harness<'static, ReviewApp> {
     let builder = Harness::builder().with_size([1440.0, 900.0]).with_step_dt(1.0 / 60.0);
-    app_with(builder, paths, local_provider)
+    app_with(builder, paths, move |_, _| {
+        Arc::new(Scripted(NavigationScript {
+            origin: origin.clone(),
+            linked_calls: linked_calls.clone(),
+        }))
+    })
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {
     for _ in 0..20 {
         harness.step();
-    }
-}
-
-/// A repository with one changed README.
-pub(super) fn create_origin(origin: &Path) -> Fixture {
-    std::fs::create_dir_all(origin).expect("origin folder");
-    git(origin, &["init", "-q", "-b", "main"]);
-    git(origin, &["config", "uploadpack.allowFilter", "true"]);
-    git(origin, &["config", "uploadpack.allowAnySHA1InWant", "true"]);
-    std::fs::write(origin.join("README.md"), "# Widgets\n").expect("write readme");
-    git(origin, &["add", "-A"]);
-    git(origin, &["commit", "-q", "-m", "base"]);
-    let target = git(origin, &["rev-parse", "HEAD"]);
-    git(origin, &["switch", "-q", "-c", "feature"]);
-    std::fs::write(origin.join("README.md"), "# Widgets\n\nFast now.\n").expect("write readme");
-    git(origin, &["add", "-A"]);
-    git(origin, &["commit", "-q", "-m", "Build widgets eagerly"]);
-    let head = git(origin, &["rev-parse", "HEAD"]);
-    Fixture {
-        clone_url: format!("file:///{}", origin.display().to_string().replace('\\', "/")),
-        target,
-        head,
-        linked_calls: Arc::default(),
     }
 }
 
@@ -312,42 +277,6 @@ fn connection() -> Connection {
             ProviderKind::GitHub,
             ProviderKind::GitHub.default_base_url(),
         )
-    }
-}
-
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "a ProviderFactory, whose signature hands the connection and the client over"
-)]
-fn local_provider(connection: Connection, _http: reqwest::Client) -> Arc<dyn Provider> {
-    let fixture = FIXTURES
-        .lock()
-        .unwrap()
-        .as_ref()
-        .and_then(|fixtures| fixtures.get(&connection.id).cloned());
-    Arc::new(LocalProvider { fixture })
-}
-
-struct LocalProvider {
-    fixture: Option<Fixture>,
-}
-
-impl LocalProvider {
-    fn fixture(&self) -> Result<&Fixture> {
-        self.fixture.as_ref().ok_or_else(|| ProviderError::Local("no local fixture".to_owned()))
-    }
-
-    fn unused<T>() -> Result<T> {
-        Err(ProviderError::Unsupported("Not part of the navigation walkthrough.".to_owned()))
-    }
-}
-
-fn author() -> UserIdentity {
-    UserIdentity {
-        id: "1".into(),
-        display_name: "Ada Lovelace".into(),
-        login: Some("ada".into()),
-        avatar_url: None,
     }
 }
 
@@ -396,41 +325,28 @@ fn linked_item(reference: &ItemRef) -> Option<LinkedItem> {
     })
 }
 
-static CAPABILITIES: std::sync::LazyLock<Capabilities> =
-    std::sync::LazyLock::new(|| Capabilities {
-        votes: vec![ReviewVote::Approved, ReviewVote::None],
-        merge_strategies: vec![MergeStrategy::Merge],
-        has_label_catalog: false,
-        running_logs: review_core::RunningLogs::Growing,
-    });
+/// Describes the pull requests from the origin and counts the linked items calls.
+struct NavigationScript {
+    origin: Origin,
+    linked_calls: Arc<AtomicUsize>,
+}
+
+static CAPABILITIES: LazyLock<Capabilities> = LazyLock::new(|| Capabilities {
+    running_logs: review_core::RunningLogs::Growing,
+    ..cv_testkit::provider::CAPABILITIES.clone()
+});
 
 #[async_trait]
-impl Provider for LocalProvider {
+impl Script for NavigationScript {
     fn capabilities(&self) -> &Capabilities {
         &CAPABILITIES
     }
 
-    async fn current_user(&self) -> Result<UserIdentity> {
-        Ok(author())
-    }
-
-    async fn list_repositories(&self, _search: Option<&str>) -> Result<Vec<RepositoryInfo>> {
-        Ok(Vec::new())
-    }
-
     async fn git_remote(&self, _repo: &str) -> Result<GitRemote> {
-        Ok(GitRemote { clone_url: self.fixture()?.clone_url.clone(), authorization_header: None })
-    }
-
-    async fn list_pull_requests(
-        &self,
-        _query: &PullRequestQuery,
-    ) -> Result<Vec<PullRequestSummary>> {
-        Ok(Vec::new())
+        Ok(GitRemote { clone_url: self.origin.clone_url.clone(), authorization_header: None })
     }
 
     async fn pull_request(&self, repo: &str, number: u64) -> Result<PullRequestDetail> {
-        let fixture = self.fixture()?;
         let created_at = time::macros::datetime!(2026-10-01 09:30 UTC);
         let (title, description) = match number {
             NUMBER => ("Build widgets eagerly", DESCRIPTION),
@@ -442,7 +358,7 @@ impl Provider for LocalProvider {
                 repository_name: "widgets".to_owned(),
                 number,
                 title: title.to_owned(),
-                author: author(),
+                author: samples::author(),
                 state: PullRequestState::Open,
                 is_draft: false,
                 source_branch: "feature".to_owned(),
@@ -458,8 +374,8 @@ impl Provider for LocalProvider {
                 target_sha: None,
             },
             description: description.to_owned(),
-            target_sha: fixture.target.clone(),
-            head_sha: fixture.head.clone(),
+            target_sha: self.origin.target.clone(),
+            head_sha: self.origin.head.clone(),
             merge_status: MergeStatus::Mergeable,
             git_fetch_refs: vec!["refs/heads/feature".to_owned(), "refs/heads/main".to_owned()],
             closed_at: None,
@@ -468,115 +384,7 @@ impl Provider for LocalProvider {
     }
 
     async fn linked_items(&self, references: &[ItemRef]) -> Result<Vec<LinkedItem>> {
-        self.fixture()?.linked_calls.fetch_add(1, Ordering::SeqCst);
+        self.linked_calls.fetch_add(1, Ordering::SeqCst);
         Ok(references.iter().filter_map(linked_item).collect())
-    }
-
-    async fn merge(&self, _repo: &str, _number: u64, _options: &MergeOptions) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn close(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn reopen(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_draft(&self, _repo: &str, _number: u64, _is_draft: bool) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn update_title_description(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _title: &str,
-        _description: &str,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_vote(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _vote: ReviewVote,
-        _comment: Option<&str>,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn add_reviewer(&self, _repo: &str, _number: u64, _user: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn remove_reviewer(&self, _repo: &str, _number: u64, _reviewer_id: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn threads(&self, _repo: &str, _number: u64) -> Result<Vec<ReviewThread>> {
-        Ok(Vec::new())
-    }
-
-    async fn create_thread(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread: &NewThread,
-    ) -> Result<ReviewThread> {
-        Self::unused()
-    }
-
-    async fn reply(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _body: &str,
-    ) -> Result<ThreadComment> {
-        Self::unused()
-    }
-
-    async fn set_thread_status(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _status: ThreadStatus,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn available_labels(&self, _repo: &str) -> Result<Vec<Label>> {
-        Ok(Vec::new())
-    }
-
-    async fn set_labels(&self, _repo: &str, _number: u64, _labels: &[String]) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn pipeline_runs(&self, _repo: &str, _number: u64) -> Result<Vec<PipelineRun>> {
-        Ok(Vec::new())
-    }
-
-    async fn pipeline_jobs(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _run_id: &str,
-    ) -> Result<Vec<PipelineJob>> {
-        Ok(Vec::new())
-    }
-
-    async fn download_log(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _log_id: &str,
-        _sink: &mut (dyn AsyncWrite + Unpin + Send),
-    ) -> Result<()> {
-        Self::unused()
     }
 }

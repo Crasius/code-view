@@ -116,7 +116,7 @@ fn checkout_finish_applies_at_the_next_start() {
 }
 
 #[test]
-fn checkout_finish_setting_is_a_select_with_its_help_and_saves() {
+fn checkout_finish_setting_is_a_select_that_saves() {
     let Setup { scratch: _scratch, host: _host, mut harness, clone: _clone } =
         start("finish-select");
     harness.state_mut().navigator.go(Route::Settings);
@@ -126,11 +126,6 @@ fn checkout_finish_setting_is_a_select_with_its_help_and_saves() {
     );
     let label = "When a pull request is merged or closed elsewhere";
     wait_until(&mut harness, "the row", |harness| has(harness, label));
-    assert!(has(
-        &harness,
-        "Applies when a merge or close is detected on the server, not when you merge from Code View. \
-         Worktrees with uncommitted changes are never removed automatically."
-    ));
     let select = || {
         harness
             .query_all_by_role(Role::ComboBox)

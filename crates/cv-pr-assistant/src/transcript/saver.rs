@@ -67,11 +67,9 @@ impl Saver {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
-
     use cv_runtime::background::Background;
-    use cv_testkit::ScratchDir;
-    use review_store::{AppPaths, AssistantChats, Chat, ChatTurn, chats_dir};
+    use cv_testkit::{ScratchDir, poll_until};
+    use review_store::{AssistantChats, Chat, ChatTurn, chats_dir};
 
     use super::Saver;
 
@@ -84,13 +82,14 @@ mod tests {
 
     /// Polls until no write runs or waits; the failures the writes reported.
     fn settle(saver: &mut Saver, chats: &AssistantChats, background: &Background) -> usize {
-        let deadline = Instant::now() + Duration::from_secs(10);
         let mut failures = 0;
-        while saver.writing.is_some() || saver.is_dirty {
-            assert!(Instant::now() < deadline, "the writes end");
+        poll_until("the writes' end", || {
+            if saver.writing.is_none() && !saver.is_dirty {
+                return true;
+            }
             failures += usize::from(saver.poll(chats, background).is_err());
-            std::thread::yield_now();
-        }
+            false
+        });
         failures
     }
 
@@ -99,7 +98,7 @@ mod tests {
     #[test]
     fn a_burst_of_changes_runs_one_write_and_ends_at_the_latest_state() {
         let scratch = ScratchDir::new("assistant-saver-burst");
-        let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
+        let paths = scratch.app_paths();
         let background = Background::new(egui::Context::default());
         let mut chats = AssistantChats::load(&chats_dir(&paths), KEY).unwrap();
         let mut saver = Saver::new(&background);
@@ -122,7 +121,7 @@ mod tests {
     #[test]
     fn a_failed_write_is_reported() {
         let scratch = ScratchDir::new("assistant-saver-failed");
-        let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
+        let paths = scratch.app_paths();
         let background = Background::new(egui::Context::default());
         let mut chats = AssistantChats::load(&chats_dir(&paths), KEY).unwrap();
         std::fs::create_dir_all(paths.cache_dir()).unwrap();
@@ -146,7 +145,7 @@ mod tests {
     #[test]
     fn a_change_left_at_close_reaches_the_file() {
         let scratch = ScratchDir::new("assistant-saver-finish");
-        let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
+        let paths = scratch.app_paths();
         let background = Background::new(egui::Context::default());
         let mut chats = AssistantChats::load(&chats_dir(&paths), KEY).unwrap();
         let mut saver = Saver::new(&background);
@@ -158,17 +157,12 @@ mod tests {
 
         saver.finish(&chats);
 
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
+        poll_until("the last change in the file", || {
             let loaded = AssistantChats::load(&chats_dir(&paths), KEY);
             let answer = loaded.ok().and_then(|loaded| {
                 loaded.chat(answered(0).agent).map(|chat| chat.turns[0].answer.clone())
             });
-            if answer.as_deref() == Some("2") {
-                break;
-            }
-            assert!(Instant::now() < deadline, "the last change lands, got {answer:?}");
-            std::thread::yield_now();
-        }
+            answer.as_deref() == Some("2")
+        });
     }
 }

@@ -7,10 +7,11 @@
 use std::collections::HashMap;
 
 use egui::{Align, Id, Layout, Rect, Ui, UiBuilder, vec2};
+use review_core::DiffSide;
 
 use super::ROW_PAD;
 use super::lanes::Lanes;
-use super::model::{Cell, Model, Row, Side};
+use super::model::{Cell, Model, Row};
 use super::threads::ThreadRow;
 use cv_markdown::RenderOptions;
 
@@ -23,7 +24,7 @@ const MEASURE_OFFSET: f32 = 100_000.0;
 #[derive(Default)]
 pub(super) struct RowHeights {
     /// Laid-out height of each block's text, for `key`.
-    cells: HashMap<(Side, usize), f32>,
+    cells: HashMap<(DiffSide, usize), f32>,
     key: u64,
     /// Each row's height, and whether it was measured rather than estimated.
     heights: Vec<f32>,

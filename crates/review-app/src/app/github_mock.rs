@@ -139,32 +139,27 @@ impl GitHubHost {
     /// Someone replies on the existing thread: the pull request's `updated_at` moves and the
     /// thread gains the comment. Live updates pick it up with their next probe.
     pub fn publish_reply(&self, author: &str, body: &str) {
+        const REPLIED_AT: &str = "2026-10-01T11:00:00Z";
         let origin = self.origin.as_ref().expect("a host with a pull request");
-        let priority = self.take_priority();
-        let pull =
-            pull_json(&self.server.uri(), &origin.base, self.head_sha(), "2026-10-01T11:00:00Z");
-        self.mount(
-            repository_api("GET", &format!("/pulls/{NUMBER}"))
-                .respond_with(ok(pull))
-                .with_priority(priority),
-        );
-        let reply = json!({ "id": "PRRC_777", "databaseId": 777, "body": body, "createdAt": "2026-10-01T11:00:00Z",
-            "lastEditedAt": null, "author": { "login": author, "databaseId": 77 } });
+        self.answer_pull(ok(pull_json(
+            &self.server.uri(),
+            &origin.base,
+            self.head_sha(),
+            REPLIED_AT,
+        )));
+        let mut reply = comment(777, body, author, 77);
+        reply["createdAt"] = json!(REPLIED_AT);
         self.mount(
             graphql("reviewThreads(first: 100")
                 .respond_with(ok(review_threads(vec![reply])))
-                .with_priority(priority),
+                .with_priority(self.take_priority()),
         );
     }
 
     /// Besides the thread on line 3, the pull request has one current thread by cy on each of
     /// `threads`, on its head lines (before the page opens).
     pub fn add_threads(&self, threads: &[MockThread]) {
-        let mut nodes = review_threads(Vec::new())["data"]["repository"]["pullRequest"]
-            ["reviewThreads"]["nodes"]
-            .as_array()
-            .expect("the existing thread")
-            .clone();
+        let mut nodes = existing_thread_nodes();
         for (index, thread) in threads.iter().enumerate() {
             let id = 801 + index as u64;
             nodes.push(json!({
@@ -172,11 +167,8 @@ impl GitHubHost {
                 "line": thread.lines.end(), "originalLine": thread.lines.end(), "diffSide": "RIGHT",
                 "startLine": thread.lines.start(), "originalStartLine": thread.lines.start(),
                 "startDiffSide": "RIGHT",
-                "comments": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [{
-                    "id": format!("PRRC_{id}"), "databaseId": id, "body": thread.text,
-                    "createdAt": TIMESTAMP, "lastEditedAt": null,
-                    "author": { "login": "cy", "databaseId": 3 }
-                }] }
+                "comments": { "pageInfo": { "hasNextPage": false, "endCursor": null },
+                    "nodes": [comment(id, thread.text, "cy", 3)] }
             }));
         }
         self.mount(
@@ -189,20 +181,16 @@ impl GitHubHost {
     /// Besides the thread on line 3, the pull request has one review thread by "me" (see
     /// [`Self::sign_in_as_me`]) per entry of `comments` (before the page opens). Editing one
     /// (`PATCH /pulls/comments/{id}`) or deleting it (`DELETE`) changes what the threads answer
-    /// from then on, as on GitHub: a thread whose last comment is deleted is gone. With
-    /// `first_edit_fails` the first edit is refused with 500.
-    pub fn add_own_comments(&self, comments: &[OwnComment], first_edit_fails: bool) {
+    /// from then on, as on GitHub: a thread whose last comment is deleted is gone.
+    pub fn add_own_comments(&self, comments: &[OwnComment]) {
         let nodes = comments
             .iter()
-            .map(|comment| {
+            .map(|own| {
                 json!({
-                    "id": comment.thread_id, "isResolved": false, "isOutdated": false, "path": FILE,
-                    "line": comment.line, "originalLine": comment.line, "diffSide": "RIGHT",
-                    "comments": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [{
-                        "id": format!("PRRC_{}", comment.comment_id), "databaseId": comment.comment_id,
-                        "body": comment.text, "createdAt": TIMESTAMP, "lastEditedAt": null,
-                        "author": { "login": "me", "databaseId": 9 }
-                    }] }
+                    "id": own.thread_id, "isResolved": false, "isOutdated": false, "path": FILE,
+                    "line": own.line, "originalLine": own.line, "diffSide": "RIGHT",
+                    "comments": { "pageInfo": { "hasNextPage": false, "endCursor": null },
+                        "nodes": [comment(own.comment_id, own.text, "me", 9)] }
                 })
             })
             .collect();
@@ -212,21 +200,15 @@ impl GitHubHost {
                 .respond_with(own.clone())
                 .with_priority(self.take_priority()),
         );
-        let comment_path = format!(r"^/api/v3/repos/{REPOSITORY}/pulls/comments/\d+$");
-        let comment_api = |verb: &str| {
-            Mock::given(method(verb))
-                .and(path_regex(comment_path.as_str()))
-                .and(header("authorization", format!("Bearer {TOKEN}").as_str()))
-        };
-        if first_edit_fails {
-            let refused =
-                ResponseTemplate::new(500).set_body_json(json!({ "message": "Server Error" }));
-            self.mount(
-                comment_api("PATCH").respond_with(refused).up_to_n_times(1).with_priority(1),
-            );
-        }
         self.mount(comment_api("PATCH").respond_with(OwnEdit(own.clone())));
         self.mount(comment_api("DELETE").respond_with(OwnDelete(own)));
+    }
+
+    /// The next edit of a review comment is refused with 500; the ones after it go through.
+    pub fn refuse_next_comment_edit(&self) {
+        let refused =
+            ResponseTemplate::new(500).set_body_json(json!({ "message": "Server Error" }));
+        self.mount(comment_api("PATCH").respond_with(refused).up_to_n_times(1).with_priority(1));
     }
 
     /// The pull request's description becomes `body` (before the page opens).
@@ -234,11 +216,7 @@ impl GitHubHost {
         let origin = self.origin.as_ref().expect("a host with a pull request");
         let mut pull = pull_json(&self.server.uri(), &origin.base, self.head_sha(), TIMESTAMP);
         pull["body"] = json!(body);
-        self.mount(
-            repository_api("GET", &format!("/pulls/{NUMBER}"))
-                .respond_with(ok(pull))
-                .with_priority(self.take_priority()),
-        );
+        self.answer_pull(ok(pull));
     }
 
     /// `GET /user` names the token's user: "me" (id 9), the author of the search rows.
@@ -279,25 +257,30 @@ impl GitHubHost {
 
     /// `GET /pulls/7` fails with 500 from now on, until [`Self::restore_pull_request`].
     pub fn fail_pull_request(&self) {
-        let priority = self.take_priority();
-        self.mount(
-            repository_api("GET", &format!("/pulls/{NUMBER}"))
-                .respond_with(
-                    ResponseTemplate::new(500).set_body_json(json!({ "message": "Server Error" })),
-                )
-                .with_priority(priority),
+        self.answer_pull(
+            ResponseTemplate::new(500).set_body_json(json!({ "message": "Server Error" })),
         );
     }
 
     /// `GET /pulls/7` answers again, after [`Self::fail_pull_request`].
     pub fn restore_pull_request(&self) {
         let origin = self.origin.as_ref().expect("a host with a pull request");
-        let pull = pull_json(&self.server.uri(), &origin.base, self.head_sha(), TIMESTAMP);
-        let priority = self.take_priority();
+        self.answer_pull(ok(pull_json(
+            &self.server.uri(),
+            &origin.base,
+            self.head_sha(),
+            TIMESTAMP,
+        )));
+    }
+
+    /// `GET /pulls/7` reads after `delay` (before the page opens), with no reviews: a slow host.
+    pub fn delay_detail(&self, delay: std::time::Duration) {
         self.mount(
             repository_api("GET", &format!("/pulls/{NUMBER}"))
-                .respond_with(ok(pull))
-                .with_priority(priority),
+                .respond_with(ok(json!({})).set_delay(delay)),
+        );
+        self.mount(
+            repository_api("GET", &format!("/pulls/{NUMBER}/reviews")).respond_with(ok(json!([]))),
         );
     }
 
@@ -336,12 +319,13 @@ impl GitHubHost {
 
     /// The author rewrites the branch: one commit on `main` puts `text` into [`FILE`] and is force
     /// pushed, and the review thread turns outdated, written on the replaced head (its original
-    /// line 1); a current thread by mona sits on [`CURRENT_LINE`] of the new head. Unless `keeps_replaced_head`, the host collects the replaced commit as garbage, as
-    /// GitHub may after a force push. Returns the replaced head.
+    /// line 1); a current thread by mona sits on [`CURRENT_LINE`] of the new head. With
+    /// [`ReplacedHead::Collected`] the host collects the replaced commit as garbage, as GitHub may
+    /// after a force push. Returns the replaced head.
     pub fn force_push_outdating_the_thread(
         &mut self,
         text: &str,
-        keeps_replaced_head: bool,
+        replaced_head: ReplacedHead,
     ) -> String {
         let origin = self.origin.as_ref().expect("a host with a pull request");
         let replaced = self.head_sha().to_owned();
@@ -353,17 +337,15 @@ impl GitHubHost {
         git(&origin.work, &["push", "-q", "--force", &bare_path, "feature"]);
         let head = git(&bare, &["rev-parse", "feature"]);
         git(&bare, &["update-ref", &format!("refs/pull/{NUMBER}/head"), &head]);
-        if !keeps_replaced_head {
+        if replaced_head == ReplacedHead::Collected {
             git(&bare, &["reflog", "expire", "--expire=now", "--all"]);
             git(&bare, &["gc", "-q", "--prune=now"]);
         }
         let comment_url =
             format!("{}/{REPOSITORY}/pull/{NUMBER}#discussion_r501", self.server.uri());
         let comments = |id: u64, body: &str, login: &str| {
-            json!({ "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [{
-                "id": format!("PRRC_{id}"), "databaseId": id, "body": body, "createdAt": TIMESTAMP,
-                "lastEditedAt": null, "author": { "login": login, "databaseId": id }
-            }] })
+            json!({ "pageInfo": { "hasNextPage": false, "endCursor": null },
+                "nodes": [comment(id, body, login, id)] })
         };
         let threads = thread_page(&json!([{
             "id": THREAD_ID, "isResolved": false, "isOutdated": true, "path": FILE, "line": null, "originalLine": 1,
@@ -402,24 +384,28 @@ impl GitHubHost {
         pull["merged"] = json!(true);
         pull["merged_at"] = json!(merged_at);
         pull["closed_at"] = json!(merged_at);
-        let priority = self.take_priority();
-        self.mount(
-            repository_api("GET", &format!("/pulls/{NUMBER}"))
-                .respond_with(ok(pull))
-                .with_priority(priority),
-        );
+        self.answer_pull(ok(pull));
     }
 
     /// The pull request names `head` from now on, with an empty pipeline for it.
     fn publish_head(&mut self, head: &str, updated_at: &str) {
         let origin = self.origin.as_ref().expect("a host with a pull request");
-        let priority = self.take_priority();
-        let pull = pull_json(&self.server.uri(), &origin.base, head, updated_at);
+        self.answer_pull(ok(pull_json(&self.server.uri(), &origin.base, head, updated_at)));
+        self.mount_empty_checks(head);
+        self.head_sha = Some(head.to_owned());
+    }
+
+    /// `GET /pulls/7` answers `response` from now on, outranking the answer before.
+    fn answer_pull(&self, response: ResponseTemplate) {
         self.mount(
             repository_api("GET", &format!("/pulls/{NUMBER}"))
-                .respond_with(ok(pull))
-                .with_priority(priority),
+                .respond_with(response)
+                .with_priority(self.take_priority()),
         );
+    }
+
+    /// The commit `head` has no check runs and a successful status without entries.
+    fn mount_empty_checks(&self, head: &str) {
         let commit = format!("/commits/{head}");
         self.mount(
             repository_api("GET", &format!("{commit}/check-runs"))
@@ -429,7 +415,6 @@ impl GitHubHost {
             repository_api("GET", &format!("{commit}/status"))
                 .respond_with(ok(json!({ "state": "success", "statuses": [] }))),
         );
-        self.head_sha = Some(head.to_owned());
     }
 
     /// The head commit gets a finished Actions run "CI" with one failed job, `job`, whose log is
@@ -510,9 +495,26 @@ impl GitHubHost {
 
     /// The first request matching `verb` and `request_path` (below the server root).
     pub fn find(&self, verb: &str, request_path: &str) -> Option<Request> {
-        self.requests()
-            .into_iter()
-            .find(|request| request.method.as_str() == verb && request.url.path() == request_path)
+        self.matching(verb, request_path).next()
+    }
+
+    /// The requests matching `verb` and `request_path` (below the server root) so far.
+    pub fn count(&self, verb: &str, request_path: &str) -> usize {
+        self.matching(verb, request_path).count()
+    }
+
+    /// The JSON bodies of the requests matching `verb` and `request_path`, in order.
+    pub fn bodies(&self, verb: &str, request_path: &str) -> Vec<Value> {
+        self.matching(verb, request_path)
+            .map(|request| request.body_json().expect("a JSON body"))
+            .collect()
+    }
+
+    fn matching(&self, verb: &str, request_path: &str) -> impl Iterator<Item = Request> {
+        let (verb, request_path) = (verb.to_owned(), request_path.to_owned());
+        self.requests().into_iter().filter(move |request| {
+            request.method.as_str() == verb && request.url.path() == request_path
+        })
     }
 
     /// The first GraphQL request whose document contains `needle`, decoded.
@@ -546,19 +548,11 @@ impl GitHubHost {
         // The lookup after creating a thread finds nothing yet, as when GitHub's index lags; the
         // provider then falls back to the REST comment it just created.
         self.mount(graphql("reviewThreads(last: 20").respond_with(ok(thread_page(&json!([])))));
-        let commit = format!("/commits/{}", origin.head);
         self.mount(
             repository_api("GET", "/actions/runs")
                 .respond_with(ok(json!({ "total_count": 0, "workflow_runs": [] }))),
         );
-        self.mount(
-            repository_api("GET", &format!("{commit}/check-runs"))
-                .respond_with(ok(json!({ "total_count": 0, "check_runs": [] }))),
-        );
-        self.mount(
-            repository_api("GET", &format!("{commit}/status"))
-                .respond_with(ok(json!({ "state": "success", "statuses": [] }))),
-        );
+        self.mount_empty_checks(&origin.head);
         self.mount(repository_api("GET", "/labels").respond_with(ok(json!([
             { "name": "bug", "color": "d73a4a", "description": "Something is broken" },
             { "name": "enhancement", "color": "a2eeef", "description": "New feature or request" },
@@ -639,16 +633,34 @@ fn pull_json(server_uri: &str, base: &str, head: &str, updated_at: &str) -> Valu
 
 /// The one review thread on line 3: [`THREAD_TEXT`] by cy, then `replies`.
 fn review_threads(replies: Vec<Value>) -> Value {
-    let mut comments = vec![json!({
-        "id": "PRRC_501", "databaseId": 501, "body": THREAD_TEXT, "createdAt": TIMESTAMP,
-        "lastEditedAt": null, "author": { "login": "cy", "databaseId": 3 }
-    })];
+    let mut comments = vec![comment(501, THREAD_TEXT, "cy", 3)];
     comments.extend(replies);
     thread_page(&json!([{
         "id": THREAD_ID, "isResolved": false, "isOutdated": false, "path": FILE, "line": 3, "originalLine": 3,
         "diffSide": "RIGHT",
         "comments": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": comments }
     }]))
+}
+
+/// The thread nodes of [`review_threads`] without replies: the one thread on line 3.
+fn existing_thread_nodes() -> Vec<Value> {
+    review_threads(Vec::new())["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
+        .as_array()
+        .expect("the existing thread")
+        .clone()
+}
+
+/// A review comment node `PRRC_{id}` by `login`, written at [`TIMESTAMP`] and never edited.
+fn comment(id: u64, body: &str, login: &str, author_id: u64) -> Value {
+    json!({
+        "id": format!("PRRC_{id}"), "databaseId": id, "body": body, "createdAt": TIMESTAMP,
+        "lastEditedAt": null, "author": { "login": login, "databaseId": author_id }
+    })
+}
+
+/// The REST path of pull request `number` of [`REPOSITORY`], below the server root.
+pub fn pull_path(number: u64) -> String {
+    format!("/api/v3/repos/{REPOSITORY}/pulls/{number}")
 }
 
 fn thread_page(nodes: &Value) -> Value {
@@ -683,6 +695,13 @@ fn api(verb: &str, api_path: &str) -> MockBuilder {
 
 fn repository_api(verb: &str, repository_path: &str) -> MockBuilder {
     api(verb, &format!("/repos/{REPOSITORY}{repository_path}"))
+}
+
+/// `verb` on any review comment, `/pulls/comments/{id}`, with the bearer token.
+fn comment_api(verb: &str) -> MockBuilder {
+    Mock::given(method(verb))
+        .and(path_regex(format!(r"^/api/v3/repos/{REPOSITORY}/pulls/comments/\d+$")))
+        .and(header("authorization", format!("Bearer {TOKEN}").as_str()))
 }
 
 /// GraphQL request whose document contains `needle`.
@@ -929,10 +948,20 @@ fn cgi_response(output: &[u8]) -> ResponseTemplate {
 }
 
 /// A file the pull request changes besides [`FILE`]: its bytes in the base and in the head.
+#[derive(Clone, PartialEq)]
 pub struct ExtraFile {
     pub path: &'static str,
     pub base: Vec<u8>,
     pub head: Vec<u8>,
+}
+
+/// What the host keeps of the head [`GitHubHost::force_push_outdating_the_thread`] replaces.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ReplacedHead {
+    /// Still fetchable by its id.
+    Kept,
+    /// Collected as garbage.
+    Collected,
 }
 
 /// A review thread by "me" for [`GitHubHost::add_own_comments`]: its node id, its one comment's
@@ -957,11 +986,7 @@ impl OwnThreads {
 
 impl Respond for OwnThreads {
     fn respond(&self, _request: &Request) -> ResponseTemplate {
-        let mut nodes = review_threads(Vec::new())["data"]["repository"]["pullRequest"]
-            ["reviewThreads"]["nodes"]
-            .as_array()
-            .expect("the existing thread")
-            .clone();
+        let mut nodes = existing_thread_nodes();
         nodes.extend(self.nodes().iter().cloned());
         ok(thread_page(&Value::Array(nodes)))
     }
@@ -1045,7 +1070,7 @@ impl Origin {
     /// files earlier in this test run.
     fn create(scratch: &Path, files: &[ExtraFile]) -> Self {
         let template = Template::of(files);
-        template.write(scratch);
+        template.folder.write(scratch);
         Self {
             project_root: scratch.join("hosted"),
             work: scratch.join("work"),
@@ -1100,11 +1125,9 @@ impl Origin {
 /// [`cv_testkit`]), so every walkthrough building its own made each one wait longer.
 struct Template {
     /// The extra files it was built with.
-    files: Vec<(&'static str, Vec<u8>, Vec<u8>)>,
-    /// The folders, parents first, relative to the scratch folder.
-    folders: Vec<PathBuf>,
-    /// The files with their bytes, relative to the scratch folder.
-    contents: Vec<(PathBuf, Vec<u8>)>,
+    files: Vec<ExtraFile>,
+    /// The scratch folder it was built in.
+    folder: FolderBytes,
     base: String,
     head: String,
 }
@@ -1114,28 +1137,47 @@ static TEMPLATES: Mutex<Vec<Arc<Template>>> = Mutex::new(Vec::new());
 impl Template {
     /// The template for `files`; the first test asking for it builds it, the others wait for that.
     fn of(files: &[ExtraFile]) -> Arc<Self> {
-        let key: Vec<_> =
-            files.iter().map(|file| (file.path, file.base.clone(), file.head.clone())).collect();
         let mut templates = TEMPLATES.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(template) = templates.iter().find(|template| template.files == key) {
+        if let Some(template) = templates.iter().find(|template| template.files == files) {
             return template.clone();
         }
         let scratch = ScratchDir::new("origin-template");
         let origin = Origin::build(scratch.path(), files);
-        let (mut folders, mut contents) = (Vec::new(), Vec::new());
-        read_tree(scratch.path(), Path::new(""), &mut folders, &mut contents);
-        let template =
-            Arc::new(Self { files: key, folders, contents, base: origin.base, head: origin.head });
+        let template = Arc::new(Self {
+            files: files.to_vec(),
+            folder: FolderBytes::read(scratch.path()),
+            base: origin.base,
+            head: origin.head,
+        });
         templates.push(template.clone());
         template
     }
+}
 
-    fn write(&self, scratch: &Path) {
+/// A folder's subfolders and files as bytes. A repository built once per test run is kept this
+/// way and written into each test's own [`ScratchDir`], which removes it when the test ends.
+pub(super) struct FolderBytes {
+    /// The folders, parents first, relative to the root.
+    folders: Vec<PathBuf>,
+    /// The files with their bytes, relative to the root.
+    contents: Vec<(PathBuf, Vec<u8>)>,
+}
+
+impl FolderBytes {
+    pub(super) fn read(root: &Path) -> Self {
+        let (mut folders, mut contents) = (Vec::new(), Vec::new());
+        read_tree(root, Path::new(""), &mut folders, &mut contents);
+        Self { folders, contents }
+    }
+
+    /// Writes the folders and files below `root`, creating it when it is not there.
+    pub(super) fn write(&self, root: &Path) {
+        std::fs::create_dir_all(root).expect("a copy's root");
         for folder in &self.folders {
-            std::fs::create_dir_all(scratch.join(folder)).expect("a template folder");
+            std::fs::create_dir_all(root.join(folder)).expect("a copied folder");
         }
         for (file, bytes) in &self.contents {
-            std::fs::write(scratch.join(file), bytes).expect("a template file");
+            std::fs::write(root.join(file), bytes).expect("a copied file");
         }
     }
 }
