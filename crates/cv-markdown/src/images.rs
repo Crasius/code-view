@@ -28,7 +28,7 @@ use egui::{
 };
 
 use super::parse::{ImageSpec, Length};
-use super::render::is_url;
+use super::render::links::is_url;
 use super::video;
 use super::{InApp, ResolvedLink, link_hint, request_in_app};
 

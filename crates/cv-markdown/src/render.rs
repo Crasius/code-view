@@ -6,8 +6,8 @@
 //! bottom-aligning the line boxes puts code spans on the prose baseline, where egui's default
 //! centered alignment raises them.
 
-mod code;
-mod links;
+pub(super) mod code;
+pub(super) mod links;
 mod table;
 pub(super) mod typeset;
 
@@ -25,8 +25,6 @@ use egui::{
 use pulldown_cmark::{Alignment, BlockQuoteKind};
 
 use self::code::{CodeStyle, code_job, copy_button};
-pub(super) use self::code::{FloatButton, float_button};
-pub(super) use self::links::is_url;
 use self::links::{byte_at, link_menu};
 use self::table::{Columns, Grid, cell_align, paint_lines};
 use self::typeset::{Fill, Laid, Look, Typesetter, spoken_text};

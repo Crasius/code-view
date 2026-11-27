@@ -20,7 +20,7 @@ use egui::{
 };
 
 use super::images::{self, Anchor};
-use super::render::{FloatButton, float_button};
+use super::render::code::{FloatButton, float_button};
 
 /// Diagrams taller than this (at zoom 1) shrink to it; Enlarge shows them whole.
 const MAX_HEIGHT: f32 = 640.0;
