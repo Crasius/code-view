@@ -59,7 +59,7 @@ pub fn connection<'a>(
         }
     } else if result.load.error().is_some() {
         body.push(Row::Message(result));
-    } else if hosts.rate_limited.contains(&result.connection_id) {
+    } else if hosts.pauses.holds_any(&result.connection_id) {
         // A pause can last minutes; a still note says why instead of a skeleton shimmering on.
         body.push(Row::Waiting(result.kind));
     } else {
@@ -79,7 +79,7 @@ pub fn favorites<'a>(
     filter: &RowFilter,
 ) -> Group<'a> {
     let queries: &'a FavoriteQueries = lane.queries;
-    let is_waiting = |result: &ConnectionResult| hosts.rate_limited.contains(&result.connection_id);
+    let is_waiting = |result: &ConnectionResult| hosts.pauses.holds_any(&result.connection_id);
     let is_settled = queries.results.iter().all(|result| {
         result.load.ready().is_some() || result.load.error().is_some() || is_waiting(result)
     });

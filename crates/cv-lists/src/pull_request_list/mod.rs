@@ -33,6 +33,7 @@ mod favorites;
 mod filters;
 mod interest;
 mod list_rows;
+mod pauses;
 mod queries;
 mod spread;
 mod statuses;
@@ -57,6 +58,7 @@ use review_core::{ProviderKind, PullRequestScope, PullRequestSummary, StateFilte
 use review_store::{AppSettings, ListFilters};
 
 use self::favorites::FavoriteQueries;
+use self::pauses::Pauses;
 use self::filters::{STAR_GAP, narrows, overview_scope};
 use self::list_rows::{EmptyOffer, FavoritesLane, ListAction, ListInput, RowFilter, SIDE_MARGIN};
 use self::queries::ConnectionQueries;
@@ -195,7 +197,8 @@ impl PullRequestListPage {
         writes::land(services);
         self.queries.poll(services);
         self.favorites.poll(services);
-        self.queries.is_refreshing() || self.favorites.is_refreshing()
+        let pauses = Pauses::default();
+        self.queries.is_refreshing(&pauses) || self.favorites.is_refreshing(&pauses)
     }
 
     /// The rows on their way out of the cards after a write of the user's.
@@ -330,7 +333,8 @@ impl PullRequestListPage {
             self.favorites = FavoriteQueries::default();
         }
         self.poll_requests(ui.ctx(), services);
-        let asks = self.header(ui, &mut services.settings);
+        let pauses = Pauses::of(services);
+        let asks = self.header(ui, &mut services.settings, &pauses);
         if asks.wants_refresh {
             self.reload_by_hand(services);
         }
@@ -366,13 +370,18 @@ impl PullRequestListPage {
             }
             return;
         }
-        let cards = self.list(ui, services, navigator, scope);
+        let cards = self.list(ui, services, navigator, scope, &pauses);
         self.follow(services, cards);
     }
 
     /// The header: title (with the repository's star), filters and tools, on one row or with the
     /// filters on a second one; returns what it asked for.
-    fn header(&self, ui: &mut egui::Ui, settings: &mut AppSettings) -> HeaderAsks {
+    fn header(
+        &self,
+        ui: &mut egui::Ui,
+        settings: &mut AppSettings,
+        pauses: &Pauses,
+    ) -> HeaderAsks {
         let palette = theme::palette(ui.ctx());
         let mut asks = HeaderAsks::default();
         egui::Frame::new()
@@ -406,7 +415,7 @@ impl PullRequestListPage {
                     .or_else(|| self.favorites.refresh_error())
                     .map(str::to_owned);
                 let status = RefreshStatus::of(
-                    self.queries.is_refreshing() || self.favorites.is_refreshing(),
+                    self.queries.is_refreshing(pauses) || self.favorites.is_refreshing(pauses),
                     failure.as_deref(),
                 );
                 // One row: title, filters, then the tools from the right edge. Every width is planned
@@ -494,6 +503,7 @@ impl PullRequestListPage {
         services: &mut Services,
         navigator: &mut Navigator,
         scope: PullRequestScope,
+        pauses: &Pauses,
     ) -> BTreeSet<String> {
         let filters = &services.settings.list_filters;
         let offer = match self.source {
@@ -517,11 +527,7 @@ impl PullRequestListPage {
             .collect();
         let hosts = list_rows::Hosts {
             collapsed: &services.settings.collapsed_connections,
-            rate_limited: services
-                .rate_limited()
-                .into_iter()
-                .map(|notice| notice.connection.id)
-                .collect(),
+            pauses,
             favorites: &services.settings.favorites,
             lifts_favorites: is_overview && !services.settings.favorites.is_lane_shown,
             sections: Some(&services.settings.repository_sections)

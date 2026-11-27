@@ -21,8 +21,10 @@ pub fn show(ui: &mut Ui, services: &Services) {
     if limited.is_empty() {
         return;
     }
-    // The countdown ticks once a second, only while a notice is on screen.
-    ui.ctx().request_repaint_after(Duration::from_secs(1));
+    // The countdowns' next change, also of a notice not shown yet: it ends, and the next moves up.
+    if let Some(next) = limited.iter().map(|notice| until_next_tick(notice.resumes_in)).min() {
+        ui.ctx().request_repaint_after(next);
+    }
     let palette = theme::palette(ui.ctx());
     for notice in limited.iter().take(MAX_SHOWN) {
         strip(ui, notice, &palette);
@@ -136,9 +138,23 @@ pub fn countdown(remaining: Duration) -> String {
     }
 }
 
+/// How long [`countdown`] of `remaining` keeps its text: the time to wake the page that shows it.
+/// A pause lasts up to an hour and mostly counts in minutes, so a tick every second would draw
+/// sixty frames for each change.
+pub fn until_next_tick(remaining: Duration) -> Duration {
+    let seconds = remaining.as_secs() + u64::from(remaining.subsec_nanos() > 0);
+    // The whole seconds left once the text changes: one less below ten minutes, where it shows
+    // seconds or changes to them; above, where the next minute starts or the seconds show again.
+    let changes_at = match seconds {
+        0..=599 => seconds.saturating_sub(1),
+        _ => ((seconds.div_ceil(60) - 1) * 60).max(599),
+    };
+    remaining.saturating_sub(Duration::from_secs(changes_at))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::countdown;
+    use super::{countdown, until_next_tick};
     use std::time::Duration;
 
     #[test]
@@ -148,5 +164,27 @@ mod tests {
         assert_eq!(countdown(Duration::from_secs(185)), "3 min 5 s");
         assert_eq!(countdown(Duration::from_secs(120)), "2 min");
         assert_eq!(countdown(Duration::from_mins(40)), "40 min");
+    }
+
+    /// The page wakes when the text changes, not before: once a minute while it counts minutes.
+    #[test]
+    fn wakes_when_the_text_changes() {
+        for (remaining, wake) in [
+            (Duration::from_millis(2_390_400), Duration::from_millis(50_400)),
+            (Duration::from_secs(660), Duration::from_secs(60)),
+            (Duration::from_secs(600), Duration::from_secs(1)),
+            (Duration::from_millis(185_500), Duration::from_millis(500)),
+            (Duration::from_secs(120), Duration::from_secs(1)),
+            (Duration::from_millis(41_200), Duration::from_millis(200)),
+            (Duration::from_millis(400), Duration::from_millis(400)),
+        ] {
+            assert_eq!(until_next_tick(remaining), wake, "{remaining:?}");
+            let text = countdown(remaining);
+            let before = remaining - wake + Duration::from_millis(1);
+            assert_eq!(countdown(before), text, "{remaining:?}: unchanged until the wake");
+            if wake < remaining {
+                assert_ne!(countdown(remaining - wake), text, "{remaining:?}: changed at it");
+            }
+        }
     }
 }

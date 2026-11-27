@@ -51,6 +51,7 @@ use self::item::{ItemRow, RepositoryName, RowPick};
 use self::keys::RowKeys;
 use super::favorites::{FavoriteQueries, HiddenFavorites};
 use super::interest::Interest;
+use super::pauses::Pauses;
 use super::queries::{ConnectionQueries, ConnectionResult};
 use super::statuses::{RowStatuses, StatusRow};
 use super::warm::AheadRow;
@@ -204,8 +205,8 @@ struct Drawn<'a> {
 pub struct Hosts<'a> {
     /// Overview groups shown closed (ignored for a repository list, which has no collapsible header).
     pub collapsed: &'a BTreeSet<String>,
-    /// Connections whose host paused requests after a rate limit.
-    pub rate_limited: BTreeSet<String>,
+    /// The requests a host's rate limit holds back.
+    pub pauses: &'a Pauses,
     /// Starred repositories, for the rows' context menu.
     pub favorites: &'a Favorites,
     /// The overview without its Favorites lane: starred repositories' rows lead each card, starred.
@@ -521,7 +522,7 @@ fn paint_pull_request(
     };
     let picked = item::paint(ui, &item, result, pull_request);
     let number = format!("{}{}", number_prefix(result.kind), pull_request.number);
-    let edge = edge::of(result, hosts.statuses, &status_row, pull_request);
+    let edge = edge::of(result, hosts.statuses, hosts.pauses, &status_row, pull_request);
     let place_of_edge = edge::Place { rect, id, is_last, opacity, number: &number };
     let mut action = edge::paint(ui, &place_of_edge, edge).then_some(ListAction::Retry);
     drawn.keys.drawn(ui, place, id);
@@ -614,6 +615,7 @@ pub(super) mod tests {
     use super::{
         Columns, EmptyOffer, Hosts, ListAction, ListInput, Painted, ROW_HEIGHT, RowFilter, show,
     };
+    use crate::pull_request_list::pauses::Pauses;
     use crate::pull_request_list::queries::ConnectionQueries;
     use crate::pull_request_list::statuses::RowStatuses;
 
@@ -661,6 +663,7 @@ pub(super) mod tests {
         requests: RowRequests,
         statuses: RowStatuses,
         flights: Flights,
+        pauses: Pauses,
     }
 
     fn scene(has_token: bool) -> Scene {
@@ -685,6 +688,7 @@ pub(super) mod tests {
             requests: RowRequests::default(),
             statuses: RowStatuses::default(),
             flights: Flights::default(),
+            pauses: Pauses::default(),
         }
     }
 
@@ -697,7 +701,7 @@ pub(super) mod tests {
                 }
                 let hosts = Hosts {
                     collapsed: &scene.collapsed,
-                    rate_limited: BTreeSet::new(),
+                    pauses: &scene.pauses,
                     favorites: &scene.favorites,
                     lifts_favorites: scene.lifts_favorites,
                     sections: scene.sections.as_ref(),
@@ -917,6 +921,35 @@ Click to try again";
             harness.get_by_role_and_label(Role::Link, "2 Change 2").rect().height(),
             ROW_HEIGHT,
             "the edge takes no room of its own"
+        );
+    }
+
+    /// A request a rate-limit pause holds back waits for up to an hour: its row says so with the
+    /// waiting edge's still dots, and the list asks for no frame meanwhile.
+    #[test]
+    fn a_row_held_by_a_rate_limit_waits_still() {
+        let mut harness = harness(1300.0, scene(true));
+        harness.run();
+        let rows = harness.state().painted.statuses.clone();
+        {
+            let scene = harness.state_mut();
+            scene.statuses.running_for_test(&rows[0]);
+            scene.pauses = Pauses::of_test("gl", review_core::http::Api::GraphQl);
+        }
+        // Settles: `run` fails when a frame keeps asking for the next.
+        harness.run();
+        assert!(
+            harness
+                .query_by_label_contains("!1 waits for GitLab to accept requests again")
+                .is_some()
+        );
+        assert!(harness.query_by_label_contains("Updating the checks").is_none());
+
+        harness.state_mut().pauses = Pauses::default();
+        harness.run_steps(3);
+        assert!(
+            harness.query_by_label("Updating the checks and approvals of !1").is_some(),
+            "the light again once the request goes out"
         );
     }
 }

@@ -63,11 +63,18 @@ fn still_id() -> Id {
 }
 
 /// Draws the skeletons `add` paints without the sweep and its repaints: placeholders of a load
-/// that failed and will not arrive until a retry.
+/// that failed and will not arrive until a retry, or that waits out a rate-limit pause. A `still`
+/// inside another leaves the outer one still after it.
 pub fn still<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
-    ui.ctx().data_mut(|data| data.insert_temp(still_id(), true));
+    let was_still = ui.ctx().data_mut(|data| {
+        let was_still = data.get_temp::<bool>(still_id()).is_some();
+        data.insert_temp(still_id(), true);
+        was_still
+    });
     let result = add(ui);
-    ui.ctx().data_mut(|data| data.remove::<bool>(still_id()));
+    if !was_still {
+        ui.ctx().data_mut(|data| data.remove::<bool>(still_id()));
+    }
     result
 }
 
@@ -263,7 +270,35 @@ pub fn thread_cards(ui: &mut Ui, count: usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::{GRACE_SECONDS, reveal_after};
+    use super::{GRACE_SECONDS, SHIMMER_REPAINT, bar, reveal_after, still};
+
+    /// The skeletons a frame paints ask for the next frame (`None`: none asked for one soon).
+    fn sweep_delay(add: impl FnMut(&mut egui::Ui)) -> Option<std::time::Duration> {
+        let ctx = egui::Context::default();
+        let output = ctx.run_ui(egui::RawInput::default(), add);
+        let delay = output.viewport_output[&egui::ViewportId::ROOT].repaint_delay;
+        (delay <= SHIMMER_REPAINT).then_some(delay)
+    }
+
+    /// A page that waits out a rate-limit pause holds every placeholder still, also those after a
+    /// part that holds its own still. Before, the inner one ended the outer one, and the rest of the
+    /// page swept on at the full frame rate.
+    #[test]
+    fn a_still_inside_another_leaves_the_outer_still() {
+        assert!(sweep_delay(|ui| bar(ui, 40.0, 10.0)).is_some(), "a skeleton sweeps");
+        let nested = sweep_delay(|ui| {
+            still(ui, |ui| {
+                still(ui, |ui| bar(ui, 40.0, 10.0));
+                bar(ui, 40.0, 10.0);
+            });
+        });
+        assert_eq!(nested, None);
+        let after = sweep_delay(|ui| {
+            still(ui, |ui| bar(ui, 40.0, 10.0));
+            bar(ui, 40.0, 10.0);
+        });
+        assert!(after.is_some(), "past the still, skeletons sweep again");
+    }
 
     #[test]
     fn placeholders_wait_out_the_grace_period_then_fade_in() {

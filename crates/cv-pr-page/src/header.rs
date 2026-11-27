@@ -212,11 +212,16 @@ pub fn show(
             ui.add_space(theme::style::SPACE_S);
             ui.horizontal(|ui| {
                 // A refresh behind the shown data (revisit, Refresh) says so here, in a fixed slot;
-                // so does the detail still on its way behind the list row's summary.
+                // so does the detail still on its way behind the list row's summary. One that a
+                // rate-limit pause holds back waits, as the banner says, with no spinner turning.
+                let is_under_way = !crate::is_held(services, &session.key);
                 let status = if detail.is_some() {
-                    RefreshStatus::of(session.is_refreshing(), session.refresh_error())
+                    RefreshStatus::of(
+                        session.is_refreshing() && is_under_way,
+                        session.refresh_error(),
+                    )
                 } else {
-                    RefreshStatus::Updating
+                    RefreshStatus::of(is_under_way, None)
                 };
                 let (refresh, ()) = row::with_trailing(
                     ui,
