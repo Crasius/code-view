@@ -399,10 +399,9 @@ impl OverviewTab {
         ui.add_space(style::SPACE_M);
         let line = assistant.title_line(services);
         let title_line = |ui: &mut Ui| cv_pr_assistant::card_action(ui, &line);
-        let card =
-            section_card_with_action(ui, cv_pr_assistant::TITLE, title_line, |ui, clicked| {
-                cv_pr_assistant::card(ui, assistant, session, services, clicked, column_bottom);
-            });
+        let card = section_card_with_action(ui, cv_pr_assistant::TITLE, title_line, |ui, title| {
+            cv_pr_assistant::card(ui, assistant, session, services, &title, column_bottom);
+        });
         cv_pr_assistant::card_drawn(ui, assistant, card.rect);
     }
 

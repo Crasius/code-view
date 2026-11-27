@@ -20,7 +20,7 @@ mod card;
 mod place;
 
 use cv_base::theme::{self, motion, style};
-use cv_pr_session::assistant_link::{self, CITED_ID, ROOM_ID, this_pass};
+use cv_pr_session::assistant_link;
 use cv_pr_session::session::PullRequestSession;
 use cv_pr_session::web_link;
 use cv_services::Services;
@@ -29,8 +29,9 @@ use review_store::TurnEnd;
 
 use self::card::{Card, Event};
 use self::place::{Corner, Laid};
-use super::chip::{self, Line};
-use super::{Action, Assistant, actions, citations, turns};
+use super::chip;
+use super::citations::{self, CitedLines};
+use super::{Action, Assistant, actions, turns};
 
 #[cfg(any(test, feature = "test-support"))]
 pub use self::card::{
@@ -40,26 +41,13 @@ pub use self::card::{
 /// Opacity while the card covers the cited lines and the pointer is elsewhere (the design's).
 const COVERING_OPACITY: f32 = 0.35;
 
-/// One reference of an answer: a citation the checkout has, once per target.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Reference {
-    pub(crate) path: String,
-    pub(crate) start: u32,
-    pub(crate) end: u32,
-}
-
-impl Reference {
-    fn is(&self, link: &citations::Linked) -> bool {
-        self.path == link.path && self.start == link.start && self.end == link.end
-    }
-}
-
-/// The references of an answer whose citations were linked, in order, each target once.
-fn references(linked: &str) -> Vec<Reference> {
-    let mut found: Vec<Reference> = Vec::new();
+/// The references of an answer whose citations were linked (citations the checkout has), in
+/// order, each target once.
+fn references(linked: &str) -> Vec<CitedLines> {
+    let mut found: Vec<CitedLines> = Vec::new();
     for link in citations::linked(linked) {
-        if !found.iter().any(|seen| seen.is(&link)) {
-            found.push(Reference { path: link.path, start: link.start, end: link.end });
+        if !found.contains(&link.lines) {
+            found.push(link.lines);
         }
     }
     found
@@ -75,9 +63,6 @@ pub(crate) fn step(current: Option<usize>, count: usize, forward: bool) -> Optio
         _ => current,
     }
 }
-
-/// The lines to show in the Files tab: a reference the mini chat moved to.
-pub type Jump = (String, u32, u32);
 
 /// Shown as the card, as the pill, or not at all.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -117,12 +102,11 @@ impl MiniChat {
 
 /// A citation was followed into the Files tab: the mini chat (when it is on) shows the answer it
 /// came from, on that reference, appearing if it was not open.
-pub(crate) fn follow(assistant: &mut Assistant, path: &str, start: u32, end: u32) {
-    let target = Reference { path: path.to_owned(), start, end };
+pub(crate) fn follow(assistant: &mut Assistant, target: &CitedLines) {
     let turns = assistant.chat.turns.len();
     let found = assistant.chat.turns.iter().enumerate().rev().find_map(|(turn, shown)| {
         let linked = assistant.links.get(turn, &shown.answer)?;
-        let index = references(linked).iter().position(|reference| *reference == target)?;
+        let index = references(linked).iter().position(|reference| reference == target)?;
         Some((turn, index))
     });
     let (turn, current) = match found {
@@ -147,7 +131,7 @@ pub(crate) fn show(
     ctx: &Context,
     session: &PullRequestSession,
     services: &mut Services,
-) -> Option<Jump> {
+) -> Option<CitedLines> {
     let settings = &services.settings.assistant;
     if !settings.enabled || !settings.mini_chat {
         assistant.mini.close();
@@ -165,7 +149,7 @@ pub(crate) fn show(
     if mini.turn >= turns {
         mini.close();
     }
-    let room = this_pass(ctx, ROOM_ID).filter(|_| mini.face != Face::Closed)?;
+    let room = assistant_link::room(ctx).filter(|_| mini.face != Face::Closed)?;
     assistant.resolver.publish(ctx, session);
     let shown = assistant.chat.turns.get(assistant.mini.turn);
     let linked = shown.and_then(|turn| assistant.links.get(assistant.mini.turn, &turn.answer));
@@ -182,20 +166,21 @@ pub(crate) fn show(
     let place = Place { room, corner };
     let label = chip::label(assistant, services);
     let outside_path = outside.map(|reference| reference.path.as_str());
-    let drawn = draw(assistant, ctx, place, &references, outside_path, &label);
-    if let Some(picked) = chip::title_menu(ctx, Line::Mini, assistant, services) {
+    let (drawn, chip) = draw(assistant, ctx, place, &references, outside_path, &label);
+    let picked = chip.and_then(|chip| chip::menu(&chip, assistant, services));
+    if let Some(picked) = picked {
         actions::act(assistant, picked, session, services);
     }
     event = event.or(drawn);
     let changes = Changes { place, references: &references, session };
     let jump = act(assistant, ctx, event?, &changes, services)?;
-    assistant.resolver.is_changed(&jump.0).then_some(jump)
+    assistant.resolver.is_changed(&jump.path).then_some(jump)
 }
 
 /// What carrying out an event reads.
 struct Changes<'a> {
     place: Place,
-    references: &'a [Reference],
+    references: &'a [CitedLines],
     session: &'a PullRequestSession,
 }
 
@@ -206,7 +191,7 @@ fn act(
     event: Event,
     changes: &Changes<'_>,
     services: &mut Services,
-) -> Option<Jump> {
+) -> Option<CitedLines> {
     let now = ctx.input(|input| input.time);
     let Changes { place, references, session } = changes;
     let mini = &mut assistant.mini;
@@ -217,8 +202,7 @@ fn act(
                 return None;
             }
             mini.pick(next);
-            let reference = references.get(next?)?;
-            return Some((reference.path.clone(), reference.start, reference.end));
+            return references.get(next?).cloned();
         }
         Event::Shrink | Event::Open => {
             mini.motions.morph(now);
@@ -255,7 +239,7 @@ fn act(
 }
 
 /// The page of `reference`'s file at the head commit on the platform, at its line.
-fn head_url(session: &PullRequestSession, reference: &Reference) -> Option<String> {
+fn head_url(session: &PullRequestSession, reference: &CitedLines) -> Option<String> {
     let detail = session.detail.ready()?;
     let pull_request = &detail.summary.web_url;
     let url = web_link::line_url(
@@ -263,21 +247,22 @@ fn head_url(session: &PullRequestSession, reference: &Reference) -> Option<Strin
         pull_request,
         &reference.path,
         &detail.head_sha,
-        reference.start,
+        reference.first,
     );
     Some(url.unwrap_or_else(|| pull_request.clone()))
 }
 
-/// Lays out the card or the pill in its layer; returns what the user did there. `outside` is the
-/// current reference's file when the pull request does not change it, `chip` the chip's label.
+/// Lays out the card or the pill in its layer; returns what the user did there, and the card's
+/// chip (the pill has none). `outside` is the current reference's file when the pull request does
+/// not change it, `chip` the chip's label.
 fn draw(
     assistant: &mut Assistant,
     ctx: &Context,
     place: Place,
-    references: &[Reference],
+    references: &[CitedLines],
     outside: Option<&str>,
     chip: &str,
-) -> Option<Event> {
+) -> (Option<Event>, Option<egui::Response>) {
     let mini = &mut assistant.mini;
     let is_pill = mini.face == Face::Pill;
     let laid = mini.motions.lay_out(ctx, place.room, place.corner, is_pill);
@@ -338,15 +323,17 @@ fn draw(
             ui.painter().rect(frame, radius, palette.surface, stroke, egui::StrokeKind::Inside);
             ui.expand_to_include_rect(frame);
             ui.set_clip_rect(frame.intersect(place.room));
-            let event = if is_pill {
-                card::pill(ui, content, mini.current, references.len())
+            let shown = if is_pill {
+                (card::pill(ui, content, mini.current, references.len()), None)
             } else {
-                card::card(ui, content, &view, &mut mini.pieces, &mut assistant.composer)
+                let (event, chip) =
+                    card::card(ui, content, &view, &mut mini.pieces, &mut assistant.composer);
+                (event, Some(chip))
             };
             ui.interact(frame, id.with("group"), egui::Sense::hover()).widget_info(|| {
                 egui::WidgetInfo::labeled(egui::Role::Group, true, card::CARD_LABEL)
             });
-            event
+            shown
         });
     shown.inner
 }
@@ -356,7 +343,7 @@ fn draw(
 fn covering_opacity(ctx: &Context, id: Id, laid: &Laid, is_outside: bool, is_dragged: bool) -> f32 {
     let is_hovered = ctx.pointer_hover_pos().is_some_and(|pointer| laid.frame.contains(pointer));
     let covers =
-        !is_outside && this_pass(ctx, CITED_ID).is_some_and(|cited| cited.intersects(laid.frame));
+        !is_outside && assistant_link::cited(ctx).is_some_and(|cited| cited.intersects(laid.frame));
     let target = if covers && !is_hovered && !is_dragged { COVERING_OPACITY } else { 1.0 };
     motion::glide(ctx, id.with("cover"), target, place::FADE_SECONDS)
 }
@@ -422,7 +409,7 @@ mod tests {
         let answer = "[a.rs:1](<codeview-cite:a.rs#1-1>), [b.rs:2-3](<codeview-cite:b.rs#2-3>) \
                       and [`a.rs:1`](<codeview-cite:a.rs#1-1>) again.";
         let found: Vec<(String, u32)> =
-            references(answer).into_iter().map(|r| (r.path, r.start)).collect();
+            references(answer).into_iter().map(|r| (r.path, r.first)).collect();
         assert_eq!(found, [("a.rs".to_owned(), 1), ("b.rs".to_owned(), 2)]);
     }
 

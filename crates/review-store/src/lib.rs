@@ -22,8 +22,8 @@ mod token_vault;
 mod viewed;
 
 pub use assistant::chats::{
-    AssistantChats, Chat, ChatQuote, ChatStep, ChatTurn, ChatUsage, ChatsSnapshot, TurnEnd,
-    TurnKind, agent_checkouts_dir, chats_dir,
+    AssistantChats, Chat, ChatQuote, ChatStep, ChatStepKind, ChatTurn, ChatUsage, ChatsSnapshot,
+    TurnEnd, TurnKind, agent_checkouts_dir, chats_dir,
 };
 pub use assistant::settings::{AssistantSettings, MiniChatCorner};
 pub use atomic_file::write_bytes;

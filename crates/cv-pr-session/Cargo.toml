@@ -14,7 +14,8 @@ workspace = true
 doctest = false
 
 [features]
-# Test helpers other crates' tests name (`assistant_link::room`); forwards to the cv crates below.
+# Test helpers other crates' tests name (`assistant_link::last_room`); forwards to the cv crates
+# below.
 test-support = [
     "cv-base/test-support",
     "cv-markdown/test-support",

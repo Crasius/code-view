@@ -82,7 +82,8 @@ fn open_from_the_citation(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
         shows_file_view(harness, "src/lib.rs") && has_card(harness)
     });
     assert!(harness.query_by_label("Reference 1 of 4").is_some());
-    let room = cv_pr_session::assistant_link::room(&harness.ctx).expect("the Files tab's content");
+    let room =
+        cv_pr_session::assistant_link::last_room(&harness.ctx).expect("the Files tab's content");
     let shown = drawn(harness).rect;
     assert!(room.contains_rect(shown), "inside the content, off the tree and the tabs");
     assert_near(shown.max, room.max - egui::vec2(16.0, 16.0), "the bottom-right corner");
