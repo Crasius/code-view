@@ -7,7 +7,8 @@
 //! - Processes: [`hide_console`] (and [`hide_std_console`]) for command-line tools, [`AZURE_CLI`]
 //!   (the Azure CLI's executable), [`downloads_dir`], [`open_folder`], [`open_terminal`] (the
 //!   user's terminal running a command, for the assistant's CLIs), [`open_shell`] and
-//!   [`TERMINALS`] (a terminal in a checkout's folder).
+//!   [`TERMINALS`] (a terminal in a checkout's folder), [`EXAMPLE_CLONE`] (a clone's folder for
+//!   examples).
 //! - Text: [`font_sources`] (the system's UI, code, emoji and symbol fonts) and
 //!   [`register_chrome_fonts`] (fonts the window chrome draws with).
 //! - Motion: [`prefers_reduced_motion`].
@@ -61,10 +62,10 @@ use windows as system;
 #[cfg(target_os = "macos")]
 pub use macos::page_swipe;
 pub use system::{
-    AZURE_CLI, Caption, FrameHold, HAS_SAVE_DIALOG, PlacedWindow, TERMINALS, ask_folder,
-    ask_save_path, dialog_owner, downloads_dir, font_sources, hide_console, hide_std_console,
-    integrate_title_bar, monitor_refresh_hz, open_folder, open_shell, open_terminal,
-    prefers_reduced_motion, register_chrome_fonts, viewport,
+    AZURE_CLI, Caption, EXAMPLE_CLONE, FrameHold, HAS_SAVE_DIALOG, PlacedWindow, TERMINALS,
+    ask_folder, ask_save_path, dialog_owner, downloads_dir, font_sources, hide_console,
+    hide_std_console, integrate_title_bar, monitor_refresh_hz, open_folder, open_shell,
+    open_terminal, prefers_reduced_motion, register_chrome_fonts, viewport,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use window_drag::LONG_PRESS;
