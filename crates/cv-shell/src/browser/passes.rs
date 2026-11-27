@@ -5,8 +5,9 @@
 //! The app records every URL a frame opens that [`link_access::locate`] resolves to a pull request
 //! ([`Recorder`]), keyed by the pull request rather than the URL, so `/files`, a fragment and the
 //! `visualstudio.com` host all match. The host's `check` asks [`contains`] right after
-//! [`link_access::locate`] and answers `pass` within [`TTL`], without a read. No URL is changed: a marker in the query or
-//! fragment would show up in the browser and in links the user copies from there.
+//! [`link_access::locate`] and answers `pass` within [`TTL`], without a read. No URL is changed:
+//! a marker in the query or fragment would show up in the browser and in links the user copies
+//! from there.
 //!
 //! The file is `passes.json` in the browser folder, shared by two processes: the app writes it,
 //! the host only reads it. Every write goes through a temp file and a rename, so the host never

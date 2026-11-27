@@ -435,7 +435,7 @@ mod tests {
     /// host comes back as the host's answer (it once panicked with "no reactor running").
     ///
     /// The read runs on a plain thread, which has no runtime of its own: a timeout built outside
-    /// the read's runtime then fails this test again.
+    /// the read's runtime then fails this test.
     #[tokio::test]
     async fn the_installed_app_reads_through_its_own_runtime() {
         let server = wiremock::MockServer::start().await;
