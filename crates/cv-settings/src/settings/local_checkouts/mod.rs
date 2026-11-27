@@ -37,13 +37,14 @@ pub fn control(ui: &mut Ui, id: CheckoutRow, services: &mut Services) -> bool {
         CheckoutRow::Open => {
             let agent =
                 |kind| Segment::new(OpenByDefault::Always(OpenWith::Agent(kind)), cli_name(kind));
-            let options = [
+            let options: Vec<Segment<'_, OpenByDefault>> = [
                 Segment::new(OpenByDefault::Ask, "Ask each time"),
                 Segment::new(OpenByDefault::Always(OpenWith::Nothing), "Nothing"),
                 Segment::new(OpenByDefault::Always(OpenWith::Terminal), "Terminal"),
-                agent(AgentKind::Claude),
-                agent(AgentKind::Codex),
-            ];
+            ]
+            .into_iter()
+            .chain(AgentKind::ALL.map(agent))
+            .collect();
             changed =
                 tabs::segments(ui, &mut services.settings.checkouts.open_by_default, &options);
         }
@@ -284,7 +285,7 @@ fn pattern(ui: &mut Ui, services: &mut Services) -> bool {
 /// Each agent's CLI as the Assistant section found it; true when its link was clicked.
 fn agents(ui: &mut Ui, services: &mut Services) -> bool {
     let palette = theme::palette(ui.ctx());
-    for kind in [AgentKind::Claude, AgentKind::Codex] {
+    for kind in AgentKind::ALL {
         let name = cli_name(kind);
         let text = match services.agents.detection(kind, &services.background) {
             Detection::Installed(cli) => format!("{name} {}", cli.version),

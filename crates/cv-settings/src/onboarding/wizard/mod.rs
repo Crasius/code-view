@@ -654,7 +654,8 @@ enum Fix {
 }
 
 /// Why the check failed: the problem's title and fix over the error, else the error alone, with a
-/// new token, a paste where `offers_paste` (the token step has its field right there) and a retry.
+/// new token, a paste button when `offers_paste` (the token step leaves it out: its field is right
+/// there) and a retry.
 fn failed_callout(
     ui: &mut Ui,
     failure: &Failure,
