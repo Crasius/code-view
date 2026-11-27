@@ -73,6 +73,30 @@ pub(super) fn app(scratch: &ScratchDir, connections: &[Connection]) -> Harness<'
     harness
 }
 
+/// The simulated seconds a frame of [`long_session_builder`] moves egui's clock on by.
+pub(super) const LONG_SESSION_STEP: f32 = 0.5;
+
+/// A harness for scenes that let simulated minutes pass (the request budget, the memory
+/// walkthrough): a 1440 × 900 window, [`LONG_SESSION_STEP`] a frame, before the renderer is
+/// picked.
+pub(super) fn long_session_builder() -> HarnessBuilder<ReviewApp> {
+    Harness::builder().with_size([1440.0, 900.0]).with_step_dt(LONG_SESSION_STEP)
+}
+
+/// Wheels the list of a 1440 × 900 window down by `points` from over its rows, then lets two
+/// simulated seconds pass.
+pub(super) fn scroll_list(harness: &mut Harness<'_, ReviewApp>, points: f32) {
+    harness.hover_at(pos2(720.0, 600.0));
+    let mouse = |delta: f32, phase| wheel(delta, phase, MouseWheelSource::Wheel);
+    harness.event(mouse(0.0, TouchPhase::Start));
+    for _ in 0..4 {
+        harness.event(mouse(-points / 4.0, TouchPhase::Move));
+        harness.step();
+    }
+    harness.event(mouse(0.0, TouchPhase::End));
+    pump(harness, 2.0);
+}
+
 /// Steps the app until `find` finds something and returns it on the frame it came, without
 /// settling; `each` runs before every frame (a hover, a click). Fails after [`IDLE_LIMIT`] with
 /// nothing in flight in the background, or after [`LIMIT`].

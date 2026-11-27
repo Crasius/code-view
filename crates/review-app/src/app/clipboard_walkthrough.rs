@@ -20,7 +20,7 @@ use super::walkthrough::{
     app, opened_urls, press, saved_settings, set_focus, settle_background, type_into, wait_until,
     wait_until_unsettled,
 };
-use cv_runtime::cache::page_cache::{REVISIT_FRESH, pull_request_part};
+use cv_runtime::cache::page_cache::pull_request_part;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_shell::links::clipboard_links::ClipboardSource;
 use cv_shell::links::link_access::BUDGET;
@@ -118,10 +118,12 @@ fn clipboard_link_opens_once_with_back_and_not_again_after_a_restart() {
     // detail the page read itself is stored on one of its own frames, from `first_frame_at` on,
     // also when its GET joined one in flight (`review_core::http`) and never reached the host.
     let detail = pull_request_part(&key(READABLE_NUMBER).storage_key(), "detail");
-    let between = f64::midpoint(opened_at, first_frame_at) + REVISIT_FRESH.as_secs_f64();
-    let cache = &harness.state().services.cache;
-    assert!(!cache.is_stale(&detail, opened_at), "the check's answer is in the page cache");
-    assert!(cache.is_stale(&detail, between), "the page did not read the detail again");
+    let stored_at = harness.state().services.cache.stored_at(&detail);
+    assert!(
+        stored_at.is_some_and(|at| at <= opened_at),
+        "the check's answer, not a read of the page's: stored at {stored_at:?}, the page opened \
+         at {opened_at} and drew its first frame at {first_frame_at}"
+    );
     // On the wire: the check and the page's pipelines, which GitHub lists by head commit
     // (`provider-github`'s `pipelines::runs`), and no live probe. A page read that joined the
     // pipelines' GET would not show here; the page cache above catches it.

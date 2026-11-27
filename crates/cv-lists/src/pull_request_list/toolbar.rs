@@ -10,7 +10,7 @@ use super::SEARCH_TOOLTIP;
 use cv_widgets::refresh_status::{self, RefreshStatus};
 
 /// The overview's star tool: on while the Favorites lane is shown. The Settings row (`cv-settings`,
-/// `appearance.rs`) repeats this text.
+/// `settings/rows.rs`) repeats this text.
 pub const FAVORITES_LANE: &str = "Show the Favorites lane";
 /// The overview's sections tool: on while its cards group their rows by repository.
 pub const GROUP_BY_REPOSITORY: &str = "Group by repository";

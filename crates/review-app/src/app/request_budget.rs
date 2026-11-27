@@ -13,20 +13,21 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use egui_kittest::{Harness, HarnessBuilder};
 use review_core::{Connection, ProviderKind};
 use review_store::{AppPaths, AppSettings, ConnectionStore};
 use serde_json::{Value, json};
 use wiremock::{Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
+use super::gitlab_mock::{diff_stats_summaries, user};
 use super::mock_host::MockHost;
 use super::recording::{Recorder, iids, template};
 use super::startup;
 use super::walkthrough::{
-    self, LIMIT, NeighbourWrites, SharingWindow, click_first, has, pump, saved_paths, set_focus,
-    wait_idle, wait_until_unsettled, wheel,
+    self, LIMIT, NeighbourWrites, SharingWindow, click_first, has, long_session_builder, pump,
+    saved_paths, scroll_list, set_focus, wait_idle, wait_until_unsettled,
 };
 use cv_lists::pull_request_list::LIST_INTERVAL;
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
@@ -41,7 +42,6 @@ const IID: u64 = 7;
 const PIPELINE_ID: u64 = 1001;
 /// The first of the older pipelines, numbered upwards from here.
 const OLDER_PIPELINE_ID: u64 = 901;
-const STEP_SECONDS: f32 = 0.5;
 
 #[test]
 fn browsing_300_files_stays_within_the_request_budget() {
@@ -883,19 +883,6 @@ fn favorites_always_count_their_lines() {
     );
 }
 
-/// Wheels the list down by `points` from over its rows.
-pub(super) fn scroll_list(harness: &mut Harness<'_, ReviewApp>, points: f32) {
-    harness.hover_at(egui::pos2(720.0, 600.0));
-    let mouse = |delta: f32, phase| wheel(delta, phase, egui::MouseWheelSource::Wheel);
-    harness.event(mouse(0.0, egui::TouchPhase::Start));
-    for _ in 0..4 {
-        harness.event(mouse(-points / 4.0, egui::TouchPhase::Move));
-        harness.step();
-    }
-    harness.event(mouse(0.0, egui::TouchPhase::End));
-    pump(harness, 2.0);
-}
-
 /// How often each Azure DevOps pull request's iterations were asked for in `phase`.
 fn asked_pull_requests(recorder: &Recorder, phase: &str) -> BTreeMap<u64, usize> {
     let mut asked = BTreeMap::new();
@@ -1177,9 +1164,9 @@ fn harness_time(harness: &Harness<'_, ReviewApp>) -> f64 {
 }
 
 /// [`wait_until_unsettled`] for work that takes real time, such as git reading a diff: egui's time
-/// follows the wall clock meanwhile instead of going on by [`STEP_SECONDS`] a frame, so a loaded
-/// machine does not stretch the work over simulated minutes. Afterwards it goes on by the step
-/// again.
+/// follows the wall clock meanwhile instead of going on by [`walkthrough::LONG_SESSION_STEP`] a
+/// frame, so a loaded machine does not stretch the work over simulated minutes. Afterwards it goes
+/// on by the step again.
 fn wait_in_real_time(
     harness: &mut Harness<'_, ReviewApp>,
     what: &str,
@@ -1265,7 +1252,7 @@ impl Fixture {
     /// would land before the test sees the first frame.
     fn loading_harness(&self) -> Harness<'static, ReviewApp> {
         let paths = self.paths.clone();
-        let mut harness = startup::first_frames(harness_builder(), |creation| {
+        let mut harness = startup::first_frames(long_session_builder(), |creation| {
             ReviewApp::new(creation, paths, cv_providers::create_provider)
         });
         harness.state_mut().attention = Attention::without_pauses();
@@ -1375,12 +1362,7 @@ impl Fixture {
 
 /// The app on `paths`, in a 1440 × 900 window, once its start settled.
 fn harness_for(paths: AppPaths) -> Harness<'static, ReviewApp> {
-    walkthrough::app_with(harness_builder(), paths, cv_providers::create_provider)
-}
-
-/// The app's harness with the window and step of [`harness_for`], before the renderer is picked.
-pub(super) fn harness_builder() -> HarnessBuilder<ReviewApp> {
-    Harness::builder().with_size([1440.0, 900.0]).with_step_dt(STEP_SECONDS)
+    walkthrough::app_with(long_session_builder(), paths, cv_providers::create_provider)
 }
 
 const AZURE_ROWS: u64 = 40;
@@ -1538,13 +1520,6 @@ fn azure_pull_request(id: u64, git: Option<&AzureGit>) -> Value {
         "lastMergeTargetCommit": { "commitId": base },
         "reviewers": [],
     })
-}
-
-/// GraphQL's `diffStatsSummary` of the merge requests a request names: iid × 10 lines added, iid
-/// deleted, in 2 files.
-pub(super) fn diff_stats_summaries(request: &Request) -> Value {
-    let nodes: Vec<Value> = iids(&request.body).into_iter().map(|iid| json!({ "iid": iid.to_string(), "diffStatsSummary": { "additions": iid * 10, "deletions": iid, "fileCount": 2 } })).collect();
-    json!({ "data": { "project": { "mergeRequests": { "nodes": nodes } } } })
 }
 
 /// The merge request's pipelines as GraphQL names them: the head pipeline has a `workflow:name`.
@@ -1727,10 +1702,6 @@ fn jobs() -> Value {
         }
     }
     Value::Array(jobs)
-}
-
-pub(super) fn user(id: u64, username: &str) -> Value {
-    json!({ "id": id, "username": username, "name": username })
 }
 
 fn file_path(index: usize) -> String {

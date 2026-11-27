@@ -15,16 +15,17 @@ use super::ReviewApp;
 use super::github_mock::GitHubHost;
 use super::mock_host::MockHost;
 use super::walkthrough::{
-    app_with, has, press, pump, saved_paths, saved_settings, secondary_press, wait_until_unsettled,
+    app_with, has, press, pump, saved_paths, saved_settings, secondary_press, set_focus,
+    wait_until_unsettled,
 };
+use cv_lists::pull_request_list::FAVORITES_LANE;
 use cv_runtime::route::Route;
+use cv_shell::attention::Attention;
 use cv_testkit::{Clicks, ScratchDir, samples};
 
 const TOKEN: &str = "glpat-mock-only";
 const GROUP: &str = "team";
 const APP_LISTING: &str = "/api/v4/projects/team%2Fapp/merge_requests";
-/// The overview's star tool, on while the Favorites lane is shown.
-const LANE_TOOL: &str = "Show the Favorites lane";
 
 /// The star in the repository browser saves the favorite at once; after a restart the
 /// repository's own page shows it starred, and its star there removes it again.
@@ -92,6 +93,17 @@ fn favorites_card_mixes_two_platforms_newest_updated_first() {
         &[gitlab.connection("gitlab", "Team GitLab"), github.connection("github", "Acme GitHub")],
         &[("gitlab", "team/app"), ("github", "acme/widgets"), ("github", "acme/tools")],
     );
+    // The counts below are of the card's first load. The window goes to the background once that
+    // load reached both hosts: the list's own refresh (`LIST_INTERVAL`) waits for the focus then,
+    // however many frames a slow machine steps before the count. Coming back is no return that
+    // refreshes the card (`Attention::without_pauses`).
+    harness.state_mut().attention = Attention::without_pauses();
+    let searches_repositories =
+        |github: &GitHubHost| github_searches(github).iter().any(|query| query.contains("repo:"));
+    wait_until_unsettled(&mut harness, "the card's first load at both hosts", |_| {
+        gitlab.count(APP_LISTING) > 0 && searches_repositories(&github)
+    });
+    set_focus(&mut harness, false);
     wait_until_unsettled(&mut harness, "the Favorites card's rows", |harness| {
         has(harness, "Favorites (3 repositories), 4 pull requests, expanded")
     });
@@ -134,6 +146,7 @@ fn favorites_card_mixes_two_platforms_newest_updated_first() {
     );
 
     // The overview's state filter applies: merged pull requests are asked for, not filtered here.
+    set_focus(&mut harness, true);
     press(&mut harness, "State: Active");
     press(&mut harness, "Merged");
     wait_until_unsettled(&mut harness, "the merged listing", |_| gitlab.count(APP_LISTING) == 2);
@@ -338,12 +351,12 @@ fn favorites_lane_hidden_lifts_starred_rows_and_asks_nothing() {
 
 /// The overview's star tool: whether it is on.
 fn lane_tool(harness: &Harness<'_, ReviewApp>) -> Option<Toggled> {
-    harness.get_by_role_and_label(Role::Button, LANE_TOOL).accesskit_node().toggled()
+    harness.get_by_role_and_label(Role::Button, FAVORITES_LANE).accesskit_node().toggled()
 }
 
 /// Clicks the star tool; the header shows its new state from the frame after the click took effect.
 fn press_lane_tool(harness: &mut Harness<'_, ReviewApp>) {
-    harness.click_at(harness.get_by_role_and_label(Role::Button, LANE_TOOL).rect());
+    harness.click_at(harness.get_by_role_and_label(Role::Button, FAVORITES_LANE).rect());
     pump(harness, 1.0);
 }
 

@@ -18,12 +18,13 @@ use super::ReviewApp;
 use super::gitlab_mock::{merge_request, merge_request_route};
 use super::mock_host::MockHost;
 use super::walkthrough::{
-    app_with, has, press, pump, saved_paths, saved_settings, settle_background, wait_until,
-    wait_until_unsettled,
+    app_with, has, press, pump, saved_paths, saved_settings, set_focus, settle_background,
+    wait_until, wait_until_unsettled,
 };
 use cv_lists::pull_request_list::{GROUP_BY_REPOSITORY, LIST_INTERVAL, SEARCH_TOOLTIP};
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
+use cv_shell::attention::Attention;
 use cv_testkit::{Clicks, ScratchDir, samples};
 
 const TOKEN: &str = "glpat-mock-only";
@@ -42,13 +43,20 @@ fn list_revisit_shows_known_rows_at_once_then_updates() {
         has(&harness, "All") && has(&harness, "Created by me") && has(&harness, "Assigned to me")
     );
 
-    // A revisit within the freshness window shows the rows and asks nothing.
+    // A revisit within the freshness window shows the rows and asks nothing. A revisit's refresh
+    // would leave on its first frame, in front; the window goes to the background before the
+    // settle, so the list's own refresh (`LIST_INTERVAL`) waits for the focus however many frames
+    // a slow machine steps. Coming back is no return that refreshes the page shown
+    // (`Attention::without_pauses`).
+    harness.state_mut().attention = Attention::without_pauses();
     go(&mut harness, Route::Settings);
     pump(&mut harness, 2.0);
     go(&mut harness, Route::MyPullRequests);
     pump(&mut harness, 2.0);
+    set_focus(&mut harness, false);
     settle_background(&mut harness);
     assert_eq!(host.count(LISTING), 1, "a fresh answer is not asked for again");
+    set_focus(&mut harness, true);
 
     // Later the host has news, and answers slowly.
     go(&mut harness, Route::Settings);

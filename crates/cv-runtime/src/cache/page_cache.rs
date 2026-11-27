@@ -290,6 +290,13 @@ impl PageCache {
             is_outdated || now - stored_at >= REVISIT_FRESH.as_secs_f64()
         })
     }
+
+    /// The input time the answer held for `key` arrived at; `None` when none is held, or only one
+    /// saved by an earlier run.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn stored_at(&self, key: &str) -> Option<f64> {
+        self.entries.peek(key).map(|entry| entry.stamps.stored_at).filter(|at| at.is_finite())
+    }
 }
 
 #[cfg(test)]
@@ -304,6 +311,8 @@ mod tests {
     fn returns_what_was_stored_and_tracks_age() {
         let mut cache = PageCache::default();
         cache.put("a", vec!["one".to_owned()], 10.0);
+        assert_eq!(cache.stored_at("a"), Some(10.0));
+        assert_eq!(cache.stored_at("missing"), None);
         assert_eq!(cache.get::<Vec<String>>("a"), Some(vec!["one".to_owned()]));
         assert_eq!(cache.get::<u32>("a"), None, "another type under the same key is a miss");
         assert!(!cache.is_stale("a", 10.0 + REVISIT_FRESH.as_secs_f64() - 1.0));
@@ -331,6 +340,7 @@ mod tests {
         let mut restarted = PageCache::with_cold(cold);
         assert_eq!(restarted.get::<Vec<RepositoryInfo>>("repositories"), Some(repositories));
         assert!(restarted.is_stale("repositories", 0.0), "a saved answer refreshes at once");
+        assert_eq!(restarted.stored_at("repositories"), None, "it arrived in no frame of this run");
         assert_eq!(restarted.get::<Arc<[PipelineRun]>>("runs"), None);
     }
 
