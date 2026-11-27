@@ -22,7 +22,7 @@
 //! Emphasis delimiters follow `CommonMark`'s flanking rules only for the usual cases; each block's
 //! inline output is parsed back, and where that does not give the same marks, the block writes its
 //! emphasis as `<strong>`, `<em>` and `<del>`, which all three keep. Mentions follow
-//! `markdown_editor::PullRequestContext::mention`: `@login`, `@<id>` on Azure DevOps.
+//! `markdown_editor::mention_source`: `@login`, `@<id>` on Azure DevOps.
 
 use std::collections::HashMap;
 use std::sync::Arc;

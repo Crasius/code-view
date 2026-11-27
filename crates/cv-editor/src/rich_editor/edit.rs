@@ -270,17 +270,16 @@ pub(crate) fn has_mark(doc: &Document, selection: Selection, mark: Mark) -> bool
 }
 
 /// Adds `mark` to the selection, or removes it where all of the selection has it (see
-/// [`Marks::switch`]). Returns whether anything changed.
-pub(crate) fn toggle_mark(doc: &mut Document, selection: Selection, mark: Mark) -> bool {
+/// [`Marks::switch`]).
+pub(crate) fn toggle_mark(doc: &mut Document, selection: Selection, mark: Mark) {
     let ranges = text_ranges(doc, selection);
     if ranges.is_empty() {
-        return false;
+        return;
     }
     let is_on = !has_mark(doc, selection, mark);
     for (index, range) in ranges {
         doc.block_mut(index).content.map_marks(range, |marks| marks.switch(mark, is_on));
     }
-    true
 }
 
 /// Stored marks after a toggle at a bare caret.

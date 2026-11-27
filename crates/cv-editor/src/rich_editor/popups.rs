@@ -4,7 +4,6 @@
 
 use cv_base::theme::{self, icons, style};
 use egui::{Context, Id, Key, Order, Rect, RichText, Ui, vec2};
-use review_core::ProviderKind;
 
 use super::input::{self, Command, CommandContext, link_at};
 use super::model::{Link, Pos};
@@ -57,14 +56,6 @@ fn mention_query(state: &State, start: Pos) -> Option<String> {
     is_word.then_some(query)
 }
 
-/// The key a mention atom stores for `person`: the login, the identity id on Azure DevOps.
-fn mention_key(kind: ProviderKind, person: &Person) -> Option<String> {
-    match kind {
-        ProviderKind::AzureDevOps => (!person.id.is_empty()).then(|| person.id.clone()),
-        ProviderKind::GitHub | ProviderKind::GitLab => person.login.clone(),
-    }
-}
-
 fn mention(
     ctx: &Context,
     id: Id,
@@ -83,7 +74,7 @@ fn mention(
     let matches: Vec<(String, Person)> = people
         .matching(&query)
         .into_iter()
-        .filter_map(|person| mention_key(people.kind, person).map(|key| (key, person.clone())))
+        .filter_map(|person| people.mention_key(person).map(|key| (key, person.clone())))
         .collect();
     let selected = selected.min(matches.len().saturating_sub(1));
     let (up, down, take, close) = ctx.input_mut(|input| {

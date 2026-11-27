@@ -40,16 +40,17 @@ impl PullRequestContext {
             .map(|(_, context)| context)
     }
 
-    /// The Markdown that mentions `person` on this platform: `@login` on GitHub and GitLab,
-    /// `@<id>` on Azure DevOps (its documented identity syntax).
+    /// The Markdown that mentions `person` on this platform (see [`mention_source`]).
     pub(crate) fn mention(&self, person: &Person) -> Option<String> {
+        self.mention_key(person).map(|key| mention_source(self.kind, &key))
+    }
+
+    /// The key a mention of `person` names on this platform: the login, the identity id on
+    /// Azure DevOps.
+    pub(crate) fn mention_key(&self, person: &Person) -> Option<String> {
         match self.kind {
-            ProviderKind::AzureDevOps => {
-                (!person.id.is_empty()).then(|| format!("@<{}>", person.id))
-            }
-            ProviderKind::GitHub | ProviderKind::GitLab => {
-                person.login.as_ref().map(|login| format!("@{login}"))
-            }
+            ProviderKind::AzureDevOps => (!person.id.is_empty()).then(|| person.id.clone()),
+            ProviderKind::GitHub | ProviderKind::GitLab => person.login.clone(),
         }
     }
 
@@ -76,6 +77,15 @@ impl PullRequestContext {
             .collect();
         matches.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.display_name.cmp(&b.1.display_name)));
         matches.into_iter().map(|(_, person)| person).take(8).collect()
+    }
+}
+
+/// The Markdown that mentions `key` on `kind`: `@login` on GitHub and GitLab, `@<id>` on Azure
+/// DevOps (its documented identity syntax).
+pub(crate) fn mention_source(kind: ProviderKind, key: &str) -> String {
+    match kind {
+        ProviderKind::AzureDevOps => format!("@<{key}>"),
+        ProviderKind::GitHub | ProviderKind::GitLab => format!("@{key}"),
     }
 }
 

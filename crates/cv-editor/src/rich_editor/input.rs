@@ -106,38 +106,53 @@ fn selected_blocks(state: &State) -> (usize, usize) {
     (from.block, to.block)
 }
 
-/// Records an undo step of `kind`, then runs `change` and moves the caret where it says.
+/// Records `before`, the document and selection ahead of a command, as an undo step of `kind`
+/// when the command changed the document; a refused command ends the open group instead.
+/// Returns whether the document changed.
+fn commit(
+    state: &mut State,
+    context: &CommandContext<'_>,
+    kind: EditKind,
+    block: usize,
+    before: &(Document, Selection),
+) -> bool {
+    if state.doc == before.0 {
+        state.history.break_group();
+        return false;
+    }
+    state.history.record(&before.0, before.1, kind, block, context.now);
+    state.changed();
+    true
+}
+
+/// Runs `change`, moves the caret where it says and records an undo step of `kind`.
 fn edit(
     state: &mut State,
     context: &CommandContext<'_>,
     kind: EditKind,
     change: impl FnOnce(&mut Document, Selection) -> Pos,
 ) {
-    state.history.record(
-        &state.doc,
-        state.selection,
-        kind,
-        state.selection.head.block,
-        context.now,
-    );
+    let before = (state.doc.clone(), state.selection);
+    let block = state.selection.head.block;
     let caret = change(&mut state.doc, state.selection);
     state.selection = Selection::caret(state.doc.clamp(caret));
-    state.stored = None;
-    state.changed();
+    if commit(state, context, kind, block, &before) {
+        state.stored = None;
+    }
 }
 
-/// Records an undo step, then runs a block-level `change` over the selected blocks.
+/// Runs a block-level `change` over the selected blocks and records an undo step.
 fn restructure(
     state: &mut State,
     context: &CommandContext<'_>,
     change: impl FnOnce(&mut Document, usize, usize),
 ) {
+    let before = (state.doc.clone(), state.selection);
     let (first, last) = selected_blocks(state);
-    state.history.record(&state.doc, state.selection, EditKind::Other, first, context.now);
     change(&mut state.doc, first, last);
     let (from, to) = state.selection.ordered();
     state.selection = Selection { anchor: state.doc.clamp(from), head: state.doc.clamp(to) };
-    state.changed();
+    commit(state, context, EditKind::Other, first, &before);
 }
 
 fn run_one(state: &mut State, context: &CommandContext<'_>, command: Command, ran: &mut Ran) {
@@ -189,12 +204,8 @@ fn run_one(state: &mut State, context: &CommandContext<'_>, command: Command, ra
         Command::Indent { outdent } => indent(state, context, outdent),
         Command::ToggleTask(index) => {
             let before = (state.doc.clone(), state.selection);
-            if structure::toggle_task(&mut state.doc, index) {
-                state.history.record(&before.0, before.1, EditKind::Other, index, context.now);
-                state.changed();
-            } else {
-                state.history.break_group();
-            }
+            structure::toggle_task(&mut state.doc, index);
+            commit(state, context, EditKind::Other, index, &before);
         }
         Command::Undo => {
             if state.history.undo(&mut state.doc, &mut state.selection) {
@@ -322,17 +333,12 @@ fn indent(state: &mut State, context: &CommandContext<'_>, outdent: bool) {
     }
     let (first, last) = selected_blocks(state);
     let before = (state.doc.clone(), state.selection);
-    let moved = if outdent {
-        structure::outdent(&mut state.doc, first, last)
+    if outdent {
+        structure::outdent(&mut state.doc, first, last);
     } else {
-        structure::indent(&mut state.doc, first, last)
-    };
-    if moved {
-        state.history.record(&before.0, before.1, EditKind::Other, first, context.now);
-        state.changed();
-    } else {
-        state.history.break_group();
+        structure::indent(&mut state.doc, first, last);
     }
+    commit(state, context, EditKind::Other, first, &before);
 }
 
 fn toggle_mark(state: &mut State, context: &CommandContext<'_>, mark: Mark) {
@@ -346,13 +352,8 @@ fn toggle_mark(state: &mut State, context: &CommandContext<'_>, mark: Mark) {
         return;
     }
     let before = (state.doc.clone(), state.selection);
-    if edit_ops::toggle_mark(&mut state.doc, state.selection, mark) {
-        let block = state.selection.head.block;
-        state.history.record(&before.0, before.1, EditKind::Other, block, context.now);
-        state.changed();
-    } else {
-        state.history.break_group();
-    }
+    edit_ops::toggle_mark(&mut state.doc, state.selection, mark);
+    commit(state, context, EditKind::Other, state.selection.head.block, &before);
 }
 
 /// The link at the caret: its range in the caret's block and the link.

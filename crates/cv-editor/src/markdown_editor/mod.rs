@@ -41,6 +41,7 @@ use cv_markdown::RenderOptions;
 use egui::{EventFilter, Id, Key, Modifiers, RichText, TextEdit, Ui};
 use review_core::ProviderKind;
 
+pub(crate) use self::context::mention_source;
 pub use self::context::{FileContext, Person, PullRequestContext};
 use self::edits::{
     PendingCursor, active_formats, indent, newline, run_action, selection_of, smart_paste,
@@ -50,7 +51,7 @@ use self::keys::Requests;
 use self::layout::WriteCache;
 pub use self::preference::{publish as publish_editors, take_chosen as take_chosen_editors};
 use self::toolbar::{Action, Features, Mode};
-use self::toolbar_layout::{MAX_HEIGHT, ROW_HEIGHT, TEXT_MARGIN};
+use self::toolbar_layout::{ROW_HEIGHT, TEXT_MARGIN};
 use crate::rich_editor::{self, RichOptions};
 
 /// Posts the text.
@@ -253,25 +254,10 @@ impl Pass<'_> {
         {
             return self.rich(ui, text, state, platform, requests);
         }
-        let palette = theme::palette(ui.ctx());
-        let border = if has_focus {
-            egui::Stroke::new(2.0, palette.accent)
-        } else {
-            egui::Stroke::new(1.0, palette.border_strong)
-        };
-        let frame = egui::Frame::new().fill(palette.surface).corner_radius(style::RADIUS_CARD);
-        let shown = frame.show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.spacing_mut().item_spacing.y = 0.0;
+        toolbar_layout::framed(ui, has_focus, |ui| {
             if let Some(action) = self.toolbar(ui, text, cache, state) {
                 requests.action = Some(action);
             }
-            let divider_y = ui.cursor().top();
-            ui.painter().hline(
-                ui.max_rect().x_range(),
-                divider_y,
-                egui::Stroke::new(1.0, palette.border),
-            );
             let is_edited = self.run_requests(ui, text, cache, requests);
             let is_written = match state.mode {
                 Mode::Preview => {
@@ -281,14 +267,7 @@ impl Pass<'_> {
                 Mode::Markdown | Mode::Rich => self.write(ui, text, cache, state),
             };
             is_edited || is_written
-        });
-        ui.painter().rect_stroke(
-            shown.response.rect,
-            style::RADIUS_CARD,
-            border,
-            egui::StrokeKind::Inside,
-        );
-        shown.inner
+        })
     }
 
     /// The rich editor in its own frame, the mode switch leading its toolbar. It leaves Ctrl+Enter
@@ -330,19 +309,12 @@ impl Pass<'_> {
         cache: &mut WriteCache,
         state: &mut EditorState,
     ) -> Option<Action> {
-        let margin = egui::Frame::new().inner_margin(egui::Margin::symmetric(6, 6));
-        margin
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    toolbar::mode_switch(ui, self.id, &mut state.mode, self.platform.is_some());
-                    let model = cache.model_for(text);
-                    let active = active_formats(text, &model, selection_of(ui, self.edit_id, text));
-                    toolbar::show(ui, &active, &self.features, state.mode == Mode::Markdown)
-                })
-                .inner
-            })
-            .inner
+        toolbar_layout::toolbar_row(ui, |ui| {
+            toolbar::mode_switch(ui, self.id, &mut state.mode, self.platform.is_some());
+            let model = cache.model_for(text);
+            let active = active_formats(text, &model, selection_of(ui, self.edit_id, text));
+            toolbar::show(ui, &active, &self.features, state.mode == Mode::Markdown)
+        })
     }
 
     /// The toolbar's or a shortcut's action, the paste, Enter and Tab the editor took from the
@@ -379,8 +351,7 @@ impl Pass<'_> {
         cache: &mut WriteCache,
         state: &mut EditorState,
     ) -> bool {
-        let min_height = self.options.min_rows as f32 * ROW_HEIGHT + TEXT_MARGIN.sum().y;
-        let max_height = MAX_HEIGHT.min(ui.ctx().content_rect().height() * 0.5).max(min_height);
+        let (_, max_height) = toolbar_layout::text_area_heights(ui.ctx(), self.options.min_rows);
         egui::ScrollArea::vertical()
             .id_salt(self.id.with("scroll"))
             .max_height(max_height)

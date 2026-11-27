@@ -9,6 +9,7 @@ use review_core::ProviderKind;
 
 use super::longest_run;
 use super::prepare::{prepared, reads_back};
+use crate::markdown_editor::mention_source;
 use crate::rich_editor::model::{ATOM_CHAR, Atom, HARD_BREAK, Inline, Link, Mark, Run};
 
 /// Where inline content goes.
@@ -395,8 +396,7 @@ fn destination(url: &str) -> String {
 /// An atom as Markdown.
 fn atom_source(atom: &Atom, platform: ProviderKind) -> String {
     match atom {
-        Atom::Mention { key } if platform == ProviderKind::AzureDevOps => format!("@<{key}>"),
-        Atom::Mention { key } => format!("@{key}"),
+        Atom::Mention { key } => mention_source(platform, key),
         Atom::Image { src, alt, title } => {
             let alt = alt.replace('\\', "\\\\").replace('[', "\\[").replace(']', "\\]");
             let title = if title.is_empty() {

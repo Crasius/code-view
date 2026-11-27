@@ -1,7 +1,9 @@
-//! What the Markdown and the rich editor share, so they look the same: the text area's height
-//! and margin, and the formatting toolbar itself (its buttons, gaps, hairline dividers between
-//! groups, which groups fit the row and the "More formatting" menu for the rest). Each editor
-//! brings its own item tables and active state.
+//! What the Markdown and the rich editor share, so they look the same: the frame (`framed`: the
+//! surface card and its focus border), the toolbar row on top of it with the hairline under it
+//! (`toolbar_row`), the text area's heights (`text_area_heights`) and margin, and the formatting
+//! toolbar itself (its buttons, gaps, hairline dividers between groups, which groups fit the row
+//! and the "More formatting" menu for the rest). Each editor brings its own item tables, active
+//! state and scrolling body.
 
 use cv_base::theme::{self, icons, motion, style};
 use cv_widgets::{focus, glyph, row};
@@ -13,11 +15,61 @@ pub(crate) const BUTTON_GAP: f32 = 2.0;
 /// A divider's slot, its gaps to the buttons around it included.
 pub(crate) const DIVIDER_WIDTH: f32 = 13.0;
 /// The text area grows with its content up to this height, then scrolls.
-pub(crate) const MAX_HEIGHT: f32 = 360.0;
+const MAX_HEIGHT: f32 = 360.0;
 /// One row of body text in the text area.
 pub(crate) const ROW_HEIGHT: f32 = 22.0;
 /// The inset of the text inside the text area's frame.
 pub(crate) const TEXT_MARGIN: Margin = Margin::symmetric(12, 10);
+
+/// Draws `add` inside the editor's card: the surface fill, full width, no vertical item spacing,
+/// and a border that turns accent while the text has the focus.
+pub(crate) fn framed<R>(ui: &mut Ui, has_focus: bool, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let palette = theme::palette(ui.ctx());
+    let border = if has_focus {
+        Stroke::new(2.0, palette.accent)
+    } else {
+        Stroke::new(1.0, palette.border_strong)
+    };
+    let frame = egui::Frame::new().fill(palette.surface).corner_radius(style::RADIUS_CARD);
+    let shown = frame.show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.spacing_mut().item_spacing.y = 0.0;
+        add(ui)
+    });
+    ui.painter().rect_stroke(
+        shown.response.rect,
+        style::RADIUS_CARD,
+        border,
+        egui::StrokeKind::Inside,
+    );
+    shown.inner
+}
+
+/// Draws `add` as the toolbar row at the top of the card, then the hairline under it.
+pub(crate) fn toolbar_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let inner = egui::Frame::new()
+        .inner_margin(Margin::symmetric(6, 6))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(add).inner
+        })
+        .inner;
+    let palette = theme::palette(ui.ctx());
+    ui.painter().hline(
+        ui.max_rect().x_range(),
+        ui.cursor().top(),
+        Stroke::new(1.0, palette.border),
+    );
+    inner
+}
+
+/// The text area's least and greatest height for `min_rows` rows: it grows with its content up
+/// to [`MAX_HEIGHT`] or half the window, whichever is less, then scrolls.
+pub(crate) fn text_area_heights(ctx: &egui::Context, min_rows: usize) -> (f32, f32) {
+    let min_height = min_rows as f32 * ROW_HEIGHT + TEXT_MARGIN.sum().y;
+    let max_height = MAX_HEIGHT.min(ctx.content_rect().height() * 0.5).max(min_height);
+    (min_height, max_height)
+}
 
 /// One toolbar button: what it does, how it looks and the shortcut its tooltip names.
 pub(crate) struct Item<A> {
