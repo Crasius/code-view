@@ -10,7 +10,9 @@
 
 pub mod swipe;
 
-use super::route::{PullRequestTab, Route};
+use review_store::PullRequestTab;
+
+use super::route::Route;
 use super::trail::Trail;
 
 /// Entries kept on each stack.
@@ -112,7 +114,9 @@ fn push_bounded(stack: &mut Vec<Visit>, visit: Visit) {
 #[cfg(test)]
 mod tests {
     use super::{History, LIMIT, Place, Step, Visit};
-    use crate::route::{PullRequestKey, PullRequestTab, Route};
+    use review_store::PullRequestTab;
+
+    use crate::route::{PullRequestKey, Route};
     use crate::trail::Trail;
 
     fn visit(place: Place) -> Visit {

@@ -32,12 +32,14 @@ mod tab;
 #[cfg(test)]
 mod threads_shots;
 
+#[cfg(any(test, feature = "test-support"))]
+pub use self::tab::probe;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use review_core::{DiffSide, ProviderKind};
 use review_git::{ChangedFile, FileDiff};
-use review_store::{DiffLayout, FileFilters, FilesStart, LastTab};
+use review_store::{DiffLayout, FileFilters, FilesStart, PullRequestTab};
 
 use self::origin_view::OriginView;
 use self::tab::choices::{
@@ -72,11 +74,10 @@ use cv_services::Services;
 pub struct FilesTab {
     viewed: ViewedMarks,
     tree: FileTree,
-    /// The open file. It, the diffs, the view and the preview are `pub` for the page's walkthroughs.
-    pub selected_path: Option<String>,
-    pub diffs: FileDiffs,
-    pub view: DiffView,
-    pub preview: Preview,
+    selected_path: Option<String>,
+    diffs: FileDiffs,
+    view: DiffView,
+    preview: Preview,
     /// The file of the thread the user jumped to, opened once the files show.
     pending_reveal: Option<String>,
     download: Download,
@@ -145,12 +146,12 @@ impl FilesTab {
     }
 
     /// The tab the user left the pull request on, if they ever left it.
-    pub fn last_tab(&self) -> Option<LastTab> {
+    pub fn last_tab(&self) -> Option<PullRequestTab> {
         resume::last_tab(self)
     }
 
     /// Saves where the user is (see [`resume::remember_place`]).
-    pub fn remember_place(&mut self, services: &mut Services, tab: LastTab) {
+    pub fn remember_place(&mut self, services: &mut Services, tab: PullRequestTab) {
         resume::remember_place(self, services, tab);
     }
 
@@ -174,6 +175,11 @@ impl FilesTab {
     #[cfg(any(test, feature = "test-support"))]
     pub fn has_cached_diff(&self, path: &str) -> bool {
         self.diffs.has_cached_diff(path)
+    }
+
+    /// The page went out of sight: see [`tab::hibernate`].
+    pub fn hibernate(&mut self) {
+        tab::hibernate::hibernate(self);
     }
 
     /// The progress line or a toast asked for the Overview since the last call.
@@ -626,15 +632,11 @@ impl FilesTab {
     /// The original version of a thread, while one is open (or was asked for): true when it took
     /// the place of the file view this frame.
     fn show_origin(&mut self, ui: &mut egui::Ui, env: &mut Env<'_>) -> bool {
-        match origin::show(&mut self.origin, ui, env) {
-            Shown::No => false,
-            Shown::Yes(jump) => {
-                if let Some(jump) = jump {
-                    self.jump(jump);
-                }
-                true
-            }
+        let Shown::Yes(jump) = origin::show(&mut self.origin, ui, env) else { return false };
+        if let Some(jump) = jump {
+            self.jump(jump);
         }
+        true
     }
 
     /// Closes the open file and shows the summary of `folder` (`""` for every changed file).
@@ -729,10 +731,8 @@ impl FilesTab {
         self.diffs.load_ahead(env.session, env.services, files, open, &self.tree, &self.preview);
     }
 
-    /// The open file's index in `files`.
     fn selected_index(&self, files: &[ChangedFile]) -> Option<usize> {
-        let path = self.selected_path.as_ref()?;
-        files.iter().position(|file| &file.path == path)
+        files.iter().position(|file| self.selected_path.as_ref() == Some(&file.path))
     }
 }
 

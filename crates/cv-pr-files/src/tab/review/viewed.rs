@@ -4,7 +4,7 @@
 //! opens there again after a restart and retention keeps or drops both together.
 
 use review_git::ChangedFile;
-use review_store::{LastPlace, LastTab, ViewedFiles};
+use review_store::{LastPlace, PullRequestTab, ViewedFiles};
 
 use cv_runtime::route::PullRequestKey;
 use cv_runtime::toasts::ToastAction;
@@ -57,7 +57,12 @@ impl ViewedMarks {
 
     /// Saves `tab` and `file` as where the user is, when that changed; a failure to save shows as
     /// a toast, once (the place is kept in memory and not tried again until it changes).
-    pub fn remember_place(&mut self, services: &mut Services, tab: LastTab, file: Option<&str>) {
+    pub fn remember_place(
+        &mut self,
+        services: &mut Services,
+        tab: PullRequestTab,
+        file: Option<&str>,
+    ) {
         let Some(store) = self.store.as_mut() else {
             return;
         };

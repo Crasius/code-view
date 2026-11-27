@@ -8,7 +8,7 @@ use cv_base::theme::icons;
 use cv_runtime::history::{History, Place, Step};
 use cv_runtime::route::Navigator;
 use cv_services::Services;
-use cv_shell::top_bar;
+use cv_shell::breadcrumbs;
 use cv_widgets::buttons;
 
 /// The room both arrows take.
@@ -64,7 +64,7 @@ fn shortcut(step: Step) -> &'static str {
 
 /// "Repositories", or "Pull request #7, Files tab" for a pull request.
 fn place_name(place: &Place, services: &Services) -> String {
-    let page = top_bar::crumb_text(&place.route, services);
+    let page = breadcrumbs::crumb_text(&place.route, services);
     match place.tab {
         Some(tab) => format!("{page}, {} tab", tab.name()),
         None => page,

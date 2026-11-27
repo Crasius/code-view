@@ -14,7 +14,6 @@ pub mod checkout;
 mod commits;
 mod header;
 mod header_reveal;
-mod hibernate;
 mod live;
 mod merge_button;
 mod overview;
@@ -29,7 +28,7 @@ mod vote_comment;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use review_store::{LastTab, PullRequestStart};
+use review_store::{PullRequestStart, PullRequestTab as Tab};
 
 use self::checkout::CheckoutButton;
 use self::header_reveal::HeaderReveal;
@@ -52,9 +51,9 @@ use cv_runtime::intents;
 use cv_runtime::links::link_target::Here;
 use cv_runtime::links::pull_request_link;
 use cv_runtime::load::Live;
-use cv_runtime::route::{Navigator, PullRequestKey, PullRequestTab as Tab, Route};
+use cv_runtime::route::{Navigator, PullRequestKey, Route};
 use cv_services::Services;
-use cv_shell::{focus_mode, top_bar};
+use cv_shell::{breadcrumbs, focus_mode};
 use cv_widgets::states::{self, Action};
 use cv_widgets::{provider_icon, skeleton};
 use review_core::http::Api;
@@ -100,7 +99,7 @@ impl PullRequestPage {
         let threads = ThreadsUi::new(&key, kind, services);
         let assistant = Assistant::new(&key, services);
         let session = open_session(&key, services);
-        let tab = files.last_tab().map_or_else(|| start_tab(services), tab_of);
+        let tab = files.last_tab().unwrap_or_else(|| start_tab(services));
         Self {
             key,
             session,
@@ -129,6 +128,12 @@ impl PullRequestPage {
             session.revisit(services);
         }
         self.header_reveal.reset();
+    }
+
+    /// The page went out of sight: its Files tab drops what loads again and keeps what the user
+    /// did (`cv_pr_files`, `tab/hibernate.rs`).
+    pub fn hibernate(&mut self) {
+        self.files.hibernate();
     }
 
     /// The languages whose compiled grammars the page keeps.
@@ -265,7 +270,7 @@ impl PullRequestPage {
             *tab = Tab::Files;
             *tab_entered_at = Some(now);
         }
-        files.remember_place(services, stored_tab(*tab));
+        files.remember_place(services, *tab);
     }
 }
 
@@ -283,26 +288,6 @@ fn start_tab(services: &Services) -> Tab {
     match services.settings.pull_request_start {
         PullRequestStart::Overview => Tab::Overview,
         PullRequestStart::Files => Tab::Files,
-    }
-}
-
-/// `tab` as the pull request's saved place keeps it.
-fn stored_tab(tab: Tab) -> LastTab {
-    match tab {
-        Tab::Overview => LastTab::Overview,
-        Tab::Files => LastTab::Files,
-        Tab::Commits => LastTab::Commits,
-        Tab::Pipelines => LastTab::Pipelines,
-    }
-}
-
-/// The tab of a saved place.
-fn tab_of(tab: LastTab) -> Tab {
-    match tab {
-        LastTab::Overview => Tab::Overview,
-        LastTab::Files => Tab::Files,
-        LastTab::Commits => Tab::Commits,
-        LastTab::Pipelines => Tab::Pipelines,
     }
 }
 
@@ -367,7 +352,7 @@ impl TabParts<'_> {
 
     /// The trail is the shown tab's: its levels lead within that tab.
     fn follow_trail_click(&mut self, ctx: &egui::Context, tab: &mut Tab) {
-        let Some(level) = top_bar::take_trail_click(ctx) else {
+        let Some(level) = breadcrumbs::take_trail_click(ctx) else {
             return;
         };
         match tab {
@@ -453,7 +438,7 @@ impl TabParts<'_> {
             }
             Tab::Overview | Tab::Files | Tab::Commits => ("", Vec::new()),
         };
-        top_bar::publish_trail(ctx, &Route::PullRequest(key.clone()), root_hint, trail);
+        breadcrumbs::publish_trail(ctx, &Route::PullRequest(key.clone()), root_hint, trail);
     }
 }
 
