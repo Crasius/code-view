@@ -188,14 +188,8 @@ mod tests {
         // Held here, so the process budget never drops them while other tests compile theirs.
         let _held: Vec<_> = grammars.iter().map(|grammar| grammar::compiled(*grammar)).collect();
         let _warm_up = start(files_of(&paths.map(|path| (path, 1))), Some("d.toml".into()));
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-        while !grammars.iter().all(|grammar| grammar::is_warmed(*grammar)) {
-            assert!(std::time::Instant::now() < deadline, "every language warms within a minute");
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "the warm-up reports to nobody; the test looks again shortly"
-            )]
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
+        cv_testkit::poll_until("every language warmed", || {
+            grammars.iter().all(|grammar| grammar::is_warmed(*grammar))
+        });
     }
 }

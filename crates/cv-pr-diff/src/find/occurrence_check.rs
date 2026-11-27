@@ -14,7 +14,6 @@ use cv_base::theme;
 use cv_code::diff_rows::Layout;
 use cv_code::find_paint::{self as paint, MarkLook, last_marks};
 use cv_code::line_source::Pane;
-use cv_testkit as test_support;
 
 /// The line that changes; "count" is on it in both versions.
 const CHANGED: u32 = 30;
@@ -73,7 +72,7 @@ fn drag(harness: &mut Harness<'_, Fixture>, from: Pos2, to: Pos2) {
 
 /// Steps until the occurrences are found; their rows and overview ticks.
 fn wait_for_occurrences(harness: &mut Harness<'_, Fixture>) -> OccurrenceRows {
-    test_support::poll_for("the occurrences", || {
+    cv_testkit::poll_for("the occurrences", || {
         harness.step();
         harness.state().view.occurrences()
     })
@@ -134,7 +133,7 @@ fn a_selected_word_marks_its_other_occurrences_in_the_whole_file() {
 
 /// Steps until the find widget's count passes `is_expected`.
 fn wait_for_count(harness: &mut Harness<'_, Fixture>, is_expected: impl Fn(&str) -> bool) {
-    test_support::poll_until("the find count", || {
+    cv_testkit::poll_until("the find count", || {
         harness.step();
         last_bar(&harness.ctx).is_some_and(|shown| is_expected(&shown.count))
     });

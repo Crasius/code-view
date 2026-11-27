@@ -5,11 +5,11 @@
 use egui::{Label, RichText, Sense, Ui, vec2};
 use review_git::{EdgeChange, WhitespaceSummary};
 
-use crate::notice::{self, Action};
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, icons, style};
 use cv_pr_session::web_link::WebLink;
 use cv_widgets::numbers::group_digits;
+use cv_widgets::states::{self, Action};
 use cv_widgets::{buttons, glyph};
 
 /// One line of text and the action, whatever the summary says: the diff below never moves when
@@ -191,22 +191,14 @@ pub fn banner(ui: &mut Ui, summary: &WhitespaceSummary, ignores_whitespace: bool
 /// "Ignore whitespace" left this file without changes: say so and offer to show them. Returns
 /// `Some(true)` for "Show whitespace changes", `Some(false)` for the platform link.
 pub fn hidden_notice(ui: &mut Ui, web_link: Option<&WebLink>) -> Option<bool> {
-    let palette = theme::palette(ui.ctx());
-    let mut actions = vec![Action { icon: icons::EYE, label: SHOW_LABEL, is_primary: true }];
+    let mut actions = vec![Action::primary(icons::EYE, SHOW_LABEL)];
     if let Some(link) = web_link {
-        actions.push(Action { icon: link.icon, label: &link.label, is_primary: false });
+        actions.push(Action::secondary(link.icon, &link.label));
     }
     let detail =
         "Every change in this file is whitespace or a line ending, which Ignore whitespace hides.";
-    notice::show(
-        ui,
-        icons::EYE_SLASH,
-        palette.text_secondary,
-        "Only whitespace changed",
-        detail,
-        &actions,
-    )
-    .map(|index| index == 0)
+    states::message_with_actions(ui, icons::EYE_SLASH, "Only whitespace changed", detail, &actions)
+        .map(|index| index == 0)
 }
 
 #[cfg(test)]

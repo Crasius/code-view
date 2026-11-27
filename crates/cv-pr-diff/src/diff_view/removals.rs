@@ -7,12 +7,12 @@ use review_git::{FileDiff, LineKind};
 
 use super::frame::Frame;
 use super::{DiffEvent, DiffInputs};
-use crate::notice::{self, Action};
 use crate::removal_popover::{self, PopoverAction, PopoverInputs, RemovalPopover};
-use cv_base::theme::{self, icons};
+use cv_base::theme::icons;
 use cv_code::diff_paint::Metrics;
 use cv_code::diff_rows::{self, Layout, Row};
 use cv_widgets::numbers::group_digits;
+use cv_widgets::states::{self, Action};
 
 /// The wedge of removal row `row_index`, `row`, on the boundary at `top` between the rows around
 /// it, in rows `total_height` tall.
@@ -80,7 +80,6 @@ pub(super) fn show_popover(
 
 /// New only for a deleted or emptied file: say so and offer the layouts that show the removed lines.
 pub(super) fn show_empty_head(ui: &mut Ui, diff: &FileDiff) -> Option<DiffEvent> {
-    let palette = theme::palette(ui.ctx());
     let removed = diff.lines().iter().filter(|line| line.kind == LineKind::Deleted).count();
     let detail = match removed {
         1 => "Its only line was removed, so New only has nothing to show.".to_owned(),
@@ -90,13 +89,12 @@ pub(super) fn show_empty_head(ui: &mut Ui, diff: &FileDiff) -> Option<DiffEvent>
         ),
     };
     let actions = [
-        Action { icon: icons::ROWS, label: "Show inline", is_primary: true },
-        Action { icon: icons::COLUMNS, label: "Show side by side", is_primary: false },
+        Action::primary(icons::ROWS, "Show inline"),
+        Action::secondary(icons::COLUMNS, "Show side by side"),
     ];
-    match notice::show(
+    match states::message_with_actions(
         ui,
         icons::FILE_MINUS,
-        palette.text_secondary,
         "The new version is empty",
         &detail,
         &actions,

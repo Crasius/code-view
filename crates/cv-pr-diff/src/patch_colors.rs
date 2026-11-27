@@ -820,9 +820,7 @@ mod tests {
     #[test]
     fn large_colors_go_to_the_disk_tier_and_come_back() {
         let dir = cv_testkit::ScratchDir::new("patch-colors-cold");
-        let paths =
-            review_store::AppPaths::new(dir.path().join("config"), dir.path().join("cache"));
-        let cold = ColdTier::new(&paths);
+        let cold = ColdTier::new(&dir.app_paths());
         let body = "+let a = 1;\n".repeat(COLD_MIN_LINES);
         let diff = Arc::new(FileDiff::parse_unified(
             format!("@@ -0,0 +1,{COLD_MIN_LINES} @@\n{body}").as_bytes(),
@@ -830,7 +828,7 @@ mod tests {
         let (key, ctx) = (key("src/cold.rs"), egui::Context::default());
         let repaints = observe_repaints(&ctx);
         let stored_is = |wanted: &LineSpans| {
-            let deadline = Instant::now() + Duration::from_secs(30);
+            let deadline = Instant::now() + cv_testkit::WAIT_LIMIT;
             loop {
                 let stored = cold.read(COLD_KIND, COLD_VERSION, &cold_key(&key));
                 if stored.and_then(|bytes| decode(&bytes)).as_ref() == Some(wanted) {

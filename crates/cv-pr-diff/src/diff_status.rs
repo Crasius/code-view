@@ -2,11 +2,12 @@
 //! to say: syntax coloring progress on large files, why a file stays plain, or why the full file
 //! could not be loaded, each with the action that resolves it. Floating means it never shifts rows.
 
-use egui::{Align2, Area, Frame, Id, Margin, Order, Rect, RichText, Ui, vec2};
+use egui::{Align2, Area, Frame, Id, Margin, Order, Rect, RichText, Sense, Ui, vec2};
 
 use cv_base::theme::{self, icons};
 use cv_code::contents::{Coloring, FileContents};
-use cv_widgets::{buttons, glyph};
+use cv_widgets::numbers::format_bytes;
+use cv_widgets::{buttons, glyph, states};
 
 /// Files with fewer lines color fast enough that a progress note would only flicker.
 const PROGRESS_MIN_LINES: usize = 20_000;
@@ -47,7 +48,13 @@ pub fn show(ui: &Ui, viewport: Rect, contents: Option<&FileContents>) -> Option<
                     ui.set_max_width(viewport.width() * 0.6);
                     ui.horizontal(|ui| match status {
                         Status::Coloring(percent) => {
-                            ui.spinner();
+                            let size = ui.spacing().interact_size.y;
+                            let (rect, response) =
+                                ui.allocate_exact_size(vec2(size, size), Sense::hover());
+                            response.widget_info(|| {
+                                egui::WidgetInfo::new(egui::Role::ProgressIndicator)
+                            });
+                            states::spinner(ui, rect, palette.text_secondary);
                             ui.label(
                                 RichText::new(format!("Coloring syntax… {percent}%"))
                                     .color(palette.text_secondary),
@@ -61,7 +68,7 @@ pub fn show(ui: &Ui, viewport: Rect, contents: Option<&FileContents>) -> Option<
                             ui.label(
                                 RichText::new(format!(
                                     "Syntax colors are off for this {} file",
-                                    format_size(bytes)
+                                    format_bytes(u64::try_from(bytes).unwrap_or(u64::MAX))
                                 ))
                                 .color(palette.text_secondary),
                             );
@@ -96,9 +103,4 @@ enum Status<'a> {
     Coloring(usize),
     Skipped(usize),
     Failed(&'a str),
-}
-
-fn format_size(bytes: usize) -> String {
-    const MIB: f64 = 1024.0 * 1024.0;
-    format!("{:.1} MB", bytes as f64 / MIB)
 }

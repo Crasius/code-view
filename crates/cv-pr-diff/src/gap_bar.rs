@@ -3,8 +3,9 @@
 
 use egui::{Align2, Color32, CursorIcon, FontId, Id, Rect, Sense, Stroke, Ui, pos2, vec2};
 
+use cv_base::theme::motion::mix;
 use cv_base::theme::{self, Palette, icons, style};
-use cv_code::diff_paint::{Metrics, mix};
+use cv_code::diff_paint::Metrics;
 use cv_code::gaps::{EXPAND_STEP, Expand, Gap, Reveal};
 use cv_widgets::numbers::group_digits;
 
