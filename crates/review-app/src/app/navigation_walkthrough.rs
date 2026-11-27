@@ -25,9 +25,9 @@ use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use cv_base::platform;
 use cv_runtime::route::{PullRequestKey, PullRequestTab, Route};
+use cv_testkit::Clicks;
 use cv_testkit::{ScratchDir, git};
 
 const CONNECTION_ID: &str = "local-navigation";

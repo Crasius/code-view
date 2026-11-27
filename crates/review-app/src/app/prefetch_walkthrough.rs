@@ -12,8 +12,8 @@ use review_store::FilesStart;
 
 use super::ReviewApp;
 use super::action_e2e::{app, has_cached_diff, open_pull_request, settle_background, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{ExtraFile, GitHubHost};
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
 
 const A: &str = "src/cart/a.rs";

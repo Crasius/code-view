@@ -24,8 +24,8 @@ use review_store::{AppPaths, AppSettings, ConnectionStore, DiffLayout, PaneSizes
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use cv_runtime::route::{PullRequestKey, Route};
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir, git};
 use cv_widgets::skeleton;
 

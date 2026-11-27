@@ -16,8 +16,8 @@ use serde_json::{Value, json};
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, press_button, settle_background, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, OwnComment, REPOSITORY, THREAD_TEXT};
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 const MENU: &str = "Comment actions";

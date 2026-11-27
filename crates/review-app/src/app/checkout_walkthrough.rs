@@ -17,10 +17,10 @@ use review_store::AppSettings;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, press, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY};
 use cv_runtime::route::Route;
 use cv_services::agents::FakeCli;
+use cv_testkit::Clicks;
 use cv_testkit::{ScratchDir, git};
 
 const POPOVER_TITLE: &str = "Check out #7 locally";

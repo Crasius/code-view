@@ -136,6 +136,7 @@ fn rail_item(
 #[cfg(test)]
 mod tests {
     use cv_runtime::route::{Navigator, Section};
+    use cv_testkit::Clicks;
     use egui::Role;
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
@@ -156,7 +157,7 @@ mod tests {
         let settings = harness.get_by_role_and_label(Role::Button, "Settings and connections");
         let (button_bottom, settings_top) = (button.rect().bottom(), settings.rect().top());
         assert!(button_bottom <= settings_top, "the coffee button sits above Settings");
-        button.click();
+        harness.click_at(button.rect());
         harness.step();
         let opened: Vec<String> = harness
             .output()

@@ -18,9 +18,9 @@ use serde_json::Value;
 
 use super::ReviewApp;
 use super::action_e2e::{app, open_pull_request, type_into, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{FILE, GitHubHost};
 use cv_services::agents::FakeCli;
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
 use cv_widgets::buttons;
 

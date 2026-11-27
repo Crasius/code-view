@@ -3,6 +3,7 @@
 //! network, no tokens.
 
 use cv_base::theme;
+use cv_testkit::Clicks;
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -222,7 +223,13 @@ fn stage_view_without_token_offers_add_a_token() {
         reruns.iter().all(|rerun| rerun.accesskit_node().is_disabled()),
         "reruns stay visible but disabled without a token"
     );
-    harness.get_all_by_label("Add a token to rerun").next().expect("a way to add a token").click();
+    harness.click_at(
+        harness
+            .get_all_by_label("Add a token to rerun")
+            .next()
+            .expect("a way to add a token")
+            .rect(),
+    );
     harness.run();
     assert_eq!(harness.state().last.as_deref(), Some("add token"));
 }
@@ -232,31 +239,32 @@ fn stage_view_opens_logs_toggles_cards_and_reruns() {
     let mut harness = harness(sample_pipeline(), ThemePreference::Light, true);
     harness.run();
     // The failed stage opens expanded; its failed job opens the log.
-    harness.get_by_label("Apply infrastructure in Azure").click();
+    harness.click_at(harness.get_by_label("Apply infrastructure in Azure").rect());
     harness.run();
     assert_eq!(harness.state().last.as_deref(), Some("log Apply infrastructure in Azure 1:12"));
     // Every stage opens expanded; the failed stage's card is the one under its job.
     let job_x = harness.get_by_label("Apply infrastructure in Azure").rect().center().x;
-    harness
+    let retry = harness
         .get_all_by_label("Retry stage")
         .find(|button| button.rect().x_range().contains(job_x))
         .expect("the failed stage offers a retry")
-        .click();
+        .rect();
+    harness.click_at(retry);
     harness.run();
     assert_eq!(harness.state().last.as_deref(), Some("rerun StageFailed 1:infra_apps"));
     // A collapsed stage hides its jobs until it is expanded again.
-    harness.get_by_label("Collapse stage Infra Shared").click();
+    harness.click_at(harness.get_by_label("Collapse stage Infra Shared").rect());
     harness.run();
     assert!(harness.query_by_label("Pulumi Up").is_none());
-    harness.get_by_label("Expand stage Infra Shared").click();
+    harness.click_at(harness.get_by_label("Expand stage Infra Shared").rect());
     harness.run();
     assert!(harness.query_by_label("Pulumi Up").is_some());
     // The header opens the stage's log.
-    harness.get_by_label("Stage Build").click();
+    harness.click_at(harness.get_by_label("Stage Build").rect());
     harness.run();
     assert_eq!(harness.state().last.as_deref(), Some("log Build and Tag Images 1:8"));
     // Jobs pivot: one flat list.
-    harness.get_by_label("Jobs").click();
+    harness.click_at(harness.get_by_label("Jobs").rect());
     harness.run();
     assert!(harness.query_by_label("Job keycloak").is_some());
 }

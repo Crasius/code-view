@@ -21,10 +21,10 @@ use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::clicks::Clicks;
 use super::navigation_walkthrough::{Fixture, create_origin};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
 
 const TIMEOUT: Duration = Duration::from_secs(60);

@@ -12,10 +12,10 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_core::{MergeStrategy, ProviderKind};
 
-use super::super::clicks::Clicks;
 use super::{
     Calls, POLICIES, ReviewApp, button, has, open, opened_urls, press, start_on, wait_for,
 };
+use cv_testkit::Clicks;
 
 /// (set, armed set, state line, cancel, armed cancel) as the platform words them.
 struct Words {

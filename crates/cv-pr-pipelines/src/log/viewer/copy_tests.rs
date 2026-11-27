@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use cv_base::theme;
 use cv_runtime::background::Background;
 use cv_runtime::toasts::Toasts;
+use cv_testkit::Clicks;
 use egui::{Key, Modifiers, OutputCommand};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -140,7 +141,7 @@ fn copy_log_puts_plain_text_on_the_clipboard() {
     harness.run();
     let search = rect_of(&harness, NEXT_MATCH_HINT);
 
-    harness.get_by_label("Copy log").click();
+    harness.click_at(harness.get_by_label("Copy log").rect());
     assert_eq!(
         wait_for_copy(&mut harness),
         PLAIN,

@@ -4,6 +4,7 @@
 //! back with the text, the reason and Retry, again with an ease. Measured frame by frame at 120 Hz
 //! on the code line below the comment and on the comment's own text.
 
+use cv_testkit::Clicks;
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -224,7 +225,7 @@ fn posting_a_new_thread_hands_the_composer_to_the_comment_in_place() {
     write_comment(&mut harness);
     let (composer_below, above) = (below_y(&harness), line_y(&harness));
 
-    harness.get_by_role_and_label(Role::Button, "Comment").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Comment").rect());
     let folding = record(&mut harness, 40);
     let (key, new) =
         harness.state().posted.first().cloned().expect("the view asked to post the thread");
@@ -276,7 +277,7 @@ fn a_failed_post_brings_the_composer_back_with_the_text_and_retry() {
     let mut harness = harness();
     write_comment(&mut harness);
     let composer_below = below_y(&harness);
-    harness.get_by_role_and_label(Role::Button, "Comment").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Comment").rect());
     record(&mut harness, 40);
     let (key, new) = harness.state().posted.first().cloned().expect("posted");
     let pending_below = below_y(&harness);
@@ -301,7 +302,7 @@ fn a_failed_post_brings_the_composer_back_with_the_text_and_retry() {
     );
     assert!(harness.query_by_label("Posting…").is_none(), "nothing claims to be on its way");
 
-    harness.get_by_role_and_label(Role::Button, "Retry").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Retry").rect());
     harness.step();
     harness.state_mut().fixture.threads_ui.retry_for_tests(&key);
     let refolding = record(&mut harness, 40);
@@ -362,13 +363,13 @@ fn a_reply_hands_its_composer_to_the_reply_in_place() {
     };
     harness.state_mut().fixture.threads.push(thread);
     harness.run_steps(30);
-    harness.get_by_role_and_label(Role::Button, "Reply").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Reply").rect());
     harness.run_steps(30);
     harness.event(egui::Event::Text(BODY.to_owned()));
     harness.run_steps(30);
     let composer_below = below_y(&harness);
 
-    harness.get_by_role_and_label(Role::Button, "Reply").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Reply").rect());
     let folding = record(&mut harness, 40);
     let pending_below = below_y(&harness);
     assert_eased("reply", &folding, composer_below, pending_below);

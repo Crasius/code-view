@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use cv_testkit::Clicks;
 use egui::{Modifiers, Pos2, Rect, Role, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable};
@@ -179,7 +180,7 @@ fn a_push_that_leaves_the_open_file_alone_keeps_its_place() {
 fn a_push_leaves_a_rendered_markdown_file_in_place() {
     let mut app = App::start("keep-place-markdown");
     let pane = app.harness.get_by_label_contains(&format!("Diff of {BIG}")).rect();
-    app.harness.get_by_role_and_label(Role::TreeItem, GUIDE).click();
+    app.harness.click_at(app.harness.get_by_role_and_label(Role::TreeItem, GUIDE).rect());
     let started = Instant::now();
     while app.rendered().1.is_none() || !app.is_settled() {
         assert!(started.elapsed() < REAL_LIMIT, "{GUIDE} did not render");

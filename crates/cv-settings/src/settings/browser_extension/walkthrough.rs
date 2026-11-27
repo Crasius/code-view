@@ -11,6 +11,7 @@ use cv_runtime::route::Navigator;
 use cv_services::Services;
 use cv_shell::browser::registration::{KeyStore, MemoryKeys, Registry};
 use cv_shell::browser::{self, HOST_NAME};
+use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 use egui::Role;
 use egui_kittest::Harness;
@@ -107,7 +108,7 @@ fn browser_extension_walkthrough_updates_unregisters_and_opens_the_folder() {
     assert!(has_button(&harness, "Update") && has_button(&harness, "Unregister"));
     assert!(!has_button(&harness, "Register"));
 
-    harness.get_by_role_and_label(Role::Button, "Update").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Update").rect());
     wait_for(&mut harness, "the registration", |harness| {
         has(harness, "Registered for Chrome and Edge")
     });
@@ -130,7 +131,7 @@ fn browser_extension_walkthrough_updates_unregisters_and_opens_the_folder() {
     assert!(has_button(&harness, "Unregister") && !has_button(&harness, "Update"));
     assert!(has(&harness, "Load unpacked"), "the one-line instruction");
 
-    harness.get_by_role_and_label(Role::Button, "Unregister").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Unregister").rect());
     wait_for(&mut harness, "the unregistration", |harness| has(harness, "Not registered"));
     assert!(has_button(&harness, "Register") && !has_button(&harness, "Unregister"));
     // The rows are as tall as their content: they once each took all the height left below them,
@@ -151,7 +152,7 @@ fn browser_extension_walkthrough_updates_unregisters_and_opens_the_folder() {
     assert!(!manifest.exists());
 
     std::fs::remove_dir_all(&unpacked).expect("remove the unpacked extension");
-    harness.get_by_role_and_label(Role::Button, "Open extension folder").click();
+    harness.click_at(harness.get_by_role_and_label(Role::Button, "Open extension folder").rect());
     wait_for(&mut harness, "the folder", |harness| {
         cv_runtime::toasts::opened_folder(&harness.ctx).is_some()
     });

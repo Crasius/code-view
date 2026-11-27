@@ -21,13 +21,13 @@ use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
 use super::action_e2e::LIMIT;
-use super::clicks::Clicks;
 use super::startup;
 use cv_lists::pull_request_list::LIST_INTERVAL;
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_settings::onboarding::CliTools;
 use cv_shell::attention::{Attention, PAUSE};
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, git_in};
 
 const MOCK_TOKEN: &str = "glpat-mock-only";

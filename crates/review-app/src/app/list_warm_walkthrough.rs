@@ -15,10 +15,10 @@ use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 use super::ReviewApp;
 use super::action_e2e::{app, wait_until};
-use super::clicks::Clicks;
 use super::github_mock::{GitHubHost, NUMBER, OWNER, REPOSITORY, TITLE, search_row};
 use super::request_budget::wait_idle;
 use cv_runtime::route::{PullRequestKey, Route};
+use cv_testkit::Clicks;
 use cv_testkit::{self as test_support, ScratchDir};
 
 /// Longer than any test runs: the detail never arrives while the header is checked.
