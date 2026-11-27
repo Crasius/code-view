@@ -203,15 +203,9 @@ impl Checkouts {
         self.clones.found(key)
     }
 
-    /// Looks for the clone of `key`'s repository (named `name`) as `query` says.
-    pub fn look_up(
-        &mut self,
-        key: &PullRequestKey,
-        name: &str,
-        query: Query,
-        background: &Background,
-    ) {
-        self.clones.look_up(key, (settings_key(key), name.to_owned()), query, background);
+    /// Looks for the clone of `key`'s repository as `query` says.
+    pub fn look_up(&mut self, key: &PullRequestKey, query: Query, background: &Background) {
+        self.clones.look_up(key, query, background);
     }
 
     /// Repositories looked up in this app run, by their settings key.

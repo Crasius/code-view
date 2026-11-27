@@ -583,7 +583,7 @@ fn look_up(
         folders: settings.search_folders.clone(),
         pinned: settings.pinned_clones.get(&checkouts::settings_key(key)).cloned(),
     };
-    services.checkouts.look_up(key, &key.repository_key, query, &services.background);
+    services.checkouts.look_up(key, query, &services.background);
 }
 
 /// The pull request's head as the page has it in the mirror: the checkout follows it; once the
