@@ -14,7 +14,8 @@ workspace = true
 doctest = false
 
 [features]
-# Test helpers and fakes for the tests of the crates above; enabled only from [dev-dependencies].
+# Defines no items of its own; forwards the lower crates' test support for the tests of the
+# crates above. Enabled only from [dev-dependencies] and from the test-support features above.
 test-support = [
     "cv-base/test-support",
     "cv-code/test-support",
