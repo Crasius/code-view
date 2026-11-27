@@ -103,8 +103,13 @@ fn clipboard_link_opens_once_with_back_and_not_again_after_a_restart() {
         harness.query_by_label_contains(TITLE).is_some(),
         "the first frame of the page shows the detail the check read"
     );
-    // The check's read and the live probe at the page's start, which asks the same URLs. A page
-    // that read the detail itself would probe only after that read: three.
+    // The detail's URL is asked twice: by the check, and by the page's pipelines, which GitHub
+    // lists by head commit (`provider-github`'s `pipelines::runs`). A page that read the detail
+    // itself would send a third request. The window goes to the background first: the live probe,
+    // which asks the same URL, is due `cv_pr_page::live::INTERVAL` of egui time after the page
+    // opened, and a settle that steps more frames on a slow machine would reach it; unfocused, it
+    // waits for the focus, while the page's own reads go out as with the window in front.
+    set_focus(&mut harness, false);
     settle_background(&mut harness);
     assert_eq!(
         host.count("GET", &pull_path(READABLE_NUMBER)),
