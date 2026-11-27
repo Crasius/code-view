@@ -19,7 +19,7 @@ pub struct MatchOptions {
 
 /// The occurrences of `needle` in `text`, left to right, none overlapping; none for an empty
 /// needle.
-pub fn find_all(text: &str, needle: &str, options: MatchOptions) -> Vec<Range<usize>> {
+pub(crate) fn find_all(text: &str, needle: &str, options: MatchOptions) -> Vec<Range<usize>> {
     let mut found = Vec::new();
     if needle.is_empty() {
         return found;
@@ -78,7 +78,7 @@ fn is_whole_word(text: &str, range: Range<usize>) -> bool {
 }
 
 /// A letter, a digit or `_`: what a whole word is made of.
-pub fn is_word(character: char) -> bool {
+pub(crate) fn is_word(character: char) -> bool {
     character.is_alphanumeric() || character == '_'
 }
 

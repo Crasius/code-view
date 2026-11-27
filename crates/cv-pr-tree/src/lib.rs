@@ -167,7 +167,7 @@ impl FileFilter {
         Self { categories, ..self.clone() }
     }
 
-    pub fn accepts(&self, file: &ChangedFile, is_viewed: bool) -> bool {
+    pub(crate) fn accepts(&self, file: &ChangedFile, is_viewed: bool) -> bool {
         let category_matches =
             self.categories.is_empty() || self.categories.contains(&file.category);
         let needle = self.search.trim();
@@ -322,7 +322,7 @@ impl FileTree {
         self.version
     }
 
-    pub fn breakdown(&self) -> &ChangeBreakdown {
+    pub(crate) fn breakdown(&self) -> &ChangeBreakdown {
         &self.breakdown
     }
 
@@ -331,7 +331,7 @@ impl FileTree {
         self.side = side;
     }
 
-    pub fn side(&self) -> TreeSide {
+    pub(crate) fn side(&self) -> TreeSide {
         self.side
     }
 
@@ -363,7 +363,7 @@ impl FileTree {
         self.hovered_file = None;
     }
 
-    pub fn show(&mut self, ui: &mut Ui, inputs: &TreeInputs<'_>) -> Option<TreeEvent> {
+    pub(crate) fn show(&mut self, ui: &mut Ui, inputs: &TreeInputs<'_>) -> Option<TreeEvent> {
         let mut event = None;
         let mut toggled_folder = None;
         let scroll_target = self.scroll_to_file.take().and_then(|file_index| {

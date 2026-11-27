@@ -11,7 +11,7 @@ use cv_services::Services;
 use cv_widgets::{buttons, checkbox};
 
 /// Why `current` is preselected, and (where there is a choice) "Always use for <repo>".
-pub fn favourite(
+pub(crate) fn favourite(
     ui: &mut Ui,
     page: Page<'_>,
     services: &mut Services,
@@ -78,7 +78,7 @@ fn lower_first(text: &str) -> String {
     chars.next().map(|first| first.to_lowercase().chain(chars).collect()).unwrap_or_default()
 }
 
-pub fn policies_link(ui: &mut Ui, policy: &MergePolicy) {
+pub(crate) fn policies_link(ui: &mut Ui, policy: &MergePolicy) {
     if let Some(url) = &policy.settings_url
         && buttons::text_link(
             ui,

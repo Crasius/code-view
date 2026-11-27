@@ -24,7 +24,7 @@ use cv_widgets::states::{self, Action};
 use cv_widgets::{buttons, glyph, provider_icon, skeleton, time_text};
 
 const BANNER_HEIGHT: f32 = 36.0;
-pub const BACK_LABEL: &str = "Back to latest";
+pub(crate) const BACK_LABEL: &str = "Back to latest";
 
 /// What the mirror gave for the origin.
 enum Version {
@@ -35,7 +35,7 @@ enum Version {
 }
 
 /// What the banner says, for focus mode's strip to say it in its place.
-pub struct Face {
+pub(crate) struct Face {
     /// "Showing the version from 1a2b3c4 · 3 days ago", or why another view shows.
     pub text: String,
     /// The file the comment was written on.
@@ -45,13 +45,13 @@ pub struct Face {
 }
 
 /// What the banner and the view asked for.
-pub enum OriginEvent {
+pub(crate) enum OriginEvent {
     Back,
     Thread(ThreadEvent),
 }
 
 /// What the origin view takes from the Files tab and the settings each frame.
-pub struct OriginInputs<'a> {
+pub(crate) struct OriginInputs<'a> {
     /// The pull request's mirror and target commit; `None` while the mirror is being prepared.
     pub mirror: Option<(Arc<GitMirror>, String)>,
     pub layout: DiffLayout,
@@ -65,7 +65,7 @@ pub struct OriginInputs<'a> {
 }
 
 /// The version an outdated thread was written on, while it is shown.
-pub struct OriginView {
+pub(crate) struct OriginView {
     /// The thread as it sits in that version: at its original lines, not outdated there.
     thread: ReviewThread,
     origin: ThreadOrigin,
@@ -100,7 +100,7 @@ struct VersionDiff {
 
 impl OriginView {
     /// `None` for a thread without an origin.
-    pub fn new(thread: &ReviewThread) -> Option<Self> {
+    pub(crate) fn new(thread: &ReviewThread) -> Option<Self> {
         let origin = thread.origin.clone()?;
         let mut shown = thread.clone();
         shown.anchor = Some(origin.anchor.clone());
@@ -123,17 +123,17 @@ impl OriginView {
         })
     }
 
-    pub fn thread_id(&self) -> &str {
+    pub(crate) fn thread_id(&self) -> &str {
         &self.thread.id
     }
 
     /// Loads the version again (Retry).
-    pub fn retry(&mut self) {
+    pub(crate) fn retry(&mut self) {
         self.version = Load::Idle;
     }
 
     /// What the banner says right now.
-    pub fn face(&self) -> Face {
+    pub(crate) fn face(&self) -> Face {
         let short = short_sha(&self.origin.head_sha);
         let missing = match self.version.ready() {
             Some(Version::Missing(reason)) if self.hunk.is_some() => Some(reason.clone()),
@@ -156,7 +156,7 @@ impl OriginView {
     }
 
     /// Follows the thread when a reload brought new replies or another status.
-    pub fn update_thread(&mut self, thread: &ReviewThread) {
+    pub(crate) fn update_thread(&mut self, thread: &ReviewThread) {
         if thread.comments != self.thread.comments || thread.status != self.thread.status {
             self.thread.comments.clone_from(&thread.comments);
             self.thread.status = thread.status;
@@ -164,7 +164,7 @@ impl OriginView {
     }
 
     /// The banner, then the diff of the origin's file with the thread at its original line.
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut Ui,
         inputs: &mut OriginInputs<'_>,

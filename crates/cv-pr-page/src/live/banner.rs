@@ -14,14 +14,14 @@ use cv_widgets::buttons;
 /// How far the card travels while it appears.
 const SLIDE: f32 = 8.0;
 const ACCENT_EDGE: f32 = 3.0;
-pub const MAX_WIDTH: f32 = 760.0;
+pub(crate) const MAX_WIDTH: f32 = 760.0;
 const MARGIN_RIGHT: i8 = 8;
 /// The row's `SPACE_S` gaps: five between its six items (icon, title, detail, the space before
 /// the actions, two buttons) and the width of that space.
 const ROW_GAPS: f32 = 6.0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Look {
+pub(crate) enum Look {
     /// News waits until the user reloads; their draft stays as it is.
     Pending,
     /// News was applied; `can_show_changes` offers the diff of what was pushed.
@@ -29,27 +29,27 @@ pub enum Look {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Content {
+pub(crate) struct Content {
     pub look: Look,
     pub title: String,
     pub detail: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BannerAction {
+pub(crate) enum BannerAction {
     Reload,
     Later,
     ShowChanges,
     Dismiss,
 }
 
-pub struct Shown {
+pub(crate) struct Shown {
     pub action: Option<BannerAction>,
     pub is_hovered: bool,
 }
 
 /// Paints the card with its top centre at `top_center`, `shown` (0..1, eased) of the way in.
-pub fn show(
+pub(crate) fn show(
     ctx: &egui::Context,
     id: Id,
     top_center: Pos2,

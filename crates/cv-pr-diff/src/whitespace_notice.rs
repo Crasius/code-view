@@ -16,12 +16,12 @@ use cv_widgets::{buttons, glyph};
 /// the text changes.
 const BANNER_HEIGHT: f32 = 32.0;
 
-pub const SHOW_LABEL: &str = "Show whitespace changes";
-pub const HIDE_LABEL: &str = "Hide whitespace changes";
+pub(crate) const SHOW_LABEL: &str = "Show whitespace changes";
+pub(crate) const HIDE_LABEL: &str = "Hide whitespace changes";
 
 /// What changed, in one sentence: "Line endings changed from LF to CRLF (all 412 lines).",
 /// "Only whitespace changed: indentation tabs → spaces in 37 lines.", or a short combined list.
-pub fn describe(summary: &WhitespaceSummary) -> String {
+pub(crate) fn describe(summary: &WhitespaceSummary) -> String {
     let mut parts = Vec::new();
     if let Some(endings) = line_endings(summary) {
         parts.push(endings);

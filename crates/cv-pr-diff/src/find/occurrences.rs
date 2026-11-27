@@ -11,7 +11,7 @@ use super::{Found, Hits, Query};
 
 /// The search for the selection's other occurrences and its hits.
 #[derive(Default)]
-pub struct Occurrences {
+pub(crate) struct Occurrences {
     /// What is searched for, over which version of the view's text (see [`super::Found`]).
     wanted: Option<(Query, u64)>,
     running: Option<Receiver<Found>>,
@@ -21,7 +21,7 @@ pub struct Occurrences {
 impl Occurrences {
     /// Follows `query` over the view's `source` text: a new one starts searching (`start` runs
     /// it), none clears the highlights. True when hits arrived this frame.
-    pub fn follow(
+    pub(crate) fn follow(
         &mut self,
         query: Option<Query>,
         source: u64,
@@ -50,7 +50,7 @@ impl Occurrences {
         }
     }
 
-    pub fn hits(&self) -> Option<&Hits> {
+    pub(crate) fn hits(&self) -> Option<&Hits> {
         self.found.as_ref().map(|found| &found.hits)
     }
 }

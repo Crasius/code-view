@@ -41,11 +41,11 @@ const MAX_LINES: usize = 50_000;
 const FIRST_CHUNK_LINES: usize = 120;
 const CHUNK_LINES: usize = 1_000;
 /// How long a diff load waits for its first colored lines before it shows the diff without them.
-pub const WAIT: Duration = Duration::from_millis(150);
+pub(crate) const WAIT: Duration = Duration::from_millis(150);
 /// How long it waits instead while a warm-up compiles the diff's grammar (a file opened right
 /// after the pull request): the colors are on their way, so the diff shows with them. TypeScript,
 /// the slowest grammar, warms in about 0.3 to 0.5 s.
-pub const WARMING_WAIT: Duration = Duration::from_millis(1000);
+pub(crate) const WARMING_WAIT: Duration = Duration::from_millis(1000);
 /// Colors kept per pull request, the least recently used dropped first: our number, the open file
 /// and the neighbours worked out ahead (a 15,000-line file takes about 1 MB), so stepping back and
 /// forth shows colored at once. A file further away colors again: small ones in milliseconds,
@@ -477,7 +477,7 @@ impl PatchColors {
     /// does not depend on how soon a pool busy with other tests' colors gets to them.
     #[cfg(any(test, feature = "test-support"))]
     #[must_use]
-    pub fn with_wait(mut self, wait: Duration) -> Self {
+    pub(crate) fn with_wait(mut self, wait: Duration) -> Self {
         self.wait = wait;
         self
     }
@@ -486,7 +486,7 @@ impl PatchColors {
     /// so a test of that wait does not depend on how fast a loaded machine compiles.
     #[cfg(any(test, feature = "test-support"))]
     #[must_use]
-    pub fn with_warming_wait(mut self, wait: Duration) -> Self {
+    pub(crate) fn with_warming_wait(mut self, wait: Duration) -> Self {
         self.warming_wait = wait;
         self
     }
@@ -555,7 +555,7 @@ impl PatchColors {
     /// [`cv_syntax::color_worker::observe_repaints`]) until all colors of `key` are worked out,
     /// for at most 30 seconds.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn wait_finished(
+    pub(crate) fn wait_finished(
         &mut self,
         repaints: &Receiver<()>,
         key: &DiffKey,

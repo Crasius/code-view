@@ -158,7 +158,7 @@ impl FindBar {
 
     /// Opens the widget (again) with the field taking the keyboard; a selected line becomes the
     /// text.
-    pub fn open(&mut self, selected: Option<String>) {
+    pub(crate) fn open(&mut self, selected: Option<String>) {
         if let Some(text) = selected.filter(|text| !text.is_empty() && !text.contains('\n'))
             && text != self.text
         {
@@ -206,7 +206,7 @@ impl FindBar {
     }
 
     /// What the widget searches for in the version `side`.
-    pub fn query(&self, side: HitSide) -> Query {
+    pub(crate) fn query(&self, side: HitSide) -> Query {
         Query { text: self.text.clone(), options: self.options, side }
     }
 

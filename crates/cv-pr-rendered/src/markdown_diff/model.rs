@@ -44,7 +44,7 @@ pub(super) enum Mode {
 }
 
 impl Mode {
-    pub fn of(has_old: bool, has_new: bool, layout: DiffLayout) -> Self {
+    pub(crate) fn of(has_old: bool, has_new: bool, layout: DiffLayout) -> Self {
         match (has_old, has_new) {
             (false, _) => Mode::Whole(DiffSide::New),
             (true, false) => Mode::Whole(DiffSide::Old),
@@ -90,14 +90,14 @@ pub(super) enum Row {
 }
 
 impl Row {
-    pub fn cells(&self) -> [Option<Cell>; 2] {
+    pub(crate) fn cells(&self) -> [Option<Cell>; 2] {
         match self {
             Row::Blocks { left, right } => [*left, *right],
             Row::Folded { .. } | Row::Removal { .. } | Row::Thread(_) => [None, None],
         }
     }
 
-    pub fn is_change(&self) -> bool {
+    pub(crate) fn is_change(&self) -> bool {
         match self {
             Row::Blocks { .. } => {
                 self.cells().into_iter().flatten().any(|cell| cell.look != Look::Plain)
@@ -108,7 +108,7 @@ impl Row {
     }
 
     /// The pairs the row stands for.
-    pub fn pairs(&self) -> Range<usize> {
+    pub(crate) fn pairs(&self) -> Range<usize> {
         match self {
             Row::Folded { pairs } | Row::Removal { pairs } => pairs.clone(),
             Row::Blocks { .. } => self
@@ -216,7 +216,7 @@ impl MarkdownModel {
     }
 
     /// `options` for the blocks of `side`: its images, framed in `border` (a change color).
-    pub fn options(
+    pub(crate) fn options(
         &self,
         options: RenderOptions,
         side: DiffSide,
@@ -225,14 +225,14 @@ impl MarkdownModel {
         RenderOptions { images: self.images[slot(side)], image_border: border, ..options }
     }
 
-    pub fn units(&self, side: DiffSide) -> &Units {
+    pub(crate) fn units(&self, side: DiffSide) -> &Units {
         match side {
             DiffSide::Old => &self.old,
             DiffSide::New => &self.new,
         }
     }
 
-    pub fn pair_of(&self, side: DiffSide, unit: usize) -> Option<usize> {
+    pub(crate) fn pair_of(&self, side: DiffSide, unit: usize) -> Option<usize> {
         match side {
             DiffSide::Old => self.old_pairs.get(unit).copied(),
             DiffSide::New => self.new_pairs.get(unit).copied(),

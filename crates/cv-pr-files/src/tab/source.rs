@@ -20,7 +20,7 @@ use cv_syntax::pool::Priority;
 
 /// The summary loads its diffs as the file view does when the context is small, so either finds
 /// the other's in the cache; with a large context it loads the few lines around changes it shows.
-pub fn summary_diff_options(settings: &AppSettings) -> DiffOptions {
+pub(crate) fn summary_diff_options(settings: &AppSettings) -> DiffOptions {
     let options = super::choices::diff_options(settings);
     let context = if options.context <= 10 { options.context } else { compaction::SUMMARY_CONTEXT };
     DiffOptions { context, ..options }
@@ -28,7 +28,7 @@ pub fn summary_diff_options(settings: &AppSettings) -> DiffOptions {
 
 /// The summary's diffs: the file view's cache first, then the mirror, as the file view loads them,
 /// with their colors by diff line.
-pub struct MirrorSource<'a> {
+pub(crate) struct MirrorSource<'a> {
     pub cache: &'a mut DiffCache,
     pub patch_colors: &'a mut PatchColors,
     pub ctx: egui::Context,

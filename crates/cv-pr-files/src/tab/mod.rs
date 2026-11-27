@@ -7,19 +7,19 @@
 //! out of sight (`hibernate`). The tab itself, [`super::FilesTab`], ties them together; `probe`
 //! reads its open file for other crates' walkthroughs.
 
-pub mod choices;
-pub mod download;
-pub mod file_diffs;
+pub(crate) mod choices;
+pub(crate) mod download;
+pub(crate) mod file_diffs;
 pub(crate) mod hibernate;
-pub mod layout;
-pub mod notices;
-pub mod origin;
-pub mod rendered;
-pub mod resume;
-pub mod review;
-pub mod source;
-pub mod start;
-pub mod summary_pane;
+pub(crate) mod layout;
+pub(crate) mod notices;
+pub(crate) mod origin;
+pub(crate) mod rendered;
+pub(crate) mod resume;
+pub(crate) mod review;
+pub(crate) mod source;
+pub(crate) mod start;
+pub(crate) mod summary_pane;
 
 /// What the open file shows, read by other crates' walkthroughs. Free functions, since a second
 /// `impl FilesTab` outside `lib.rs` is denied (`clippy::multiple_inherent_impl`).

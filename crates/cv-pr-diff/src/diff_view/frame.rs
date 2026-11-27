@@ -54,12 +54,12 @@ pub struct DiffInputs<'a> {
 
 impl DiffInputs<'_> {
     /// Both file versions are loaded, so collapsed lines can be shown.
-    pub fn can_expand(&self) -> bool {
+    pub(crate) fn can_expand(&self) -> bool {
         self.contents.is_some_and(|contents| contents.old.is_some() && contents.new.is_some())
     }
 
     /// The file's versions are in or failed to load: no more lines will come with them.
-    pub fn are_contents_settled(&self) -> bool {
+    pub(crate) fn are_contents_settled(&self) -> bool {
         self.contents.is_some_and(|contents| contents.error.is_some() || self.can_expand())
     }
 }
@@ -75,7 +75,7 @@ pub(super) struct RowLayout {
 impl RowLayout {
     /// The layout of rows `width` wide with a left pane `left_width` wide, for code with
     /// line numbers up to `max_line_number`.
-    pub fn new(
+    pub(crate) fn new(
         ui: &Ui,
         inputs: &DiffInputs<'_>,
         width: f32,
@@ -100,7 +100,7 @@ impl RowLayout {
     }
 
     /// What the rows' heights depend on besides the rows.
-    pub fn height_key(&self) -> HeightKey {
+    pub(crate) fn height_key(&self) -> HeightKey {
         HeightKey {
             line_height: self.metrics.line_height,
             gap_height: self.metrics.gap_height,

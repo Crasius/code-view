@@ -139,7 +139,11 @@ pub(super) struct DiffRows {
 
 impl DiffRows {
     /// What rows for `inputs` and the new comment's card at `composer` are built from.
-    pub fn key_for(&self, inputs: &DiffInputs<'_>, composer: Option<ComposerAnchor>) -> BuildKey {
+    pub(crate) fn key_for(
+        &self,
+        inputs: &DiffInputs<'_>,
+        composer: Option<ComposerAnchor>,
+    ) -> BuildKey {
         BuildKey {
             diff: Arc::as_ptr(inputs.diff) as usize,
             layout: inputs.layout,
@@ -154,7 +158,7 @@ impl DiffRows {
     }
 
     /// How rows built from `key` and `threads` would differ; `None` when they are these rows.
-    pub fn change_to(&self, key: &BuildKey, threads: &[&ReviewThread]) -> Option<Change> {
+    pub(crate) fn change_to(&self, key: &BuildKey, threads: &[&ReviewThread]) -> Option<Change> {
         let same_threads = self.threads.matches(threads);
         let built = self.key.as_ref();
         if built == Some(key) && same_threads {
@@ -174,7 +178,7 @@ impl DiffRows {
     }
 
     /// Builds the rows from `key` and returns the rows they replace.
-    pub fn rebuild(&mut self, inputs: &DiffInputs<'_>, key: BuildKey) -> Vec<Row> {
+    pub(crate) fn rebuild(&mut self, inputs: &DiffInputs<'_>, key: BuildKey) -> Vec<Row> {
         let diff = inputs.diff.as_ref();
         if self.key.as_ref().is_none_or(|built| built.diff != key.diff) {
             self.word_highlights = WordHighlights::new(diff);
@@ -242,12 +246,12 @@ impl DiffRows {
     }
 
     /// New only: nothing of the head version is left to show (the file was deleted or emptied).
-    pub fn has_no_head_lines(&self) -> bool {
+    pub(crate) fn has_no_head_lines(&self) -> bool {
         !self.has_code
     }
 
     /// Shows lines of collapsed gap `gap`; the rows are built again next.
-    pub fn expand_gap(&mut self, gap: usize, expand: Expand) {
+    pub(crate) fn expand_gap(&mut self, gap: usize, expand: Expand) {
         if let (Some(gap), Some(reveal)) = (self.gaps.get(gap), self.reveals.get_mut(gap)) {
             reveal.expand(gap, expand);
             self.reveal_version += 1;
@@ -255,7 +259,7 @@ impl DiffRows {
     }
 
     /// The collapsed gap holding the line `old_line` / `new_line`.
-    pub fn gap_of(&self, old_line: Option<u32>, new_line: Option<u32>) -> Option<usize> {
+    pub(crate) fn gap_of(&self, old_line: Option<u32>, new_line: Option<u32>) -> Option<usize> {
         self.gaps
             .iter()
             .zip(&self.reveals)
@@ -263,7 +267,7 @@ impl DiffRows {
     }
 
     /// The row holding the anchor's line in these rows of `diff`, or the collapsed gap hiding it.
-    pub fn row_of_anchor(&self, anchor: &LineAnchor, diff: &FileDiff) -> Option<usize> {
+    pub(crate) fn row_of_anchor(&self, anchor: &LineAnchor, diff: &FileDiff) -> Option<usize> {
         let target = line_anchor::locate(anchor, diff)?;
         diff_rows::find_row(diff, &self.rows, target.old_line, target.new_line).or_else(|| {
             self.rows.iter().position(|row| match row.kind {
@@ -277,7 +281,7 @@ impl DiffRows {
     }
 
     /// The threads whose cards follow code row `row_index` in `pane`.
-    pub fn pane_threads<'s, 'a: 's>(
+    pub(crate) fn pane_threads<'s, 'a: 's>(
         &'s self,
         row_index: usize,
         pane: Pane,
@@ -303,7 +307,7 @@ impl DiffRows {
 
     /// How code row `row_index` is marked in `pane` as a line of a multi-line comment; a thread
     /// that `is_hidden` leaves its lines plain.
-    pub fn range_mark(
+    pub(crate) fn range_mark(
         &self,
         row_index: usize,
         pane: Pane,
@@ -325,7 +329,7 @@ impl DiffRows {
     /// The invisible characters a line shows: on a changed line paired with the line it replaced,
     /// its spaces and tabs inside the changed words, and its line ending or byte order mark where
     /// they differ from the partner's; on any line, a missing final newline.
-    pub fn invisibles(
+    pub(crate) fn invisibles(
         &self,
         diff: &FileDiff,
         row: &Row,
@@ -340,20 +344,20 @@ impl DiffRows {
 
     /// Works out the word highlights of `row`'s line in `pane` (a `kind` line) and the line it
     /// was paired with; once per pair. [`Self::words`] reads them.
-    pub fn compute_words(&mut self, diff: &FileDiff, row: &Row, pane: Pane, kind: LineKind) {
+    pub(crate) fn compute_words(&mut self, diff: &FileDiff, row: &Row, pane: Pane, kind: LineKind) {
         if let Some(index) = line_index(row, pane) {
             self.word_highlights.compute(diff, index, kind);
         }
     }
 
     /// The changed words of `row`'s line in `pane` (a `kind` line), from [`Self::compute_words`].
-    pub fn words(&self, row: &Row, pane: Pane, kind: LineKind) -> &[std::ops::Range<usize>] {
+    pub(crate) fn words(&self, row: &Row, pane: Pane, kind: LineKind) -> &[std::ops::Range<usize>] {
         line_index(row, pane).map_or(&[], |index| self.word_highlights.words(index, kind))
     }
 
     /// Whether `pointer` is on the hit area of a removal wedge at the top or bottom edge of code row
     /// `row_index`, painted at `rect`.
-    pub fn is_on_wedge(
+    pub(crate) fn is_on_wedge(
         &self,
         pointer: Pos2,
         row_index: usize,

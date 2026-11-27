@@ -5,7 +5,7 @@
 //! beside the file view and their splitters are in `panels`; how the review steps from file to
 //! file, which the frame calls at its start, around the file and at its end, in `stepping`.
 
-pub mod panels;
+pub(crate) mod panels;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -30,7 +30,7 @@ use cv_shell::focus_mode::{self, Surface};
 /// top of the diff's edge; what the user did in the tree is carried out at the start of the next
 /// frame, before anything reads the open file or the viewed marks. Moving the tree to the other
 /// side is carried out at once, and the frame is laid out again before it shows.
-pub fn show(tab: &mut FilesTab, ui: &mut egui::Ui, env: &mut Env<'_>) {
+pub(crate) fn show(tab: &mut FilesTab, ui: &mut egui::Ui, env: &mut Env<'_>) {
     tab.poll_loads(env.services);
     let Some(files) = env.session.files().cloned() else {
         panels::show_preparing(ui, env.session, env.services);
@@ -95,7 +95,7 @@ pub fn show(tab: &mut FilesTab, ui: &mut egui::Ui, env: &mut Env<'_>) {
 
 /// Carries out what the user did in the tree last frame, also when a newer file list replaced the
 /// one it was done on since (see [`TreeEvent::carried_to`]): the click is never lost.
-pub fn apply_pending_tree_event(
+pub(crate) fn apply_pending_tree_event(
     tab: &mut FilesTab,
     services: &mut Services,
     files: &[ChangedFile],
@@ -243,7 +243,7 @@ struct Frame<'a> {
 
 /// Open threads by the path they are on, counted again only when the threads changed.
 #[derive(Default)]
-pub struct ThreadCounts {
+pub(crate) struct ThreadCounts {
     /// The version of the threads counted; `None` while none are loaded.
     counted: Option<u64>,
     counts: Arc<HashMap<String, usize>>,

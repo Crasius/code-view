@@ -16,13 +16,13 @@ const PAGE_MARGIN: egui::Margin = egui::Margin::same(style::PAGE_MARGIN_X);
 /// The widest outputs of `time_text::relative`, which size the time column.
 const TIME_SAMPLES: [&str; 4] = ["2026-12-30", "59 min ago", "23 h ago", "29 d ago"];
 
-pub enum CommitsAction {
+pub(crate) enum CommitsAction {
     /// Show this range in the Files tab.
     Show(CompareRange),
     Retry,
 }
 
-pub fn show(ui: &mut Ui, session: &PullRequestSession) -> Option<CommitsAction> {
+pub(crate) fn show(ui: &mut Ui, session: &PullRequestSession) -> Option<CommitsAction> {
     let palette = theme::palette(ui.ctx());
     let opacity = motion::reveal(
         ui.ctx(),

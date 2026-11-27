@@ -27,7 +27,7 @@ const COPY_BRANCH: &str = "Copy branch name";
 /// is cut; the source names the change, so it comes first.
 const SOURCE_SHARE: f32 = 0.6;
 
-pub enum HeaderAction {
+pub(crate) enum HeaderAction {
     Run(LifecycleAction),
     /// The merge button was confirmed.
     Merge(MergeOptions),
@@ -140,14 +140,14 @@ fn branch_widths(room: f32, source: f32, target: f32, least: f32) -> (f32, f32) 
 
 /// The header's buttons that keep state across frames: the merge button of an open pull request,
 /// the vote composer and the checkout button.
-pub struct Buttons<'a> {
+pub(crate) struct Buttons<'a> {
     pub merge: Option<&'a mut MergeButton>,
     pub vote: &'a mut VoteComposer,
     pub checkout: &'a mut CheckoutButton,
 }
 
 /// `file_link` is the file the Files tab shows, if any, for the platform mark's menu.
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     session: &PullRequestSession,
     actions: &ActionRunner,

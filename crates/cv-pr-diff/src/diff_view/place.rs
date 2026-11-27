@@ -44,14 +44,14 @@ impl Place {
     /// a line of the rendered diff) goes elsewhere. The scroll area keeps its offset in egui's
     /// memory under one id for every file, so without asking for the top a file opened where the
     /// one before was scrolled to.
-    pub fn opening() -> Self {
+    pub(crate) fn opening() -> Self {
         Self { scroll_to: Some(0.0), ..Self::default() }
     }
 
     /// The overview strip at `strip` for rows at `offsets`, with the room past the end when
     /// `past_end` is on: a scroll picked on it goes there. Returns what its menu switched
     /// "Scroll past the end" to.
-    pub fn follow_strip(
+    pub(crate) fn follow_strip(
         &mut self,
         ui: &Ui,
         strip: Rect,
@@ -69,19 +69,24 @@ impl Place {
     }
 
     /// The top of the view, from the top of the first row.
-    pub fn top(&self) -> f32 {
+    pub(crate) fn top(&self) -> f32 {
         self.viewport.0.top()
     }
 
     /// How far below the top of the view row `row` (placed at `offsets`) starts, within the view.
-    pub fn below_top(&self, offsets: &RowOffsets, row: usize) -> f32 {
+    pub(crate) fn below_top(&self, offsets: &RowOffsets, row: usize) -> f32 {
         let view = self.viewport.0;
         offsets.get(row).map_or(0.0, |top| (top - view.top()).clamp(0.0, view.height().max(0.0)))
     }
 
     /// Steps from the change in focus to the next or previous one (`changes` are their rows) and
     /// scrolls to it; with none further that way, notes that it ran out.
-    pub fn go_to_change(&mut self, direction: Direction, changes: &[u32], offsets: &RowOffsets) {
+    pub(crate) fn go_to_change(
+        &mut self,
+        direction: Direction,
+        changes: &[u32],
+        offsets: &RowOffsets,
+    ) {
         let top_of = |index: usize| offsets.get(changes[index] as usize).unwrap_or(0.0);
         let view = self.viewport.0;
         let Some(index) =
@@ -96,7 +101,7 @@ impl Place {
     }
 
     /// The change in focus left the view: no change is in focus any more.
-    pub fn forget_change_out_of_view(&mut self, changes: &[u32], offsets: &RowOffsets) {
+    pub(crate) fn forget_change_out_of_view(&mut self, changes: &[u32], offsets: &RowOffsets) {
         let Some(current) = self.current_change else {
             return;
         };
@@ -111,7 +116,7 @@ impl Place {
 
     /// The lines of the change in focus in `built`, for it to stay in focus when the file's
     /// contents, a thread or revealed lines rebuild the rows; a new diff starts over.
-    pub fn focused_lines(&self, built: &DiffRows, is_new_diff: bool) -> Option<Lines> {
+    pub(crate) fn focused_lines(&self, built: &DiffRows, is_new_diff: bool) -> Option<Lines> {
         self.current_change
             .filter(|_| !is_new_diff)
             .and_then(|index| built.changes.get(index))
@@ -121,7 +126,7 @@ impl Place {
 
     /// After a rebuild of `built`: the change showing `lines` (see [`Self::focused_lines`]) is the
     /// one in focus.
-    pub fn refocus(&mut self, built: &DiffRows, lines: Option<Lines>) {
+    pub(crate) fn refocus(&mut self, built: &DiffRows, lines: Option<Lines>) {
         self.current_change = lines.and_then(|lines| {
             built.changes.iter().position(|row| {
                 built.rows.get(*row as usize).is_some_and(|row| (row.left, row.right) == lines)
@@ -132,7 +137,11 @@ impl Place {
     /// The first code line of `built` at the top of the view (or the nearest above) and how far
     /// below the view's top edge it starts; `None` at the very top, where staying at the top is
     /// right.
-    pub fn at_top(&self, built: &DiffRows, offsets: &RowOffsets) -> Option<(LineAnchor, f32)> {
+    pub(crate) fn at_top(
+        &self,
+        built: &DiffRows,
+        offsets: &RowOffsets,
+    ) -> Option<(LineAnchor, f32)> {
         let diff = built.shown_diff.as_ref()?;
         let rows = &built.rows;
         let top = self.top();
@@ -153,7 +162,11 @@ impl Place {
     }
 
     /// The first code line of `built` at the top of the view and its side; `None` at the very top.
-    pub fn top_line(&self, built: &DiffRows, offsets: &RowOffsets) -> Option<(DiffSide, u32)> {
+    pub(crate) fn top_line(
+        &self,
+        built: &DiffRows,
+        offsets: &RowOffsets,
+    ) -> Option<(DiffSide, u32)> {
         let (anchor, _) = self.at_top(built, offsets)?;
         match (anchor.new_line, anchor.old_line) {
             (Some(line), _) => Some((DiffSide::New, line)),
@@ -164,7 +177,7 @@ impl Place {
 
     /// Comments were switched on or off: the first row at the top of the view that is no comment
     /// card stays where it is on screen while the cards above it appear or go.
-    pub fn keep_first_line(&mut self, rows: &[Row], offsets: &RowOffsets) {
+    pub(crate) fn keep_first_line(&mut self, rows: &[Row], offsets: &RowOffsets) {
         if self.is_embedded || self.scroll_to.is_some() || !offsets.is_placed(rows.len()) {
             return;
         }
@@ -177,7 +190,7 @@ impl Place {
     }
 
     /// Row `row` goes back to `below_top` below the top of the view once the offsets are known.
-    pub fn keep_row(&mut self, row: usize, below_top: f32) {
+    pub(crate) fn keep_row(&mut self, row: usize, below_top: f32) {
         self.restore_row = Some((row, below_top));
     }
 
@@ -185,7 +198,7 @@ impl Place {
     /// top of the view in place, a new code size (`key` after `previous`) the one under the
     /// pointer (see [`super::keep_below`]). Rows inside another view's scrolling keep it only when
     /// it is theirs. `rows` rows are placed at `offsets`.
-    pub fn for_new_heights(
+    pub(crate) fn for_new_heights(
         &self,
         previous: HeightKey,
         key: HeightKey,
@@ -211,7 +224,7 @@ impl Place {
     /// far below the top of the view it was, and its row) stays where it was on screen, the row
     /// kept for new heights (`anchor`) goes back to its place, and so does the row kept across a
     /// rebuild.
-    pub fn keep_places(
+    pub(crate) fn keep_places(
         &mut self,
         card: Option<(f32, usize)>,
         anchor: Option<KeptRow>,
@@ -246,7 +259,7 @@ impl Place {
     /// [`past_end`]); inside another view's scrolling, the request is that view's to clamp.
     ///
     /// [`past_end`]: crate::diff_overview::past_end
-    pub fn jump(&mut self, y: f32, offsets: &RowOffsets, view_height: f32) {
+    pub(crate) fn jump(&mut self, y: f32, offsets: &RowOffsets, view_height: f32) {
         let end = (offsets.height() - view_height).max(0.0);
         self.scroll_to = Some(if self.is_embedded { y } else { y.min(end) });
     }

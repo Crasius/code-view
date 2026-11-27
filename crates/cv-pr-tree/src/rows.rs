@@ -141,7 +141,7 @@ pub(crate) struct CountColumns {
 impl CountColumns {
     const GAP: f32 = 6.0;
 
-    pub fn measure(ui: &Ui, widest: Option<(u32, u32)>) -> Self {
+    pub(crate) fn measure(ui: &Ui, widest: Option<(u32, u32)>) -> Self {
         let font = FontId::proportional(style::SMALL_SIZE);
         let widths = widest.map(|(added, deleted)| {
             let width = |text: String| {

@@ -38,13 +38,13 @@ use cv_runtime::load::Load;
 use cv_runtime::refresh::WhenInactive;
 use cv_services::Services;
 
-pub use self::hold::Drafts;
-pub use self::range_bar::show as range_bar;
+pub(crate) use self::hold::Drafts;
+pub(crate) use self::range_bar::show as range_bar;
 
 /// Probe interval with a token (GitHub answers unchanged probes with free 304s).
-pub const INTERVAL: Duration = Duration::from_secs(30);
+pub(crate) const INTERVAL: Duration = Duration::from_secs(30);
 /// Anonymous probes count against small hourly limits (GitHub: 60).
-pub const ANONYMOUS_INTERVAL: Duration = Duration::from_secs(120);
+pub(crate) const ANONYMOUS_INTERVAL: Duration = Duration::from_secs(120);
 const MAX_BACKOFF_STEPS: u32 = 3;
 /// How long the "Updated" card after a Reload stays when the pointer is not on it.
 const NOTICE_SECONDS: f64 = 6.0;
@@ -52,7 +52,7 @@ const CARD_MOTION: f32 = 0.18;
 
 /// What the user is doing that an update has to respect.
 #[derive(Debug, Clone, Default)]
-pub struct Activity {
+pub(crate) struct Activity {
     /// Comments being written where an update could move them.
     pub drafts: Drafts,
     /// One of the user's own writes runs; its own refresh follows, so updates wait for it.
@@ -60,13 +60,13 @@ pub struct Activity {
 }
 
 /// What the page has to do after the user picked an action on a card.
-pub enum LiveAction {
+pub(crate) enum LiveAction {
     /// Open the Files tab: the range already switched to what was pushed.
     ShowFiles,
 }
 
 #[derive(Default)]
-pub struct LiveUpdates {
+pub(crate) struct LiveUpdates {
     probe: Load<PullRequestRevision>,
     /// The revision of what the page shows; `None` until the first probe after opening or a refresh.
     shown: Option<PullRequestRevision>,
@@ -117,7 +117,7 @@ impl LiveUpdates {
 
     /// Each frame the page is shown: polls the probe and the read-ahead, applies what may be
     /// applied, and asks the scheduler whether the next probe is due.
-    pub fn update(
+    pub(crate) fn update(
         &mut self,
         ctx: &egui::Context,
         session: &mut PullRequestSession,
@@ -263,7 +263,7 @@ impl LiveUpdates {
     }
 
     /// The card under the tabs (`top_center`).
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ctx: &egui::Context,
         top_center: Pos2,

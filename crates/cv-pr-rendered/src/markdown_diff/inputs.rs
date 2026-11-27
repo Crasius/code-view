@@ -37,7 +37,7 @@ pub struct RenderedInputs<'a> {
 
 impl RenderedInputs<'_> {
     /// How the blocks render: the platform's Markdown at the code zoom.
-    pub fn render_options(&self) -> RenderOptions {
+    pub(crate) fn render_options(&self) -> RenderOptions {
         RenderOptions {
             platform: Some(self.platform),
             scale: self.scale,
@@ -48,7 +48,7 @@ impl RenderedInputs<'_> {
 
 /// How the images of the two versions load and compare.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct RenderedImages {
+pub(crate) struct RenderedImages {
     /// Where relative image paths of the old and of the new version point.
     pub bases: [Option<ImageBase>; 2],
     /// Content ids (blob ids) of the repository images each version shows, by source as written:

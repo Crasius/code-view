@@ -55,24 +55,24 @@ impl LineRequest {
 
 impl Requests {
     /// Scrolls to thread `thread_id` once its row exists.
-    pub fn reveal_thread(&mut self, thread_id: String) {
+    pub(crate) fn reveal_thread(&mut self, thread_id: String) {
         self.thread = Some(thread_id);
     }
 
     /// Carries out `request` once the rows hold its lines.
-    pub fn request_lines(&mut self, request: LineRequest) {
+    pub(crate) fn request_lines(&mut self, request: LineRequest) {
         self.lines = Some(request);
     }
 
     /// A thread waits to be scrolled to.
-    pub fn is_revealing(&self) -> bool {
+    pub(crate) fn is_revealing(&self) -> bool {
         self.thread.is_some()
     }
 
     /// Carries out the line request on the rows `built`, placed at `offsets`, in a view
     /// `view_height` tall (see [`carry_out`]); `None` without one. A request on lines in a
     /// collapsed gap waits until they show.
-    pub fn carry_out_lines(
+    pub(crate) fn carry_out_lines(
         &mut self,
         built: &mut DiffRows,
         offsets: &RowOffsets,
@@ -94,7 +94,7 @@ impl Requests {
     /// Where to scroll for the thread waiting since [`Self::reveal_thread`], once its card's row
     /// is in `built`; a thread on collapsed lines first reveals them, one that will not show stops
     /// waiting.
-    pub fn reveal_pending(
+    pub(crate) fn reveal_pending(
         &mut self,
         built: &mut DiffRows,
         offsets: &RowOffsets,

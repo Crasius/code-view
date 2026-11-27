@@ -15,7 +15,7 @@ use cv_pr_summary::{Compare, FolderSummary, SummaryEvent, SummaryInputs};
 use cv_pr_tree::{FileFilter, FileTree};
 
 #[derive(Default)]
-pub struct SummaryPane {
+pub(crate) struct SummaryPane {
     summary: FolderSummary,
     /// The changes below this folder show (`""` for all of them).
     folder: String,
@@ -26,22 +26,22 @@ pub struct SummaryPane {
 }
 
 impl SummaryPane {
-    pub fn folder(&self) -> &str {
+    pub(crate) fn folder(&self) -> &str {
         &self.folder
     }
 
     /// Shows the summary of `folder` (`""` for every changed file) once no file is open.
-    pub fn set_folder(&mut self, folder: String) {
+    pub(crate) fn set_folder(&mut self, folder: String) {
         self.folder = folder;
     }
 
     /// A file is open: the summary's queued coloring makes way.
-    pub fn hide(&mut self) {
+    pub(crate) fn hide(&mut self) {
         self.summary.hide();
     }
 
     /// The summary of the folder, its diffs loaded through the file view's cache and colors.
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut egui::Ui,
         env: &mut Env<'_>,

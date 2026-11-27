@@ -12,7 +12,7 @@ use cv_pr_diff::diff_view::LineRequest;
 use cv_pr_rendered::markdown_diff::RenderedEvent;
 
 /// Carries out `event` of the rendered diff of `path`.
-pub fn apply(tab: &mut FilesTab, env: &mut Env<'_>, path: &str, event: RenderedEvent) {
+pub(crate) fn apply(tab: &mut FilesTab, env: &mut Env<'_>, path: &str, event: RenderedEvent) {
     match event {
         RenderedEvent::Comment { side, lines } => {
             tab.preview.show_source(path);
@@ -36,7 +36,7 @@ pub fn apply(tab: &mut FilesTab, env: &mut Env<'_>, path: &str, event: RenderedE
 
 /// [`apply`] for the rendered card of `files[file]` in the folder summary: what goes to the text
 /// diff opens the file first.
-pub fn apply_from_summary(
+pub(crate) fn apply_from_summary(
     tab: &mut FilesTab,
     ui: &egui::Ui,
     env: &mut Env<'_>,

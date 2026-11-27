@@ -20,14 +20,14 @@ use cv_syntax::pool::{Pool, Priority};
 static POOL: Pool = Pool::new("grammar-warm", 2);
 
 /// A changed file as the warm-up sees it.
-pub struct Changed {
+pub(crate) struct Changed {
     pub path: String,
     /// Added and deleted lines, 0 while they are not counted yet.
     pub lines: u64,
 }
 
 /// The text files of `files`.
-pub fn changed(files: &[ChangedFile]) -> Vec<Changed> {
+pub(crate) fn changed(files: &[ChangedFile]) -> Vec<Changed> {
     files
         .iter()
         .filter(|file| !file.is_binary)
@@ -41,7 +41,7 @@ pub fn changed(files: &[ChangedFile]) -> Vec<Changed> {
 /// The languages of `files`, each once: `first`'s (the file the Files tab opens) first, then the
 /// ones with the most changed lines, then with the most files. Loads the grammar set on first use,
 /// so only call this from background work.
-pub fn order(files: &[Changed], first: Option<&str>) -> Vec<Grammar> {
+pub(crate) fn order(files: &[Changed], first: Option<&str>) -> Vec<Grammar> {
     struct Language {
         grammar: Grammar,
         lines: u64,
@@ -74,7 +74,7 @@ pub fn order(files: &[Changed], first: Option<&str>) -> Vec<Grammar> {
 }
 
 /// One pull request's warm-up; the languages not started yet are skipped once it is cancelled.
-pub struct WarmUp {
+pub(crate) struct WarmUp {
     cancel: Arc<AtomicBool>,
 }
 
@@ -86,7 +86,7 @@ impl Drop for WarmUp {
 
 /// Warms the languages of `files` in [`order`], two at a time. Drop the returned handle to stop
 /// (another file list, the pull request closed).
-pub fn start(files: Vec<Changed>, first: Option<String>) -> WarmUp {
+pub(crate) fn start(files: Vec<Changed>, first: Option<String>) -> WarmUp {
     let cancel = Arc::new(AtomicBool::new(false));
     let job_cancel = cancel.clone();
     POOL.submit(Priority::Urgent, move || {

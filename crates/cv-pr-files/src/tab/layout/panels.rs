@@ -30,7 +30,7 @@ fn tree_width(ui: &egui::Ui, services: &Services) -> (f32, std::ops::RangeInclus
 /// The file tree's place at the window edge of the setting, reserved before the diff is laid out
 /// and filled after it, so Tab reaches the diff first on either side and a flip changes no widget
 /// ids: the open file keeps its scroll position and the focus.
-pub struct TreeArea {
+pub(crate) struct TreeArea {
     rect: egui::Rect,
     side: TreeSide,
     width: f32,
@@ -39,7 +39,7 @@ pub struct TreeArea {
 
 impl TreeArea {
     /// The tree's saved width at its side of what `ui` has left.
-    pub fn reserve(ui: &egui::Ui, services: &Services) -> Self {
+    pub(crate) fn reserve(ui: &egui::Ui, services: &Services) -> Self {
         let (width, range) = tree_width(ui, services);
         let side = services.settings.file_tree_side;
         let available = ui.available_rect_before_wrap();
@@ -51,12 +51,12 @@ impl TreeArea {
         Self { rect, side, width, range }
     }
 
-    pub fn rect(&self) -> egui::Rect {
+    pub(crate) fn rect(&self) -> egui::Rect {
         self.rect
     }
 
     /// What `ui` has left beside the tree.
-    pub fn rest(&self, ui: &egui::Ui) -> egui::Rect {
+    pub(crate) fn rest(&self, ui: &egui::Ui) -> egui::Rect {
         let mut rest = ui.available_rect_before_wrap();
         match self.side {
             TreeSide::Left => rest.min.x = self.rect.right(),
@@ -67,7 +67,7 @@ impl TreeArea {
 }
 
 /// The file tree with its filters in its reserved `area`. Returns what the user did in the tree.
-pub fn show_tree(
+pub(crate) fn show_tree(
     ui: &mut egui::Ui,
     area: &TreeArea,
     tree: &mut FileTree,
@@ -80,7 +80,7 @@ pub fn show_tree(
 
 /// The splitter on the tree's inner edge, after the diff and the tree, so it sits on top of the
 /// diff's scroll bar (or its left edge) along that edge and takes the drag.
-pub fn show_tree_splitter(ui: &mut egui::Ui, area: TreeArea, services: &mut Services) {
+pub(crate) fn show_tree_splitter(ui: &mut egui::Ui, area: TreeArea, services: &mut Services) {
     let TreeArea { rect, side, range, .. } = area;
     // The tree grows when its inner edge moves towards the diff.
     let (edge, per_point) = match side {
@@ -100,7 +100,11 @@ pub fn show_tree_splitter(ui: &mut egui::Ui, area: TreeArea, services: &mut Serv
 
 /// The tree skeleton at the tree's width beside the live loading log; a failure keeps the log
 /// and shows Retry and the platform link above it.
-pub fn show_preparing(ui: &mut egui::Ui, session: &mut PullRequestSession, services: &Services) {
+pub(crate) fn show_preparing(
+    ui: &mut egui::Ui,
+    session: &mut PullRequestSession,
+    services: &Services,
+) {
     let message = session
         .mirror
         .error()
@@ -133,7 +137,7 @@ pub fn show_preparing(ui: &mut egui::Ui, session: &mut PullRequestSession, servi
 }
 
 /// What the threads panel works with besides the pull request's state.
-pub struct PanelContext<'a> {
+pub(crate) struct PanelContext<'a> {
     pub tree: &'a FileTree,
     pub files: &'a [ChangedFile],
     pub session: &'a PullRequestSession,
@@ -141,7 +145,7 @@ pub struct PanelContext<'a> {
 
 /// The all-threads panel on the right with its splitter. Returns where a thread should be shown:
 /// in its file, or in the version it was written on.
-pub fn show_threads_panel(
+pub(crate) fn show_threads_panel(
     ui: &mut egui::Ui,
     context: &PanelContext<'_>,
     services: &mut Services,

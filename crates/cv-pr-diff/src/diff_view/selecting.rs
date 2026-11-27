@@ -75,7 +75,7 @@ pub(super) struct Code<'a> {
 }
 
 impl<'a> Code<'a> {
-    pub fn new(built: &'a DiffRows, offsets: &'a RowOffsets, h_offset: [f32; 2]) -> Self {
+    pub(crate) fn new(built: &'a DiffRows, offsets: &'a RowOffsets, h_offset: [f32; 2]) -> Self {
         Self { rows: &built.rows, offsets, h_offset, generation: built.generation }
     }
 }
@@ -119,18 +119,18 @@ pub(super) struct Selecting {
 
 impl Selecting {
     /// Some text or lines are selected.
-    pub fn is_active(&self) -> bool {
+    pub(crate) fn is_active(&self) -> bool {
         self.selection.is_some_and(|selection| !selection.is_empty())
     }
 
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.selection = None;
         self.drag = None;
     }
 
     /// The area `rect` presses on the code start selections in, read out as the diff of `path`
     /// and what is selected.
-    pub fn area(&self, ui: &Ui, rect: Rect, path: &str) -> Response {
+    pub(crate) fn area(&self, ui: &Ui, rect: Rect, path: &str) -> Response {
         // Presses on the code start a selection, which the view follows itself (see
         // `track_pointer`): sensing drags here would take them from splitters along the edges of
         // the diff.
@@ -150,7 +150,7 @@ impl Selecting {
     }
 
     /// Works out the comment target for the current selection; cached until rows or selection change.
-    pub fn update_target(&mut self, code: &Code<'_>, inputs: &DiffInputs<'_>) {
+    pub(crate) fn update_target(&mut self, code: &Code<'_>, inputs: &DiffInputs<'_>) {
         let Some(selection) =
             self.selection.filter(|selection| !selection.is_empty() && inputs.can_comment)
         else {
@@ -166,7 +166,7 @@ impl Selecting {
 
     /// The comment on the selected lines, if the platform takes one there; the drag making the
     /// selection ends.
-    pub fn take_comment(&mut self) -> Option<CommentAt> {
+    pub(crate) fn take_comment(&mut self) -> Option<CommentAt> {
         let target = self.target.as_ref().filter(|target| target.blocked.is_none())?;
         let comment = CommentAt {
             anchor: target.anchor.clone(),
@@ -178,7 +178,7 @@ impl Selecting {
     }
 
     /// The selected text, plain: no line numbers, +/− markers or gutter.
-    pub fn text(&self, rows: &[Row], inputs: &DiffInputs<'_>) -> Option<String> {
+    pub(crate) fn text(&self, rows: &[Row], inputs: &DiffInputs<'_>) -> Option<String> {
         let selection = self.selection.filter(|selection| !selection.is_empty())?;
         let text = selection.text(|row| {
             rows.get(row)
@@ -192,7 +192,7 @@ impl Selecting {
 
     /// The text selected within one line (a double-clicked word too), and whether it is a whole
     /// word there: word characters only, with none right before or after it.
-    pub fn in_line(&self, rows: &[Row], inputs: &DiffInputs<'_>) -> Option<Selected> {
+    pub(crate) fn in_line(&self, rows: &[Row], inputs: &DiffInputs<'_>) -> Option<Selected> {
         let selection = self
             .selection
             .filter(|selection| !selection.is_empty() && selection.unit == Unit::Text)?;
@@ -215,7 +215,7 @@ impl Selecting {
 
     /// The selected lines for the assistant: their numbers in the file the pane shows (the base's
     /// when only deleted lines are selected) and their text.
-    pub fn quote(&self, rows: &[Row], inputs: &DiffInputs<'_>) -> Option<ChatQuote> {
+    pub(crate) fn quote(&self, rows: &[Row], inputs: &DiffInputs<'_>) -> Option<ChatQuote> {
         let selection = self.selection.filter(|selection| !selection.is_empty())?;
         let pane = selection.pane;
         let (first, last) = selection.line_rows(rows, |row| has_line(row, pane))?;
@@ -237,7 +237,7 @@ impl Selecting {
 
     /// Ctrl+C, Ctrl+A, Alt+C, Alt+A (with a selection), Shift+↑/↓ and Esc while no text field has
     /// focus.
-    pub fn keys(
+    pub(crate) fn keys(
         &mut self,
         ui: &Ui,
         code: &Code<'_>,
@@ -345,7 +345,7 @@ impl Selecting {
 
     /// Presses, drags and multi-clicks on the code; runs inside the scrolled rows before they
     /// paint. True when a drag of a line's "+" ended: time to comment on the lines it picked.
-    pub fn track_pointer(
+    pub(crate) fn track_pointer(
         &mut self,
         ui: &Ui,
         background: &Response,
@@ -441,7 +441,7 @@ impl Selecting {
     /// Dragging past the top or bottom of `content` scrolls on, so a selection can grow beyond
     /// `view`, the part of rows `total_height` tall on screen: the scroll offset to go to.
     /// `is_embedded`: another view scrolls the rows and clamps the offset itself.
-    pub fn edge_scroll(
+    pub(crate) fn edge_scroll(
         &self,
         ui: &Ui,
         content: Rect,

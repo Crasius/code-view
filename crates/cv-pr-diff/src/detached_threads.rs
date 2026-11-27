@@ -9,7 +9,7 @@ use cv_code::gaps::{Gap, Reveal};
 use cv_pr_threads::{self as threads, CardOptions, ThreadEvent, ThreadsUi};
 use cv_widgets::{buttons, glyph};
 
-pub enum DetachedEvent {
+pub(crate) enum DetachedEvent {
     Thread(ThreadEvent),
     /// Reveal gap `gap` and scroll to the thread.
     ShowLine {
@@ -18,14 +18,14 @@ pub enum DetachedEvent {
     },
 }
 
-pub struct Detached<'a> {
+pub(crate) struct Detached<'a> {
     pub threads: &'a [usize],
     pub gaps: &'a [Gap],
     pub reveals: &'a [Reveal],
     pub can_expand: bool,
 }
 
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     detached: &Detached<'_>,
     inputs: &DiffInputs<'_>,

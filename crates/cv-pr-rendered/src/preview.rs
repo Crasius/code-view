@@ -159,12 +159,12 @@ fn rendered_key(file: &ChangedFile, images_key: u64) -> u64 {
     ))
 }
 
-pub fn can_preview(file: &ChangedFile) -> bool {
+pub(crate) fn can_preview(file: &ChangedFile) -> bool {
     PreviewKind::of(&file.path).is_some()
 }
 
 /// Previews the user can switch off for the text diff: images always show as images.
-pub fn is_optional(file: &ChangedFile) -> bool {
+pub(crate) fn is_optional(file: &ChangedFile) -> bool {
     matches!(PreviewKind::of(&file.path), Some(PreviewKind::Svg | PreviewKind::Markdown))
 }
 
@@ -254,12 +254,12 @@ impl Preview {
     }
 
     /// The rendered Markdown fills the pane (Full width, or a reading column as wide as the pane).
-    pub fn fills_width(&self) -> bool {
+    pub(crate) fn fills_width(&self) -> bool {
         self.markdown.fills_width()
     }
 
     /// Switches the rendered Markdown between its reading column and full width.
-    pub fn switch_width(&self, width: &mut RenderedWidth) {
+    pub(crate) fn switch_width(&self, width: &mut RenderedWidth) {
         self.markdown.switch_width(width);
     }
 
