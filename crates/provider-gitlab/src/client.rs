@@ -1,7 +1,7 @@
 //! Request building for the GitLab REST API v4: API root, `PRIVATE-TOKEN` auth, project id
 //! encoding and `Link`-header pagination.
 
-use reqwest::{Method, RequestBuilder, Response};
+use reqwest::{Method, RequestBuilder, Response, Url};
 use review_core::{Connection, ProviderError, Result, http};
 use serde::de::DeserializeOwned;
 use tokio::sync::OnceCell;
@@ -193,10 +193,36 @@ impl ApiClient {
             if items.len() >= limit || is_empty {
                 break;
             }
-            request = fetched.next_link.map(|url| self.request_url(Method::GET, &url));
+            request = match fetched.next_link {
+                Some(link) => {
+                    Some(self.request_url(Method::GET, self.on_api_origin(&link)?.as_str()))
+                }
+                None => None,
+            };
         }
         items.truncate(limit);
         Ok(items)
+    }
+
+    /// `link`'s path and query on the origin of the API root: a page link is followed on the
+    /// configured host only, whatever host it names, so the token never leaves it. A link that
+    /// does not parse or whose path is not below the API root's path is an error.
+    fn on_api_origin(&self, link: &str) -> Result<Url> {
+        let leaves =
+            || ProviderError::Decode(format!("pagination link {link} leaves {}", self.api_root));
+        let mut url = Url::parse(&self.api_root).map_err(|_| leaves())?;
+        let target = Url::parse(link).map_err(|_| leaves())?;
+        let root = url.path().trim_end_matches('/');
+        let is_below = target
+            .path()
+            .strip_prefix(root)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'));
+        if !is_below {
+            return Err(leaves());
+        }
+        url.set_path(target.path());
+        url.set_query(target.query());
+        Ok(url)
     }
 }
 
