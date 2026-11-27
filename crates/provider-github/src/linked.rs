@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 
-use review_core::{ItemKind, ItemRef, LinkedItem, LinkedState, Result};
+use review_core::{ItemKind, ItemRef, LinkedItem, LinkedState, PullRequestState, Result};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
@@ -137,10 +137,8 @@ struct GraphNode {
     state: String,
     #[serde(default)]
     is_draft: bool,
-    #[serde(default)]
     state_reason: Option<String>,
     repository: GraphRepository,
-    #[serde(default)]
     status_check_rollup: Option<GraphRollup>,
 }
 
@@ -159,7 +157,10 @@ impl GraphNode {
     fn into_item(self, reference: ItemRef) -> LinkedItem {
         let is_pull_request = self.typename == "PullRequest";
         let (kind, (state, label)) = if is_pull_request {
-            (ItemKind::PullRequest, pull_request_state(&self.state, self.is_draft))
+            (
+                ItemKind::PullRequest,
+                LinkedState::of_pull_request(pull_request_state(&self.state), self.is_draft),
+            )
         } else {
             (ItemKind::Issue, issue_state(&self.state, self.state_reason.as_deref()))
         };
@@ -179,13 +180,12 @@ impl GraphNode {
     }
 }
 
-/// The app's words for pull request states, the same on every platform.
-fn pull_request_state(state: &str, is_draft: bool) -> (LinkedState, &'static str) {
+/// GitHub's pull request state word: GraphQL's `MERGED`, `CLOSED`, `OPEN` or REST's lower case.
+fn pull_request_state(state: &str) -> PullRequestState {
     match state.to_ascii_uppercase().as_str() {
-        "MERGED" => (LinkedState::Merged, "Merged"),
-        "CLOSED" => (LinkedState::Closed, "Abandoned"),
-        _ if is_draft => (LinkedState::Draft, "Draft"),
-        _ => (LinkedState::Open, "Active"),
+        "MERGED" => PullRequestState::Merged,
+        "CLOSED" => PullRequestState::Closed,
+        _ => PullRequestState::Open,
     }
 }
 
@@ -207,17 +207,14 @@ struct RestIssue {
     title: String,
     html_url: String,
     state: String,
-    #[serde(default)]
     state_reason: Option<String>,
     #[serde(default)]
     draft: bool,
-    #[serde(default)]
     pull_request: Option<RestPullRef>,
 }
 
 #[derive(Debug, Deserialize)]
 struct RestPullRef {
-    #[serde(default)]
     merged_at: Option<String>,
 }
 
@@ -239,10 +236,14 @@ async fn anonymous(
 
 fn rest_item(reference: ItemRef, issue: RestIssue) -> LinkedItem {
     let (kind, (state, label)) = match &issue.pull_request {
-        Some(pull) if pull.merged_at.is_some() => {
-            (ItemKind::PullRequest, (LinkedState::Merged, "Merged"))
+        Some(pull) => {
+            let state = if pull.merged_at.is_some() {
+                PullRequestState::Merged
+            } else {
+                pull_request_state(&issue.state)
+            };
+            (ItemKind::PullRequest, LinkedState::of_pull_request(state, issue.draft))
         }
-        Some(_) => (ItemKind::PullRequest, pull_request_state(&issue.state, issue.draft)),
         None => (ItemKind::Issue, issue_state(&issue.state, issue.state_reason.as_deref())),
     };
     LinkedItem {

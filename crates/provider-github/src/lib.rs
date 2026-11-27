@@ -1,7 +1,7 @@
 //! GitHub and GitHub Enterprise Server provider: REST v3 for most calls, GraphQL where REST
 //! has no equivalent (review threads, resolving, drafts, "mine" searches).
 
-// RS-DONT-03: no FFI here; unsafe belongs in the platform/ modules of review-store and review-app.
+// RS-DONT-03: no FFI in this crate.
 #![forbid(unsafe_code)]
 
 mod client;
@@ -316,21 +316,15 @@ impl Provider for GitHubProvider {
 #[cfg(test)]
 mod tests {
     use super::GitHubProvider;
-    use review_core::{Connection, Provider, ProviderError, ProviderKind, ReviewVote};
+    use crate::client::test_connection;
+    use review_core::{Provider, ProviderError, ReviewVote};
     use wiremock::MockServer;
 
     #[tokio::test]
     async fn calls_that_need_a_token_fail_unsupported_without_sending() {
         let server = MockServer::start().await;
-        let connection = Connection {
-            id: "gh".to_owned(),
-            name: "GitHub".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: server.uri(),
-            organizations: Vec::new(),
-            token: None,
-        };
-        let provider = GitHubProvider::new(connection, reqwest::Client::new());
+        let provider =
+            GitHubProvider::new(test_connection(&server.uri(), None), reqwest::Client::new());
         let results = [
             provider.close("acme/app", 1).await,
             provider.set_labels("acme/app", 1, &[]).await,

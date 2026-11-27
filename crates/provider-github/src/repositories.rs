@@ -83,17 +83,11 @@ pub(crate) fn git_remote(connection: &Connection, repo: &str) -> Result<GitRemot
 #[cfg(test)]
 mod tests {
     use super::git_remote;
-    use review_core::{Connection, ProviderKind};
+    use crate::client::test_connection;
+    use review_core::Connection;
 
     fn connection(token: Option<&str>) -> Connection {
-        Connection {
-            id: "c".to_owned(),
-            name: "GitHub".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: "https://github.com/".to_owned(),
-            organizations: Vec::new(),
-            token: token.map(str::to_owned),
-        }
+        test_connection("https://github.com/", token)
     }
 
     #[test]

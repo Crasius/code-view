@@ -7,7 +7,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use reqwest::Method;
 use review_core::{PipelineJob, PipelineRun, ProviderError, RerunAction, RerunKind, Result, http};
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::io::AsyncWrite;
 
 use crate::client::{GitHubClient, PER_PAGE, Paging, lock};
 use crate::dto::pipeline::{
@@ -205,10 +205,6 @@ pub(crate) async fn download_log(
         .parse()
         .map_err(|_| ProviderError::Local(format!("'{log_id}' is not a GitHub job id.")))?;
     let path = format!("{}/actions/jobs/{job_id}/logs", repo.api_path());
-    let mut response = http::send(client.rest(Method::GET, &path)).await?;
-    while let Some(chunk) = response.chunk().await? {
-        sink.write_all(&chunk).await?;
-    }
-    sink.flush().await?;
-    Ok(())
+    let response = http::send(client.rest(Method::GET, &path)).await?;
+    http::copy_body(response, sink).await
 }

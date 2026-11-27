@@ -4,8 +4,6 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct LabelDto {
     pub name: String,
-    #[serde(default)]
     pub color: Option<String>,
-    #[serde(default)]
     pub description: Option<String>,
 }

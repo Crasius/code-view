@@ -36,13 +36,9 @@ struct Data {
 #[serde(rename_all = "camelCase")]
 struct RowDto {
     number: u64,
-    #[serde(default)]
     review_decision: Option<String>,
-    #[serde(default)]
     review_requests: Option<Connection<ReviewRequestDto>>,
-    #[serde(default)]
     latest_opinionated_reviews: Option<Connection<OpinionatedReviewDto>>,
-    #[serde(default)]
     commits: Option<Connection<HeadCommitNodeDto>>,
 }
 

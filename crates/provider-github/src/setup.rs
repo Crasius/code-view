@@ -395,26 +395,20 @@ async fn decode<T: serde::de::DeserializeOwned>(response: Response) -> Result<T>
 
 #[cfg(test)]
 mod tests {
-    use review_core::{Connection, Provider, ProviderKind};
+    use review_core::Provider;
     use serde_json::json;
     use wiremock::matchers::{header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
     use crate::GitHubProvider;
+    use crate::client::test_connection;
 
     const TOKEN: &str = "test-token";
 
     async fn provider() -> (MockServer, GitHubProvider) {
         let server = MockServer::start().await;
-        let connection = Connection {
-            id: "mock".to_owned(),
-            name: "Mock".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: server.uri(),
-            organizations: Vec::new(),
-            token: Some(TOKEN.to_owned()),
-        };
+        let connection = test_connection(&server.uri(), Some(TOKEN));
         (server, GitHubProvider::new(connection, reqwest::Client::new()))
     }
 
@@ -601,14 +595,7 @@ mod tests {
             path: path.to_owned(),
             body: json!({ "message": message }).to_string(),
         };
-        let connection = Connection {
-            id: "gh".to_owned(),
-            name: "GitHub".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: "https://github.com".to_owned(),
-            organizations: Vec::new(),
-            token: Some("ghp_classic".to_owned()),
-        };
+        let connection = test_connection("https://github.com", Some("ghp_classic"));
         let explain = |error: &ProviderError| explain(&connection, error);
         let problem = explain(&denied(
             "/repos/o/r/actions/jobs/1/logs",

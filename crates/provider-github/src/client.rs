@@ -236,6 +236,19 @@ pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// A GitHub connection to `base_url` for the crate's unit tests.
+#[cfg(test)]
+pub(crate) fn test_connection(base_url: &str, token: Option<&str>) -> Connection {
+    Connection {
+        id: "gh".to_owned(),
+        name: "GitHub".to_owned(),
+        kind: review_core::ProviderKind::GitHub,
+        base_url: base_url.to_owned(),
+        organizations: Vec::new(),
+        token: token.map(str::to_owned),
+    }
+}
+
 /// Number of pages needed for `limit` items at [`PER_PAGE`].
 pub(crate) fn pages_for(limit: usize) -> usize {
     limit.div_ceil(PER_PAGE).max(1)
@@ -248,20 +261,10 @@ pub(crate) fn per_page(limit: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use review_core::{Connection, ProviderKind};
-
-    use super::{ApiRoots, GitHubClient, pages_for, per_page};
+    use super::{ApiRoots, GitHubClient, pages_for, per_page, test_connection};
 
     fn client(base_url: &str) -> GitHubClient {
-        let connection = Connection {
-            id: "gh".to_owned(),
-            name: "GitHub".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: base_url.to_owned(),
-            organizations: Vec::new(),
-            token: None,
-        };
-        GitHubClient::new(connection, reqwest::Client::new())
+        GitHubClient::new(test_connection(base_url, None), reqwest::Client::new())
     }
 
     /// GitHub writes its page links with the host in lowercase, whatever case the user typed.

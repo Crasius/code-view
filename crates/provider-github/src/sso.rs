@@ -144,19 +144,11 @@ pub(crate) fn owner_of_path(path: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use review_core::ProviderKind;
-
     use super::*;
+    use crate::client::test_connection;
 
     fn connection(token: &str) -> Connection {
-        Connection {
-            id: "gh".to_owned(),
-            name: "GitHub".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: "https://github.com/".to_owned(),
-            organizations: Vec::new(),
-            token: Some(token.to_owned()),
-        }
+        test_connection("https://github.com/", Some(token))
     }
 
     #[test]

@@ -27,27 +27,18 @@ pub(crate) struct SearchPullRequestDto {
     pub updated_at: Option<OffsetDateTime>,
     pub head_ref_name: String,
     pub base_ref_name: String,
-    #[serde(default)]
     pub author: Option<ActorDto>,
     pub repository: SearchRepositoryDto,
-    #[serde(default)]
     pub labels: Option<Connection<LabelDto>>,
-    #[serde(default)]
     pub review_requests: Option<Connection<ReviewRequestDto>>,
-    #[serde(default)]
     pub latest_opinionated_reviews: Option<Connection<OpinionatedReviewDto>>,
     /// `commits(last: 1)`: the head commit and its check rollup.
-    #[serde(default)]
     pub commits: Option<Connection<HeadCommitNodeDto>>,
-    #[serde(default)]
     pub additions: Option<u64>,
-    #[serde(default)]
     pub deletions: Option<u64>,
-    #[serde(default)]
     pub changed_files: Option<u64>,
     /// `PullRequestReviewDecision`: `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`; null where no
     /// review is required.
-    #[serde(default)]
     pub review_decision: Option<String>,
 }
 
@@ -60,7 +51,6 @@ pub(crate) struct HeadCommitNodeDto {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HeadCommitDto {
     /// Null while the commit has no checks or statuses.
-    #[serde(default)]
     pub status_check_rollup: Option<StatusCheckRollupDto>,
 }
 
@@ -69,7 +59,6 @@ pub(crate) struct StatusCheckRollupDto {
     /// `StatusState`: ERROR, EXPECTED, FAILURE, PENDING, SUCCESS.
     pub state: String,
     /// The first page of the check runs and commit statuses behind `state`.
-    #[serde(default)]
     pub contexts: Option<ContextsDto>,
 }
 
@@ -92,12 +81,9 @@ pub(crate) enum ContextDto {
     CheckRun {
         name: String,
         /// `CheckStatusState`: `COMPLETED`, `IN_PROGRESS`, `PENDING`, `QUEUED`, `REQUESTED`, `WAITING`.
-        #[serde(default)]
         status: Option<String>,
         /// `CheckConclusionState`, once completed.
-        #[serde(default)]
         conclusion: Option<String>,
-        #[serde(default)]
         is_required: Option<bool>,
     },
     #[serde(rename_all = "camelCase")]
@@ -105,9 +91,7 @@ pub(crate) enum ContextDto {
         context: String,
         /// `StatusState`.
         state: String,
-        #[serde(default)]
         description: Option<String>,
-        #[serde(default)]
         is_required: Option<bool>,
     },
     #[serde(other)]
@@ -124,7 +108,6 @@ pub(crate) struct SearchRepositoryDto {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ReviewRequestDto {
-    #[serde(default)]
     pub requested_reviewer: Option<RequestedReviewerDto>,
 }
 
@@ -141,6 +124,5 @@ pub(crate) enum RequestedReviewerDto {
 #[derive(Debug, Deserialize)]
 pub(crate) struct OpinionatedReviewDto {
     pub state: String,
-    #[serde(default)]
     pub author: Option<ActorDto>,
 }

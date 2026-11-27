@@ -28,7 +28,7 @@ struct Envelope<T> {
 #[derive(Debug, Deserialize)]
 struct GraphQlError {
     message: String,
-    #[serde(default, rename = "type")]
+    #[serde(rename = "type")]
     kind: Option<String>,
     /// Where in `data` the error left a `null`: field names and list indexes.
     #[serde(default)]
@@ -50,11 +50,9 @@ impl<T> Envelope<T> {
 pub(crate) struct PageInfo {
     #[serde(default)]
     pub has_next_page: bool,
-    #[serde(default)]
     pub end_cursor: Option<String>,
     #[serde(default)]
     pub has_previous_page: bool,
-    #[serde(default)]
     pub start_cursor: Option<String>,
 }
 
@@ -64,6 +62,7 @@ pub(crate) struct PageInfo {
 pub(crate) struct Connection<T> {
     #[serde(default)]
     pub page_info: PageInfo,
+    /// A plain `default` would make serde require `T: Default`.
     #[serde(default = "Vec::new")]
     pub nodes: Vec<Option<T>>,
 }
