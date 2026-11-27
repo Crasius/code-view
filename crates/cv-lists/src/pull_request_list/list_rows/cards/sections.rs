@@ -15,21 +15,19 @@ use cv_runtime::route::{Navigator, Route};
 use cv_widgets::{provider_icon, row, time_text};
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
 use egui::{
-    Align2, Color32, CornerRadius, FontId, Id, Painter, Rect, Sense, Stroke, StrokeKind, Ui, pos2,
-    vec2,
+    Align2, Color32, CornerRadius, FontId, Id, Painter, Rect, Sense, Stroke, Ui, pos2, vec2,
 };
 use review_core::PullRequestSummary;
 use review_store::{RepositorySections, SectionCard, SectionKey};
 
+use crate::pull_request_list::list_rows::header::{MARK_TO_TITLE, paint_caret};
 use crate::pull_request_list::list_rows::{
-    FILES_BUTTON, FILES_INSET, ListAction, ROW_PADDING, Row,
+    CHIP_HEIGHT, FILES_BUTTON, FILES_INSET, ListAction, ROW_PADDING, Row, chip_width, paint_chip,
 };
 use crate::pull_request_list::queries::ConnectionResult;
 
 /// A section header's height; shorter than a row, so it reads as the rows' heading.
 pub const SECTION_HEIGHT: f32 = 40.0;
-/// The row count's chip.
-const CHIP_HEIGHT: f32 = 18.0;
 
 /// One repository's header in a card.
 pub struct Section<'a> {
@@ -192,17 +190,8 @@ pub fn paint(
     painter.rect_filled(full.shrink2(vec2(1.0, 0.0)), corner, fill);
 
     let center_y = full.center().y;
-    let mut left = full.left() + ROW_PADDING;
-    let caret = if section.is_open { icons::CARET_DOWN } else { icons::CARET_RIGHT };
-    let caret_font = FontId::proportional(14.0);
-    painter.text(
-        pos2(left + 7.0, center_y),
-        Align2::CENTER_CENTER,
-        caret,
-        caret_font,
-        palette.text_secondary,
-    );
-    left += 24.0;
+    let left =
+        paint_caret(&painter, &palette, full.left() + ROW_PADDING, center_y, section.is_open);
     let mark = pos2(left + icons::SIZE / 2.0, center_y);
     match section.card {
         SectionCard::Favorites => {
@@ -217,7 +206,7 @@ pub fn paint(
         pos2(full.right() - FILES_INSET - FILES_BUTTON / 2.0, center_y),
         vec2(FILES_BUTTON, FILES_BUTTON),
     );
-    let title_left = left + 26.0;
+    let title_left = left + MARK_TO_TITLE;
     let is_cut = paint_text(
         &painter,
         &palette,
@@ -262,7 +251,7 @@ fn paint_text(
     let chip_font = FontId::proportional(style::SMALL_SIZE - 1.0);
     let count =
         painter.layout_no_wrap(section.count.to_string(), chip_font, palette.text_secondary);
-    let chip_width = (count.size().x + 12.0).max(CHIP_HEIGHT);
+    let chip_width = chip_width(&count);
     let updated = section.newest.map(|newest| {
         let small = FontId::proportional(style::SMALL_SIZE);
         let moment = newest.updated_at.unwrap_or(newest.created_at);
@@ -274,12 +263,8 @@ fn paint_text(
     let needed = key_width + style::SPACE_S + chip_width;
     let updated = updated.filter(|time| left + needed + style::SPACE_L + time.size().x <= right);
     let key_right = updated.as_ref().map_or(right, |time| right - time.size().x - style::SPACE_L);
-    job.wrap = TextWrapping {
-        max_width: (key_right - left - style::SPACE_S - chip_width).max(1.0),
-        max_rows: 1,
-        break_anywhere: true,
-        overflow_character: Some('…'),
-    };
+    job.wrap =
+        TextWrapping::truncate_at_width((key_right - left - style::SPACE_S - chip_width).max(1.0));
     let key = painter.layout_job(job);
     let is_cut = key.elided;
     let key_end = left + key.size().x;
@@ -288,8 +273,8 @@ fn paint_text(
         pos2(key_end + style::SPACE_S, center_y - CHIP_HEIGHT / 2.0),
         vec2(chip_width, CHIP_HEIGHT),
     );
-    painter.rect(chip, 9, palette.surface, Stroke::new(1.0, palette.border), StrokeKind::Inside);
-    painter.galley(chip.center() - count.size() / 2.0, count, palette.text_secondary);
+    let border = Stroke::new(1.0, palette.border);
+    paint_chip(painter, chip, count, (palette.surface, palette.text_secondary), Some(border));
     if let Some(time) = updated {
         let at = pos2(right - time.size().x, center_y - time.size().y / 2.0);
         painter.galley(at, time, palette.text_secondary);

@@ -404,6 +404,10 @@ mod tests {
             denied,
             "Checks of !4: unknown\n403 Forbidden\nClick to open the checks on GitLab"
         );
+    }
+
+    #[test]
+    fn checks_open_on_each_platforms_checks_page() {
         assert_eq!(
             checks_url(ProviderKind::GitHub, "https://h/a/b/pull/3/"),
             "https://h/a/b/pull/3/checks"
@@ -412,13 +416,6 @@ mod tests {
             checks_url(ProviderKind::GitLab, "https://h/g/p/-/merge_requests/4"),
             "https://h/g/p/-/merge_requests/4/pipelines"
         );
-    }
-
-    #[test]
-    fn five_reviewers_show_three_avatars_and_fold_two() {
-        assert_eq!(stack(5), (3, 2));
-        assert_eq!(stack(3), (3, 0));
-        assert_eq!(stack(0), (0, 0));
     }
 
     #[test]

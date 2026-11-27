@@ -31,6 +31,7 @@ mod pending;
 mod size;
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use cv_base::theme::{self, icons, style};
 use cv_runtime::route::{Landing, Navigator, PullRequestKey, Route};
@@ -39,7 +40,7 @@ use cv_services::self_review::{Identities, RowAsk, RowRequests};
 use cv_services::writes::flights::Flights;
 use cv_widgets::numbers::number_prefix;
 use cv_widgets::states::{self, Action};
-use egui::{Rect, Stroke, StrokeKind, Ui, pos2, vec2};
+use egui::{Color32, Galley, Painter, Rect, Stroke, StrokeKind, Ui, pos2, vec2};
 use review_core::{ProviderKind, PullRequestSummary};
 use review_store::{Favorites, RepositorySections, SectionKey};
 
@@ -52,7 +53,7 @@ use self::keys::RowKeys;
 use super::favorites::{FavoriteQueries, HiddenFavorites};
 use super::interest::Interest;
 use super::pauses::Pauses;
-use super::queries::{ConnectionQueries, ConnectionResult};
+use super::queries::{ConnectionQueries, ConnectionResult, key_of};
 use super::statuses::{RowStatuses, StatusRow};
 use super::warm::AheadRow;
 
@@ -85,6 +86,34 @@ const FILES_INSET: f32 = 12.0;
 /// Room between the Files button and the checks column; a hairline divider sits in its middle,
 /// so a click aimed at the row never lands on the button by accident.
 const FILES_GAP: f32 = 24.0;
+/// The chips (a card header's and a section header's row count, a row's labels) share one set of
+/// sizes; each caller places its chip itself. Their height, the room left and right of their text
+/// together, and their radius, half the height for round ends.
+const CHIP_HEIGHT: f32 = 18.0;
+const CHIP_PADDING_X: f32 = 14.0;
+const CHIP_RADIUS: u8 = 9;
+
+/// The width of a chip around `galley`; never narrower than high, so one digit sits in a circle.
+fn chip_width(galley: &Galley) -> f32 {
+    (galley.size().x + CHIP_PADDING_X).max(CHIP_HEIGHT)
+}
+
+/// Paints the chip `rect` filled with `fill`, inside `stroke` when given, with `galley` centered
+/// in `text`.
+fn paint_chip(
+    painter: &Painter,
+    rect: Rect,
+    galley: Arc<Galley>,
+    (fill, text): (Color32, Color32),
+    stroke: Option<Stroke>,
+) {
+    painter.rect_filled(rect, CHIP_RADIUS, fill);
+    if let Some(stroke) = stroke {
+        painter.rect_stroke(rect, CHIP_RADIUS, stroke, StrokeKind::Inside);
+    }
+    painter.galley(rect.center() - galley.size() / 2.0, galley, text);
+}
+
 /// What a click in the list asks the page to do.
 pub enum ListAction {
     Retry,
@@ -93,13 +122,13 @@ pub enum ListAction {
     /// Switch to the tab that lists pull requests in every state.
     ShowAll,
     /// Collapse or expand the overview group of this connection.
-    Toggle(String),
+    ToggleConnectionCard(String),
     /// Collapse or expand the Favorites card.
-    ToggleFavorites,
+    ToggleFavoritesCard,
     /// The Favorites card's menu: hide the lane.
     HideFavoritesLane,
     /// Star or unstar a repository (a row's context menu).
-    ToggleFavorite {
+    ToggleStar {
         connection_id: String,
         repository_key: String,
     },
@@ -213,8 +242,6 @@ pub struct Hosts<'a> {
     pub lifts_favorites: bool,
     /// The overview groups each card's rows by repository: the sections the user closed.
     pub sections: Option<&'a RepositorySections>,
-    /// Connections with a token: how a row's lines are counted depends on it.
-    pub with_token: &'a BTreeSet<String>,
     /// What the size columns show.
     pub stats: &'a DiffStats,
     /// The rows' "Add me as reviewer" requests.
@@ -484,7 +511,7 @@ fn paint_pull_request(
     let connection_id = &result.connection_id;
     let id = ui.scope_id().with((connection_id, &pull_request.repository_key, pull_request.number));
     let is_favorite = hosts.favorites.contains(connection_id, &pull_request.repository_key);
-    let has_token = hosts.with_token.contains(connection_id);
+    let has_token = result.has_token;
     let stat_row = stat_row(result, pull_request, has_token, is_favorite);
     let shown = hosts.stats.shown(&stat_row);
     let (is_running, failure) =
@@ -522,13 +549,14 @@ fn paint_pull_request(
     };
     let picked = item::paint(ui, &item, result, pull_request);
     let number = format!("{}{}", number_prefix(result.kind), pull_request.number);
-    let edge = edge::of(result, hosts.statuses, hosts.pauses, &status_row, pull_request);
+    let edge = edge::of(result, hosts.statuses, hosts.pauses, &status_row);
     let place_of_edge = edge::Place { rect, id, is_last, opacity, number: &number };
     let mut action = edge::paint(ui, &place_of_edge, edge).then_some(ListAction::Retry);
     drawn.keys.drawn(ui, place, id);
     let navigator = &mut *drawn.navigator;
     match picked {
-        Some(RowPick::Open(key, landing)) => {
+        Some(RowPick::Open(landing)) => {
+            let key = key_of(connection_id, pull_request);
             drawn.painted.opened = Some((key.clone(), pull_request.clone()));
             match landing {
                 Landing::Files => navigator.open_files(key),
@@ -540,18 +568,14 @@ fn paint_pull_request(
             repository_key: pull_request.repository_key.clone(),
         }),
         Some(RowPick::ToggleFavorite) => {
-            action = Some(ListAction::ToggleFavorite {
+            action = Some(ListAction::ToggleStar {
                 connection_id: connection_id.clone(),
                 repository_key: pull_request.repository_key.clone(),
             });
         }
         Some(RowPick::CountLines) => action = Some(ListAction::CountLines(stat_row.clone())),
         Some(RowPick::AddMe) => {
-            action = Some(ListAction::AddMe(PullRequestKey {
-                connection_id: connection_id.clone(),
-                repository_key: pull_request.repository_key.clone(),
-                number: pull_request.number,
-            }));
+            action = Some(ListAction::AddMe(key_of(connection_id, pull_request)));
         }
         None => {}
     }
@@ -581,17 +605,13 @@ pub(super) fn stat_row(
     has_token: bool,
     is_favorite: bool,
 ) -> StatRow {
-    let key = PullRequestKey {
-        connection_id: result.connection_id.clone(),
-        repository_key: pull_request.repository_key.clone(),
-        number: pull_request.number,
-    };
+    let storage_key = key_of(&result.connection_id, pull_request).storage_key();
     StatRow::new(
         &result.connection_id,
         result.kind,
         has_token,
         is_favorite,
-        key.storage_key(),
+        storage_key,
         pull_request,
     )
 }
@@ -647,7 +667,6 @@ pub(super) mod tests {
     struct Scene {
         queries: ConnectionQueries,
         stats: DiffStats,
-        with_token: BTreeSet<String>,
         favorites: Favorites,
         lifts_favorites: bool,
         /// The overview's repository sections; `None`: rows ungrouped.
@@ -660,7 +679,6 @@ pub(super) mod tests {
         toggled: Option<SectionKey>,
         /// Retries the rows asked for.
         retries: usize,
-        has_fonts: bool,
         requests: RowRequests,
         statuses: RowStatuses,
         flights: Flights,
@@ -668,14 +686,12 @@ pub(super) mod tests {
     }
 
     fn scene(has_token: bool) -> Scene {
+        let mut queries =
+            ConnectionQueries::loaded_for_test("gl", ProviderKind::GitLab, vec![row(1), row(2)]);
+        queries.results[0].has_token = has_token;
         Scene {
-            queries: ConnectionQueries::loaded_for_test(
-                "gl",
-                ProviderKind::GitLab,
-                vec![row(1), row(2)],
-            ),
+            queries,
             stats: DiffStats::default(),
-            with_token: if has_token { BTreeSet::from(["gl".to_owned()]) } else { BTreeSet::new() },
             favorites: Favorites::default(),
             lifts_favorites: false,
             sections: None,
@@ -685,7 +701,6 @@ pub(super) mod tests {
             asked_to_count: false,
             toggled: None,
             retries: 0,
-            has_fonts: false,
             requests: RowRequests::default(),
             statuses: RowStatuses::default(),
             flights: Flights::default(),
@@ -694,42 +709,40 @@ pub(super) mod tests {
     }
 
     fn harness(width: f32, scene: Scene) -> Harness<'static, Scene> {
-        Harness::builder().with_size([width, 600.0]).build_ui_state(
-            |ui, scene: &mut Scene| {
-                if !scene.has_fonts {
-                    cv_base::theme::fonts::install(ui.ctx());
-                    scene.has_fonts = true;
-                }
-                let hosts = Hosts {
-                    collapsed: &scene.collapsed,
-                    pauses: &scene.pauses,
-                    favorites: &scene.favorites,
-                    lifts_favorites: scene.lifts_favorites,
-                    sections: scene.sections.as_ref(),
-                    with_token: &scene.with_token,
-                    stats: &scene.stats,
-                    requests: &scene.requests,
-                    statuses: &scene.statuses,
-                    flights: &scene.flights,
-                    identities: &Identities::default(),
-                };
-                scene.painted = Painted::default();
-                let input = ListInput {
-                    queries: &scene.queries,
-                    lane: None,
-                    hosts: &hosts,
-                    filter: &RowFilter::new(None),
-                    offer: EmptyOffer::Nothing,
-                };
-                let action = show(ui, &input, &mut scene.navigator, &mut scene.painted);
-                scene.asked_to_count |= matches!(action, Some(ListAction::CountLines(_)));
-                scene.retries += usize::from(matches!(action, Some(ListAction::Retry)));
-                if let Some(ListAction::ToggleSection(key)) = action {
-                    scene.toggled = Some(key);
-                }
-            },
-            scene,
-        )
+        Harness::builder()
+            .with_size([width, 600.0])
+            .with_context_setup(cv_base::theme::fonts::install)
+            .build_ui_state(
+                |ui, scene: &mut Scene| {
+                    let hosts = Hosts {
+                        collapsed: &scene.collapsed,
+                        pauses: &scene.pauses,
+                        favorites: &scene.favorites,
+                        lifts_favorites: scene.lifts_favorites,
+                        sections: scene.sections.as_ref(),
+                        stats: &scene.stats,
+                        requests: &scene.requests,
+                        statuses: &scene.statuses,
+                        flights: &scene.flights,
+                        identities: &Identities::default(),
+                    };
+                    scene.painted = Painted::default();
+                    let input = ListInput {
+                        queries: &scene.queries,
+                        lane: None,
+                        hosts: &hosts,
+                        filter: &RowFilter::new(None),
+                        offer: EmptyOffer::Nothing,
+                    };
+                    let action = show(ui, &input, &mut scene.navigator, &mut scene.painted);
+                    scene.asked_to_count |= matches!(action, Some(ListAction::CountLines(_)));
+                    scene.retries += usize::from(matches!(action, Some(ListAction::Retry)));
+                    if let Some(ListAction::ToggleSection(key)) = action {
+                        scene.toggled = Some(key);
+                    }
+                },
+                scene,
+            )
     }
 
     fn rect_of(harness: &Harness<'_, Scene>, label: &str) -> Rect {

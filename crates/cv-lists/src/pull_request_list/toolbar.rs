@@ -9,7 +9,8 @@ use super::SEARCH_TOOLTIP;
 
 use cv_widgets::refresh_status::{self, RefreshStatus};
 
-/// The overview's star tool: on while the Favorites lane is shown. Also the Settings row's label.
+/// The overview's star tool: on while the Favorites lane is shown. The Settings row (`cv-settings`,
+/// `appearance.rs`) repeats this text.
 pub const FAVORITES_LANE: &str = "Show the Favorites lane";
 /// The overview's sections tool: on while its cards group their rows by repository.
 pub const GROUP_BY_REPOSITORY: &str = "Group by repository";
@@ -196,4 +197,42 @@ pub fn header_tools(
         refresh_status::show(ui, status)
     };
     asks.wants_refresh |= retry;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HeaderLayout, REPOSITORY_MAX, REPOSITORY_MIN};
+
+    #[test]
+    fn the_header_compacts_the_note_before_it_wraps_the_filters() {
+        let (title, filters) = (180.0, 360.0);
+        let mut phases: Vec<&str> = Vec::new();
+        let mut available = 1600.0;
+        while available >= 300.0 {
+            let layout = HeaderLayout::plan(available, title, filters, true);
+            assert!(
+                (REPOSITORY_MIN..=REPOSITORY_MAX).contains(&layout.repository_width),
+                "the repository picker keeps its bounds at {available}: {layout:?}"
+            );
+            let phase = match (layout.compact_status, layout.filters_wrap) {
+                (false, false) => "full note",
+                (true, false) => "compact note",
+                (false, true) => "filters wrapped",
+                (true, true) => "compact note and filters wrapped",
+            };
+            if phases.last() != Some(&phase) {
+                phases.push(phase);
+            }
+            available -= 4.0;
+        }
+        assert_eq!(
+            phases,
+            ["full note", "compact note", "filters wrapped"],
+            "as the window narrows"
+        );
+
+        let repository = HeaderLayout::plan(300.0, title, filters, false);
+        assert!(repository.filters_wrap, "{repository:?}");
+        assert_eq!(repository.repository_width, 0.0, "a repository's list has no picker");
+    }
 }

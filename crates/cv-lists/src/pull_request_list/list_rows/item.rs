@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, Palette, icons, motion, style};
-use cv_runtime::route::{Landing, PullRequestKey};
+use cv_runtime::route::Landing;
 use cv_services::diff_stats::Shown;
 use cv_services::self_review::{self, RowAsk};
 use cv_widgets::numbers::{compact_count, number_prefix};
@@ -27,7 +27,8 @@ use super::indicators::{self, Indicators, MAX_AVATARS, Votes};
 use super::pending::{self, Marker};
 use super::size::{self, count_color};
 use super::{
-    AVATAR_SIZE, Columns, FILES_BUTTON, FILES_GAP, LINE_OFFSET, META_MARK_GAP, ROW_PADDING,
+    AVATAR_SIZE, CHIP_HEIGHT, Columns, FILES_BUTTON, FILES_GAP, LINE_OFFSET, META_MARK_GAP,
+    ROW_PADDING, chip_width, paint_chip,
 };
 
 const MAX_LABELS: usize = 3;
@@ -44,7 +45,7 @@ const STATUS_ICON_GAP: f32 = 4.0;
 
 /// What a row was asked for.
 pub enum RowPick {
-    Open(PullRequestKey, Landing),
+    Open(Landing),
     /// The context menu: the repository's own list.
     Repository,
     /// The context menu: star or unstar the repository.
@@ -190,19 +191,13 @@ pub fn paint(
     if counts_lines {
         return Some(RowPick::CountLines);
     }
-    let landing = if opens_files || opens_files_by_key {
-        Landing::Files
+    if opens_files || opens_files_by_key {
+        Some(RowPick::Open(Landing::Files))
     } else if response.clicked() || opens_approvals {
-        Landing::Default
+        Some(RowPick::Open(Landing::Default))
     } else {
-        return None;
-    };
-    let key = PullRequestKey {
-        connection_id: result.connection_id.clone(),
-        repository_key: pull_request.repository_key.clone(),
-        number: pull_request.number,
-    };
-    Some(RowPick::Open(key, landing))
+        None
+    }
 }
 
 /// The approvals and checks columns, with the spinner of a running "Add me as reviewer"; true when
@@ -528,7 +523,7 @@ fn paint_title(
         })
         .collect();
     let chips_width: f32 =
-        chips.iter().map(|(galley, _)| galley.size().x + 14.0 + style::SPACE_XS).sum();
+        chips.iter().map(|(galley, _)| chip_width(galley) + style::SPACE_XS).sum();
     let title_room =
         if width - chips_width >= MIN_TITLE_WIDTH { width - chips_width } else { width };
     let title = elided(
@@ -542,13 +537,13 @@ fn paint_title(
     let mut x = left + title.size().x + style::SPACE_S;
     painter.galley(pos2(left, y - title.size().y / 2.0), title, palette.text);
     for (galley, fill) in chips {
-        let chip = Rect::from_min_size(pos2(x, y - 9.0), vec2(galley.size().x + 14.0, 18.0));
-        if chip.right() > right {
+        let size = vec2(chip_width(&galley), CHIP_HEIGHT);
+        let rect = Rect::from_min_size(pos2(x, y - CHIP_HEIGHT / 2.0), size);
+        if rect.right() > right {
             break;
         }
-        painter.rect_filled(chip, 9, fill);
-        painter.galley(chip.center() - galley.size() / 2.0, galley, palette.text);
-        x = chip.right() + style::SPACE_XS;
+        paint_chip(painter, rect, galley, (fill, palette.text), None);
+        x = rect.right() + style::SPACE_XS;
     }
     is_cut
 }
@@ -644,12 +639,7 @@ fn elided(
 
 /// [`elided`] for text in several colors.
 fn elided_job(painter: &Painter, mut job: LayoutJob, max_width: f32) -> Arc<Galley> {
-    job.wrap = TextWrapping {
-        max_width: max_width.max(1.0),
-        max_rows: 1,
-        break_anywhere: true,
-        overflow_character: Some('…'),
-    };
+    job.wrap = TextWrapping::truncate_at_width(max_width.max(1.0));
     painter.layout_job(job)
 }
 

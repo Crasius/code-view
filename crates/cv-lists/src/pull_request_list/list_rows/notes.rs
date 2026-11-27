@@ -81,60 +81,57 @@ pub fn paint_empty(
 }
 
 /// Starred repositories the role hides: how many, why, and "Add token", which opens the
-/// connection's setup at its token step. The note is cut to the row; its full text is the tooltip.
+/// connection's setup at its token step.
 pub fn paint_hidden_favorites(ui: &mut Ui, rect: Rect, hidden: &HiddenFavorites) {
-    let palette = theme::palette(ui.ctx());
     let words = format!(
         "{} hidden: {} has no token to know who you are.",
         repositories_text(hidden.repositories),
         hidden.connection_name
     );
     let text = format!("{}  {words}", icons::KEY);
-    ui.scope_builder(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(ROW_PADDING, 0.0))), |ui| {
-        ui.horizontal_centered(|ui| {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let button = buttons::subtle(ui, icons::KEY, "Add token").on_hover_text(format!(
-                    "Open the setup of {} at its token",
-                    hidden.connection_name
-                ));
-                if button.clicked() {
-                    intents::request_fix(ui.ctx(), &hidden.connection_id);
-                }
-                ui.add_space(style::SPACE_S);
-                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    let label = ui.add(
-                        egui::Label::new(egui::RichText::new(&text).color(palette.text_secondary))
-                            .truncate()
-                            .show_tooltip_when_elided(false),
-                    );
-                    glyph::speak_as(&label, &words);
-                    label.on_hover_text(&words);
-                });
-            });
-        });
+    let tooltip = format!("Open the setup of {} at its token", hidden.connection_name);
+    let wants_token = note_with_button(ui, rect, &text, &words, |ui| {
+        buttons::subtle(ui, icons::KEY, "Add token").on_hover_text(tooltip).clicked()
     });
+    if wants_token {
+        intents::request_fix(ui.ctx(), &hidden.connection_id);
+    }
 }
 
 /// The Favorites card before anything is starred: what a star does, and the way to the
-/// repositories, where the stars are. True when that way was taken. As in the hidden favorites
-/// note, the button keeps its width at the right; the sentence is cut to the rest, its full text
-/// the tooltip.
+/// repositories, where the stars are. True when that way was taken.
 pub fn paint_no_favorites(ui: &mut Ui, rect: Rect) -> bool {
+    let text = "Star a repository to see its pull requests here, from every connection.";
+    note_with_button(ui, rect, text, text, |ui| {
+        buttons::subtle(ui, icons::BOOKS, "Browse repositories").clicked()
+    })
+}
+
+/// A note whose `button` keeps its width at the row's right; the sentence `text` is cut to the
+/// rest, and `spoken` (its words without glyphs) is its accessible name and full text on hover.
+/// Returns what `button` returned.
+fn note_with_button(
+    ui: &mut Ui,
+    rect: Rect,
+    text: &str,
+    spoken: &str,
+    button: impl FnOnce(&mut Ui) -> bool,
+) -> bool {
     let palette = theme::palette(ui.ctx());
     let mut picked = false;
     ui.scope_builder(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(ROW_PADDING, 0.0))), |ui| {
         ui.horizontal_centered(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                picked = buttons::subtle(ui, icons::BOOKS, "Browse repositories").clicked();
+                picked = button(ui);
                 ui.add_space(style::SPACE_S);
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    let text =
-                        "Star a repository to see its pull requests here, from every connection.";
                     let label = ui.add(
                         egui::Label::new(egui::RichText::new(text).color(palette.text_secondary))
-                            .truncate(),
+                            .truncate()
+                            .show_tooltip_when_elided(false),
                     );
-                    label.on_hover_text(text);
+                    glyph::speak_as(&label, spoken);
+                    label.on_hover_text(spoken);
                 });
             });
         });

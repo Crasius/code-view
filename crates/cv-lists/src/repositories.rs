@@ -9,7 +9,8 @@ use cv_services::Services;
 use cv_widgets::refresh_status::{self, RefreshStatus};
 use cv_widgets::states::{self, Action};
 use cv_widgets::{buttons, glyph, provider_icon, row, skeleton, star};
-use egui::{Align2, Id, Rect, RichText, Sense, Stroke, TextEdit, pos2, vec2};
+use egui::text::{LayoutJob, TextWrapping};
+use egui::{Align2, Id, Pos2, Rect, RichText, Sense, Stroke, TextEdit, pos2, vec2};
 use review_core::{Connection, RepositoryInfo};
 use review_store::Favorites;
 
@@ -100,14 +101,11 @@ impl RepositoriesPage {
             }
             return;
         };
-        let is_known = self
-            .connection_id
-            .as_ref()
-            .is_some_and(|id| connections.iter().any(|connection| &connection.id == id));
-        if !is_known {
-            self.connection_id = Some(first.id.clone());
-        }
-        let connection_id = self.connection_id.clone().unwrap_or_default();
+        let connection_id = match &self.connection_id {
+            Some(id) if connections.iter().any(|connection| &connection.id == id) => id.clone(),
+            _ => first.id.clone(),
+        };
+        self.connection_id = Some(connection_id.clone());
         let wants_search = self.header(ui, connections, &connection_id, navigator);
         ui.painter().hline(
             ui.max_rect().x_range(),
@@ -407,27 +405,24 @@ fn repository_row(
     );
     let description = repository.description.as_deref().unwrap_or("").trim();
     let title_y = if description.is_empty() { rect.center().y } else { rect.center().y - 9.0 };
-    let text_clip = Rect::from_min_max(
-        pos2(text_left, rect.top()),
-        pos2(star_rect.left() - style::SPACE_S, rect.bottom()),
-    );
-    ui.painter_at(text_clip).text(
-        pos2(text_left, title_y),
-        Align2::LEFT_CENTER,
-        &repository.key,
-        theme::fonts::semibold_font(style::BODY_SIZE),
-        palette.text,
-    );
+    let text_width = (star_rect.left() - style::SPACE_S - text_left).max(1.0);
+    let key_font = theme::fonts::semibold_font(style::BODY_SIZE);
+    let at = pos2(text_left, title_y);
+    let mut is_cut =
+        paint_line(&painter, &repository.key, (key_font, palette.text), at, text_width);
     if !description.is_empty() {
-        let clip = text_clip;
-        ui.painter_at(clip).text(
-            pos2(text_left, rect.center().y + 10.0),
-            Align2::LEFT_CENTER,
-            description,
-            egui::FontId::proportional(style::SMALL_SIZE),
-            palette.text_secondary,
-        );
+        let font = egui::FontId::proportional(style::SMALL_SIZE);
+        let at = pos2(text_left, rect.center().y + 10.0);
+        is_cut |= paint_line(&painter, description, (font, palette.text_secondary), at, text_width);
     }
+    // A cut key or description reads in full on hover.
+    let response = if !is_cut {
+        response
+    } else if description.is_empty() {
+        response.on_hover_text(&repository.key)
+    } else {
+        response.on_hover_text(format!("{}\n{description}", repository.key))
+    };
     painter.text(
         pos2(caret_right, rect.center().y),
         Align2::RIGHT_CENTER,
@@ -446,5 +441,63 @@ fn repository_row(
         Some(RepositoryPick::ToggleFavorite)
     } else {
         response.clicked().then_some(RepositoryPick::Open)
+    }
+}
+
+/// `text` on one line from `at` (its left end and middle height), cut with an ellipsis at `width`;
+/// true when it was cut.
+fn paint_line(
+    painter: &egui::Painter,
+    text: &str,
+    (font, color): (egui::FontId, egui::Color32),
+    at: Pos2,
+    width: f32,
+) -> bool {
+    let mut job = LayoutJob::simple_singleline(text.to_owned(), font, color);
+    job.wrap = TextWrapping::truncate_at_width(width);
+    let galley = painter.layout_job(job);
+    let is_cut = galley.elided;
+    painter.galley(pos2(at.x, at.y - galley.size().y / 2.0), galley, color);
+    is_cut
+}
+
+#[cfg(test)]
+mod tests {
+    use egui::accesskit::Role;
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+    use review_core::RepositoryInfo;
+
+    use super::repository_row;
+
+    const KEY: &str = "platform-team/an-uncommonly-long-repository-name";
+    const DESCRIPTION: &str = "Builds, tests and ships every service of the platform";
+
+    /// The row of a repository with a long key and description, in a window `width` wide, hovered.
+    fn hovered_row(width: f32) -> Harness<'static> {
+        let repository = RepositoryInfo {
+            key: KEY.into(),
+            name: "an-uncommonly-long-repository-name".into(),
+            description: Some(DESCRIPTION.into()),
+            web_url: String::new(),
+            default_branch: None,
+        };
+        let mut harness = Harness::builder()
+            .with_size([width, 120.0])
+            .with_context_setup(cv_base::theme::fonts::install)
+            .build_ui(move |ui| {
+                repository_row(ui, &repository, false, true);
+            });
+        harness.run();
+        harness.hover_at(harness.get_by_role_and_label(Role::Link, KEY).rect().center());
+        harness.run_steps(4);
+        harness
+    }
+
+    #[test]
+    fn a_cut_repository_row_reads_in_full_on_hover() {
+        let full = format!("{KEY}\n{DESCRIPTION}");
+        assert!(hovered_row(280.0).query_by_label(&full).is_some(), "a narrow row is cut");
+        assert!(hovered_row(1200.0).query_by_label(&full).is_none(), "a wide row shows it all");
     }
 }

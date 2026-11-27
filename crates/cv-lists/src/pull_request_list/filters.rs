@@ -112,7 +112,6 @@ pub fn show(
                     })
                 });
             ui.add_space(style::SPACE_S);
-            let repositories = known();
             let selected = filters
                 .repository
                 .as_ref()
@@ -127,7 +126,8 @@ pub fn show(
                 |ui| {
                     let mut changed =
                         choice(ui, &mut filters.repository, None, "All repositories").changed();
-                    for (connection_id, connection_name, repository_key) in repositories {
+                    // Built only while the list is open: the closed picker needs none of it.
+                    for (connection_id, connection_name, repository_key) in known() {
                         let label = format!("{repository_key}  ·  {connection_name}");
                         changed |= choice(
                             ui,

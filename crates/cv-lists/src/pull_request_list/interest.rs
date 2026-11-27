@@ -82,8 +82,7 @@ impl Interest {
 #[cfg(test)]
 mod tests {
     use review_core::{
-        Check, CheckState, DiffStat, PullRequestState, PullRequestSummary, ReviewVote, Reviewer,
-        Timestamp, UserIdentity,
+        Check, CheckState, PullRequestState, PullRequestSummary, ReviewVote, Reviewer, UserIdentity,
     };
 
     use super::{Depth, Interest};
@@ -101,26 +100,8 @@ mod tests {
     }
 
     fn summary(state: PullRequestState, is_draft: bool) -> PullRequestSummary {
-        PullRequestSummary {
-            repository_key: "acme/widgets".to_owned(),
-            repository_name: "widgets".to_owned(),
-            number: 7,
-            title: "Rename the greeting".to_owned(),
-            author: person("author"),
-            state,
-            is_draft,
-            source_branch: "feature".to_owned(),
-            target_branch: "main".to_owned(),
-            created_at: Timestamp::UNIX_EPOCH,
-            updated_at: None,
-            web_url: String::new(),
-            labels: Vec::new(),
-            reviewers: Vec::new(),
-            checks: None,
-            diff_stat: DiffStat::default(),
-            head_sha: None,
-            target_sha: None,
-        }
+        let row = crate::pull_request_list::list_rows::tests::row;
+        PullRequestSummary { state, is_draft, author: person("author"), ..row(7) }
     }
 
     #[test]

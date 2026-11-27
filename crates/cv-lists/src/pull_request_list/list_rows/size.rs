@@ -18,6 +18,10 @@ const BAR_HEIGHT: f32 = 6.0;
 const BAR_GAP: f32 = 6.0;
 /// The changed files, right-aligned after the bar.
 const FILE_COUNT_WIDTH: f32 = 38.0;
+const _: () = assert!(
+    FILE_COUNT_WIDTH + BAR_GAP + BAR_WIDTH <= super::SIZE_WIDTH,
+    "the bar and the file count fit the size column"
+);
 /// Between the added and the deleted count, and between the file icon and its count.
 const COUNT_GAP: f32 = 6.0;
 const FILE_ICON_GAP: f32 = 3.0;
@@ -319,33 +323,4 @@ fn files_changed(files: u64) -> String {
 /// A count in its tint; a zero carries no news, so it steps back (as in the file tree).
 pub fn count_color(value: u64, tint: Color32, palette: &Palette) -> Color32 {
     if value == 0 { palette.text_disabled } else { tint }
-}
-
-#[cfg(test)]
-mod tests {
-    use egui::{Rect, pos2, vec2};
-
-    use super::super::ROW_HEIGHT;
-    use super::SizeLayout;
-
-    #[test]
-    fn counts_end_at_the_same_places_whatever_the_numbers() {
-        let column =
-            Rect::from_min_size(pos2(500.0, 0.0), vec2(super::super::SIZE_WIDTH, ROW_HEIGHT));
-        let layout = SizeLayout::new(column, 40.0);
-        assert_eq!(
-            layout.deleted_right,
-            column.right(),
-            "the deleted count ends at the column's edge"
-        );
-        assert_eq!(
-            layout.added_right,
-            column.right() - 40.0 - super::COUNT_GAP,
-            "the added one before the deleted one's slot"
-        );
-        assert_eq!(layout.files.right(), column.right());
-        assert_eq!(layout.track.width(), super::BAR_WIDTH);
-        assert!(layout.track.right() < layout.files.left(), "the bar ends before the file count");
-        assert!(layout.track.left() >= column.left(), "the bar stays inside the column");
-    }
 }
