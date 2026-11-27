@@ -29,7 +29,7 @@ fn provider(server: &MockServer) -> GitLabProvider {
 async fn edits_a_note_with_its_body_only() {
     let server = MockServer::start().await;
     let edited: Value =
-        serde_json::from_str(include_str!("fixtures/note_edited.json")).expect("fixture");
+        serde_json::from_str(include_str!("../fixtures/note_edited.json")).expect("fixture");
     Mock::given(method("PUT"))
         .and(path(NOTE))
         .and(header("PRIVATE-TOKEN", TOKEN))

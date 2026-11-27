@@ -9,8 +9,8 @@ use serde_json::Value;
 use wiremock::matchers::{body_partial_json, body_string_contains, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
-const ROWS: &str = include_str!("fixtures/graphql_row_statuses.json");
-const UNKNOWN_FIELD: &str = include_str!("fixtures/graphql_unknown_field.json");
+const ROWS: &str = include_str!("../fixtures/graphql_row_statuses.json");
+const UNKNOWN_FIELD: &str = include_str!("../fixtures/graphql_unknown_field.json");
 
 fn provider(server: &MockServer) -> GitLabProvider {
     let connection = Connection {
