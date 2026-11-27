@@ -210,8 +210,7 @@ pub(crate) async fn list_repositories(
         }
     }
     let mut summaries = shares.rows;
-    summaries
-        .sort_by_key(|summary| std::cmp::Reverse(summary.updated_at.unwrap_or(summary.created_at)));
+    summaries.sort_by_key(|summary| std::cmp::Reverse(summary.last_activity()));
     Ok(summaries)
 }
 

@@ -28,7 +28,7 @@ use super::walkthrough::{
 use cv_pr_rendered::file_header::NEXT_CHANGE_HINT;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::provider::{Script, Scripted};
-use cv_testkit::{Clicks, ScratchDir, git, samples};
+use cv_testkit::{Clicks, Drags, ScratchDir, git, samples};
 use cv_widgets::skeleton;
 
 const CONNECTION_ID: &str = "local-layout";
@@ -457,18 +457,9 @@ fn middle(pos: Pos2, pressed: bool) -> Event {
     Event::PointerButton { pos, button: PointerButton::Middle, pressed, modifiers: Modifiers::NONE }
 }
 
-/// Press at `from`, move by `by` in two steps, release: a pointer drag.
+/// A pointer drag from `from` by `by` in two moves, then waits for the pane sizes it saves.
 fn drag(harness: &mut Harness<'_, ReviewApp>, from: Pos2, by: egui::Vec2) {
-    harness.hover_at(from);
-    harness.step();
-    harness.event(button(from, true));
-    harness.step();
-    harness.hover_at(from + by * 0.5);
-    harness.step();
-    harness.hover_at(from + by);
-    harness.step();
-    harness.event(button(from + by, false));
-    harness.step();
+    harness.drag(from, from + by, 2);
     wait_for_saved_panes(harness);
 }
 
@@ -531,8 +522,7 @@ fn create_origin(origin: &Path) -> Fixture {
         .save(origin.join(LOGO_PATH))
         .expect("write logo");
     git(origin, &["init", "-q", "-b", "main"]);
-    git(origin, &["config", "uploadpack.allowFilter", "true"]);
-    git(origin, &["config", "uploadpack.allowAnySHA1InWant", "true"]);
+    cv_testkit::serve_partial_clones(origin);
     let line = |index: usize, changed: bool| {
         let value = if changed { index * 3 } else { index };
         format!(

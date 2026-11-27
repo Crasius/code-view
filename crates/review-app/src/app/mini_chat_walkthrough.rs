@@ -10,7 +10,7 @@
 //! geometry only. Needs `git` on PATH, no network, no real CLI.
 //! `cargo test -p review-app mini_chat`
 
-use egui::{Event, Key, Modifiers, PointerButton, Pos2, Role, pos2};
+use egui::{Key, Modifiers, Pos2, Role, pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_agent::FakeAgent;
@@ -22,7 +22,7 @@ use cv_pr_assistant::mini::{
     self, ANSWERING, CARD_LABEL, FOLLOW_UP, NEXT, OPEN, OPEN_AT_HEAD, PREVIOUS, SHRINK, SKIP_NEXT,
 };
 use cv_pr_diff::diff_view::flashed_lines;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, Drags};
 
 /// The whole tour with the mini chat on.
 #[test]
@@ -123,7 +123,7 @@ fn pill_and_back(harness: &mut Harness<'_, ReviewApp>) {
 fn drag_to_a_corner(harness: &mut Harness<'_, ReviewApp>, room: egui::Rect) {
     let grip = drawn(harness).rect.left_top() + egui::vec2(60.0, 32.0);
     let release = pos2(room.left() + 200.0, room.bottom() - 120.0);
-    drag(harness, grip, release);
+    harness.drag(grip, release, 6);
     wait_until(harness, "the snap", |harness| {
         let shown = drawn(harness).rect;
         (shown.left() - (room.left() + 16.0)).abs() < 0.5
@@ -199,24 +199,4 @@ fn is_disabled(harness: &Harness<'_, ReviewApp>, label: &str) -> bool {
 
 fn assert_near(actual: Pos2, expected: Pos2, what: &str) {
     assert!(actual.distance(expected) < 0.5, "{what}: {actual:?}, expected {expected:?}");
-}
-
-/// Presses at `from`, moves the pointer to `to` over a few frames and releases there.
-fn drag(harness: &mut Harness<'_, ReviewApp>, from: Pos2, to: Pos2) {
-    harness.hover_at(from);
-    harness.step();
-    let button = |pos, pressed| Event::PointerButton {
-        pos,
-        button: PointerButton::Primary,
-        pressed,
-        modifiers: Modifiers::NONE,
-    };
-    harness.event(button(from, true));
-    harness.step();
-    for step in 1..=6 {
-        harness.hover_at(from.lerp(to, step as f32 / 6.0));
-        harness.step();
-    }
-    harness.event(button(to, false));
-    harness.step();
 }

@@ -276,7 +276,7 @@ impl ReviewApp {
             history: History::default(),
             swipe: Swipe::default(),
             navigator: Navigator::default(),
-            my_pull_requests: PullRequestListPage::new(ListSource::Mine),
+            my_pull_requests: PullRequestListPage::new(ListSource::Overview),
             repositories: RepositoriesPage::default(),
             repository_pull_requests: None,
             settings: SettingsPage::default(),

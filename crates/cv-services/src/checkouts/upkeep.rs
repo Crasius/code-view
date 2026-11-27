@@ -239,10 +239,7 @@ impl Upkeep {
                 Change::Updated { key, head: result.head, log }
             }
             UpdateOutcome::Blocked(blocked) => {
-                log.push(redact(&format!(
-                    "{now}  Not updated: {}",
-                    reason(&blocked, result.behind)
-                )));
+                log.push(format!("{now}  Not updated: {}", reason(&blocked, result.behind)));
                 let status =
                     Status { behind: result.behind, blocked: Some(blocked), is_updating: false };
                 self.statuses.insert(key.clone(), status);
@@ -273,7 +270,7 @@ pub fn reason(blocked: &Blocked, behind: usize) -> String {
         }
         Blocked::Refused(message) => {
             let first = message.lines().next().unwrap_or(message);
-            format!("git refused: {first}")
+            redact(&format!("git refused: {first}"))
         }
         Blocked::NoBranch => format!("the branch is gone ({behind} behind)"),
     }
@@ -296,6 +293,8 @@ mod tests {
             number: 7,
         };
         let refused = "fatal: unable to access https://ci:ghp_secret123@github.com/acme/app";
+        let shown = super::reason(&Blocked::Refused(refused.into()), 2);
+        assert!(!shown.contains("ghp_secret123"), "the menu shows it redacted too: {shown}");
         let result = UpdateResult {
             outcome: Ok(UpdateOutcome::Blocked(Blocked::Refused(refused.into()))),
             head: "def".into(),

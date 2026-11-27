@@ -139,7 +139,7 @@ impl ConnectionQueries {
         self.collapsible = source.is_overview();
 
         let (connections, repository_key): (Vec<Connection>, Option<String>) = match source {
-            ListSource::Mine => {
+            ListSource::Overview => {
                 let listed = services
                     .connections
                     .all()

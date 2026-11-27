@@ -1,7 +1,7 @@
 //! Selecting, copying and commenting on several lines in the diff, driven with the pointer and
 //! keyboard like a user.
 
-use cv_testkit::{Clicks, poll_until};
+use cv_testkit::{Clicks, Drags, poll_until};
 use egui::{Event, Key, Modifiers, PointerButton, Pos2, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -43,21 +43,6 @@ fn multi_click<State>(harness: &mut Harness<'_, State>, pos: Pos2, count: usize)
 fn right_click<State>(harness: &mut Harness<'_, State>, pos: Pos2) {
     harness.hover_at(pos);
     harness.click_point(pos, PointerButton::Secondary);
-    harness.step();
-}
-
-/// Presses at `from`, moves through `path` and lets go at its last point; the pointer stays there.
-fn drag<State>(harness: &mut Harness<'_, State>, from: Pos2, path: &[Pos2]) {
-    harness.hover_at(from);
-    harness.step();
-    harness.event(button(from, PointerButton::Primary, true, Modifiers::NONE));
-    harness.step();
-    for point in path {
-        harness.hover_at(*point);
-        harness.step();
-    }
-    let to = path.last().copied().unwrap_or(from);
-    harness.event(button(to, PointerButton::Primary, false, Modifiers::NONE));
     harness.step();
 }
 
@@ -124,8 +109,7 @@ fn side_by_side_selects_and_copies_code_in_one_pane() {
     // A drag over the head pane selects characters across both lines.
     let start = harness.state().view.text_point(Pane::Right, signature, 4);
     let end = harness.state().view.text_point(Pane::Right, body, 20);
-    let middle = start.lerp(end, 0.5);
-    drag(&mut harness, start, &[middle, end]);
+    harness.drag(start, end, 2);
     let expected = format!("{}\n{}", &line(NEW, new_total)[4..], &line(NEW, new_total + 1)[..20]);
     assert_eq!(
         copy(&mut harness).as_deref(),
@@ -141,7 +125,7 @@ fn side_by_side_selects_and_copies_code_in_one_pane() {
 
     // Dragging on into the base pane keeps the selection in the head pane.
     let into_base = harness.state().view.text_point(Pane::Left, body, 10);
-    drag(&mut harness, start, &[into_base]);
+    harness.drag(start, into_base, 1);
     assert_eq!(
         copy(&mut harness),
         Some(format!("{}\n", &line(NEW, new_total)[4..])),
@@ -152,7 +136,7 @@ fn side_by_side_selects_and_copies_code_in_one_pane() {
     let deleted = line(OLD, old_total + 1);
     let from = harness.state().view.text_point(Pane::Left, body, 8);
     let to = harness.state().view.text_point(Pane::Left, body, deleted.chars().count());
-    drag(&mut harness, from, &[to]);
+    harness.drag(from, to, 1);
     assert_eq!(copy(&mut harness).as_deref(), Some(deleted.trim_start()));
 }
 
@@ -297,9 +281,8 @@ fn dragging_the_plus_comments_on_the_lines_it_passes() {
     harness.hover_at(marker(&harness, first));
     harness.step();
     assert!(harness.query_by_label("Add comment").is_some(), "hovering a line shows its +");
-    let path: Vec<Pos2> = (first + 1..=last).map(|row| marker(&harness, row)).collect();
-    let plus = marker(&harness, first);
-    drag(&mut harness, plus, &path);
+    let (plus, end) = (marker(&harness, first), marker(&harness, last));
+    harness.drag(plus, end, u16::try_from(last - first).expect("a few rows"));
     settle(&mut harness);
     assert!(
         harness.query_by_label(&format!("Comment on lines {first_new}–{last_new}")).is_some(),
@@ -455,7 +438,7 @@ fn a_text_selection_paints_one_continuous_block() {
         );
         let start = harness.state().view.text_point(case.pane, first, BLOCK_FROM);
         let end = harness.state().view.text_point(case.pane, last, BLOCK_TO);
-        drag(&mut harness, start, &[start.lerp(end, 0.5), end]);
+        harness.drag(start, end, 2);
         let copied = copy(&mut harness).expect("a selection");
         let parts: Vec<&str> = copied.split('\n').collect();
         assert_eq!(
@@ -610,7 +593,7 @@ fn a_selection_offers_one_comment_button() {
             );
             let (from, to, focus, origin) =
                 if is_up { (bottom, top, first, last) } else { (top, bottom, last, first) };
-            drag(&mut harness, from, &[from.lerp(to, 0.5), to]);
+            harness.drag(from, to, 2);
 
             let button = ButtonAt { pane: case.pane, label: &label, focus, origin };
             assert_one_button_wherever_it_rests(&mut harness, &button, &name);
@@ -783,7 +766,7 @@ fn the_comment_opens_where_the_drag_ended() {
             harness.state().view.text_point(pane, last, 6),
         );
         let (from, to) = if is_up { (bottom, top) } else { (top, bottom) };
-        drag(&mut harness, from, &[from.lerp(to, 0.5), to]);
+        harness.drag(from, to, 2);
         harness.key_press_modifiers(Modifiers::ALT, Key::C);
         settle(&mut harness);
         settle(&mut harness);

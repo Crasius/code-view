@@ -49,7 +49,6 @@ pub(super) fn insert_by_update<'a>(
     results: &'a [ConnectionResult],
     filter: &RowFilter,
 ) {
-    let updated = |row: &PullRequestSummary| row.updated_at.unwrap_or(row.created_at);
     for result in results {
         for leaving in &result.leaving {
             let gone = gone(ctx, leaving.since);
@@ -58,7 +57,7 @@ pub(super) fn insert_by_update<'a>(
             }
             let later = body[first..]
                 .iter()
-                .take_while(|row| matches!(row, Row::Item(_, shown) if updated(shown) >= updated(&leaving.row)))
+                .take_while(|row| matches!(row, Row::Item(_, shown) if shown.last_activity() >= leaving.row.last_activity()))
                 .count();
             body.insert(first + later, Row::Leaving(result, &leaving.row, gone));
         }

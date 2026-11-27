@@ -14,6 +14,7 @@ use cv_base::theme;
 use cv_code::diff_rows::Layout;
 use cv_code::find_paint::{self as paint, MarkLook, last_marks};
 use cv_code::line_source::Pane;
+use cv_testkit::Drags;
 
 /// The line that changes; "count" is on it in both versions.
 const CHANGED: u32 = 30;
@@ -59,17 +60,6 @@ fn multi_click(harness: &mut Harness<'_, Fixture>, pos: Pos2, count: usize) {
     harness.step();
 }
 
-fn drag(harness: &mut Harness<'_, Fixture>, from: Pos2, to: Pos2) {
-    harness.hover_at(from);
-    harness.step();
-    harness.event(button(from, true));
-    harness.step();
-    harness.hover_at(to);
-    harness.step();
-    harness.event(button(to, false));
-    harness.step();
-}
-
 /// Steps until the occurrences are found; their rows and overview ticks.
 fn wait_for_occurrences(harness: &mut Harness<'_, Fixture>) -> OccurrenceRows {
     cv_testkit::poll_for("the occurrences", || {
@@ -109,10 +99,10 @@ fn a_selected_word_marks_its_other_occurrences_in_the_whole_file() {
     // Blanks mark nothing, nor does a selection over two lines.
     let blanks = (0..2).map(|column| harness.state().view.text_point(Pane::Right, changed, column));
     let [from, to] = <[Pos2; 2]>::try_from(blanks.collect::<Vec<_>>()).expect("two points");
-    drag(&mut harness, from, to);
+    harness.drag(from, to, 1);
     assert!(!has_occurrences(&harness), "a selection of blanks marks nothing");
     let below = harness.state().view.text_point(Pane::Right, changed + 1, 8);
-    drag(&mut harness, word, below);
+    harness.drag(word, below, 1);
     assert!(!has_occurrences(&harness), "a selection over two lines marks nothing");
 
     // A query in the find widget leaves them be, and so does closing it.
@@ -185,7 +175,7 @@ fn a_dragged_identifier_marks_its_occurrences_beside_the_find_hits() {
         harness.event(Event::Text("return".to_owned()));
         wait_for_count(&mut harness, " of 1");
 
-        drag(&mut harness, from, to);
+        harness.drag(from, to, 1);
         wait_for_occurrences(&mut harness);
         harness.run();
         let palette = theme::palette(&harness.ctx);

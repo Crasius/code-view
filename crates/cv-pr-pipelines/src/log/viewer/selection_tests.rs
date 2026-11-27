@@ -3,6 +3,7 @@
 //! text without timestamps or ANSI escapes, as "Copy log" does. No network.
 
 use cv_base::theme;
+use cv_testkit::Drags;
 use egui::{Event, Key, Modifiers, PointerButton, Pos2, Rect, Role, pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -79,20 +80,6 @@ fn multi_click(harness: &mut Harness<'_, State>, pos: Pos2, count: usize) {
     harness.step();
 }
 
-/// Presses at `from`, moves to `to` in a few steps and lets go there.
-fn drag(harness: &mut Harness<'_, State>, from: Pos2, to: Pos2) {
-    harness.hover_at(from);
-    harness.step();
-    harness.event(button(from, true, Modifiers::NONE));
-    harness.step();
-    for step in 1..=4 {
-        harness.hover_at(from + (to - from) * (step as f32 / 4.0));
-        harness.step();
-    }
-    harness.event(button(to, false, Modifiers::NONE));
-    harness.step();
-}
-
 /// Ctrl+C as egui-winit reports it, and what reached the clipboard.
 fn copy(harness: &mut Harness<'_, State>) -> String {
     harness.event(Event::Copy);
@@ -106,7 +93,7 @@ fn dragging_selects_text_and_ctrl_c_copies_it_plain() {
     assert_eq!(lines_label(&harness), "Log lines");
 
     let (from, to) = (at(&harness, 1, 2), at(&harness, 3, 11));
-    drag(&mut harness, from, to);
+    harness.drag(from, to, 4);
     assert_eq!(lines_label(&harness), "Log lines, 3 lines selected");
     assert_eq!(
         copy(&mut harness),

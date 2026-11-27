@@ -32,7 +32,7 @@ struct Overview {
 fn overview(name: &str) -> Harness<'static, Overview> {
     let overview = Overview {
         services: None,
-        list: PullRequestListPage::new(ListSource::Mine),
+        list: PullRequestListPage::new(ListSource::Overview),
         navigator: Navigator::default(),
         actions: ActionRunner::default(),
         dir: ScratchDir::new(&format!("writes-overview-{name}")),

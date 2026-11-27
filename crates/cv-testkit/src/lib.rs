@@ -40,7 +40,7 @@ pub mod provider;
 pub mod samples;
 mod trace;
 
-pub use clicks::Clicks;
+pub use clicks::{Clicks, Drags};
 pub use trace::{Step, frame_ended, frame_started, step};
 
 use std::cell::{Cell, OnceCell};
@@ -298,6 +298,13 @@ pub fn git_in(git_dir: Option<&Path>, args: &[&str]) -> String {
         None => command.current_dir(std::env::temp_dir()),
     };
     git_output(command.args(args), args)
+}
+
+/// Lets the app's mirror clone `repository` (a work tree, a bare repository or a git dir)
+/// blob-less and fetch blobs by id, as review-git's mirror sets for itself.
+pub fn serve_partial_clones(repository: &Path) {
+    git(repository, &["config", "uploadpack.allowFilter", "true"]);
+    git(repository, &["config", "uploadpack.allowAnySHA1InWant", "true"]);
 }
 
 /// The same author, committer and line endings on every machine.

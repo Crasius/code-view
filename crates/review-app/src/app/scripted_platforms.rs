@@ -84,8 +84,7 @@ pub(super) fn origin(scratch: &ScratchDir) -> Origin {
 
 fn create_origin(origin: &Path) -> Origin {
     git(origin, &["init", "-q", "-b", "main"]);
-    git(origin, &["config", "uploadpack.allowFilter", "true"]);
-    git(origin, &["config", "uploadpack.allowAnySHA1InWant", "true"]);
+    cv_testkit::serve_partial_clones(origin);
     std::fs::write(origin.join("README.md"), "# Widgets\n").expect("write readme");
     git(origin, &["add", "-A"]);
     git(origin, &["commit", "-q", "-m", "base"]);

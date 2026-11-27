@@ -1,7 +1,7 @@
 //! The rendered view's width: a centered reading column by default that its edges resize on both
 //! sides, Full width that fills the pane, and tables and code that never clip in either.
 
-use cv_testkit::poll_until;
+use cv_testkit::{Drags, poll_until};
 use egui::{Pos2, Rect, pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
@@ -53,20 +53,6 @@ fn label(harness: &Harness<'_, Scene>, text: &str) -> Rect {
 /// The paragraph `PROSE` ending in "Before." and in "After.", for both sides.
 fn before_after() -> (String, String) {
     (format!("{PROSE} Before.\n"), format!("{PROSE} After.\n"))
-}
-
-/// Presses at `from`, moves to `to` in a few steps and lets go there.
-fn drag(harness: &mut Harness<'_, Scene>, from: Pos2, to: Pos2) {
-    harness.hover_at(from);
-    harness.step();
-    harness.input_mut().events.push(press(from, true));
-    harness.step();
-    for step in 1..=4 {
-        harness.hover_at(from + (to - from) * (step as f32 / 4.0));
-        harness.step();
-    }
-    harness.input_mut().events.push(press(to, false));
-    harness.run();
 }
 
 fn double_click(harness: &mut Harness<'_, Scene>, pos: Pos2) {
@@ -152,7 +138,8 @@ fn dragging_an_edge_widens_both_sides_and_is_saved() {
     let lane = lane(&harness, DiffSide::New);
     let column = RenderedWidth::DEFAULT_READING;
     let edge = pos2(lane.center().x + column / 2.0 + GUTTER, 300.0);
-    drag(&mut harness, edge, edge + vec2(100.0, 0.0));
+    harness.drag(edge, edge + vec2(100.0, 0.0), 4);
+    harness.run();
     let reading = harness.state().width.reading;
     assert!((reading - (column + 200.0)).abs() <= 4.0, "both sides moved out by 100: {reading}");
     let left = label(&harness, PROSE).left();
@@ -168,7 +155,8 @@ fn dragging_an_edge_widens_both_sides_and_is_saved() {
 
     // The left edge narrows it the same way.
     let edge = pos2(lane.center().x - reading / 2.0 - GUTTER, 300.0);
-    drag(&mut harness, edge, edge + vec2(150.0, 0.0));
+    harness.drag(edge, edge + vec2(150.0, 0.0), 4);
+    harness.run();
     let narrower = harness.state().width.reading;
     assert!((narrower - (reading - 300.0)).abs() <= 4.0, "both sides moved in by 150: {narrower}");
 }
@@ -190,7 +178,8 @@ fn a_column_dragged_to_the_pane_edge_switches_to_full_width_and_back() {
     harness.run();
     let lane = lane(&harness, DiffSide::New);
     let edge = pos2(lane.center().x + RenderedWidth::DEFAULT_READING / 2.0 + GUTTER, 300.0);
-    drag(&mut harness, edge, pos2(lane.right() - 4.0, 300.0));
+    harness.drag(edge, pos2(lane.right() - 4.0, 300.0), 4);
+    harness.run();
     assert!(harness.state().width.full, "near the pane's edge the column snaps to full width");
     assert!(harness.state().view.fills_width(), "the switch shows Full width");
     let left = label(&harness, PROSE).left();
@@ -201,7 +190,8 @@ fn a_column_dragged_to_the_pane_edge_switches_to_full_width_and_back() {
 
     // A full lane's right edge, dragged inward, makes a column again.
     let edge = pos2(lane.right() - RIGHT_PADDING / 2.0 - 4.0, 300.0);
-    drag(&mut harness, edge, edge - vec2(300.0, 0.0));
+    harness.drag(edge, edge - vec2(300.0, 0.0), 4);
+    harness.run();
     let width = harness.state().width;
     assert!(
         !width.full && !harness.state().view.fills_width(),
@@ -230,7 +220,8 @@ fn side_by_side_has_no_column_grips() {
         right.center().x + RenderedWidth::DEFAULT_READING / 2.0 + GUTTER,
         right.right() - RIGHT_PADDING / 2.0 - 4.0,
     ] {
-        drag(&mut harness, pos2(x, 300.0), pos2(x - 150.0, 300.0));
+        harness.drag(pos2(x, 300.0), pos2(x - 150.0, 300.0), 4);
+        harness.run();
     }
     assert_eq!(harness.state().width, RenderedWidth::default(), "the width setting is untouched");
     assert!(!harness.state().events.contains(&RenderedEvent::WidthResized));

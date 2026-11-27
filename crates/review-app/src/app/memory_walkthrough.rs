@@ -784,11 +784,7 @@ fn build_repository(git_dir: &Path) -> (String, Vec<String>) {
         commit(&format!("refs/merge-requests/{iid}/head"), 1 + iid, Some(1), iid);
     }
     fast_import(git_dir, &stream);
-    for (key, value) in
-        [("uploadpack.allowFilter", "true"), ("uploadpack.allowAnySHA1InWant", "true")]
-    {
-        git_in(Some(git_dir), &["config", key, value]);
-    }
+    cv_testkit::serve_partial_clones(git_dir);
     let base = git_in(Some(git_dir), &["rev-parse", "refs/heads/main"]);
     let heads = (1..=MERGE_REQUESTS)
         .map(|iid| {

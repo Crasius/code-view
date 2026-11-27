@@ -43,6 +43,13 @@ pub struct PullRequestSummary {
     pub target_sha: Option<String>,
 }
 
+impl PullRequestSummary {
+    /// The last update, or the creation where the host reports none.
+    pub fn last_activity(&self) -> Timestamp {
+        self.updated_at.unwrap_or(self.created_at)
+    }
+}
+
 /// What a pull request changes, each part `None` while unknown.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DiffStat {

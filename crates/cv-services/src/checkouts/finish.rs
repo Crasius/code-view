@@ -192,10 +192,10 @@ impl Finish {
                     continue;
                 }
                 Ok(Finished::Kept(keep)) => kept_reason(&keep),
-                Err(error) => format!("git refused: {error}"),
+                Err(error) => redact(&format!("git refused: {error}")),
             };
             let now = timestamp(time::OffsetDateTime::now_utc());
-            let line = redact(&format!("{now}  Pull request done; worktree kept: {reason}"));
+            let line = format!("{now}  Pull request done; worktree kept: {reason}");
             self.offers.insert(key.clone(), Offer { kept: Some(reason) });
             changes.push(Change::Kept { key, line });
         }
@@ -283,7 +283,7 @@ mod tests {
         let refused = "fatal: unable to access https://ci:ghp_secret123@github.com/acme/app";
         let error = CheckoutError::Git(refused.into());
         let mut finish = Finish::default();
-        finish.removals.insert(key, background.spawn(async move { Err(error) }));
+        finish.removals.insert(key.clone(), background.spawn(async move { Err(error) }));
         let mut changes = Vec::new();
         poll_until("the removal's end", || {
             changes.extend(finish.poll());
@@ -294,5 +294,7 @@ mod tests {
         };
         assert!(line.contains("worktree kept: git refused"), "{line}");
         assert!(!line.contains("ghp_secret123"), "{line}");
+        let kept = finish.offer(&key).and_then(|offer| offer.kept.as_deref()).unwrap_or_default();
+        assert!(!kept.contains("ghp_secret123"), "the offer shows it redacted too: {kept}");
     }
 }

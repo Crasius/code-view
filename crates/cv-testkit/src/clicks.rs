@@ -56,3 +56,35 @@ impl<State> Clicks for Harness<'_, State> {
         }
     }
 }
+
+/// Pointer drags with the primary button. Unlike [`Clicks`], a drag runs its own frames: the
+/// pointer has to move between the press and the release.
+pub trait Drags {
+    /// The pointer rests at `from` for a frame, presses there in the next, moves in `moves` evenly
+    /// spaced frames ending at `to` and is released there in one more frame.
+    fn drag(&mut self, from: Pos2, to: Pos2, moves: u16);
+}
+
+impl<State> Drags for Harness<'_, State> {
+    fn drag(&mut self, from: Pos2, to: Pos2, moves: u16) {
+        self.hover_at(from);
+        self.step();
+        self.event(primary(from, true));
+        self.step();
+        for step in 1..=moves {
+            self.hover_at(from.lerp(to, f32::from(step) / f32::from(moves)));
+            self.step();
+        }
+        self.event(primary(to, false));
+        self.step();
+    }
+}
+
+fn primary(pos: Pos2, pressed: bool) -> Event {
+    Event::PointerButton {
+        pos,
+        button: PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::NONE,
+    }
+}
