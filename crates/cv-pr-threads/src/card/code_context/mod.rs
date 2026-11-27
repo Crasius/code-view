@@ -31,12 +31,12 @@ use cv_pr_session::session::PullRequestSession;
 use cv_runtime::load::Load;
 use cv_services::Services;
 use review_core::{ProviderError, ReviewThread, ThreadAnchor};
-use review_git::{ChangedFile, DiffOptions, FileDiff, GitMirror, WantedBy};
+use review_git::{ChangeKind, ChangedFile, DiffOptions, FileDiff, GitMirror, WantedBy};
 use review_store::AppSettings;
 
 use self::code_file::CodeFile;
 pub use self::view::show;
-use self::window::{Extra, Mode};
+use self::window::{Extra, Known, Mode, Shape};
 
 /// The commits and file one excerpt reads.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -59,6 +59,17 @@ struct CardState {
     extra: Extra,
     /// When the card first waited for its code, for the skeleton's grace period.
     waiting_since: Option<f64>,
+    /// What the code took last time it was shown, for the skeleton when it loads again (a push,
+    /// a refresh).
+    last: Option<LastShape>,
+}
+
+/// The shape of a card's code with the mode and the lines asked for when it was shown.
+#[derive(Clone, Copy)]
+struct LastShape {
+    preferred: Mode,
+    extra: Extra,
+    shape: Shape,
 }
 
 /// The mirror's commits for current threads.
@@ -219,14 +230,44 @@ impl CodeContexts {
         self.cards.entry(thread_id.to_owned()).or_default()
     }
 
-    /// The mode the card of `thread_id` shows: its own pick, else the last one picked anywhere;
-    /// Diff where New only would leave the commented lines out.
-    fn mode(&self, ctx: &egui::Context, thread_id: &str, is_on_removed_lines: bool) -> Mode {
+    /// What the list of changed files says about the file at `path` before it is read: an added
+    /// file has its added lines, a deleted one its removed lines, all changed.
+    fn known(&self, path: &str) -> Known {
+        let Some(file) = self.changed_file(path) else {
+            return Known::default();
+        };
+        let len = match file.kind {
+            ChangeKind::Added => file.additions,
+            ChangeKind::Deleted => file.deletions,
+            _ => return Known::default(),
+        };
+        Known { len: len.map(|len| len as usize), is_all_changed: true }
+    }
+
+    /// The shape the code of `thread_id` had when it was last shown with `preferred` and `extra`.
+    fn last_shape(&self, thread_id: &str, preferred: Mode, extra: Extra) -> Option<Shape> {
+        let last = self.cards.get(thread_id)?.last?;
+        (last.preferred == preferred && last.extra == extra).then_some(last.shape)
+    }
+
+    /// The mode the card of `thread_id` asks for: its own pick, else the last one picked anywhere.
+    fn preferred(&self, ctx: &egui::Context, thread_id: &str) -> Mode {
         let picked = self.cards.get(thread_id).and_then(|card| card.mode);
         picked.unwrap_or_else(|| {
-            let last = ctx.data(|data| data.get_temp(last_mode_id())).unwrap_or(Mode::NewOnly);
-            if is_on_removed_lines && last == Mode::NewOnly { Mode::Diff } else { last }
+            ctx.data(|data| data.get_temp(last_mode_id())).unwrap_or(Mode::NewOnly)
         })
+    }
+
+    /// The mode the card of `thread_id` shows: [`Self::preferred`], but Diff where the card's own
+    /// pick is not set and New only would leave the commented lines out.
+    fn mode(&self, ctx: &egui::Context, thread_id: &str, is_on_removed_lines: bool) -> Mode {
+        let preferred = self.preferred(ctx, thread_id);
+        let is_picked = self.cards.get(thread_id).is_some_and(|card| card.mode.is_some());
+        if !is_picked && is_on_removed_lines && preferred == Mode::NewOnly {
+            Mode::Diff
+        } else {
+            preferred
+        }
     }
 
     fn pick_mode(&mut self, ctx: &egui::Context, thread_id: &str, mode: Mode) {
@@ -264,6 +305,18 @@ impl CodeContexts {
         let (key, _) = self.source(thread).expect("a thread with lines");
         let file = CodeFile::build(&FileDiff::parse_unified(diff.as_bytes()), text.into());
         self.files.insert(key, Load::Ready(Arc::new(file)));
+    }
+
+    #[cfg(test)]
+    /// The pull request's changed files, as [`Self::begin_frame`] takes them from the session.
+    fn set_changed_for_tests(&mut self, changed: Vec<ChangedFile>) {
+        self.changed = Some(Arc::new(changed));
+    }
+
+    #[cfg(test)]
+    /// Drops every loaded file, as a push does with the files of the commits before it.
+    fn forget_files_for_tests(&mut self) {
+        self.files.clear();
     }
 }
 

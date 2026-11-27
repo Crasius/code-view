@@ -1,22 +1,23 @@
 //! The excerpt as the card shows it: a toolbar with the shown lines and the New only / Diff / Split
 //! switch, then the code in a bordered block ([`super::rows`]). "Show more" rows open the block
 //! upwards and downwards. Split on a card too narrow for two readable sides shows Diff and says so
-//! until the card is wide enough again. While the code loads a skeleton of the excerpt's height
-//! holds its place; a failed load says why, with Retry.
+//! until the card is wide enough again. While the code loads a skeleton holds its place at the
+//! height the code took last time, or else the one [`window::predict`] gives, so nothing below it
+//! moves when the code lands; a failed load says why, with Retry.
 
 use std::sync::Arc;
 
 use cv_base::theme::{self, Palette, icons, motion, style};
 use cv_code::diff_paint::Metrics;
 use cv_widgets::{buttons, focus, glyph, row, skeleton, tabs};
-use egui::{Align, Layout, Margin, RichText, Sense, Stroke, Ui, pos2, vec2};
+use egui::{Align, Layout, Margin, Rect, RichText, Sense, Stroke, Ui, pos2, vec2};
 use review_core::ReviewThread;
 
 use super::super::{hairline, section};
 use super::code_file::CodeFile;
 use super::rows::{self, Rows};
-use super::window::{self, CONTEXT, Excerpt, Extra, Focus, Mode, STEP, Shown};
-use super::{CodeContexts, FileKey};
+use super::window::{self, CONTEXT, Excerpt, Extra, Focus, Known, Mode, STEP, Shape, Shown};
+use super::{CodeContexts, FileKey, LastShape};
 use crate::{ThreadEvent, ThreadsUi, suggestion};
 
 /// The excerpt's inset in the card: the comments' own.
@@ -61,21 +62,9 @@ pub fn show(ui: &mut Ui, thread: &ReviewThread, threads: &mut ThreadsUi) -> Opti
     let mut is_revealed = false;
     section(ui, MARGIN, |ui| {
         ui.push_id(("thread_code", &thread.id), |ui| {
-            let is_on_removed_lines = match &status {
-                Status::Ready(file) => window::is_on_removed_lines(file, &focus),
-                Status::Waiting(_) | Status::Failed { .. } => false,
-            };
-            let picked = code.mode(ui.ctx(), &thread.id, is_on_removed_lines);
-            let is_too_narrow = picked == Mode::Split
-                && match &status {
-                    Status::Ready(file) => {
-                        let metrics = Metrics::new(ui, code.font_size, file.max_line());
-                        let width = ui.available_width() - 2.0 * f32::from(BLOCK_MARGIN);
-                        !rows::fits_split(&metrics, width)
-                    }
-                    Status::Waiting(_) | Status::Failed { .. } => false,
-                };
-            let mode = if is_too_narrow { Mode::Diff } else { picked };
+            let known = code.known(&anchor.path);
+            let (picked, mode) = modes(ui, code, &thread.id, &status, &focus, known);
+            let is_too_narrow = picked != mode;
             let extra = code.cards.get(&thread.id).map(|card| card.extra).unwrap_or_default();
             let excerpt = match &status {
                 Status::Ready(file) => window::excerpt(file, mode, &focus, extra),
@@ -95,15 +84,27 @@ pub fn show(ui: &mut Ui, thread: &ReviewThread, threads: &mut ThreadsUi) -> Opti
                 too_narrow(ui);
             }
             ui.add_space(style::SPACE_S);
+            let preferred = code.preferred(ui.ctx(), &thread.id);
             code_block(ui, &palette, |ui| match status {
-                Status::Waiting(key) => waiting(ui, code, &thread.id, key, &focus),
+                Status::Waiting(key) => {
+                    let shape = code
+                        .last_shape(&thread.id, preferred, extra)
+                        .unwrap_or_else(|| window::predict(&focus, mode, extra, known));
+                    waiting(ui, code, &thread.id, key, shape);
+                }
                 Status::Failed { message, key } => {
                     if failure(ui, &message) {
                         code.retry(key.as_ref());
                     }
                 }
                 Status::Ready(file) => {
-                    code.card(&thread.id).waiting_since = None;
+                    let card = code.card(&thread.id);
+                    card.waiting_since = None;
+                    // The one-line message in place of the code is one band high.
+                    let shape = excerpt
+                        .as_ref()
+                        .map_or(Shape { above: true, lines: 0, below: false }, Excerpt::shape);
+                    card.last = Some(LastShape { preferred, extra, shape });
                     let Some(excerpt) = excerpt else {
                         is_revealed = missing_lines(ui, &lines_title);
                         return;
@@ -125,6 +126,40 @@ pub fn show(ui: &mut Ui, thread: &ReviewThread, threads: &mut ThreadsUi) -> Opti
         });
     });
     is_revealed.then_some(reveal)
+}
+
+/// The mode the card's switch shows and the one its code is shown in: Diff where Split was picked
+/// but the card is too narrow for it. Before the file is read, what the list of changed files
+/// says decides, so the code lands in the mode its skeleton had.
+fn modes(
+    ui: &Ui,
+    code: &CodeContexts,
+    thread_id: &str,
+    status: &Status,
+    focus: &Focus,
+    known: Known,
+) -> (Mode, Mode) {
+    let is_on_removed_lines = match status {
+        Status::Ready(file) => window::is_on_removed_lines(file, focus),
+        // Every line of a deleted file is a removed one.
+        Status::Waiting(_) => known.is_all_changed && focus.is_old_side(),
+        Status::Failed { .. } => false,
+    };
+    let picked = code.mode(ui.ctx(), thread_id, is_on_removed_lines);
+    // The gutter has room for four digits at least, so a file not read yet fits as one under
+    // 10,000 lines does.
+    let max_line = match status {
+        Status::Ready(file) => Some(file.max_line()),
+        Status::Waiting(_) => Some(0),
+        Status::Failed { .. } => None,
+    };
+    let is_too_narrow = picked == Mode::Split
+        && max_line.is_some_and(|max_line| {
+            let metrics = Metrics::new(ui, code.font_size, max_line);
+            let width = ui.available_width() - 2.0 * f32::from(BLOCK_MARGIN);
+            !rows::fits_split(&metrics, width)
+        });
+    (picked, if is_too_narrow { Mode::Diff } else { picked })
 }
 
 fn status(code: &CodeContexts, key: Option<FileKey>) -> Status {
@@ -272,20 +307,21 @@ fn code_block(ui: &mut Ui, palette: &Palette, content: impl FnOnce(&mut Ui)) {
         });
 }
 
-/// The skeleton of the default excerpt (its lines and both "Show more" rows), after the grace
-/// period. Asks for the file while it is on screen.
+/// The skeleton of the excerpt in its `shape` (its lines, with room for the "Show more" rows),
+/// after the grace period. Asks for the file while it is on screen.
 fn waiting(
     ui: &mut Ui,
     code: &mut CodeContexts,
     thread_id: &str,
     key: Option<FileKey>,
-    focus: &Focus,
+    shape: Shape,
 ) {
     let now = code.now;
     let started = *code.card(thread_id).waiting_since.get_or_insert(now);
     let metrics = Metrics::new(ui, code.font_size, 0);
-    let lines = focus.line_count() + 2 * CONTEXT;
-    let height = BAND_HEIGHT * 2.0 + lines as f32 * metrics.line_height;
+    let above = if shape.above { BAND_HEIGHT } else { 0.0 };
+    let below = if shape.below { BAND_HEIGHT } else { 0.0 };
+    let height = above + shape.lines as f32 * metrics.line_height + below;
     let (rect, response) =
         ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
     skeleton::announce(&response, "Loading the code");
@@ -300,17 +336,15 @@ fn waiting(
         ui.ctx().request_repaint();
     }
     let shown = skeleton::reveal(ui.ctx(), started);
-    if shown <= 0.0 {
+    if shown <= 0.0 || shape.lines == 0 {
         return;
     }
-    let mut lines_ui = ui.new_child(
-        egui::UiBuilder::new()
-            .max_rect(rect.shrink2(vec2(0.0, BAND_HEIGHT)))
-            .layout(Layout::top_down(Align::Min)),
-    );
+    let lines = Rect::from_x_y_ranges(rect.x_range(), rect.top() + above..=rect.bottom() - below);
+    let mut lines_ui =
+        ui.new_child(egui::UiBuilder::new().max_rect(lines).layout(Layout::top_down(Align::Min)));
     lines_ui.multiply_opacity(shown);
     lines_ui.spacing_mut().item_spacing.y = 0.0;
-    skeleton::code_lines(&mut lines_ui, lines, metrics.line_height, false);
+    skeleton::code_lines(&mut lines_ui, shape.lines, metrics.line_height, false);
 }
 
 /// Why the code is missing, with Retry; true when Retry was clicked.

@@ -1,7 +1,9 @@
 //! Which lines of a [`CodeFile`] an excerpt shows: the commented lines with [`CONTEXT`] lines on
 //! each side, more where the user asked for them. Near a file's start or end the context the one
 //! side cannot have goes to the other, so the default excerpt has the same height wherever the
-//! comment sits (and its skeleton the height the code will have).
+//! comment sits. A file shorter than the excerpt shows whole, and an end of the file leaves its
+//! "Show more" row out: [`predict`] gives the skeleton the height the code will have from what is
+//! known before the file is read.
 
 use std::ops::Range;
 
@@ -47,11 +49,6 @@ impl Focus {
         let last = anchor.line_in(side)?;
         let first = anchor.range.as_ref().and_then(|range| range.start_line_in(side));
         Some(Self { side, first: first.unwrap_or(last).min(last), last })
-    }
-
-    /// The number of lines, for a skeleton of the excerpt's height.
-    pub fn line_count(&self) -> usize {
-        (self.last - self.first) as usize + 1
     }
 
     /// The first commented line, for the excerpt's accessible name.
@@ -130,6 +127,52 @@ pub struct Excerpt {
     /// Lines above and below the shown ones, for "Show more".
     pub hidden_above: usize,
     pub hidden_below: usize,
+}
+
+impl Excerpt {
+    pub fn shape(&self) -> Shape {
+        Shape {
+            above: self.hidden_above > 0,
+            lines: self.lines.len(),
+            below: self.hidden_below > 0,
+        }
+    }
+}
+
+/// How tall an excerpt is: its code lines and whether a "Show more" row sits above and below.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Shape {
+    pub above: bool,
+    pub lines: usize,
+    pub below: bool,
+}
+
+/// What the pull request's list of changed files says about a file before it is read.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Known {
+    /// The lines the excerpt can show: an added file's added lines, a deleted file's removed ones.
+    pub len: Option<usize>,
+    /// Every line is changed (an added or a deleted file), so Diff and Split reach
+    /// [`HUNK_REACH`] lines beyond the commented ones.
+    pub is_all_changed: bool,
+}
+
+/// The shape [`excerpt`] will have before the file is read, for the skeleton. The commented lines'
+/// positions are their numbers, which is exact in New only on the head side and in an added or
+/// deleted file; Diff and Split of a modified file also show the changed lines next to them, which
+/// only the file says. Without `known.len` the file is taken to reach past the excerpt, as nearly
+/// every commented file does, so only a file that ends within the excerpt comes out shorter.
+pub fn predict(focus: &Focus, mode: Mode, extra: Extra, known: Known) -> Shape {
+    let commented = focus.first.saturating_sub(1) as usize..focus.last as usize;
+    let past_the_excerpt = commented.end + 2 * CONTEXT + extra.below + 1;
+    let len = known.len.unwrap_or(past_the_excerpt).max(commented.end);
+    let around = if known.is_all_changed && mode != Mode::NewOnly {
+        commented.start.saturating_sub(HUNK_REACH)..(commented.end + HUNK_REACH).min(len)
+    } else {
+        commented
+    };
+    let lines = window(len, around, extra);
+    Shape { above: lines.start > 0, lines: lines.len(), below: lines.end < len }
 }
 
 /// Whether a commented line is a removed one, which only Diff can show.
@@ -388,6 +431,80 @@ mod tests {
         );
         assert_eq!(shown.rows(excerpt.lines.start).count(), 1, "an unchanged line is one row");
         assert_eq!(shown.rows(excerpt.lines.start + 3).count(), 2);
+    }
+
+    /// The shape [`predict`] gives `focus` and the one the read file has.
+    fn shapes(
+        file: &CodeFile,
+        mode: Mode,
+        focus: &Focus,
+        extra: Extra,
+        known: Known,
+    ) -> [Shape; 2] {
+        let read = excerpt(file, mode, focus, extra).expect("the commented lines").shape();
+        [predict(focus, mode, extra, known), read]
+    }
+
+    #[test]
+    fn predicts_the_shape_of_the_excerpt_from_the_line_numbers() {
+        let file = file();
+        let unknown = Known::default();
+        for (line, extra) in [
+            (10, Extra::default()),
+            (1, Extra::default()),
+            (3, Extra::default()),
+            (4, Extra::default()),
+            (5, Extra::default()),
+            (10, Extra { above: STEP, below: STEP }),
+            (20, Extra { above: 0, below: STEP }),
+        ] {
+            let [predicted, read] =
+                shapes(&file, Mode::NewOnly, &focus(DiffSide::New, line, line), extra, unknown);
+            assert_eq!(predicted, read, "line {line}, {extra:?}");
+        }
+        let [predicted, read] =
+            shapes(&file, Mode::NewOnly, &focus(DiffSide::New, 10, 14), Extra::default(), unknown);
+        assert_eq!(predicted, read, "a range");
+    }
+
+    /// A new file of `count` lines `line N`.
+    fn added(count: u32) -> CodeFile {
+        let diff = (1..=count).fold(format!("@@ -0,0 +1,{count} @@\n"), |mut diff, line| {
+            writeln!(diff, "+line {line}").expect("writing to a String");
+            diff
+        });
+        changed(count, &diff)
+    }
+
+    #[test]
+    fn predicts_a_short_added_file_whole_from_its_added_lines() {
+        let tiny = added(4);
+        let known = Known { len: Some(4), is_all_changed: true };
+        for mode in [Mode::NewOnly, Mode::Diff, Mode::Split] {
+            let [predicted, read] =
+                shapes(&tiny, mode, &focus(DiffSide::New, 2, 2), Extra::default(), known);
+            assert_eq!(predicted, read, "{mode:?}");
+            assert_eq!(read, Shape { above: false, lines: 4, below: false });
+        }
+        let long = added(40);
+        let known = Known { len: Some(40), is_all_changed: true };
+        let [predicted, read] =
+            shapes(&long, Mode::Diff, &focus(DiffSide::New, 20, 20), Extra::default(), known);
+        assert_eq!(predicted, read, "Diff reaches into the added lines around the comment");
+    }
+
+    #[test]
+    fn predicts_a_short_modified_file_longer_than_it_is() {
+        let short = changed(5, "@@ -2 +2 @@\n-old two\n+line 2\n");
+        let [predicted, read] = shapes(
+            &short,
+            Mode::NewOnly,
+            &focus(DiffSide::New, 2, 2),
+            Extra::default(),
+            Known::default(),
+        );
+        assert_eq!(read, Shape { above: false, lines: 5, below: false });
+        assert_eq!(predicted, Shape { above: false, lines: 7, below: true }, "only the file says");
     }
 
     #[test]

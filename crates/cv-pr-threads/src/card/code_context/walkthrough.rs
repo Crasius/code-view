@@ -2,8 +2,8 @@
 //! commented line marked, Diff with the removed line, Split with the removed line left and the
 //! added one right (and Diff on a card too narrow for it), "Show more", the line numbers leading
 //! to the file, and a thread on a removed line opening in Diff; above the excerpt, the location
-//! link apart from its meta. The code is handed in as loaded; the end-to-end path through the
-//! mirror is `app::thread_code_walkthrough`.
+//! link apart from its meta; the skeleton at the height of the code that lands in it. The code is
+//! handed in as loaded; the end-to-end path through the mirror is `app::thread_code_walkthrough`.
 
 use std::fmt::Write as _;
 
@@ -12,7 +12,8 @@ use cv_widgets::focus;
 use egui::{Margin, Rect};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_core::{ProviderKind, ReviewThread, ThreadAnchor, ThreadStatus};
+use review_core::{FileCategory, ProviderKind, ReviewThread, ThreadAnchor, ThreadStatus};
+use review_git::{ChangeKind, ChangedFile};
 use review_store::ThemePreference;
 
 use super::super::super::samples::{comment, jonas, lines, mara, thread};
@@ -246,6 +247,103 @@ fn split_on_a_narrow_card_falls_back_to_diff_until_it_is_wide_enough() {
     let removed = line_rect(&harness, "Removed line 20: ");
     let added = line_rect(&harness, "Added line 20, commented: ");
     assert!(removed.right() <= added.left(), "side by side again");
+}
+
+/// The top of the card's reply box, right under the excerpt.
+fn reply_top(harness: &Harness<'_, Scene>) -> f32 {
+    harness.get_by_label("Reply").rect().top()
+}
+
+/// A card on `line` of `path` whose code is not there yet.
+fn waiting_harness(path: &str, line: u32, changed: Vec<ChangedFile>) -> Harness<'static, Scene> {
+    let card = thread(
+        "t-late",
+        ThreadStatus::Active,
+        Some(lines(path, line, line)),
+        vec![comment("t-late-1", &mara(), 30, "Is this the right place?")],
+    );
+    let mut threads = ThreadsUi::for_tests(ProviderKind::GitHub);
+    threads.code.set_changed_for_tests(changed);
+    harness(Scene { cards: vec![card], threads, events: Vec::new() })
+}
+
+/// The reply box's top under the skeleton and once the code (`diff` over `text`) landed.
+fn reply_tops(harness: &mut Harness<'_, Scene>, diff: &str, text: &str) -> [f32; 2] {
+    harness.run_steps(3);
+    assert!(harness.query_by_label("Loading the code").is_some(), "the skeleton holds the place");
+    let waiting = reply_top(harness);
+    let scene = harness.state_mut();
+    scene.threads.code.insert_for_tests(&scene.cards[0], "base", "head", diff, text);
+    harness.run_steps(3);
+    assert!(harness.query_by_label("Loading the code").is_none(), "the code landed");
+    [waiting, reply_top(harness)]
+}
+
+/// `count` lines of a coupon.
+fn coupon(count: u32) -> String {
+    (1..=count).fold(String::new(), |mut text, line| {
+        writeln!(text, "    // coupon step {line}").unwrap();
+        text
+    })
+}
+
+/// A five-line file the pull request adds: its added lines say how long it is.
+#[test]
+fn the_skeleton_of_a_short_added_file_has_the_height_of_its_code() {
+    let path = "src/coupon.rs";
+    let file = ChangedFile {
+        path: path.into(),
+        old_path: None,
+        kind: ChangeKind::Added,
+        old_oid: "0".repeat(40),
+        new_oid: "2".repeat(40),
+        additions: Some(5),
+        deletions: Some(0),
+        is_binary: false,
+        category: FileCategory::Code,
+        whitespace_only: false,
+    };
+    let text = coupon(5);
+    let diff = text.lines().fold("@@ -0,0 +1,5 @@\n".to_owned(), |mut diff, line| {
+        writeln!(diff, "+{line}").unwrap();
+        diff
+    });
+    let mut harness = waiting_harness(path, 2, vec![file]);
+    let [waiting, loaded] = reply_tops(&mut harness, &diff, &text);
+    assert_eq!(waiting, loaded, "the reply box stays where it was");
+    assert!(harness.query_by_label_contains("more line").is_none(), "nothing more to show");
+}
+
+/// The context of line 2 starts at line 1: no "Show more" row above it.
+#[test]
+fn the_skeleton_near_the_start_of_a_file_leaves_no_room_above() {
+    let mut harness = waiting_harness(PATH, 2, Vec::new());
+    let [waiting, loaded] = reply_tops(&mut harness, DIFF, &head_text());
+    assert_eq!(waiting, loaded, "the reply box stays where it was");
+    assert!(harness.query_by_label("Show 10 more lines below").is_some());
+}
+
+#[test]
+fn the_skeleton_in_the_middle_of_a_file_has_both_rows() {
+    let mut harness = waiting_harness(PATH, 20, Vec::new());
+    let [waiting, loaded] = reply_tops(&mut harness, DIFF, &head_text());
+    assert_eq!(waiting, loaded, "the reply box stays where it was");
+    assert!(harness.query_by_label("Show 10 more lines above").is_some());
+}
+
+/// A push or a refresh loads the code again: the skeleton takes the height the code had, which a
+/// short modified file's first load cannot know.
+#[test]
+fn a_card_that_loads_again_keeps_the_height_its_code_had() {
+    let mut harness = waiting_harness(PATH, 5, Vec::new());
+    let text = coupon(6);
+    let [_, loaded] =
+        reply_tops(&mut harness, "@@ -5 +5 @@\n-    // old step\n+    // coupon step 5\n", &text);
+    assert!(harness.query_by_label_contains("more line").is_none(), "the whole file");
+    harness.state_mut().threads.code.forget_files_for_tests();
+    harness.run_steps(3);
+    assert!(harness.query_by_label("Loading the code").is_some(), "it loads again");
+    assert_eq!(reply_top(&harness), loaded, "the reply box stays where it was");
 }
 
 #[test]
