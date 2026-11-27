@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 
 use cv_base::theme::{self, icons, motion, style};
 use cv_widgets::states::{self, Action};
-use cv_widgets::{badges, buttons, glyph, row};
+use cv_widgets::{badges, buttons, elide, glyph, row};
 use egui::{
     Align2, Color32, FontId, Key, Rect, Sense, Stroke, StrokeKind, TextEdit, Ui, UiBuilder, pos2,
     vec2,
@@ -15,7 +15,6 @@ use review_core::{PipelineRun, ProviderKind, RerunAction};
 use review_store::CheckFilter;
 
 use super::checks::{self, Check, CheckKey, FILTERS};
-use super::graph::stage_card::ellipsized;
 use super::rerun;
 use super::stage_bars::{self, Stages};
 
@@ -280,11 +279,11 @@ impl ChecksTable {
         };
         let body = FontId::proportional(style::BODY_SIZE);
         let small = FontId::proportional(style::SMALL_SIZE);
-        let (name, is_name_cut) =
-            ellipsized(ui, check.name(), body, palette.text, columns.name.width());
+        let width = columns.name.width();
+        let name = elide::line(&painter, check.name(), body, palette.text, width);
         let sub_text = checks::check_sub_line(check, known);
-        let (sub, is_sub_cut) =
-            ellipsized(ui, &sub_text, small.clone(), palette.text_secondary, columns.name.width());
+        let sub = elide::line(&painter, &sub_text, small.clone(), palette.text_secondary, width);
+        let is_cut = name.elided || sub.elided;
         let block = name.size().y + style::SPACE_LINE + sub.size().y;
         let name_top = rect.center().y - block / 2.0;
         let sub_top = name_top + name.size().y + style::SPACE_LINE;
@@ -320,7 +319,7 @@ impl ChecksTable {
         }
         let status = badges::run_status_label(check.status());
         let mut tooltip = vec![format!("{} ({status})", check.name())];
-        if is_name_cut || is_sub_cut {
+        if is_cut {
             tooltip.push(sub_text);
         }
         let click = match (check.job, has_log) {

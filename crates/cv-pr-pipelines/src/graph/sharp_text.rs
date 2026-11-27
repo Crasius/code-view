@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn a_relaid_galley_keeps_its_size_and_cut() {
         let ctx = Context::default();
-        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
             let mut job = LayoutJob::simple_singleline(
                 "Infra Apps (integration environment)".to_owned(),
                 FontId::proportional(14.0),
@@ -200,6 +200,6 @@ mod tests {
             });
         });
         // No renderer here to take the glyph atlas.
-        output.textures_delta.clear();
+        output.drop_without_applying_deltas();
     }
 }

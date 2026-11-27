@@ -12,6 +12,7 @@
 
 use std::collections::BTreeSet;
 
+use cv_widgets::numbers::counted;
 use review_core::{
     PipelineJob, PipelineRun, ProviderKind, RerunAction, RerunKind, RunStatus, Timestamp,
 };
@@ -252,19 +253,20 @@ pub fn sub_line(run: &PipelineRun, stages: Option<&[PipelineJob]>) -> String {
     }
     if let Some(stages) = stages.filter(|stages| !stages.is_empty()) {
         let jobs: usize = stages.iter().map(|stage| jobs_of(stage).len()).sum();
-        parts.push(plural(stages.len(), "stage"));
-        parts.push(plural(jobs, "job"));
+        parts.push(counted(stages.len(), "stage", "stages"));
+        parts.push(counted(jobs, "job", "jobs"));
         let retried =
             stages.iter().flat_map(jobs_of).filter(|job| !job.previous_attempts.is_empty()).count();
         if retried > 0 {
-            parts.push(format!("{} retried", plural(retried, "job")));
+            parts.push(format!("{} retried", counted(retried, "job", "jobs")));
         }
     }
     parts.join(" · ")
 }
 
+/// "1 reviewer", "3 reviewers": [`counted`] with the plural an added "s".
 pub fn plural(count: usize, noun: &str) -> String {
-    if count == 1 { format!("1 {noun}") } else { format!("{count} {noun}s") }
+    counted(count, noun, &format!("{noun}s"))
 }
 
 /// "14m 25s", counting up while running; `None` before it started.
@@ -309,11 +311,14 @@ pub fn summary(runs: &[PipelineRun]) -> Summary {
     let (status, headline) = if pipelines.is_empty() {
         (RunStatus::Neutral, "No pipelines for this commit".to_owned())
     } else if failed > 0 {
-        (RunStatus::Failed, format!("{} failed", plural(failed, "pipeline")))
+        (RunStatus::Failed, format!("{} failed", counted(failed, "pipeline", "pipelines")))
     } else if failed_checks > 0 {
-        (RunStatus::Failed, format!("{} failed", plural(failed_checks, "status check")))
+        (
+            RunStatus::Failed,
+            format!("{} failed", counted(failed_checks, "status check", "status checks")),
+        )
     } else if running > 0 {
-        (RunStatus::Running, format!("{} running", plural(running, "pipeline")))
+        (RunStatus::Running, format!("{} running", counted(running, "pipeline", "pipelines")))
     } else if succeeded > 0 && neutral == 0 {
         (RunStatus::Succeeded, "All pipelines succeeded".to_owned())
     } else if succeeded > 0 {
@@ -323,7 +328,7 @@ pub fn summary(runs: &[PipelineRun]) -> Summary {
     };
     let mut detail = Vec::new();
     if !pipelines.is_empty() {
-        detail.push(plural(pipelines.len(), "pipeline"));
+        detail.push(counted(pipelines.len(), "pipeline", "pipelines"));
     }
     for (count, word) in
         [(failed, "failed"), (running, "running"), (succeeded, "succeeded"), (neutral, "neutral")]
@@ -333,7 +338,7 @@ pub fn summary(runs: &[PipelineRun]) -> Summary {
         }
     }
     if failed_checks > 0 {
-        detail.push(format!("{} failed", plural(failed_checks, "status check")));
+        detail.push(format!("{} failed", counted(failed_checks, "status check", "status checks")));
     }
     Summary { status, headline, detail: detail.join(" · ") }
 }
@@ -349,13 +354,9 @@ pub(crate) mod fixtures {
             id: name.to_owned(),
             name: name.to_owned(),
             status,
-            description: None,
-            web_url: None,
-            started_at: None,
-            finished_at: None,
             has_jobs,
             is_head: true,
-            reruns: Vec::new(),
+            ..PipelineRun::default()
         }
     }
 

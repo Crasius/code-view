@@ -7,14 +7,14 @@ use cv_pr_session::session::PullRequestSession;
 use cv_runtime::intents;
 use cv_runtime::load::Live;
 use cv_services::Services;
-use cv_services::connection::traffic::retry_now;
-use cv_shell::rate_limit_banner::{countdown, until_next_tick};
+use cv_shell::rate_limit_banner::until_next_tick;
 use cv_widgets::provider_icon;
 use cv_widgets::skeleton;
 use cv_widgets::states::{self, Action};
+use cv_widgets::time_text::countdown;
 use egui::Ui;
 use review_core::ProviderKind;
-use review_core::http::Api;
+use review_core::http::{self, Api};
 
 use super::graph::layout as graph_layout;
 use super::graph::stage_card;
@@ -71,7 +71,7 @@ fn rate_limit_wait(ui: &mut Ui, session: &PullRequestSession, services: &Service
         .inner;
     match picked.map(|index| &choices[index].1) {
         Some(WaitChoice::AddToken) => intents::request_fix(ui.ctx(), &session.key.connection_id),
-        Some(WaitChoice::RetryNow) => retry_now(&limit.origin),
+        Some(WaitChoice::RetryNow) => http::resume(&limit.origin),
         Some(WaitChoice::Open(url)) => ui.ctx().open_url(egui::OpenUrl::new_tab(*url)),
         None => {}
     }

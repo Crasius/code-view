@@ -74,19 +74,15 @@ impl LogFetch {
         if self.log.poll() && matches!(self.log, Load::Ready(Fetched::Log(_))) {
             self.missing = None;
         }
-        if !self.grow.poll() {
-            return None;
-        }
-        match std::mem::take(&mut self.grow) {
-            Load::Ready(grown) => {
+        match self.grow.take_finished()? {
+            Ok(grown) => {
                 self.grow_error = None;
                 Some(grown)
             }
-            Load::Failed(message) => {
+            Err(message) => {
                 self.grow_error = Some(message);
                 None
             }
-            Load::Idle | Load::Loading(_) => None,
         }
     }
 

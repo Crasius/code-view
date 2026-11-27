@@ -4,14 +4,12 @@
 //! retry up ("passed on retry"). The node is always the latest attempt; counts stay its own.
 
 use cv_base::theme::{self, Palette, icons, motion, style};
-use cv_widgets::{badges, row, time_text};
+use cv_widgets::{badges, elide, row, time_text};
 use egui::{
     Align2, Color32, FontId, Id, Painter, PopupCloseBehavior, Pos2, Rect, Response, Sense, Stroke,
     StrokeKind, Ui, pos2, vec2,
 };
 use review_core::{PipelineAttempt, PipelineJob, RunStatus, Timestamp};
-
-use super::graph::stage_card::ellipsized;
 
 const BADGE_HEIGHT: f32 = 20.0;
 const BADGE_PADDING: f32 = 6.0;
@@ -385,8 +383,8 @@ fn option(ui: &mut Ui, attempt: &Attempt, is_current: bool) -> bool {
     let detail = detail_text(attempt);
     let duration = super::duration(attempt.started_at, attempt.finished_at);
     let duration_width = if duration.is_some() { 72.0 } else { 0.0 };
-    let (detail, _) = ellipsized(
-        ui,
+    let detail = elide::line(
+        ui.painter(),
         &detail,
         small.clone(),
         palette.text_secondary,

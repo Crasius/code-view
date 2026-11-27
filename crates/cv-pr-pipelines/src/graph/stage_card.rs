@@ -4,8 +4,7 @@
 use std::sync::Arc;
 
 use cv_base::theme::{self, icons, motion, style};
-use cv_widgets::{badges, row};
-use egui::text::{LayoutJob, TextWrapping};
+use cv_widgets::{badges, elide, row};
 use egui::{
     Align2, Color32, FontId, Galley, Id, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder, pos2, vec2,
 };
@@ -100,7 +99,8 @@ pub fn show(
     let name_left = rect.left() + SIDE + 26.0;
     let name_width = rect.right() - TOGGLE_SIZE - SIDE - 4.0 - name_left;
     let title_font = theme::fonts::semibold_font(style::BODY_SIZE);
-    let (title, is_cut) = ellipsized(ui, &stage.name, title_font, palette.text, name_width);
+    let title = elide::line(ui.painter(), &stage.name, title_font, palette.text, name_width);
+    let is_cut = title.elided;
     painter.galley(pos2(name_left, title_y - title.size().y / 2.0), title, palette.text);
     if let Some(picked) = card.summary_line(ui, &painter, stage, context) {
         action = Some(picked);
@@ -183,13 +183,13 @@ impl Card {
         let small = FontId::proportional(style::SMALL_SIZE);
         let duration = super::super::duration(stage.started_at, stage.finished_at);
         let duration_width =
-            duration.as_ref().map_or(0.0, |text| text_width(ui, text, &small) + 8.0);
+            duration.as_ref().map_or(0.0, |text| elide::text_width(ui, text, &small) + 8.0);
         let retried = attempts::retried(stage);
         let badge_width =
             retried.map_or(0.0, |node| attempts::badge_width(ui, node, false) + style::SPACE_S);
         let summary_width = rect.width() - SIDE * 2.0 - duration_width - badge_width;
-        let (summary, _) = ellipsized(
-            ui,
+        let summary = elide::line(
+            ui.painter(),
             &summary(stage, context.platform),
             small.clone(),
             palette.text_secondary,
@@ -385,7 +385,7 @@ fn job_row(
     let small = FontId::proportional(style::SMALL_SIZE);
     let duration = super::super::duration(job.started_at, job.finished_at);
     let duration_width =
-        duration.as_ref().map_or(0.0, |text| text_width(ui, text, &small) + style::SPACE_M);
+        duration.as_ref().map_or(0.0, |text| elide::text_width(ui, text, &small) + style::SPACE_M);
     let has_badge = !job.previous_attempts.is_empty()
         && attempts::retried(stage).is_none_or(|node| node.id != job.id);
     let badge_width =
@@ -394,8 +394,9 @@ fn job_row(
     let text_color =
         if job.status == RunStatus::Skipped { palette.text_secondary } else { palette.text };
     let name_width = rect.right() - side - duration_width - badge_width - name_left;
-    let (name, is_cut) =
-        ellipsized(ui, &job.name, FontId::proportional(13.0), text_color, name_width);
+    let name =
+        elide::line(ui.painter(), &job.name, FontId::proportional(13.0), text_color, name_width);
+    let is_cut = name.elided;
     painter.galley(
         pos2(name_left, rect.center().y - name.size().y / 2.0),
         name,
@@ -468,7 +469,7 @@ pub fn summary(stage: &PipelineJob, platform: ProviderKind) -> String {
     }
 }
 
-/// One line of text cut to `max_width` with an ellipsis; true when it was cut.
+/// One line of text cut to `max_width` with an ellipsis ([`elide::line`]); true when it was cut.
 pub fn ellipsized(
     ui: &Ui,
     text: &str,
@@ -476,22 +477,9 @@ pub fn ellipsized(
     color: Color32,
     max_width: f32,
 ) -> (Arc<Galley>, bool) {
-    let mut job = LayoutJob::simple_singleline(text.to_owned(), font, color);
-    job.wrap = TextWrapping {
-        max_width: max_width.max(1.0),
-        max_rows: 1,
-        break_anywhere: true,
-        overflow_character: Some('…'),
-    };
-    let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
+    let galley = elide::line(ui.painter(), text, font, color, max_width);
     let is_cut = galley.elided;
     (galley, is_cut)
-}
-
-fn text_width(ui: &Ui, text: &str, font: &FontId) -> f32 {
-    ui.fonts_mut(|fonts| {
-        fonts.layout_no_wrap(text.to_owned(), font.clone(), Color32::WHITE).size().x
-    })
 }
 
 #[cfg(test)]

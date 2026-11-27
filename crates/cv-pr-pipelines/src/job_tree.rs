@@ -4,12 +4,11 @@
 //! an explicit "Open in …" action.
 
 use cv_base::theme::{self, icons, style};
-use cv_widgets::{badges, row as row_style};
+use cv_widgets::{badges, elide, row as row_style};
 use egui::{Align2, Sense, Ui, pos2, vec2};
 use review_core::{PipelineJob, RunStatus};
 
 use super::attempts::{self, Known};
-use super::graph::stage_card;
 use super::tree::find;
 
 const ROW_HEIGHT: f32 = 32.0;
@@ -178,7 +177,8 @@ fn tree_row(
         egui::FontId::proportional(style::BODY_SIZE)
     };
     let max_width = (rect.right() - right_width - left - 22.0).max(0.0);
-    let (galley, is_cut) = stage_card::ellipsized(ui, &row.job.name, font, name_color, max_width);
+    let galley = elide::line(ui.painter(), &row.job.name, font, name_color, max_width);
+    let is_cut = galley.elided;
     painter.galley(pos2(left + 22.0, rect.center().y - galley.size().y / 2.0), galley, name_color);
     if let Some(duration) = duration {
         painter.text(

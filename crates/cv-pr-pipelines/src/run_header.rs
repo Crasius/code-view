@@ -3,7 +3,7 @@
 //! stage and duration, "Open on …" and its reruns.
 
 use cv_base::theme::{self, icons, motion, style};
-use cv_widgets::{badges, buttons, glyph, row};
+use cv_widgets::{badges, buttons, elide, glyph, row};
 use egui::{
     Align2, FontId, Key, Modifiers, PopupCloseBehavior, Rect, Sense, Stroke, StrokeKind, TextEdit,
     Ui, UiBuilder, pos2, vec2,
@@ -11,7 +11,6 @@ use egui::{
 use review_core::ProviderKind;
 
 use super::checks::{self, Check, CheckKey};
-use super::graph::stage_card::ellipsized;
 use super::rerun::{Picked, RerunButton};
 
 const HEIGHT: f32 = 36.0;
@@ -83,7 +82,7 @@ impl RunHeader {
             action = Some(HeaderAction::Back);
         }
         // The switcher leaves room for the previous/next steps after it.
-        let steps = 2.0 * buttons::SUBTLE_HEIGHT + 2.0 + style::SPACE_S;
+        let steps = 2.0 * buttons::icon_width() + 2.0 + style::SPACE_S;
         let switcher_room = (left.available_width() - steps).max(0.0);
         if let Some(picked) = self.switcher(&mut left, input, switcher_room) {
             action = Some(picked);
@@ -113,7 +112,7 @@ impl RunHeader {
         let name_font = theme::fonts::semibold_font(style::SECTION_SIZE);
         let small = FontId::proportional(style::SMALL_SIZE);
         let name = ui.painter().layout_no_wrap(check.name().to_owned(), name_font, palette.text);
-        let place_width = ui.painter().layout_no_wrap(place.clone(), small, palette.text).size().x;
+        let place_width = elide::text_width(ui, &place, &small);
         let chrome = style::SPACE_M * 2.0
             + STATUS_ICON
             + style::SPACE_S
@@ -343,13 +342,14 @@ impl SwitcherFace<'_, '_> {
             color,
         );
         x += STATUS_ICON + style::SPACE_S;
-        let (name, is_cut) = ellipsized(
-            ui,
+        let name = elide::line(
+            ui.painter(),
             check.name(),
             theme::fonts::semibold_font(style::SECTION_SIZE),
             palette.text,
             self.name_width,
         );
+        let is_cut = name.elided;
         painter.galley(pos2(x, rect.center().y - name.size().y / 2.0), name, palette.text);
         x += self.name_width + style::SPACE_S;
         painter.text(
@@ -453,13 +453,14 @@ fn paint_meta(left: &mut Ui, meta: &str) {
         return;
     }
     let palette = theme::palette(left.ctx());
-    let (galley, is_cut) = ellipsized(
-        left,
+    let galley = elide::line(
+        left.painter(),
         meta,
         FontId::proportional(style::SMALL_SIZE + 1.0),
         palette.text_secondary,
         width,
     );
+    let is_cut = galley.elided;
     let (rect, response) = left.allocate_exact_size(galley.size(), Sense::hover());
     left.painter().galley(rect.min, galley, palette.text_secondary);
     if is_cut {
@@ -502,15 +503,26 @@ fn option(
     let duration_width = if duration.is_some() { 72.0 } else { 0.0 };
     let left = rect.left() + style::SPACE_S + 16.0 + style::SPACE_S;
     let room = rect.right() - style::SPACE_S - duration_width - left;
-    let (name, is_cut) =
-        ellipsized(ui, check.name(), FontId::proportional(style::BODY_SIZE), palette.text, room);
+    let name = elide::line(
+        ui.painter(),
+        check.name(),
+        FontId::proportional(style::BODY_SIZE),
+        palette.text,
+        room,
+    );
+    let is_cut = name.elided;
     let name_width = name.size().x;
     ui.painter().galley(pos2(left, rect.center().y - name.size().y / 2.0), name, palette.text);
     // Job names repeat across runs; the run tells them apart.
     let run_room = room - name_width - style::SPACE_S;
     if check.job.is_some() && run_room > 40.0 {
-        let (run, _) =
-            ellipsized(ui, &check.run.name, small.clone(), palette.text_secondary, run_room);
+        let run = elide::line(
+            ui.painter(),
+            &check.run.name,
+            small.clone(),
+            palette.text_secondary,
+            run_room,
+        );
         ui.painter().galley(
             pos2(left + name_width + style::SPACE_S, rect.center().y - run.size().y / 2.0),
             run,

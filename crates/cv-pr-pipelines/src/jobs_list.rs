@@ -1,12 +1,11 @@
 //! The "Jobs" pivot: every job of the run in one flat list with its stage and duration.
 
 use cv_base::theme::{self, icons, style};
-use cv_widgets::{badges, buttons, row};
+use cv_widgets::{badges, buttons, elide, row};
 use egui::{Align2, FontId, Rect, Sense, Ui, pos2, vec2};
 use review_core::{PipelineJob, ProviderKind, RunStatus};
 
 use super::attempts::{self, Known};
-use super::graph::stage_card;
 use super::job_tree;
 use super::rerun;
 use super::run_view::RunViewAction;
@@ -130,13 +129,14 @@ fn job_row(ui: &mut Ui, row: &Row<'_>, context: RowContext<'_>) -> Option<RunVie
     let text_color =
         if row.job.status == RunStatus::Skipped { palette.text_secondary } else { palette.text };
     let name_left = rect.left() + NAME_LEFT;
-    let (name, is_cut) = stage_card::ellipsized(
-        ui,
+    let name = elide::line(
+        ui.painter(),
         &row.job.name,
         FontId::proportional(style::BODY_SIZE),
         text_color,
         rect.left() + context.stage_x - 16.0 - name_left,
     );
+    let is_cut = name.elided;
     painter.galley(pos2(name_left, rect.center().y - name.size().y / 2.0), name, text_color);
     let duration_left = duration_right(rect) - DURATION_WIDTH;
     let has_badge = !row.job.previous_attempts.is_empty();
@@ -185,8 +185,8 @@ fn paint_stage_and_duration(
     let palette = theme::palette(ui.ctx());
     if !std::ptr::eq(row.job, row.stage) {
         let body = FontId::proportional(style::BODY_SIZE);
-        let (stage, _) =
-            stage_card::ellipsized(ui, &row.stage.name, body, palette.text_secondary, stage_width);
+        let stage =
+            elide::line(ui.painter(), &row.stage.name, body, palette.text_secondary, stage_width);
         painter.galley(
             pos2(rect.left() + stage_x, rect.center().y - stage.size().y / 2.0),
             stage,

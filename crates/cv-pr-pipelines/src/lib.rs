@@ -44,7 +44,7 @@ use cv_shell::focus_mode::{self, Surface};
 use cv_widgets::states::{self, Action};
 use cv_widgets::time_text;
 use egui::Ui;
-use review_core::{PipelineJob, PipelineRun, Timestamp};
+use review_core::{PipelineJob, PipelineRun, Timestamp, short_sha};
 
 use self::attempts::Known;
 use self::checks::{Check, CheckKey};
@@ -697,10 +697,6 @@ pub fn stages_of<'a>(run: &PipelineRun, session: &'a PullRequestSession) -> Stag
         None if run.is_head => Stages::Loading,
         None => Stages::OnDemand(run.status),
     }
-}
-
-fn short_sha(sha: &str) -> &str {
-    sha.get(..7).unwrap_or(sha)
 }
 
 /// Elapsed time; still-running items count up to now.

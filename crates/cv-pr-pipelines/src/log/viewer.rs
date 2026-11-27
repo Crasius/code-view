@@ -16,10 +16,8 @@ use cv_widgets::find_bar::{self, Step};
 use cv_widgets::numbers::group_digits;
 use cv_widgets::states;
 use cv_widgets::text_selection::{self, Selection};
-use cv_widgets::{buttons, glyph, row, surfaces};
-use egui::{
-    Align, Color32, FontId, Id, Key, Modifiers, Rect, Response, RichText, Sense, Ui, pos2, vec2,
-};
+use cv_widgets::{buttons, elide, glyph, row, surfaces};
+use egui::{Align, FontId, Id, Key, Modifiers, Rect, Response, RichText, Sense, Ui, pos2, vec2};
 use review_core::{PipelineJob, RunStatus};
 
 use self::exports::LogExports;
@@ -360,20 +358,9 @@ impl LogViewer {
                     .size(theme::style::SMALL_SIZE)
                     .color(palette.text_secondary);
                     let small = FontId::proportional(theme::style::SMALL_SIZE);
-                    let body = FontId::proportional(theme::style::BODY_SIZE);
-                    let measure = |text: &str, font: &FontId| {
-                        ui.painter()
-                            .layout_no_wrap(text.to_owned(), font.clone(), Color32::WHITE)
-                            .size()
-                            .x
-                    };
-                    let lines_width = measure(lines.text(), &small);
+                    let lines_width = elide::text_width(ui, lines.text(), &small);
                     let error_width = if log.first_error.is_some() {
-                        measure(FIRST_ERROR, &body)
-                            + icons::SIZE
-                            + 6.0
-                            + 2.0 * theme::style::SPACE_M
-                            + ui.spacing().item_spacing.x
+                        buttons::subtle_width(ui, FIRST_ERROR) + ui.spacing().item_spacing.x
                     } else {
                         0.0
                     };
