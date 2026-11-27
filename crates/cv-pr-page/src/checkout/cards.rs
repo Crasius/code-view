@@ -10,11 +10,13 @@ use review_git::checkout::{Blocked, Survey};
 use review_store::checkouts::{CheckoutRecord, OpenWith};
 
 use super::choose::folder_name;
-use super::{Act, Section, View, progress, settings_link};
+use super::{Act, View, progress, settings_link};
 use cv_base::theme::{self, icons, style};
-use cv_services::checkouts::{Failure, FolderPurpose, Job, RemovalState, Status, plural, reason};
-use cv_widgets::buttons;
+use cv_runtime::intents::SettingsSection;
+use cv_services::checkouts::{Failure, FolderPurpose, Job, RemovalState, Status, reason};
+use cv_widgets::numbers::counted;
 use cv_widgets::progress_log::{self, redact};
+use cv_widgets::{buttons, states};
 
 /// Files or commits a card lists before "and N more".
 const MAX_LISTED: usize = 8;
@@ -77,7 +79,11 @@ fn two_buttons(ui: &mut Ui, primary: (&str, Act), secondary: (&str, Act)) -> Opt
 pub(super) fn dirty(ui: &mut Ui, clone: &Path, files: &[String]) -> Option<Act> {
     let palette = theme::palette(ui.ctx());
     let count = files.len();
-    let title = format!("{} has {count} uncommitted {}", folder_name(clone), plural(count, "file"));
+    let title = format!(
+        "{} has {}",
+        folder_name(clone),
+        counted(count, "uncommitted file", "uncommitted files")
+    );
     head(ui, "YOUR CLONE HAS CHANGES", &title, palette.warning);
     body(
         ui,
@@ -100,7 +106,7 @@ pub(super) fn no_clone(
     has_mirror: bool,
 ) -> Option<Act> {
     let palette = theme::palette(ui.ctx());
-    let title = format!("Code View knows no clone of {}", view.repository);
+    let title = format!("Code View knows no clone of {}", view.key.repository_key);
     head(ui, "NO LOCAL CLONE FOUND", &title, palette.text_secondary);
     body(
         ui,
@@ -111,7 +117,7 @@ pub(super) fn no_clone(
             RichText::new(format!(
                 "{} is not a clone of {}. Pick the folder that holds its .git folder.",
                 picked.display(),
-                view.repository
+                view.key.repository_key
             ))
             .color(palette.error),
         );
@@ -141,7 +147,11 @@ pub(super) fn no_clone(
         });
     });
     act.or_else(|| {
-        settings_link(ui, "Search folders in Settings › Local checkouts", Section::LocalCheckouts)
+        settings_link(
+            ui,
+            "Search folders in Settings › Local checkouts",
+            SettingsSection::LocalCheckouts,
+        )
     })
 }
 
@@ -180,19 +190,20 @@ pub(super) fn fork(ui: &mut Ui, view: &View<'_>, survey: &Survey) -> Option<Act>
 /// A checkout that stopped: the card of its reason, or git's failure with the steps and the log.
 pub(super) fn failed(ui: &mut Ui, view: &View<'_>, job: &Job, failure: &Failure) -> Option<Act> {
     match failure {
-        Failure::Dirty(files) => return dirty(ui, &job.plan.clone, files),
-        Failure::CheckedOut(path) => return checked_out(ui, path),
+        Failure::Dirty(files) => dirty(ui, &job.plan.clone, files),
+        Failure::CheckedOut(path) => checked_out(ui, path),
         Failure::Cancelled => {
             let palette = theme::palette(ui.ctx());
             head(ui, "CANCELLED", "The checkout was cancelled", palette.text_secondary);
             body(ui, "What it had made is removed again.");
-            return two_buttons(ui, ("Check out again", Act::Dismiss), ("Close", Act::Close));
+            two_buttons(ui, ("Check out again", Act::Dismiss), ("Close", Act::Close))
         }
-        Failure::Git { .. } => {}
+        Failure::Git { title, message } => git_failed(ui, view, job, title, message),
     }
-    let Failure::Git { title, message } = failure else {
-        return None;
-    };
+}
+
+/// git failed: its title and message, the steps and the log, with Retry.
+fn git_failed(ui: &mut Ui, view: &View<'_>, job: &Job, title: &str, message: &str) -> Option<Act> {
     let palette = theme::palette(ui.ctx());
     head(ui, "FAILED", title, palette.error);
     let progress = job.progress();
@@ -245,14 +256,17 @@ pub(super) fn remove(
         }
         Some(RemovalState::Removing) => {
             ui.horizontal(|ui| {
-                ui.add(egui::Spinner::new().size(icons::SIZE - 2.0).color(palette.text_secondary));
+                let size = egui::Vec2::splat(icons::SIZE - 2.0);
+                let (slot, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+                response.widget_info(|| egui::WidgetInfo::new(egui::Role::ProgressIndicator));
+                states::spinner(ui, slot, palette.text_secondary);
                 ui.label("Removing the worktree…");
             });
             None
         }
         Some(RemovalState::Changed(files)) => {
             let count = files.len();
-            let title = format!("{count} {} would be lost", plural(count, "change"));
+            let title = format!("{} would be lost", counted(count, "change", "changes"));
             head(ui, "WORKTREE HAS CHANGES", &title, palette.error);
             body(ui, "The worktree has files that are not committed. Removing it deletes them.");
             listing(ui, files);
@@ -293,7 +307,8 @@ pub(super) fn blocked(
     };
     if let Blocked::LocalCommits(commits) = blocked {
         let count = commits.len();
-        let title = format!("Update would drop {count} local {}", plural(count, "commit"));
+        let title =
+            format!("Update would drop {}", counted(count, "local commit", "local commits"));
         head(ui, "LOCAL COMMITS", &title, palette.warning);
         body(
             ui,

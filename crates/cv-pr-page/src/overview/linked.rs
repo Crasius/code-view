@@ -245,8 +245,7 @@ fn ticket_row(ui: &mut Ui, key: &str, url: &str, palette: &Palette) -> Option<Li
     let left = icon_center.x + ICON_SIZE / 2.0 + style::SPACE_S;
     let slots = text_slots(ui, rect, left, rect.right() - style::SPACE_S, key);
     paint_text(&painter, slots.label_rect, &slots.label, palette.accent);
-    let host = url.split('/').nth(2).unwrap_or(url);
-    paint_title(ui, slots.title_rect, host, palette.text_secondary);
+    paint_title(ui, slots.title_rect, provider_icon::host(url), palette.text_secondary);
     let mut action = None;
     response.context_menu(|ui| {
         if glyph::button(ui, icons::ARROW_SQUARE_OUT, "Open in browser").clicked() {
@@ -276,9 +275,7 @@ fn text_slots(ui: &Ui, rect: Rect, left: f32, right: f32, label: &str) -> TextSl
     let font = FontId::proportional(style::BODY_SIZE);
     let room = (right - style::SPACE_S - left).max(0.0);
     let label = elide::reference(ui, label, &font, room);
-    let width = ui
-        .fonts_mut(|fonts| fonts.layout_no_wrap(label.clone(), font, Color32::PLACEHOLDER).size().x)
-        .min(room);
+    let width = elide::text_width(ui, &label, &font).min(room);
     let label_rect = Rect::from_min_max(pos2(left, rect.top()), pos2(left + width, rect.bottom()));
     let title_left = label_rect.right() + style::SPACE_S;
     let title_rect = Rect::from_min_max(
@@ -304,18 +301,10 @@ fn paint_title(ui: &Ui, rect: Rect, text: &str, color: Color32) {
     if rect.width() <= 0.0 {
         return;
     }
-    let mut job = egui::text::LayoutJob::simple_singleline(
-        text.to_owned(),
-        FontId::proportional(style::BODY_SIZE),
-        color,
-    );
-    job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width());
-    let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
-    ui.painter_at(rect).galley(
-        pos2(rect.left(), rect.center().y - galley.size().y / 2.0),
-        galley,
-        color,
-    );
+    let painter = ui.painter_at(rect);
+    let galley =
+        elide::line(&painter, text, FontId::proportional(style::BODY_SIZE), color, rect.width());
+    painter.galley(pos2(rect.left(), rect.center().y - galley.size().y / 2.0), galley, color);
 }
 
 const PILL_PADDING: egui::Vec2 = vec2(8.0, 2.0);
@@ -346,7 +335,7 @@ fn paint_state(
         FontId::proportional(style::SMALL_SIZE),
         text_color,
     );
-    painter.rect_filled(pill, 10, fill);
+    painter.rect_filled(pill, style::RADIUS_CHIP, fill);
     painter.galley(pill.min + PILL_PADDING, galley, text_color);
     let mut left = pill.left();
     if let Some(checks) = item.checks {
@@ -423,11 +412,7 @@ mod tests {
                 slots.label_rect
             );
             assert!(!slots.label_rect.intersects(pill), "{:?} overlaps {pill:?}", slots.label_rect);
-            assert!(
-                slots.label.ends_with("data-loader#59") || slots.label.ends_with("#59"),
-                "keeps the number: {}",
-                slots.label
-            );
+            assert!(slots.label.ends_with("#59"), "keeps the number: {}", slots.label);
             assert!(slots.label.contains('…'), "cut: {}", slots.label);
             assert!(
                 slots.title_rect.right() <= pill.left(),

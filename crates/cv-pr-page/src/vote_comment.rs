@@ -9,7 +9,8 @@
 //! small composer under the button (the shared Markdown editor: Ctrl+Enter submits, Esc cancels).
 //! GitHub refuses a change request without text, so its Submit stays disabled and the footer says
 //! why. Azure DevOps and GitLab keep their one-click votes. The open composer and its text live
-//! in egui memory under the pull request's key, so a reload underneath keeps them.
+//! with the page ([`VoteComposer`]), so a reload underneath or another tab keeps them; a page the
+//! app closes takes them along, as it does its thread drafts.
 //!
 //! GitHub refuses every review vote by the pull request's author (422 "Can not approve your own
 //! pull request"), so for the author there both votes stay in place but off, with that reason
@@ -27,7 +28,6 @@ use cv_services::Services;
 use cv_services::self_review::{self, Identities, Standing};
 use cv_widgets::{badges, buttons};
 use egui::text::{LayoutJob, TextFormat};
-use egui::util::id_type_map::RawKey;
 use egui::{Align, FontId, RectAlign, Response, Ui};
 use review_core::{ProviderKind, PullRequestDetail, ReviewVote};
 
@@ -85,7 +85,6 @@ fn own_vote(standing: Standing) -> Option<ReviewVote> {
 }
 
 /// The composer's state while it is open.
-#[derive(Clone)]
 struct Draft {
     entry: Entry,
     text: String,
@@ -93,18 +92,17 @@ struct Draft {
     grab_focus: bool,
 }
 
-fn draft_id(key: &PullRequestKey) -> egui::Id {
-    egui::Id::unique(("vote_comment", key))
+/// The vote composer of one pull request page: its draft while it is open.
+#[derive(Default)]
+pub(super) struct VoteComposer {
+    draft: Option<Draft>,
 }
 
-/// The composer is open with text in it: closing the pull request would lose it. Reads the draft
-/// in place; a cloned read would copy the text every frame.
-pub(super) fn has_unsent_text(ctx: &egui::Context, key: &PullRequestKey) -> bool {
-    let raw = RawKey::new::<Option<Draft>>(draft_id(key));
-    ctx.data(|data| {
-        let draft = data.get_temp_raw(raw).and_then(|value| value.downcast_ref::<Option<Draft>>());
-        draft.is_some_and(|draft| draft.as_ref().is_some_and(|draft| !draft.text.trim().is_empty()))
-    })
+impl VoteComposer {
+    /// The composer is open with text in it: closing the pull request would lose it.
+    pub(super) fn has_unsent_text(&self) -> bool {
+        self.draft.as_ref().is_some_and(|draft| !draft.text.trim().is_empty())
+    }
 }
 
 /// The split button, laid out right to left: the caret with the vote menu, then the main part;
@@ -114,6 +112,7 @@ pub(super) fn show(
     session: &PullRequestSession,
     detail: &PullRequestDetail,
     can_write: bool,
+    composer: &mut VoteComposer,
     services: &mut Services,
 ) -> Option<HeaderAction> {
     let mut action = None;
@@ -122,11 +121,10 @@ pub(super) fn show(
     let standing = self_review::standing(&detail.summary, me.as_ref());
     let own = own_vote(standing);
     let refusal = author_refusal(session.kind, standing);
-    let mut draft =
-        ui.data_mut(|data| data.remove_temp::<Option<Draft>>(draft_id(&session.key))).flatten();
+    let draft = &mut composer.draft;
     // A composer opened before the platform said who the user is can never submit for the author.
     if refusal.is_some() {
-        draft = None;
+        *draft = None;
     }
     let rect = ui
         .add_enabled_ui(can_write && !votes.is_empty(), |ui| {
@@ -142,7 +140,7 @@ pub(super) fn show(
                         Comment::None => action = Some(vote(entry.vote, None)),
                         Comment::Optional | Comment::Required => {
                             let text = draft.take().map(|draft| draft.text).unwrap_or_default();
-                            draft = Some(Draft { entry, text, grab_focus: true });
+                            *draft = Some(Draft { entry, text, grab_focus: true });
                         }
                     }
                 }
@@ -170,9 +168,7 @@ pub(super) fn show(
             main.rect.union(caret.rect)
         })
         .inner;
-    if let Some(open) = draft {
-        action = action.or(show_draft(ui, &session.key, session.kind, rect, open, can_write));
-    }
+    action = action.or(show_draft(ui, &session.key, session.kind, rect, draft, can_write));
     if !session.has_token && add_token_button(ui).clicked() {
         action = Some(HeaderAction::OpenSettings);
     }
@@ -192,26 +188,27 @@ fn add_token_button(ui: &mut Ui) -> egui::Response {
     }
 }
 
-/// The open composer under `anchor`; returns the vote it submitted. While another write runs it
-/// stays open with Submit disabled, so the text typed so far is kept.
+/// The open composer under `anchor`, if any; returns the vote it submitted. A submit, Cancel or a
+/// dismiss closes it. While another write runs it stays open with Submit disabled, so the text
+/// typed so far is kept.
 fn show_draft(
     ui: &Ui,
     key: &PullRequestKey,
     kind: ProviderKind,
     anchor: egui::Rect,
-    mut open: Draft,
+    draft: &mut Option<Draft>,
     can_write: bool,
 ) -> Option<HeaderAction> {
-    match composer(ui, key, kind, anchor, &mut open, !can_write) {
-        Some(Outcome::Submitted { .. }) => {
+    let open = draft.as_mut()?;
+    let outcome = composer(ui, key, kind, anchor, open, !can_write)?;
+    let submitted = match outcome {
+        Outcome::Submitted { .. } => {
             Some(vote(open.entry.vote, Some(std::mem::take(&mut open.text))))
         }
-        Some(Outcome::Cancelled | Outcome::Dismissed) => None,
-        None => {
-            ui.data_mut(|data| data.insert_temp(draft_id(key), Some(open)));
-            None
-        }
-    }
+        Outcome::Cancelled | Outcome::Dismissed => None,
+    };
+    *draft = None;
+    submitted
 }
 
 fn vote(vote: ReviewVote, comment: Option<String>) -> HeaderAction {
@@ -331,7 +328,7 @@ fn composer(
         ..markdown_editor::Options::default()
     };
     let palette = theme::palette(ui.ctx());
-    let id = draft_id(key).with("composer");
+    let id = egui::Id::unique(("vote_comment", key)).with("composer");
     egui::Popup::new(id, ui.ctx().clone(), anchor, ui.layer_id())
         .open(true)
         .align(RectAlign::BOTTOM_END)
@@ -355,7 +352,7 @@ fn composer(
 mod tests {
     use review_core::{ProviderKind, ReviewVote};
 
-    use super::{Comment, Draft, Entry, draft_id, entries, has_unsent_text, show_draft};
+    use super::{Comment, Draft, Entry, VoteComposer, entries, show_draft};
     use cv_runtime::route::PullRequestKey;
 
     #[test]
@@ -381,29 +378,14 @@ mod tests {
 
     #[test]
     fn text_in_the_vote_composer_is_unsent_input() {
-        let ctx = egui::Context::default();
-        let key = PullRequestKey {
-            connection_id: "github".into(),
-            repository_key: "owner/repo".into(),
-            number: 7,
-        };
-        assert!(!has_unsent_text(&ctx, &key), "no composer open");
+        let mut composer = VoteComposer::default();
+        assert!(!composer.has_unsent_text(), "no composer open");
         let entry = Entry { vote: ReviewVote::ChangesRequested, comment: Comment::Required };
         let open = |text: &str| Some(Draft { entry, text: text.into(), grab_focus: false });
-        ctx.data_mut(|data| {
-            data.insert_temp(
-                draft_id(&key),
-                open(
-                    " 
-",
-                ),
-            )
-        });
-        assert!(!has_unsent_text(&ctx, &key), "an empty composer loses nothing");
-        ctx.data_mut(|data| data.insert_temp(draft_id(&key), open("Please split this")));
-        assert!(has_unsent_text(&ctx, &key));
-        let other = PullRequestKey { number: 8, ..key };
-        assert!(!has_unsent_text(&ctx, &other), "another pull request's page");
+        composer.draft = open(" \n");
+        assert!(!composer.has_unsent_text(), "an empty composer loses nothing");
+        composer.draft = open("Please split this");
+        assert!(composer.has_unsent_text());
     }
 
     #[test]
@@ -414,25 +396,20 @@ mod tests {
             number: 7,
         };
         let entry = Entry { vote: ReviewVote::ChangesRequested, comment: Comment::Required };
-        let shown_key = key.clone();
-        let mut harness = egui_kittest::Harness::new_ui(move |ui| {
-            cv_base::theme::fonts::install(ui.ctx());
-            let draft = ui.data_mut(|data| data.remove_temp::<Option<Draft>>(draft_id(&shown_key)));
-            if let Some(open) = draft.flatten() {
+        let draft = Draft { entry, text: "Please split this".into(), grab_focus: false };
+        let mut harness = egui_kittest::Harness::new_ui_state(
+            move |ui, composer: &mut VoteComposer| {
+                cv_base::theme::fonts::install(ui.ctx());
                 let anchor =
                     egui::Rect::from_min_size(egui::pos2(500.0, 10.0), egui::vec2(80.0, 24.0));
                 let submitted =
-                    show_draft(ui, &shown_key, ProviderKind::GitHub, anchor, open, false);
+                    show_draft(ui, &key, ProviderKind::GitHub, anchor, &mut composer.draft, false);
                 assert!(submitted.is_none(), "nothing is sent while the other write runs");
-            }
-        });
-        let draft = Draft { entry, text: "Please split this".into(), grab_focus: false };
-        harness.ctx.data_mut(|data| data.insert_temp(draft_id(&key), Some(draft)));
+            },
+            VoteComposer { draft: Some(draft) },
+        );
         // The busy Submit spins, so the frames never settle.
         harness.run_steps(2);
-        assert!(
-            has_unsent_text(&harness.ctx, &key),
-            "a thread resolve or label edit runs meanwhile"
-        );
+        assert!(harness.state().has_unsent_text(), "a thread resolve or label edit runs meanwhile");
     }
 }

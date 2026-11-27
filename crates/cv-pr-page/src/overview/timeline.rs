@@ -6,13 +6,14 @@ mod walkthrough;
 use egui::{RichText, Ui};
 use review_core::{ReviewThread, ThreadStatus};
 
-use cv_base::theme::{self, icons, motion};
+use cv_base::theme::{self, icons, motion, style};
 use cv_pr_session::actions::ActionRunner;
 use cv_pr_session::session::PullRequestSession;
 use cv_pr_threads::{CardOptions, Jump, PostState, ThreadsUi, lazy_list};
 use cv_services::Services;
 use cv_widgets::states::{self, Action};
-use cv_widgets::{checkbox, settle, skeleton, tabs};
+use cv_widgets::tabs::{self, Segment};
+use cv_widgets::{checkbox, settle, skeleton};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Filter {
@@ -46,7 +47,7 @@ pub fn show(
     };
     ui.multiply_opacity(opacity);
     let (filter, show_system) = filter_bar(ui, threads);
-    ui.add_space(8.0);
+    ui.add_space(style::SPACE_S);
 
     let visible: Vec<_> = threads
         .iter()
@@ -94,20 +95,19 @@ fn filter_bar(ui: &mut Ui, threads: &[ReviewThread]) -> (Filter, bool) {
     let (active, resolved) = (count(ThreadStatus::Active), count(ThreadStatus::Resolved));
     ui.horizontal(|ui| {
         ui.label(
-            RichText::new("Discussion")
-                .font(theme::fonts::semibold_font(theme::style::SECTION_SIZE)),
+            RichText::new("Discussion").font(theme::fonts::semibold_font(style::SECTION_SIZE)),
         );
-        ui.add_space(12.0);
+        ui.add_space(style::SPACE_M);
         let all = format!("All {}", active + resolved);
         let active_label = format!("Active {active}");
         let resolved_label = format!("Resolved {resolved}");
-        tabs::segmented(
+        tabs::segments(
             ui,
             &mut filter,
             &[
-                (Filter::All, &all),
-                (Filter::Active, &active_label),
-                (Filter::Resolved, &resolved_label),
+                Segment::new(Filter::All, &all),
+                Segment::new(Filter::Active, &active_label),
+                Segment::new(Filter::Resolved, &resolved_label),
             ],
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -150,7 +150,7 @@ fn cards(
                 cv_pr_threads::hover::note(ui.ctx(), threads_ui, thread);
             }
             events.extend(shown);
-            ui.add_space(theme::style::SPACE_M);
+            ui.add_space(style::SPACE_M);
         });
     }
     threads_ui.timeline_heights = heights;
@@ -164,7 +164,7 @@ fn cards(
                 cv_pr_threads::show_pending_card(ui, thread, threads_ui, &options, is_sending);
             },
         );
-        ui.add_space(theme::style::SPACE_M);
+        ui.add_space(style::SPACE_M);
     }
     events
 }

@@ -317,8 +317,8 @@ impl HeaderReveal {
     }
 
     /// The pointer is `is_near` the header, in the strip above the tab bar: once it rested there
-    /// for the dwell, the header
-    /// glides back. Returns true while the dwell still runs on a hidden header.
+    /// for the dwell, the header glides back. Returns true while the dwell still runs on a hidden
+    /// header.
     fn peek(&mut self, is_near: bool, now: f64, seconds: f64) -> bool {
         if !is_near {
             self.near_since = None;
@@ -432,7 +432,7 @@ mod tests {
     use egui::{Rangef, pos2};
     use review_store::HeaderMode;
 
-    use super::{Direction, HeaderReveal, PEEK_DWELL_SECONDS, PEEK_STRIP, is_in_strip, peek_strip};
+    use super::{HeaderReveal, PEEK_DWELL_SECONDS, PEEK_STRIP, is_in_strip, peek_strip};
 
     const SECONDS: f64 = 0.2;
 
@@ -460,7 +460,8 @@ mod tests {
         // The content could scroll: it consumed the delta, nothing is left over.
         assert_eq!(reveal.after_content(0.0, 0.0), 0.0);
         assert_eq!(reveal.hidden, 80.0, "the header stays hidden");
-        assert_eq!(reveal.last_direction, None, "and is not on its way back");
+        reveal.settle(1.0, SECONDS);
+        assert_eq!(reveal.hidden_at(1.0 + SECONDS, SECONDS), 80.0, "and is not on its way back");
     }
 
     #[test]
@@ -516,7 +517,12 @@ mod tests {
         reveal.before_content(-10.0, 0.05);
         assert_eq!(reveal.glide, None);
         assert_eq!(reveal.hidden, (midway + 10.0).min(80.0));
-        assert_eq!(reveal.last_direction, Some(Direction::Down));
+        reveal.settle(1.0, SECONDS);
+        assert_eq!(
+            reveal.hidden_at(1.0 + SECONDS, SECONDS),
+            80.0,
+            "it glides on the way the scroll went"
+        );
     }
 
     #[test]

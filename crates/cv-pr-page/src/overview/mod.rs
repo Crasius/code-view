@@ -9,8 +9,10 @@ mod merge_status;
 mod reviewers;
 mod timeline;
 
+use std::sync::Arc;
+
 use egui::{Id, RichText, Ui};
-use review_core::{ItemRef, ProviderKind, PullRequestState, ReviewVote};
+use review_core::{ItemRef, Provider, ProviderKind, PullRequestState, ReviewVote};
 use review_store::PaneSizes;
 
 pub use self::linked::LinkedAction;
@@ -22,9 +24,11 @@ use cv_pr_session::actions::ActionRunner;
 use cv_pr_session::links::{self, LinkedEntry, Sources};
 use cv_pr_session::session::PullRequestSession;
 use cv_pr_threads::ThreadsUi;
+use cv_runtime::background::Background;
 use cv_runtime::intents;
 use cv_runtime::load::Live;
 use cv_services::Services;
+use cv_services::linked::LinkedCache;
 use cv_services::self_review::{self, Identities};
 use cv_widgets::splitter::Splitter;
 use cv_widgets::states::{self, Action};
@@ -39,6 +43,16 @@ const CARD_PADDING: i8 = 16;
 /// The side column keeps at least 240 points and can grow until only the description's grab strip is left.
 fn side_width_range(available: f32) -> std::ops::RangeInclusive<f32> {
     cv_widgets::splitter::pane_range(240.0, available - COLUMN_GAP)
+}
+
+/// The boundary between the main and the side column, one persisted pane in both layouts. The
+/// side column grows when the boundary moves left.
+fn side_splitter(range: std::ops::RangeInclusive<f32>) -> Splitter {
+    Splitter::new("overview_side_splitter", "Resize side column")
+        .default_value(PaneSizes::DEFAULT.overview_side)
+        .range(range)
+        .per_point(-1.0)
+        .draws_line(false)
 }
 
 #[derive(Default)]
@@ -62,19 +76,20 @@ pub enum PipelineRequest {
 }
 
 /// What the Linked card's rows were built from: the answers of the detail, the threads and the
-/// commits, the platform's own links and the connections.
-type LinkedKey = (u64, u64, u64, usize, usize);
+/// commits, the platform's own links and the connections' revision.
+type LinkedKey = (u64, u64, u64, usize, u64);
 
 /// A new answer of any part rebuilds the rows, also one with as many threads (a reply came in) or
-/// commits (a force push) as before, and the detail that arrives after a refresh started.
+/// commits (a force push) as before, the detail that arrives after a refresh started, and an
+/// edited connection.
 fn linked_key<D, T, C>(
     detail: &Live<D>,
     threads: &Live<T>,
     commits: &Live<C>,
     native: usize,
-    connections: usize,
+    connections: &review_store::ConnectionStore,
 ) -> LinkedKey {
-    (detail.version(), threads.version(), commits.version(), native, connections)
+    (detail.version(), threads.version(), commits.version(), native, connections.revision())
 }
 
 /// The Linked card's rows, rebuilt when the texts they come from changed.
@@ -165,18 +180,12 @@ impl OverviewTab {
                 );
             });
             let boundary = row.response.rect.left() + main_width + COLUMN_GAP / 2.0;
-            // The side column grows when the boundary moves left.
-            let resize = Splitter::new("overview_side_splitter", "Resize side column")
-                .default_value(PaneSizes::DEFAULT.overview_side)
-                .range(range)
-                .per_point(-1.0)
-                .draws_line(false)
-                .show(
-                    ui,
-                    boundary,
-                    row.response.rect.y_range(),
-                    &mut services.settings.panes.overview_side,
-                );
+            let resize = side_splitter(range).show(
+                ui,
+                boundary,
+                row.response.rect.y_range(),
+                &mut services.settings.panes.overview_side,
+            );
             is_resized = resize.committed;
         });
         if is_resized {
@@ -218,18 +227,12 @@ impl OverviewTab {
         let mut panel_ui =
             ui.new_child(egui::UiBuilder::new().id_salt("overview_assistant").max_rect(panel_rect));
         cv_pr_assistant::panel(&mut panel_ui, assistant, session, services);
-        // The side column grows when the boundary moves left.
-        let resize = Splitter::new("overview_side_splitter", "Resize side column")
-            .default_value(PaneSizes::DEFAULT.overview_side)
-            .range(range)
-            .per_point(-1.0)
-            .draws_line(false)
-            .show(
-                ui,
-                panel_rect.left() - COLUMN_GAP / 2.0,
-                inner.y_range(),
-                &mut services.settings.panes.overview_side,
-            );
+        let resize = side_splitter(range).show(
+            ui,
+            panel_rect.left() - COLUMN_GAP / 2.0,
+            inner.y_range(),
+            &mut services.settings.panes.overview_side,
+        );
         ui.advance_cursor_after_rect(full);
         if resize.committed {
             services.save_settings();
@@ -307,7 +310,7 @@ impl OverviewTab {
         if let Some(action) = merge_status::show(ui, session, &card) {
             self.merge_action = Some(action);
         }
-        ui.add_space(16.0);
+        ui.add_space(style::SPACE_L);
         let opacity = motion::reveal(
             ui.ctx(),
             Id::unique(("description", &session.key)),
@@ -342,10 +345,10 @@ impl OverviewTab {
                 }
             }
         });
-        ui.add_space(16.0);
+        ui.add_space(style::SPACE_L);
         if session.has_token {
             comment_composer::show(ui, session, services, threads);
-            ui.add_space(16.0);
+            ui.add_space(style::SPACE_L);
         }
         timeline::show(ui, session, services, actions, threads)
     }
@@ -408,9 +411,12 @@ impl OverviewTab {
         let Some(detail) = session.detail.ready() else {
             return;
         };
-        let is_active =
-            platform::is_window_active(&ui.ctx().input(|input| input.viewport().clone()));
-        let (native, native_error) = native_links(session, services, is_active);
+        let is_active = ui.ctx().input(|input| platform::is_window_active(input.viewport()));
+        let provider = (session.kind == ProviderKind::AzureDevOps && is_active)
+            .then(|| services.provider(&session.key.connection_id))
+            .flatten();
+        let (native, native_error) =
+            native_links(session, &mut services.linked, &services.background, provider);
         let threads = session.threads.ready();
         let commits = session.commits.ready();
         let key = linked_key(
@@ -418,7 +424,7 @@ impl OverviewTab {
             &session.threads,
             &session.commits,
             native.len(),
-            services.connections.all().len(),
+            &services.connections,
         );
         let here = session.here();
         if self.linked.key != Some(key) {
@@ -437,7 +443,7 @@ impl OverviewTab {
                     .flatten()
                     .map(|commit| commit.subject.as_str())
                     .collect(),
-                native: &native,
+                native,
             };
             self.linked.entries =
                 links::collect(&sources, services.connections.all(), &here, session.key.number);
@@ -485,28 +491,26 @@ impl OverviewTab {
 }
 
 /// Work items Azure DevOps links to the pull request itself; asked once per pull request while
-/// the window is active. Other platforms have no such list.
-fn native_links(
+/// the window is active (`provider` is `None` otherwise). Other platforms have no such list. It
+/// borrows only the linked cache, so the caller reads the connections beside it.
+fn native_links<'a>(
     session: &PullRequestSession,
-    services: &mut Services,
-    is_active: bool,
-) -> (Vec<ItemRef>, Option<String>) {
-    if session.kind != ProviderKind::AzureDevOps || !is_active {
-        return (Vec::new(), None);
-    }
-    let Some(provider) = services.provider(&session.key.connection_id) else {
-        return (Vec::new(), None);
+    linked: &'a mut LinkedCache,
+    background: &Background,
+    provider: Option<Arc<dyn Provider>>,
+) -> (&'a [ItemRef], Option<String>) {
+    let Some(provider) = provider else {
+        return (&[], None);
     };
-    let key = session.key.storage_key();
-    let load = services.linked.native(
-        &services.background,
+    let load = linked.native(
+        background,
         provider,
-        &key,
+        &session.key.storage_key(),
         &session.key.repository_key,
         session.key.number,
     );
     let error = load.error().map(|message| format!("Linked work items: {message}"));
-    (load.ready().cloned().unwrap_or_default(), error)
+    (load.ready().map_or(&[], Vec::as_slice), error)
 }
 
 /// Drops a first Markdown heading that only repeats the card title (PR templates often start with
@@ -562,17 +566,43 @@ pub fn section_card_with_action<A>(
 
 #[cfg(test)]
 mod tests {
+    use review_core::{Connection, ProviderKind};
+    use review_store::ConnectionStore;
+
     use super::{linked_key, without_leading_heading};
     use cv_runtime::load::Live;
+    use cv_testkit::{ScratchDir, samples};
 
     #[test]
     fn linked_rows_follow_a_reply_in_a_reloaded_thread() {
         let detail: Live<u8> = Live::seeded(Some(1));
         let mut threads: Live<Vec<String>> = Live::seeded(Some(vec!["See #3".into()]));
         let commits: Live<Vec<String>> = Live::default();
-        let before = linked_key(&detail, &threads, &commits, 0, 1);
+        let scratch = ScratchDir::new("linked-reloaded-thread");
+        let store = ConnectionStore::open(&scratch.app_paths()).expect("empty store");
+        let before = linked_key(&detail, &threads, &commits, 0, &store);
         threads.set(vec!["See #3, and #4 too".into()]);
-        assert_ne!(linked_key(&detail, &threads, &commits, 0, 1), before, "as many threads");
+        assert_ne!(linked_key(&detail, &threads, &commits, 0, &store), before, "as many threads");
+    }
+
+    /// An edited connection (a new base URL) keeps the number of connections, and the rows it
+    /// resolves links against must still be rebuilt.
+    #[test]
+    fn linked_rows_follow_an_edited_connection() {
+        let scratch = ScratchDir::new("linked-edited-connection");
+        let mut store = ConnectionStore::open(&scratch.app_paths()).expect("empty store");
+        let connection =
+            samples::connection("work", ProviderKind::GitLab, "https://gitlab.example");
+        store.upsert(connection.clone()).expect("add the connection");
+        let detail: Live<u8> = Live::seeded(Some(1));
+        let threads: Live<Vec<String>> = Live::default();
+        let commits: Live<Vec<String>> = Live::default();
+        let before = linked_key(&detail, &threads, &commits, 0, &store);
+        let moved = Connection { base_url: "https://gitlab.other.example".into(), ..connection };
+        store.upsert(moved).expect("edit the connection");
+        assert_eq!(store.all().len(), 1, "an edit adds no connection");
+        let after = linked_key(&detail, &threads, &commits, 0, &store);
+        assert_ne!(after, before, "the edited connection rebuilds the rows");
     }
 
     #[test]

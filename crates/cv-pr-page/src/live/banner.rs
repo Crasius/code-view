@@ -15,6 +15,10 @@ use cv_widgets::buttons;
 const SLIDE: f32 = 8.0;
 const ACCENT_EDGE: f32 = 3.0;
 pub const MAX_WIDTH: f32 = 760.0;
+const MARGIN_RIGHT: i8 = 8;
+/// The row's `SPACE_S` gaps: five between its six items (icon, title, detail, the space before
+/// the actions, two buttons) and the width of that space.
+const ROW_GAPS: f32 = 6.0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Look {
@@ -74,7 +78,7 @@ pub fn show(
                 ))
                 .corner_radius(style::RADIUS_POPUP)
                 .shadow(style::popup_shadow(&palette))
-                .inner_margin(egui::Margin { left, right: 8, top: 6, bottom: 6 })
+                .inner_margin(egui::Margin { left, right: MARGIN_RIGHT, top: 6, bottom: 6 })
                 .show(ui, |ui| {
                     action = card_row(ui, content, max_width - f32::from(left));
                 });
@@ -119,7 +123,11 @@ fn card_row(ui: &mut egui::Ui, content: &Content, room: f32) -> Option<BannerAct
                     buttons::icon_button_width(ui, "Show changes") + buttons::icon_width()
                 }
             };
-            let used = 8.0 + icons::SIZE + title.rect.width() + actions + style::SPACE_S * 6.0;
+            let used = f32::from(MARGIN_RIGHT)
+                + icons::SIZE
+                + title.rect.width()
+                + actions
+                + style::SPACE_S * ROW_GAPS;
             let detail_room = (room - used).max(80.0);
             ui.scope(|ui| {
                 ui.set_max_width(detail_room);
@@ -183,4 +191,56 @@ fn paint_accent_edge(ui: &egui::Ui, card: Rect, color: egui::Color32) {
     let radius = style::RADIUS_POPUP;
     let corners = egui::CornerRadius { nw: radius, sw: radius, ne: 0, se: 0 };
     ui.painter().rect_filled(edge, corners, color);
+}
+
+#[cfg(test)]
+mod tests {
+    use cv_testkit::Clicks;
+    use egui::{Id, Role, pos2};
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::{NodeT, Queryable};
+    use review_store::ThemePreference;
+
+    use super::{BannerAction, Content, Look, show};
+    use cv_base::theme;
+
+    fn pending() -> Content {
+        Content {
+            look: Look::Pending,
+            title: "New changes pushed".to_owned(),
+            detail: "2 new commits by Dee Okafor, 1 new comment by Dee Okafor".to_owned(),
+        }
+    }
+
+    #[test]
+    fn pending_card_announces_itself_with_reload_and_later() {
+        let mut harness = Harness::builder()
+            .with_size([980.0, 200.0])
+            .with_context_setup(theme::fonts::install)
+            .build_ui_state(
+                |ui, action: &mut Option<BannerAction>| {
+                    let ctx = ui.ctx().clone();
+                    theme::activate(&ctx, ThemePreference::Light);
+                    let id = Id::unique("pending_card");
+                    let shown = show(&ctx, id, pos2(490.0, 8.0), 940.0, &pending(), 1.0);
+                    if let Some(picked) = shown.action {
+                        *action = Some(picked);
+                    }
+                },
+                None,
+            );
+        harness.run();
+        let announced = harness.get_by_role(Role::Status);
+        assert_eq!(
+            announced.accesskit_node().label().as_deref(),
+            Some("New changes pushed: 2 new commits by Dee Okafor, 1 new comment by Dee Okafor"),
+            "screen readers hear about the push, politely"
+        );
+        harness.click_at(harness.get_by_role_and_label(Role::Button, "Later").rect());
+        harness.run();
+        assert_eq!(*harness.state(), Some(BannerAction::Later));
+        harness.click_at(harness.get_by_role_and_label(Role::Button, "Reload").rect());
+        harness.run();
+        assert_eq!(*harness.state(), Some(BannerAction::Reload));
+    }
 }

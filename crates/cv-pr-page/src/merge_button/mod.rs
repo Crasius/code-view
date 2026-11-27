@@ -121,20 +121,25 @@ struct MenuAnchor {
 
 impl MergeButton {
     pub fn new(session: &PullRequestSession, detail: &PullRequestDetail) -> Self {
+        let key = PolicyKey {
+            connection_id: session.key.connection_id.clone(),
+            repository: session.key.repository_key.clone(),
+            target_branch: detail.summary.target_branch.clone(),
+        };
+        Self::for_key(key, format!("Merged PR {}: {}", detail.summary.number, detail.summary.title))
+    }
+
+    fn for_key(key: PolicyKey, message: String) -> Self {
         Self {
             picked: None,
-            message: format!("Merged PR {}: {}", detail.summary.number, detail.summary.title),
+            message,
             delete_source_branch: None,
             wants_auto: None,
             armed_at: None,
             focus_message: false,
             is_menu_open: false,
             policy: None,
-            key: PolicyKey {
-                connection_id: session.key.connection_id.clone(),
-                repository: session.key.repository_key.clone(),
-                target_branch: detail.summary.target_branch.clone(),
-            },
+            key,
             failure: None,
         }
     }
@@ -149,17 +154,21 @@ impl MergeButton {
     ) {
         self.follow_target(&detail.summary.target_branch);
         let now = ctx.input(|input| input.time);
-        let is_active = platform::is_window_active(&ctx.input(|input| input.viewport().clone()));
-        self.policy = match services.merge_policies.want(
+        let is_active = ctx.input(|input| platform::is_window_active(input.viewport()));
+        match services.merge_policies.want(
             &services.background,
             &session.provider,
             &self.key,
             now,
             is_active,
         ) {
-            PolicyView::Ready(policy) => Some(policy.clone()),
-            PolicyView::Pending => None,
-        };
+            PolicyView::Ready(policy) => {
+                if self.policy.as_ref() != Some(policy) {
+                    self.policy = Some(policy.clone());
+                }
+            }
+            PolicyView::Pending => self.policy = None,
+        }
         if let Some(armed_at) = self.armed_at {
             if now - armed_at > CONFIRM_WINDOW {
                 self.armed_at = None;
@@ -174,7 +183,6 @@ impl MergeButton {
     fn follow_target(&mut self, target_branch: &str) {
         if self.key.target_branch != target_branch {
             target_branch.clone_into(&mut self.key.target_branch);
-            self.policy = None;
         }
     }
 
@@ -428,7 +436,7 @@ impl MergeButton {
         let Some(choice) = choice else {
             return outcome;
         };
-        let Some(policy) = self.policy.clone() else {
+        let Some(policy) = self.policy.take() else {
             return outcome;
         };
         // The gap, the menu frame's margins and some room to the window's edge.
@@ -459,6 +467,7 @@ impl MergeButton {
                         outcome = self.menu(ui, page, services, &policy, choice);
                     });
             });
+        self.policy = Some(policy);
         outcome
     }
 
@@ -637,22 +646,12 @@ mod tests {
     use cv_services::merge_policies::PolicyKey;
 
     fn button(message: &str) -> MergeButton {
-        MergeButton {
-            picked: None,
-            message: message.to_owned(),
-            delete_source_branch: None,
-            wants_auto: None,
-            armed_at: None,
-            focus_message: false,
-            is_menu_open: false,
-            policy: None,
-            key: PolicyKey {
-                connection_id: "gh".into(),
-                repository: "acme/app".into(),
-                target_branch: "feature/base".into(),
-            },
-            failure: None,
-        }
+        let key = PolicyKey {
+            connection_id: "gh".into(),
+            repository: "acme/app".into(),
+            target_branch: "feature/base".into(),
+        };
+        MergeButton::for_key(key, message.to_owned())
     }
 
     #[test]

@@ -8,14 +8,14 @@ use cv_services::Services;
 use cv_widgets::numbers::number_prefix;
 use cv_widgets::refresh_status::{self, RefreshStatus};
 use cv_widgets::{
-    avatar, badges, buttons, copy_chip, focus, glyph, provider_icon, row, skeleton, states,
+    avatar, badges, buttons, copy_chip, elide, focus, glyph, provider_icon, row, skeleton, states,
 };
 use egui::{RichText, Ui};
 use review_core::{MergeOptions, PullRequestDetail, PullRequestState, PullRequestSummary};
 
 use crate::checkout::{self, CheckoutButton};
 use crate::merge_button::MergeButton;
-use crate::vote_comment;
+use crate::vote_comment::{self, VoteComposer};
 
 /// The platform mark before the state pill, sized to the title line.
 const PLATFORM_MARK_SIZE: f32 = 20.0;
@@ -92,21 +92,17 @@ fn author_line(ui: &mut Ui, summary: &PullRequestSummary, is_busy: bool, reserve
     let prefix = format!("{} wants to merge", summary.author.display_name);
     let spacing = ui.spacing().item_spacing.x;
     let body = egui::TextStyle::Body.resolve(ui.style());
-    let text_width = |ui: &Ui, text: &str| {
-        ui.fonts_mut(|fonts| {
-            fonts.layout_no_wrap(text.to_owned(), body.clone(), palette.text_secondary).size().x
-        })
-    };
     // The spinner slot keeps its place after the line; the prefix, the arrow and the two chips
     // share the rest. A narrow header cuts the prefix only once both chips are at their least.
     // Five gaps: before the prefix, both chips, the arrow and the spinner slot.
     let room = ui.available_width()
         - icons::SIZE
-        - text_width(ui, icons::ARROW_RIGHT)
+        - elide::text_width(ui, icons::ARROW_RIGHT, &body)
         - 5.0 * spacing
         - reserved;
     let least_chip = copy_chip::min_width(ui);
-    let prefix_width = text_width(ui, &prefix).min((room - 2.0 * least_chip).max(0.0));
+    let prefix_width =
+        elide::text_width(ui, &prefix, &body).min((room - 2.0 * least_chip).max(0.0));
     ui.scope(|ui| {
         ui.set_max_width(prefix_width);
         ui.add(egui::Label::new(RichText::new(prefix).color(palette.text_secondary)).truncate());
@@ -125,10 +121,7 @@ fn author_line(ui: &mut Ui, summary: &PullRequestSummary, is_busy: bool, reserve
     let (slot, _) =
         ui.allocate_exact_size(egui::vec2(icons::SIZE, icons::SIZE), egui::Sense::hover());
     if is_busy {
-        egui::Spinner::new()
-            .size(icons::SIZE - 2.0)
-            .color(palette.text_secondary)
-            .paint_at(ui, slot);
+        states::spinner(ui, slot, palette.text_secondary);
     }
 }
 
@@ -145,10 +138,11 @@ fn branch_widths(room: f32, source: f32, target: f32, least: f32) -> (f32, f32) 
     (source, target.min(room - source).max(least))
 }
 
-/// The header's buttons that keep state across frames: the merge button of an open pull request
-/// and the checkout button.
+/// The header's buttons that keep state across frames: the merge button of an open pull request,
+/// the vote composer and the checkout button.
 pub struct Buttons<'a> {
     pub merge: Option<&'a mut MergeButton>,
+    pub vote: &'a mut VoteComposer,
     pub checkout: &'a mut CheckoutButton,
 }
 
@@ -328,7 +322,7 @@ fn command_bar(
     buttons: Buttons<'_>,
     services: &mut Services,
 ) -> Option<HeaderAction> {
-    let Buttons { merge, checkout } = buttons;
+    let Buttons { merge, vote, checkout } = buttons;
     let mut action = None;
     let is_open = detail.summary.state == PullRequestState::Open;
     let can_write = session.has_token && !actions.is_busy();
@@ -384,7 +378,7 @@ fn command_bar(
         {
             action = Some(HeaderAction::Merge(options));
         }
-        let vote_action = vote_comment::show(ui, session, detail, can_write, services);
+        let vote_action = vote_comment::show(ui, session, detail, can_write, vote, services);
         action = action.or(vote_action);
     }
     checkout.show(ui, session, detail, services);
