@@ -1,19 +1,20 @@
 //! Step 5: which organizations, groups or collections to show, the connection's name, and save.
 
 use cv_base::theme::{self, icons};
+use cv_runtime::load::Load;
 use cv_services::Services;
 use cv_widgets::{buttons, checkbox, states};
 use egui::{RichText, TextEdit, Ui};
 use review_core::{ProviderKind, ScopeCandidate};
 
-use super::{Discovery, Step, VaultCheck, Wizard, footer};
+use super::{Step, VaultCheck, Wizard, footer};
 use crate::onboarding::host::Hosting;
 use crate::onboarding::parts::{self, Tone};
 
 /// Returns the saved connection's name.
 pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) -> Option<String> {
     let Ok(host) = wizard.resolved() else {
-        wizard.go(Step::Host);
+        wizard.step = Step::Host;
         return None;
     };
     wizard.start_discovery(services);
@@ -43,7 +44,7 @@ pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) -> Option
     };
 
     let mut saved = None;
-    ui.add_space(12.0);
+    ui.add_space(theme::style::SPACE_M);
     let vault = wizard.vault_message(ui, problem.is_none());
     if vault.wants_recheck {
         wizard.vault = VaultCheck::Idle;
@@ -75,7 +76,7 @@ pub fn show(wizard: &mut Wizard, ui: &mut Ui, services: &mut Services) -> Option
         }
     });
     if goes_back {
-        wizard.go(Step::Access);
+        wizard.step = Step::Access;
     }
     if wants_retry {
         wizard.discovered_for = None;
@@ -118,13 +119,13 @@ fn everything_choice(ui: &mut Ui, wizard: &mut Wizard, noun: &str) {
         everything,
         everything_detail,
         wizard.includes_everything,
-        false,
+        parts::Mark::Radio,
     )
     .clicked()
     {
         wizard.includes_everything = true;
     }
-    ui.add_space(8.0);
+    ui.add_space(theme::style::SPACE_S);
     let only = format!("Only selected {noun}");
     if parts::choice_row(
         ui,
@@ -132,23 +133,23 @@ fn everything_choice(ui: &mut Ui, wizard: &mut Wizard, noun: &str) {
         &only,
         "Pick from the list below",
         !wizard.includes_everything,
-        false,
+        parts::Mark::Radio,
     )
     .clicked()
     {
         wizard.includes_everything = false;
     }
-    ui.add_space(12.0);
+    ui.add_space(theme::style::SPACE_M);
 }
 
 /// The scopes the token sees, each with a checkbox; true when the user asks to list them again.
 fn scope_list(ui: &mut Ui, wizard: &mut Wizard, noun: &str) -> bool {
     let mut wants_retry = false;
     match &wizard.discovery {
-        Discovery::Running(_) | Discovery::Idle => {
+        Load::Loading(_) | Load::Idle => {
             states::loading(ui, &format!("Looking up your {noun}…"));
         }
-        Discovery::Failed(message) => {
+        Load::Failed(message) => {
             parts::callout(
                 ui,
                 Tone::Warning,
@@ -160,10 +161,10 @@ fn scope_list(ui: &mut Ui, wizard: &mut Wizard, noun: &str) -> bool {
                 },
             );
         }
-        Discovery::Done(candidates) if candidates.is_empty() => {
+        Load::Ready(candidates) if candidates.is_empty() => {
             parts::small(ui, &format!("The token sees no {noun}. Type the names below."));
         }
-        Discovery::Done(candidates) => {
+        Load::Ready(candidates) => {
             for candidate in candidates {
                 candidate_row(ui, &mut wizard.selected, candidate);
             }
@@ -197,7 +198,7 @@ fn candidate_row(ui: &mut Ui, selected: &mut Vec<String>, candidate: &ScopeCandi
 
 /// Scopes typed by name, for ones the list does not show.
 fn typed_scopes(ui: &mut Ui, wizard: &mut Wizard, noun: &str) {
-    ui.add_space(8.0);
+    ui.add_space(theme::style::SPACE_S);
     let label = ui.label(
         RichText::new(format!("Add {noun} by name"))
             .font(theme::fonts::semibold_font(theme::style::BODY_SIZE)),
@@ -209,7 +210,7 @@ fn typed_scopes(ui: &mut Ui, wizard: &mut Wizard, noun: &str) {
             .desired_width(f32::INFINITY),
     )
     .labelled_by(label.id);
-    ui.add_space(12.0);
+    ui.add_space(theme::style::SPACE_M);
 }
 
 /// The connection's name; typing in it keeps it from following the host.

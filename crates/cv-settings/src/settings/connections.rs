@@ -57,7 +57,7 @@ impl ConnectionList {
         rows::card(ui, |ui| {
             for (index, connection) in services.connections.all().iter().enumerate() {
                 if index > 0 {
-                    rows::divider(ui);
+                    onboarding::parts::divider(ui);
                 }
                 let problem = services.providers.issues().get(&connection.id);
                 let is_open = self.expanded.as_deref() == Some(connection.id.as_str());
@@ -250,15 +250,16 @@ fn facts(ui: &mut Ui, connection: &Connection, problem: Option<&AccessProblem>, 
         || "No problem since the app started".to_owned(),
         |problem| format!("{} {}", problem.title, problem.fix),
     );
-    let rows: [(&str, &str); 6] = [
-        ("Platform", connection.kind.label()),
-        ("Host", host(connection)),
-        ("Shows", &scope),
-        ("Signed in with", sign_in(connection)),
-        ("Token storage", storage),
-        ("Access", &access),
-    ];
     let palette = theme::palette(ui.ctx());
+    let access_color = if problem.is_some() { palette.error } else { palette.text };
+    let rows: [(&str, &str, Color32); 6] = [
+        ("Platform", connection.kind.label(), palette.text),
+        ("Host", host(connection), palette.text),
+        ("Shows", &scope, palette.text),
+        ("Signed in with", sign_in(connection), palette.text),
+        ("Token storage", storage, palette.text),
+        ("Access", &access, access_color),
+    ];
     egui::Frame::new()
         .inner_margin(egui::Margin {
             left: indent(),
@@ -272,13 +273,8 @@ fn facts(ui: &mut Ui, connection: &Connection, problem: Option<&AccessProblem>, 
                 .min_col_width(FACT_LABEL_WIDTH)
                 .spacing([style::SPACE_M, style::SPACE_XS])
                 .show(ui, |ui| {
-                    for (label, value) in rows {
+                    for (label, value, color) in rows {
                         ui.label(RichText::new(label).color(palette.text_secondary));
-                        let color = if label == "Access" && problem.is_some() {
-                            palette.error
-                        } else {
-                            palette.text
-                        };
                         ui.add(egui::Label::new(RichText::new(value).color(color)).wrap());
                         ui.end_row();
                     }

@@ -24,8 +24,10 @@ use egui::{Align, RichText, Sense, Ui, vec2};
 pub const LABEL: &str = "Browser extension";
 pub const DESCRIPTION: &str = "Chrome and Edge open pull request links of your connections here instead of in a tab. \
      Registering lets the Code View extension start this copy of Code View, for your user only.";
-const INSTRUCTION: &str = "Then in chrome://extensions or edge://extensions, turn on Developer mode, choose Load unpacked and pick the extension folder.";
+const INSTRUCTION: &str = "Then in chrome://extensions or edge://extensions, turn on Developer mode, choose Load unpacked and pick the extension folder. After an update, choose Reload on the Code View extension there.";
 const STATUS_WIDTH: f32 = 220.0;
+/// Why a step that never answered failed.
+const STOPPED: &str = "The registration step stopped unexpectedly. Try again.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Work {
@@ -40,6 +42,13 @@ struct Done {
     status: Option<Status>,
     failure: Option<String>,
     folder: Option<PathBuf>,
+}
+
+impl Done {
+    /// A step that failed before it could read the status.
+    fn failed(message: impl Into<String>) -> Self {
+        Self { status: None, failure: Some(message.into()), folder: None }
+    }
 }
 
 #[derive(Default)]
@@ -203,11 +212,7 @@ impl BrowserExtension {
         let folder = browser::extension_dir(&services.paths);
         let task = services.background.spawn(async move {
             let step = tokio::task::spawn_blocking(move || run(work, &registry, folder));
-            step.await.unwrap_or_else(|_| Done {
-                status: None,
-                failure: Some("The registration step stopped unexpectedly. Try again.".to_owned()),
-                folder: None,
-            })
+            step.await.unwrap_or_else(|_| Done::failed(STOPPED))
         });
         self.running = Some((work, task));
     }
@@ -220,11 +225,7 @@ impl BrowserExtension {
         let done = match task.poll() {
             TaskPoll::Pending => return,
             TaskPoll::Done(done) => done,
-            TaskPoll::Lost => Done {
-                status: None,
-                failure: Some("The registration step stopped unexpectedly. Try again.".to_owned()),
-                folder: None,
-            },
+            TaskPoll::Lost => Done::failed(STOPPED),
         };
         self.running = None;
         self.status = done.status.or(self.status);
@@ -246,7 +247,7 @@ fn registry_for(services: &Services) -> std::io::Result<Registry> {
     #[cfg(any(test, feature = "test-support"))]
     {
         use cv_shell::browser::registration::MemoryKeys;
-        let manifest = services.paths.browser_dir().join(format!("{}.json", browser::HOST_NAME));
+        let manifest = browser::host_manifest(&services.paths);
         Ok(Registry::Keys { manifest, keys: Arc::new(MemoryKeys::default()) })
     }
     #[cfg(not(any(test, feature = "test-support")))]
@@ -260,11 +261,7 @@ fn run(work: Work, registry: &Registry, folder: PathBuf) -> Done {
     let exe = match std::env::current_exe() {
         Ok(exe) => exe,
         Err(error) => {
-            return Done {
-                status: None,
-                failure: Some(format!("Code View cannot find its own executable: {error}")),
-                folder: None,
-            };
+            return Done::failed(format!("Code View cannot find its own executable: {error}"));
         }
     };
     let outcome = match work {

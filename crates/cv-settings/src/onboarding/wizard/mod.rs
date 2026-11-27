@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 use cv_base::theme::{self, icons};
 use cv_runtime::background::{Task, TaskPoll};
+use cv_runtime::load::Load;
 use cv_services::Services;
 use cv_widgets::buttons;
 use egui::{Align, Layout, RichText, Ui};
@@ -42,7 +43,7 @@ impl Step {
     const ALL: [Step; 5] = [Step::Platform, Step::Host, Step::Token, Step::Access, Step::Scope];
 
     fn index(self) -> usize {
-        Step::ALL.iter().position(|step| *step == self).unwrap_or_default()
+        self as usize
     }
 }
 
@@ -86,13 +87,6 @@ impl Check {
     }
 }
 
-enum Discovery {
-    Idle,
-    Running(Task<Result<Vec<ScopeCandidate>, String>>),
-    Done(Vec<ScopeCandidate>),
-    Failed(String),
-}
-
 /// Whether this system can keep a token now (on Linux: is a Secret Service running?). Asked once
 /// when the wizard opens and again on "Check again"; a failed save brings its own answer.
 enum VaultCheck {
@@ -132,7 +126,7 @@ pub struct Wizard {
     check: Check,
     shows_alternative: bool,
     ticked: Vec<bool>,
-    discovery: Discovery,
+    discovery: Load<Vec<ScopeCandidate>>,
     discovered_for: Option<String>,
     includes_everything: bool,
     selected: Vec<String>,
@@ -145,10 +139,11 @@ pub struct Wizard {
 }
 
 impl Wizard {
-    pub fn new(cli_tools: CliTools, is_first_run: bool) -> Self {
+    /// A new connection, from the platform step.
+    pub fn new(cli_tools: CliTools) -> Self {
         Self {
             existing: None,
-            is_first_run,
+            is_first_run: false,
             problem: None,
             step: Step::Platform,
             kind: ProviderKind::AzureDevOps,
@@ -165,7 +160,7 @@ impl Wizard {
             check: Check::Idle,
             shows_alternative: false,
             ticked: Vec::new(),
-            discovery: Discovery::Idle,
+            discovery: Load::Idle,
             discovered_for: None,
             includes_everything: true,
             selected: Vec::new(),
@@ -175,6 +170,11 @@ impl Wizard {
             vault: VaultCheck::Idle,
             save_error: None,
         }
+    }
+
+    /// The first connection of a profile without any: no way out but through the steps.
+    pub fn first_run(cli_tools: CliTools) -> Self {
+        Self { is_first_run: true, ..Self::new(cli_tools) }
     }
 
     pub fn edit(connection: &Connection, cli_tools: CliTools, start: EditStart) -> Self {
@@ -207,7 +207,7 @@ impl Wizard {
             selected: connection.organizations.clone(),
             name: connection.name.clone(),
             is_name_custom: true,
-            ..Self::new(cli_tools, false)
+            ..Self::new(cli_tools)
         }
     }
 
@@ -222,7 +222,7 @@ impl Wizard {
             kind,
             hosting: Hosting::Cloud,
             host_input: organization.unwrap_or_default(),
-            ..Self::new(cli_tools, false)
+            ..Self::new(cli_tools)
         };
         wizard.step = if wizard.resolved().is_ok() { Step::Token } else { Step::Host };
         wizard
@@ -238,16 +238,16 @@ impl Wizard {
         ui.vertical_centered(|ui| {
             ui.set_max_width(CONTENT_WIDTH);
             ui.vertical(|ui| {
-                ui.add_space(8.0);
+                ui.add_space(theme::style::SPACE_S);
                 if self.header(ui) {
                     outcome = WizardOutcome::Cancelled;
                 }
-                ui.add_space(16.0);
+                ui.add_space(theme::style::SPACE_L);
                 let labels = self.step_labels();
                 if let Some(index) = parts::stepper(ui, &labels, self.step.index()) {
                     self.step = Step::ALL[index];
                 }
-                ui.add_space(16.0);
+                ui.add_space(theme::style::SPACE_L);
                 parts::sheet(ui, |ui| {
                     let saved = match self.step {
                         Step::Platform => {
@@ -372,27 +372,15 @@ impl Wizard {
                 self.suggest_name();
             }
         }
-        if let Discovery::Running(task) = &mut self.discovery {
-            match task.poll() {
-                TaskPoll::Pending => {}
-                TaskPoll::Done(Ok(candidates)) => {
-                    let is_new = self.existing.is_none() && self.selected.is_empty();
-                    if is_new && self.kind == ProviderKind::AzureDevOps {
-                        self.selected = self
-                            .resolved()
-                            .ok()
-                            .and_then(|host| host.organization)
-                            .into_iter()
-                            .collect();
-                    }
-                    self.discovery = Discovery::Done(candidates);
-                }
-                TaskPoll::Done(Err(message)) => self.discovery = Discovery::Failed(message),
-                TaskPoll::Lost => {
-                    self.discovery =
-                        Discovery::Failed("The lookup stopped unexpectedly.".to_owned());
-                }
-            }
+        // A new Azure DevOps connection starts with the organization its host names.
+        if self.discovery.poll()
+            && self.discovery.ready().is_some()
+            && self.existing.is_none()
+            && self.selected.is_empty()
+            && self.kind == ProviderKind::AzureDevOps
+        {
+            self.selected =
+                self.resolved().ok().and_then(|host| host.organization).into_iter().collect();
         }
     }
 
@@ -421,10 +409,18 @@ impl Wizard {
     }
 
     fn guide(&self) -> Option<TokenGuide> {
-        let host = self.resolved().ok()?;
+        self.resolved().ok().map(|host| self.guide_at(&host))
+    }
+
+    fn guide_at(&self, host: &ResolvedHost) -> TokenGuide {
         let owner = self.selected.first().map(String::as_str);
         let organization = host.organization.as_deref().or(owner);
-        Some(guides::token_guide(self.kind, &host.base_url, organization))
+        guides::token_guide(self.kind, &host.base_url, organization)
+    }
+
+    /// Where a new token with the recommended settings is created on `host`.
+    fn fix_url(&self, host: &ResolvedHost) -> String {
+        self.guide_at(host).recommended.create_url
     }
 
     /// The token the next check uses: CLI sign-in, then pasted text, then the stored one.
@@ -450,7 +446,7 @@ impl Wizard {
 
     fn cli_login(&self) -> Option<CliLogin> {
         let host = self.resolved().ok()?;
-        self.cli_tools.login_for(self.kind, host.host_name(), self.hosting == Hosting::Cloud)
+        self.cli_tools.login_for(self.kind, host.host_name(), self.hosting)
     }
 
     /// The connection as it would be saved; organizations as currently chosen.
@@ -511,10 +507,6 @@ impl Wizard {
 
     // --- actions ------------------------------------------------------------------------
 
-    fn go(&mut self, step: Step) {
-        self.step = step;
-    }
-
     fn select_kind(&mut self, kind: ProviderKind) {
         if kind != self.kind {
             self.kind = kind;
@@ -530,7 +522,7 @@ impl Wizard {
         self.cli_token = None;
         self.cli_error = None;
         self.check = Check::Idle;
-        self.discovery = Discovery::Idle;
+        self.discovery = Load::Idle;
         self.discovered_for = None;
     }
 
@@ -576,10 +568,7 @@ impl Wizard {
         }
         self.discovered_for.clone_from(&draft.token);
         let provider = services.providers.build_uncached(&draft);
-        let task = services.background.spawn(async move {
-            provider.discover_scopes().await.map_err(|error| error.to_string())
-        });
-        self.discovery = Discovery::Running(task);
+        self.discovery.start(&services.background, async move { provider.discover_scopes().await });
     }
 
     /// Asks off the UI thread whether the profile's token vault could store a token (for the
@@ -655,11 +644,48 @@ impl Wizard {
     }
 }
 
+/// What the user asked for to fix the token.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Fix {
+    /// Check the same token again.
+    Recheck,
+    /// Back to the token step with an empty field.
+    NewToken,
+}
+
+/// Why the check failed: the problem's title and fix over the error, else the error alone, with a
+/// new token, a paste button when `offers_paste` (the token step leaves it out: its field is right
+/// there) and a retry.
+fn failed_callout(
+    ui: &mut Ui,
+    failure: &Failure,
+    fix_url: &str,
+    offers_paste: bool,
+) -> Option<Fix> {
+    let (title, body) = match &failure.problem {
+        Some(problem) => (problem.title.as_str(), format!("{}\n{}", problem.fix, failure.message)),
+        None => ("The token could not be checked", failure.message.clone()),
+    };
+    let mut fix = None;
+    parts::callout(ui, parts::Tone::Error, title, &body, |ui| {
+        parts::open_button(ui, true, "Create a new token", fix_url);
+        if offers_paste
+            && buttons::secondary_icon(ui, icons::CLIPBOARD_TEXT, "Paste a new token").clicked()
+        {
+            fix = Some(Fix::NewToken);
+        }
+        if buttons::secondary_icon(ui, icons::ARROW_CLOCKWISE, "Try again").clicked() {
+            fix = Some(Fix::Recheck);
+        }
+    });
+    fix
+}
+
 /// Back on the left, the step's actions on the right.
 fn footer(ui: &mut Ui, back: Option<&mut bool>, add_actions: impl FnOnce(&mut Ui)) {
-    ui.add_space(20.0);
+    ui.add_space(theme::style::SPACE_XL);
     parts::divider(ui);
-    ui.add_space(12.0);
+    ui.add_space(theme::style::SPACE_M);
     ui.horizontal(|ui| {
         if let Some(back) = back
             && buttons::secondary_icon(ui, icons::ARROW_LEFT, "Back").clicked()
@@ -672,12 +698,10 @@ fn footer(ui: &mut Ui, back: Option<&mut bool>, add_actions: impl FnOnce(&mut Ui
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
-
     use review_core::{AccessReport, ProviderKind, UserIdentity};
 
     use super::{Check, CliTools, Step, Wizard};
-    use cv_runtime::background::Background;
+    use cv_runtime::background::Task;
 
     /// The wizard at the sign-in step with `typed` in the token field, while the token `checked`
     /// was checked and found working.
@@ -685,16 +709,14 @@ mod tests {
         let mut wizard = Wizard::for_cloud(ProviderKind::GitHub, None, CliTools::default());
         assert_eq!(wizard.step, Step::Token);
         wizard.token_input = typed.to_owned();
-        let background = Background::new(egui::Context::default());
         let report = AccessReport::unverified(UserIdentity::default(), "Token");
-        let task = background.spawn(async move { Ok(report) });
+        let task = Task::ready(Ok(report));
         wizard.check = Check::Running { token: checked.to_owned(), task };
-        let started = Instant::now();
-        while matches!(wizard.check, Check::Running { .. }) {
-            assert!(started.elapsed() < Duration::from_secs(30), "the check finishes");
-            cv_testkit::let_threads_run(Duration::from_millis(5));
-            wizard.poll();
-        }
+        wizard.poll();
+        assert!(
+            !matches!(wizard.check, Check::Running { .. }),
+            "a finished check is taken at once"
+        );
         wizard
     }
 

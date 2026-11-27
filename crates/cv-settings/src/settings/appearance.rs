@@ -8,7 +8,8 @@ mod story;
 use cv_base::theme::{self, icons, style};
 use cv_services::Services;
 use cv_shell::zoom;
-use cv_widgets::{buttons, provider_icon, tabs};
+use cv_widgets::tabs::{self, Segment};
+use cv_widgets::{buttons, provider_icon};
 use egui::Ui;
 use review_core::ProviderKind;
 use review_store::{
@@ -16,80 +17,73 @@ use review_store::{
     PullRequestStart, ThemePreference, TreeSide,
 };
 
-use super::rows::{self, NEXT_UNVIEWED, OCCURRENCES, RowId};
+use super::rows::{self, AppearanceRow, Row};
 
-const FAVORITES_LANE: &str = "Show the Favorites lane";
-const GROUP_BY_REPOSITORY: &str = "Group by repository";
-const PAST_END: &str = "Scroll past the end";
-
-/// The control of Appearance row `id`.
-pub fn control(ui: &mut Ui, id: RowId, services: &mut Services) {
+/// The control of Appearance row `id`; a switch takes its name from `row`.
+pub fn control(ui: &mut Ui, id: AppearanceRow, row: &Row, services: &mut Services) {
     let settings = &mut services.settings;
     let changed = match id {
-        RowId::Theme => tabs::segmented(
+        AppearanceRow::Theme => tabs::segments(
             ui,
             &mut settings.theme,
             &[
-                (ThemePreference::System, "System"),
-                (ThemePreference::Light, "Light"),
-                (ThemePreference::Dark, "Dark"),
+                Segment::new(ThemePreference::System, "System"),
+                Segment::new(ThemePreference::Light, "Light"),
+                Segment::new(ThemePreference::Dark, "Dark"),
             ],
         ),
-        RowId::DiffLayout => tabs::segmented(
+        AppearanceRow::DiffLayout => tabs::segments(
             ui,
             &mut settings.diff_layout,
             &[
-                (DiffLayout::SideBySide, "Side by side"),
-                (DiffLayout::Inline, "Inline"),
-                (DiffLayout::NewOnly, "New only"),
+                Segment::new(DiffLayout::SideBySide, "Side by side"),
+                Segment::new(DiffLayout::Inline, "Inline"),
+                Segment::new(DiffLayout::NewOnly, "New only"),
             ],
         ),
-        RowId::CodeFontSize => ui
+        AppearanceRow::CodeFontSize => ui
             .add(
                 egui::Slider::new(&mut settings.code_font_size, zoom::CODE_SIZE_RANGE).step_by(0.5),
             )
             .changed(),
-        RowId::WrapLines => rows::switch(ui, &mut settings.wrap_lines, "Wrap long lines"),
-        RowId::Comments => {
-            rows::switch(ui, &mut settings.show_comments_in_diff, "Comments in the diff")
+        AppearanceRow::WrapLines => rows::switch(ui, &mut settings.wrap_lines, row),
+        AppearanceRow::Comments => rows::switch(ui, &mut settings.show_comments_in_diff, row),
+        AppearanceRow::SelectionOccurrences => {
+            rows::switch(ui, &mut settings.highlight_selection_occurrences, row)
         }
-        RowId::SelectionOccurrences => {
-            rows::switch(ui, &mut settings.highlight_selection_occurrences, OCCURRENCES)
-        }
-        RowId::ScrollPastEnd => rows::switch(ui, &mut settings.scroll_past_end, PAST_END),
-        RowId::ContextLines => {
+        AppearanceRow::ScrollPastEnd => rows::switch(ui, &mut settings.scroll_past_end, row),
+        AppearanceRow::ContextLines => {
             ui.add(egui::Slider::new(&mut settings.context_lines, 0..=50)).changed()
         }
-        RowId::FavoritesLane => {
-            rows::switch(ui, &mut settings.favorites.is_lane_shown, FAVORITES_LANE)
+        AppearanceRow::FavoritesLane => {
+            rows::switch(ui, &mut settings.favorites.is_lane_shown, row)
         }
-        RowId::RepositorySections => {
-            rows::switch(ui, &mut settings.repository_sections.is_grouped, GROUP_BY_REPOSITORY)
+        AppearanceRow::RepositorySections => {
+            rows::switch(ui, &mut settings.repository_sections.is_grouped, row)
         }
-        RowId::PullRequestStart => pull_request_start(ui, &mut settings.pull_request_start),
-        RowId::FilesStart => files_start(ui, &mut settings.files_start),
-        RowId::TreeSide => tabs::segmented(
+        AppearanceRow::PullRequestStart => pull_request_start(ui, &mut settings.pull_request_start),
+        AppearanceRow::FilesStart => files_start(ui, &mut settings.files_start),
+        AppearanceRow::TreeSide => tabs::segments(
             ui,
             &mut settings.file_tree_side,
-            &[(TreeSide::Left, "Left"), (TreeSide::Right, "Right")],
+            &[Segment::new(TreeSide::Left, "Left"), Segment::new(TreeSide::Right, "Right")],
         ),
-        RowId::NextUnviewed => rows::switch(ui, &mut settings.open_next_unviewed, NEXT_UNVIEWED),
-        RowId::PullRequestHeader => header_modes::show(ui, &mut settings.header_modes),
-        RowId::RenderedMarkdown => tabs::segmented(
+        AppearanceRow::NextUnviewed => rows::switch(ui, &mut settings.open_next_unviewed, row),
+        AppearanceRow::PullRequestHeader => header_modes::show(ui, &mut settings.header_modes),
+        AppearanceRow::RenderedMarkdown => tabs::segments(
             ui,
             &mut settings.rendered_width.full,
-            &[(false, "Reading column"), (true, "Full width")],
+            &[Segment::new(false, "Reading column"), Segment::new(true, "Full width")],
         ),
-        RowId::CommentEditor => comment_editors(ui, &mut settings.comment_editors),
-        RowId::InterfaceScale => {
+        AppearanceRow::CommentEditor => comment_editors(ui, &mut settings.comment_editors),
+        AppearanceRow::InterfaceScale => {
             let scale = ui
                 .add(egui::Slider::new(&mut settings.ui_scale, zoom::UI_SCALE_RANGE).step_by(0.05));
             // Applying the scale while dragging would move the slider under the pointer.
             scale.drag_stopped() || scale.lost_focus()
         }
-        RowId::FrameRate => frame_rate(ui, &mut settings.frame_rate),
-        RowId::PaneSizes => reset_panes(ui, &mut settings.panes),
-        _ => false,
+        AppearanceRow::FrameRate => frame_rate(ui, &mut settings.frame_rate),
+        AppearanceRow::PaneSizes => reset_panes(ui, &mut settings.panes),
     };
     if changed {
         services.save_settings();
@@ -98,34 +92,27 @@ pub fn control(ui: &mut Ui, id: RowId, services: &mut Services) {
 
 /// The tab a pull request opens on the first time.
 fn pull_request_start(ui: &mut Ui, start: &mut PullRequestStart) -> bool {
-    tabs::segmented_with_hints(
+    tabs::segments(
         ui,
         start,
         &[
-            (
-                PullRequestStart::Overview,
-                "Overview",
-                "The description, checks, reviewers and the conversation",
-            ),
-            (PullRequestStart::Files, "Files", "The diff of the first file in the file tree"),
+            Segment::new(PullRequestStart::Overview, "Overview")
+                .with_hint("The description, checks, reviewers and the conversation"),
+            Segment::new(PullRequestStart::Files, "Files")
+                .with_hint("The diff of the first file in the file tree"),
         ],
     )
 }
 
 /// What the Files tab shows when nothing particular was asked for.
 fn files_start(ui: &mut Ui, start: &mut FilesStart) -> bool {
-    tabs::segmented_with_hints(
+    tabs::segments(
         ui,
         start,
         &[
-            (
-                FilesStart::AllFiles,
-                "All files",
-                "The folder view: every changed file, one below the other",
-            ),
-            (
-                FilesStart::FirstFile,
-                "First file",
+            Segment::new(FilesStart::AllFiles, "All files")
+                .with_hint("The folder view: every changed file, one below the other"),
+            Segment::new(FilesStart::FirstFile, "First file").with_hint(
                 "The first file of the file tree; the folder view stays a click on a folder away",
             ),
         ],
@@ -151,10 +138,12 @@ fn comment_editors(ui: &mut Ui, editors: &mut CommentEditors) -> bool {
                 });
                 let mut editor = editors.get(kind);
                 let options = [
-                    (CommentEditor::Rich, "Rich text", "Write the comment as it will look"),
-                    (CommentEditor::Markdown, "Markdown", "Write the Markdown source"),
+                    Segment::new(CommentEditor::Rich, "Rich text")
+                        .with_hint("Write the comment as it will look"),
+                    Segment::new(CommentEditor::Markdown, "Markdown")
+                        .with_hint("Write the Markdown source"),
                 ];
-                if tabs::segmented_with_hints(ui, &mut editor, &options) {
+                if tabs::segments(ui, &mut editor, &options) {
                     editors.set(kind, editor);
                     changed = true;
                 }
@@ -189,7 +178,9 @@ fn frame_rate(ui: &mut Ui, limit: &mut FrameRateLimit) -> bool {
             "As many frames per second as the monitor refreshes".to_owned(),
         )))
         .collect();
-    let options: Vec<(FrameRateLimit, &str, &str)> =
-        labels.iter().map(|(limit, label, hint)| (*limit, label.as_str(), hint.as_str())).collect();
-    tabs::segmented_with_hints(ui, limit, &options)
+    let options: Vec<Segment<'_, FrameRateLimit>> = labels
+        .iter()
+        .map(|(limit, label, hint)| Segment::new(*limit, label).with_hint(hint))
+        .collect();
+    tabs::segments(ui, limit, &options)
 }

@@ -65,9 +65,7 @@ pub fn show(ui: &mut Ui, tab: usize, name: &str, mode: HeaderMode, phase: Phase)
             (story::captions(mode, name, story::share(mode, seconds)), palette.text)
         }
     };
-    // Screen readers and tests read the caption most visible.
-    let shown = captions.iter().max_by(|a, b| a.1.total_cmp(&b.1)).map(|(caption, _)| caption);
-    let read = shown.map_or("", |caption| caption.text.as_str());
+    let read = story::shown(&captions).map_or("", |caption| caption.text.as_str());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, read));
     for (caption, opacity) in &captions {
         paint_caption(ui, line, caption, color, *opacity);

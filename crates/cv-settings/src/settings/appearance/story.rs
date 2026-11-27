@@ -162,9 +162,7 @@ fn spot_offset(spot: Spot, tab: usize, width: f32) -> egui::Vec2 {
 
 /// The value of `stops` at `share` of the loop, moving between two stops by `ease`.
 fn sample(stops: &Stops, share: f32, ease: fn(f32) -> f32) -> f32 {
-    let Some(&(_, first)) = stops.first() else {
-        return 0.0;
-    };
+    let &(_, first) = stops.first().expect("stops are never empty");
     let mut before = (0.0, first);
     for &(time, value) in stops {
         if share <= time {
@@ -204,6 +202,11 @@ pub fn captions(mode: HeaderMode, name: &str, share: f32) -> Vec<(Caption, f32)>
         .collect()
 }
 
+/// The caption most visible of `captions`: the one screen readers and tests read.
+pub fn shown(captions: &[(Caption, f32)]) -> Option<&Caption> {
+    captions.iter().max_by(|a, b| a.1.total_cmp(&b.1)).map(|(caption, _)| caption)
+}
+
 /// The captions of the story of `mode` in order.
 fn story(mode: HeaderMode, name: &str) -> Vec<Caption> {
     let caption = |icon: Option<&'static str>, text: &str| Caption { icon, text: text.to_owned() };
@@ -234,7 +237,10 @@ fn story(mode: HeaderMode, name: &str) -> Vec<Caption> {
 mod tests {
     use review_store::HeaderMode;
 
-    use super::{MINIMIZED_SECONDS, SLIDE_HEADER, captions, linear, main_caption, sample, share};
+    use super::{
+        MINIMIZED_SECONDS, SLIDE_HEADER, captions, linear, main_caption, sample, share, shown,
+        story,
+    };
 
     #[test]
     fn a_property_holds_at_its_stops_and_moves_between_them() {
@@ -243,24 +249,23 @@ mod tests {
         assert!((halfway - 17.0).abs() < 1e-3, "halfway down: {halfway}");
         assert_eq!(sample(SLIDE_HEADER, 0.5, linear), 34.0, "held hidden");
         assert_eq!(sample(SLIDE_HEADER, 1.0, linear), 0.0, "back at the end of the loop");
-        assert_eq!(sample(&[], 0.5, linear), 0.0);
     }
 
     /// The caption read out is the one most visible: the story's captions follow each other.
     #[test]
     fn the_minimized_story_tells_its_steps_in_order() {
-        let shown = |seconds: f64| {
-            let share = share(HeaderMode::StartMinimized, seconds);
-            let captions = captions(HeaderMode::StartMinimized, "Files", share);
-            let top = captions.into_iter().max_by(|a, b| a.1.total_cmp(&b.1));
-            top.map(|(caption, _)| caption.text).unwrap_or_default()
+        let mode = HeaderMode::StartMinimized;
+        let read = |seconds: f64| {
+            let captions = captions(mode, "Files", share(mode, seconds));
+            shown(&captions).map(|caption| caption.text.clone()).unwrap_or_default()
         };
-        assert_eq!(shown(0.0), "On another tab");
-        assert_eq!(shown(1.5), "Opening Files: the header tucks away");
-        assert_eq!(shown(4.0), "Pointing above the tabs: it peeks back");
-        assert_eq!(shown(6.0), "Scrolling on: it tucks away again");
-        assert_eq!(shown(MINIMIZED_SECONDS + 1.5), shown(1.5), "the story loops");
+        let steps: Vec<String> =
+            story(mode, "Files").into_iter().map(|caption| caption.text).collect();
+        let read_steps: Vec<String> = [0.0, 1.5, 4.0, 6.0].into_iter().map(read).collect();
+        assert_eq!(read_steps, steps, "one moment per caption, in story order");
+        assert_eq!(read(MINIMIZED_SECONDS + 1.5), read(1.5), "the story loops");
         let main = main_caption(HeaderMode::HideOnScroll, "Files").text;
-        assert_eq!(main, "Scrolling down: the header slides away", "the still caption");
+        let slide = story(HeaderMode::HideOnScroll, "Files");
+        assert_eq!(main, slide[1].text, "the still caption is the first move");
     }
 }

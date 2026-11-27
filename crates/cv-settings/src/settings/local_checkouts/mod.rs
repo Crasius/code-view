@@ -9,9 +9,11 @@ use std::path::{Path, PathBuf};
 use cv_base::platform;
 use cv_base::theme::{self, icons, style};
 use cv_services::Services;
+use cv_services::agent_names::cli_name;
 use cv_services::agents::Detection;
-use cv_services::checkouts::{self, FolderPurpose};
-use cv_widgets::{buttons, tabs};
+use cv_services::checkouts::FolderPurpose;
+use cv_widgets::buttons;
+use cv_widgets::tabs::{self, Segment};
 use egui::{RichText, Ui};
 use review_core::AgentKind;
 use review_git::checkout::worktree_path;
@@ -20,35 +22,40 @@ use review_store::checkouts::{
     TerminalChoice, WhenFinished,
 };
 
-use super::rows::RowId;
+use super::rows::CheckoutRow;
 
 /// The control of Local checkouts row `id`; true when its link to the Assistant section was
 /// clicked.
-pub fn control(ui: &mut Ui, id: RowId, services: &mut Services) -> bool {
+pub fn control(ui: &mut Ui, id: CheckoutRow, services: &mut Services) -> bool {
     let mut changed = false;
     let mut opens_assistant = false;
     match id {
-        RowId::CheckoutClones => changed = clones(ui, services),
-        RowId::CheckoutSearch => changed = search(ui, services),
-        RowId::CheckoutPattern => changed = pattern(ui, services),
-        RowId::CheckoutRemoval => changed = when_finished(ui, services),
-        RowId::CheckoutOpen => {
-            let options = [
-                (OpenByDefault::Ask, "Ask each time"),
-                (OpenByDefault::Always(OpenWith::Nothing), "Nothing"),
-                (OpenByDefault::Always(OpenWith::Terminal), "Terminal"),
-                (OpenByDefault::Always(OpenWith::Agent(AgentKind::Claude)), "Claude Code"),
-                (OpenByDefault::Always(OpenWith::Agent(AgentKind::Codex)), "Codex"),
-            ];
+        CheckoutRow::Clones => changed = clones(ui, services),
+        CheckoutRow::Search => changed = search(ui, services),
+        CheckoutRow::Pattern => changed = pattern(ui, services),
+        CheckoutRow::Removal => changed = when_finished(ui, services),
+        CheckoutRow::Open => {
+            let agent =
+                |kind| Segment::new(OpenByDefault::Always(OpenWith::Agent(kind)), cli_name(kind));
+            let options: Vec<Segment<'_, OpenByDefault>> = [
+                Segment::new(OpenByDefault::Ask, "Ask each time"),
+                Segment::new(OpenByDefault::Always(OpenWith::Nothing), "Nothing"),
+                Segment::new(OpenByDefault::Always(OpenWith::Terminal), "Terminal"),
+            ]
+            .into_iter()
+            .chain(AgentKind::ALL.map(agent))
+            .collect();
             changed =
-                tabs::segmented(ui, &mut services.settings.checkouts.open_by_default, &options);
+                tabs::segments(ui, &mut services.settings.checkouts.open_by_default, &options);
         }
-        RowId::CheckoutTerminal => {
-            let options: Vec<(TerminalChoice, &str)> = platform::TERMINALS.to_vec();
-            changed = tabs::segmented(ui, &mut services.settings.checkouts.terminal, &options);
+        CheckoutRow::Terminal => {
+            let options: Vec<Segment<'_, TerminalChoice>> = platform::TERMINALS
+                .iter()
+                .map(|&(choice, label)| Segment::new(choice, label))
+                .collect();
+            changed = tabs::segments(ui, &mut services.settings.checkouts.terminal, &options);
         }
-        RowId::CheckoutAgents => opens_assistant = agents(ui, services),
-        _ => {}
+        CheckoutRow::Agents => opens_assistant = agents(ui, services),
     }
     if changed {
         services.save_settings();
@@ -228,23 +235,26 @@ fn search(ui: &mut Ui, services: &mut Services) -> bool {
 
 /// What happens to a worktree once its pull request is merged or closed elsewhere.
 fn when_finished(ui: &mut Ui, services: &mut Services) -> bool {
-    let options = [
-        (WhenFinished::RemoveAutomatically, "Remove worktree automatically"),
-        (WhenFinished::Ask, "Ask me first"),
-        (WhenFinished::Keep, "Keep worktree"),
-    ];
+    let options = [WhenFinished::RemoveAutomatically, WhenFinished::Ask, WhenFinished::Keep];
     let value = &mut services.settings.checkouts.when_finished;
-    let selected = options.iter().find(|(option, _)| option == value).map_or("", |(_, name)| *name);
     let mut changed = false;
     egui::ComboBox::from_id_salt("checkout_when_finished")
         .width(320.0)
-        .selected_text(selected)
+        .selected_text(finished_label(*value))
         .show_ui(ui, |ui| {
-            for (option, name) in options {
-                changed |= ui.selectable_value(value, option, name).changed();
+            for option in options {
+                changed |= ui.selectable_value(value, option, finished_label(option)).changed();
             }
         });
     changed
+}
+
+fn finished_label(when: WhenFinished) -> &'static str {
+    match when {
+        WhenFinished::RemoveAutomatically => "Remove worktree automatically",
+        WhenFinished::Ask => "Ask me first",
+        WhenFinished::Keep => "Keep worktree",
+    }
 }
 
 /// The pattern as text, with the folder it gives for an example pull request.
@@ -254,11 +264,9 @@ fn pattern(ui: &mut Ui, services: &mut Services) -> bool {
         .font(theme::fonts::code_font(style::BODY_SIZE))
         .desired_width(ui.available_width().min(480.0));
     let response = ui.add(edit);
-    let example_clone: &Path =
-        Path::new(if cfg!(windows) { r"C:\src\login-app" } else { "/home/you/src/login-app" });
     let example = worktree_path(
         &services.settings.checkouts.worktree_pattern,
-        example_clone,
+        Path::new(platform::EXAMPLE_CLONE),
         12,
         "feature/login-cache",
     );
@@ -277,8 +285,8 @@ fn pattern(ui: &mut Ui, services: &mut Services) -> bool {
 /// Each agent's CLI as the Assistant section found it; true when its link was clicked.
 fn agents(ui: &mut Ui, services: &mut Services) -> bool {
     let palette = theme::palette(ui.ctx());
-    for kind in [AgentKind::Claude, AgentKind::Codex] {
-        let name = checkouts::agent_name(kind);
+    for kind in AgentKind::ALL {
+        let name = cli_name(kind);
         let text = match services.agents.detection(kind, &services.background) {
             Detection::Installed(cli) => format!("{name} {}", cli.version),
             Detection::Missing(_) => format!("{name}: not installed"),
