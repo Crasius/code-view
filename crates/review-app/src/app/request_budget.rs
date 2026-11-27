@@ -25,8 +25,8 @@ use super::mock_host::MockHost;
 use super::recording::{Recorder, iids, template};
 use super::startup;
 use super::walkthrough::{
-    self, LIMIT, click_first, has, pump, saved_paths, set_focus, wait_idle, wait_until_unsettled,
-    wheel,
+    self, LIMIT, NeighbourWrites, SharingWindow, click_first, has, pump, saved_paths, set_focus,
+    wait_idle, wait_until_unsettled, wheel,
 };
 use cv_lists::pull_request_list::LIST_INTERVAL;
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
@@ -939,16 +939,17 @@ struct ScenarioFetches {
 }
 
 fn run_scenario(file_count: usize) {
-    let (fixture, fetches) = drive_scenario(file_count);
+    let (fixture, fetches, opening) = drive_scenario(file_count);
     assert_list_phases(&fixture);
-    assert_browsing_reads_the_mirror(&fixture, &fetches);
+    assert_browsing_reads_the_mirror(&fixture, &fetches, &opening);
     assert_pipeline_rounds(&fixture);
     assert_blob_chunks(file_count, &fetches);
 }
 
 /// The list, a merge request's overview, its Files tab with 20 diffs, its running pipelines, a job
-/// log and the list again, each phase recorded; prints the report.
-fn drive_scenario(file_count: usize) -> (Fixture, ScenarioFetches) {
+/// log and the list again, each phase recorded; prints the report. Also returns the writes other
+/// tests finished while the merge request opened.
+fn drive_scenario(file_count: usize) -> (Fixture, ScenarioFetches, NeighbourWrites) {
     let fixture = Fixture::new(&format!("scenario-{file_count}"), file_count);
     let mut phases: Vec<(&'static str, f64)> = Vec::new();
 
@@ -961,6 +962,7 @@ fn drive_scenario(file_count: usize) -> (Fixture, ScenarioFetches) {
     phases.push(("My pull requests (60 s)", 60.0));
 
     enter_phase(&fixture.recorder, &harness, "Open MR + Overview (20 s)");
+    let window = SharingWindow::open(api_writes(&fixture.recorder));
     harness.state_mut().navigator.go(Route::PullRequest(fixture.key()));
     wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Budget scenario"));
     pump(&mut harness, 20.0);
@@ -991,6 +993,7 @@ fn drive_scenario(file_count: usize) -> (Fixture, ScenarioFetches) {
     });
     wait_idle(&mut harness);
     enter_phase(&fixture.recorder, &harness, "Files + 20 diffs (60 s)");
+    let opening = window.close(api_writes(&fixture.recorder));
     let started = harness_time(&harness);
     for _ in 0..20 {
         harness.key_press(egui::Key::J);
@@ -1033,7 +1036,15 @@ fn drive_scenario(file_count: usize) -> (Fixture, ScenarioFetches) {
         before_files: fetched_before_files,
         while_browsing: fetches_while_browsing,
     };
-    (fixture, fetches)
+    (fixture, fetches, opening)
+}
+
+/// The API writes the mock GitLab received so far, as `review_core::http` tells them: every
+/// request but a GET and a GraphQL query (the GitLab provider sends no GraphQL mutation).
+fn api_writes(recorder: &Recorder) -> usize {
+    let is_read =
+        |endpoint: &str| endpoint.starts_with("GET ") || endpoint.starts_with("POST /api/graphql");
+    recorder.details(|_, endpoint| !is_read(endpoint)).len()
 }
 
 /// The list asks once and its rows' checks once; back on it, the card on screen refreshes every
@@ -1059,8 +1070,12 @@ fn assert_list_phases(fixture: &Fixture) {
 
 /// The overview loads the merge request once; the Files tab reads its diffs from the mirror and
 /// asks the API only for the live-update probe: the merge request, its approvals and reviewers
-/// every 30 s, never the discussions.
-fn assert_browsing_reads_the_mirror(fixture: &Fixture, fetches: &ScenarioFetches) {
+/// every 30 s, never the discussions. `opening`: the writes of other tests while it opened.
+fn assert_browsing_reads_the_mirror(
+    fixture: &Fixture,
+    fetches: &ScenarioFetches,
+    opening: &NeighbourWrites,
+) {
     let endpoint = |endpoints: &BTreeMap<String, usize>, name: &str| {
         endpoints
             .get(&format!("GET /api/v4/projects/:project/merge_requests/:id{name}"))
@@ -1076,11 +1091,13 @@ fn assert_browsing_reads_the_mirror(fixture: &Fixture, fetches: &ScenarioFetches
         "diffs come from the git mirror; only the probe asks the API: {browsing:?}"
     );
     let open = fixture.recorder.endpoints("Open MR + Overview (20 s)");
-    // Every merge request read is the detail or a probe (each with its approvals) or a pipelines load.
-    assert_eq!(
+    // Every merge request read is a probe (with its approvals) or a pipelines load; the detail
+    // joins one of them as the page opens (one read more when nothing joins).
+    opening.assert_count(
         endpoint(&open, ""),
         endpoint(&open, "/approvals") + endpoint(&open, "/pipelines"),
-        "{open:?}"
+        1,
+        &format!("{open:?}"),
     );
     assert_eq!(
         endpoint(&open, "/discussions"),

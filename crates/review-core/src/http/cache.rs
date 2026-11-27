@@ -23,7 +23,8 @@
 //! `Cache` of its own: `cargo test` runs the tests of a binary on threads of one process, so a
 //! write that any other test finishes between two calls ends their sharing in the shared cache,
 //! as it would in the app. A test that drives the app or a provider cannot hand it a cache: an
-//! exact request count there that rests on a join still loses its premise to a neighbour's write.
+//! exact request count there that rests on a join still loses its premise to a neighbour's write,
+//! and [`write_epoch`] tells it whether one finished.
 
 use std::collections::HashMap;
 use std::hash::{BuildHasher, Hash, Hasher, RandomState};
@@ -225,6 +226,13 @@ async fn keep(cache: &Cache, key: u64, response: Response) -> Result<Fetched> {
 /// Bytes of the answers kept for revalidation, at most [`MAX_CACHED_BYTES`].
 pub fn cached_bytes() -> usize {
     Cache::shared().store().bytes
+}
+
+/// How many writes the app's cache has seen finish: a GET joins one in flight only while this
+/// number stands where it stood when that one started. Only reads it, so a test that drives the
+/// app can tell whether a write anywhere in the process ended the sharing its count rests on.
+pub fn write_epoch() -> u64 {
+    Cache::shared().0.write_epoch.load(Ordering::SeqCst)
 }
 
 fn key_of(request: &Request, may_wait: bool) -> u64 {
@@ -457,5 +465,14 @@ mod tests {
         let (started, waited) = (starter.await, waiter.await);
         started.expect("ran").expect("answer");
         waited.expect("ran").expect("answer");
+    }
+
+    /// A finished write moves the number a walkthrough reads to tell whether its sharing held;
+    /// writes of other tests only move it further.
+    #[test]
+    fn a_finished_write_moves_the_write_epoch() {
+        let before = super::write_epoch();
+        drop(Cache::shared().write());
+        assert!(super::write_epoch() > before);
     }
 }
