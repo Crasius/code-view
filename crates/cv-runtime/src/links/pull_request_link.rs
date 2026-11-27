@@ -96,6 +96,17 @@ pub fn web_url(connection: &Connection, repository_key: &str, number: u64) -> St
     }
 }
 
+/// The repository's (GitLab: the project's) web root, from a pull request's web address.
+pub fn repository_root(kind: ProviderKind, pull_request_url: &str) -> Option<String> {
+    let page = address(pull_request_url);
+    let (repository, _) = match kind {
+        ProviderKind::GitHub => page.rsplit_once("/pull/")?,
+        ProviderKind::GitLab => page.rsplit_once("/-/merge_requests/")?,
+        ProviderKind::AzureDevOps => page.rsplit_once("/pullrequest/")?,
+    };
+    Some(repository.to_owned())
+}
+
 /// `url` without surrounding space, query, fragment and trailing slashes.
 fn address(url: &str) -> &str {
     let url = url.trim();
@@ -217,7 +228,9 @@ mod tests {
     use cv_testkit::samples::connection;
     use review_core::{Connection, ItemKind, ProviderKind};
 
-    use super::{item_web_url, resolve, resolve_item, unconnected_cloud_link, web_url};
+    use super::{
+        item_web_url, repository_root, resolve, resolve_item, unconnected_cloud_link, web_url,
+    };
     use crate::intents::AddRequest;
 
     #[test]
@@ -319,6 +332,15 @@ mod tests {
             let key = resolve(&url, &connections).expect("resolves back");
             assert_eq!((key.repository_key.as_str(), key.number), (repository_key, 7));
         }
+    }
+
+    #[test]
+    fn finds_the_repository_root_of_a_pull_request_url() {
+        assert_eq!(
+            repository_root(ProviderKind::GitLab, "https://gitlab.com/g/p/-/merge_requests/7?x")
+                .as_deref(),
+            Some("https://gitlab.com/g/p")
+        );
     }
 
     #[test]
