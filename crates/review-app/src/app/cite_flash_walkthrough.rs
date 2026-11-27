@@ -6,21 +6,16 @@
 
 use std::fmt::Write as _;
 
-use egui::{Key, PointerButton, Pos2};
-use egui_kittest::Harness;
+use egui::Key;
 use egui_kittest::kittest::Queryable;
 use review_agent::{AgentEvent, AgentKind, FakeAgent, ModelInfo, Usage};
 use review_store::DiffLayout;
 
-use super::ReviewApp;
-use super::action_e2e::{
-    app, open_pull_request, shows_file_view, type_into, wait_for, wait_for_link,
-};
-use super::github_mock::{ExtraFile, GitHubHost};
+use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
+use super::walkthrough::{app, click_now, shows_file_view, type_into, wait_for, wait_for_link};
 use cv_code::diff_paint::{flash_asks_for_frames, flashed_lines};
 use cv_code::line_source::Pane;
 use cv_services::agents::FakeCli;
-use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
 const PLACEHOLDER: &str = "Ask anything about this pull request";
@@ -92,7 +87,7 @@ fn cite_and_flash(layout: DiffLayout, range: &str) -> Vec<u32> {
 
     // Frame by frame: the flash starts on the frame the lines are painted, at full strength.
     let center = harness.get_by_label(&citation).rect().center();
-    primary_click(&mut harness, center);
+    click_now(&mut harness, center);
     let arrived = wait_for(
         &mut harness,
         "the flash",
@@ -155,9 +150,4 @@ fn answer(agent: &FakeAgent, text: &str) {
     agent.emit(AgentEvent::Started { session_id: "s-1".into(), model: "claude-haiku".into() });
     agent.emit(AgentEvent::Text(text.to_owned()));
     agent.emit(AgentEvent::TurnDone(Usage::default()));
-}
-
-fn primary_click(harness: &mut Harness<'_, ReviewApp>, position: Pos2) {
-    harness.click_point(position, PointerButton::Primary);
-    harness.step();
 }

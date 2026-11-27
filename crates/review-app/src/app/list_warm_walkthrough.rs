@@ -3,7 +3,7 @@
 //! resting on a row reads the pages around it ahead, so the click then fetches no commits again
 //! and joins a detail request still on its way.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use egui::{Key, Modifiers, Pos2, Rect, Role, vec2};
 use egui_kittest::Harness;
@@ -11,37 +11,27 @@ use egui_kittest::kittest::Queryable;
 use review_core::{Connection, ProviderKind};
 use serde_json::json;
 use wiremock::matchers::{body_string_contains, method, path};
-use wiremock::{Mock, MockServer, Request, ResponseTemplate};
+use wiremock::{Mock, Request, ResponseTemplate};
 
 use super::ReviewApp;
-use super::action_e2e::{app, wait_until};
 use super::github_mock::{GitHubHost, NUMBER, OWNER, REPOSITORY, TITLE, search_row};
-use super::request_budget::wait_idle;
+use super::mock_host::MockHost;
+use super::walkthrough::{app, wait_idle, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 /// Longer than any test runs: the detail never arrives while the header is checked.
 const DETAIL_DELAY: Duration = Duration::from_secs(120);
-/// How long the request for the detail may take to reach the mock in real time.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// A GitHub Enterprise stand-in whose "mine" search lists pull request [`NUMBER`], and whose detail
 /// answers only after [`DETAIL_DELAY`]. Everything else is a quick 404.
 struct SlowDetail {
-    runtime: tokio::runtime::Runtime,
-    server: MockServer,
+    host: MockHost,
 }
 
 impl SlowDetail {
     fn start() -> Self {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(1)
-            .enable_all()
-            .build()
-            .expect("mock runtime");
-        let server = runtime.block_on(MockServer::start());
-        cv_testkit::fresh_origin(&server.uri());
+        let host = MockHost::start(|_| ResponseTemplate::new(404));
         let ok = |body| ResponseTemplate::new(200).set_body_json(body);
         let search = json!({ "data": { "search": {
             "pageInfo": { "hasNextPage": false, "endCursor": null },
@@ -64,29 +54,17 @@ impl SlowDetail {
                 .respond_with(ok(json!([]))),
         ];
         for mock in mocks {
-            runtime.block_on(mock.mount(&server));
+            host.mount(mock);
         }
-        Self { runtime, server }
+        Self { host }
     }
 
     fn connection(&self) -> Connection {
         Connection {
-            id: "gh".to_owned(),
             name: "Acme".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: self.server.uri(),
             organizations: vec![OWNER.to_owned()],
             token: Some("mock-only".to_owned()),
-        }
-    }
-
-    /// Waits in real time, without a frame, until the detail was asked for: the request leaves on
-    /// the app's background runtime, which may not have sent it yet when the page painted.
-    fn wait_for_detail_request(&self) {
-        let started = Instant::now();
-        while !self.was_detail_asked() {
-            assert!(started.elapsed() < REQUEST_TIMEOUT, "the detail was never asked for");
-            test_support::let_threads_run(Duration::from_millis(10));
+            ..samples::connection("gh", ProviderKind::GitHub, &self.host.uri())
         }
     }
 
@@ -98,8 +76,7 @@ impl SlowDetail {
     /// The requests for the detail so far.
     fn detail_requests(&self) -> usize {
         let detail = format!("/api/v3/repos/{REPOSITORY}/pulls/{NUMBER}");
-        let requests = self.runtime.block_on(self.server.received_requests()).unwrap_or_default();
-        requests.iter().filter(|request| request.url.path() == detail).count()
+        self.host.requests().iter().filter(|request| request.url.path() == detail).count()
     }
 }
 
@@ -125,8 +102,9 @@ fn the_header_paints_the_clicked_row_while_the_detail_loads() {
         harness.query_by_label("Copy link to #7").is_some(),
         "and its number, which copies the row's link"
     );
-    // While the detail is on its way.
-    host.wait_for_detail_request();
+    // While the detail is on its way: the request leaves on the app's background runtime, which
+    // may not have sent it yet when the page painted.
+    wait_until(&mut harness, "the detail request", |_| host.was_detail_asked());
     assert!(harness.query_by_label("Updating…").is_some(), "the row is not shown as final");
     assert!(
         harness.query_by_label("More actions").is_none(),
@@ -162,7 +140,7 @@ fn the_header_paints_the_row_the_title_bar_search_opened() {
     );
     assert!(harness.query_by_label(TITLE).is_some(), "the header shows the row's title at once");
     // While the detail is on its way.
-    host.wait_for_detail_request();
+    wait_until(&mut harness, "the detail request", |_| host.was_detail_asked());
     assert!(harness.query_by_label("Updating…").is_some(), "the row is not shown as final");
 }
 
@@ -240,7 +218,7 @@ fn a_click_while_the_detail_is_read_ahead_joins_its_request() {
         harness.step();
     }
     // Time for a second request to reach the mock, would the page send one.
-    test_support::let_threads_run(Duration::from_millis(300));
+    cv_testkit::let_threads_run(Duration::from_millis(300));
     harness.step();
     assert!(matches!(harness.state().route, Route::PullRequest(_)), "the click opened the page");
     assert!(harness.query_by_label("Updating…").is_some(), "which waits for the detail");

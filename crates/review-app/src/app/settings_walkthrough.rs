@@ -5,25 +5,19 @@
 //! nothing cut, overlapping or off-window in any section. `cargo test -p review-app
 //! settings_walkthrough`
 
-use std::time::{Duration, Instant};
-
 use egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use review_core::{Connection, ProviderKind};
-use review_store::{AppPaths, ConnectionStore, DiffLayout, TreeSide};
+use review_store::{DiffLayout, TreeSide};
 
 use super::ReviewApp;
-use super::action_e2e::app;
 use super::github_mock::GitHubHost;
 use super::provider_icons_walkthrough::scripted_provider;
 use super::tree_side_walkthrough as tree_side;
+use super::walkthrough::{app, app_with, has, saved_paths, saved_settings, wait_until};
 use cv_runtime::route::Route;
-use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
-
-const TIMEOUT: Duration = Duration::from_secs(60);
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 /// Each section's title in the sidebar and a text only that section shows.
 const SECTIONS: [(&str, &str); 7] = [
@@ -38,14 +32,14 @@ const SECTIONS: [(&str, &str); 7] = [
 
 #[test]
 fn settings_walkthrough_sections_search_previews_and_connections() {
-    let paths = isolated_paths("walk");
-    let mut harness = harness(paths.clone(), 1280.0);
-    wait_for(&mut harness, "the pull request list", |harness| {
+    let scratch = ScratchDir::new("settings-walk");
+    let mut harness = harness(&scratch, 1280.0);
+    wait_until(&mut harness, "the pull request list", |harness| {
         harness.state().route == Route::MyPullRequests
     });
 
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
-    wait_for(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
+    wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
     assert_only(&harness, "Connections");
 
     for (title, _) in SECTIONS {
@@ -103,20 +97,17 @@ fn settings_walkthrough_sections_search_previews_and_connections() {
     settle(&mut harness);
     assert!(has(&harness, "Check again") && has(&harness, "Edit") && has(&harness, "Remove…"));
     assert!(has(&harness, "github.com"), "the host among the facts");
-
-    drop(harness);
-    test_support::remove_dir(paths.config_dir().parent().expect("scratch root"));
 }
 
 /// At 960 px the preview moves above the rows, and no section cuts, overlaps or loses anything.
 #[cfg(debug_assertions)]
 #[test]
 fn settings_walkthrough_sections_fit_a_narrow_window() {
-    let paths = isolated_paths("narrow");
-    let mut harness = harness(paths.clone(), 960.0);
+    let scratch = ScratchDir::new("settings-narrow");
+    let mut harness = harness(&scratch, 960.0);
     super::clip_check::install(&harness.ctx);
     harness.state_mut().navigator.go(Route::Settings);
-    wait_for(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
+    wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
     let mut findings = Vec::new();
     for (title, _) in SECTIONS {
         open(&mut harness, title);
@@ -131,8 +122,6 @@ fn settings_walkthrough_sections_fit_a_narrow_window() {
     settle(&mut harness);
     findings.extend(super::clip_check::inspect(&mut harness));
     assert!(findings.is_empty(), "layout problems:\n{}", findings.join("\n"));
-    drop(harness);
-    test_support::remove_dir(paths.config_dir().parent().expect("scratch root"));
 }
 
 /// At the default code size every sample line shows whole in its pane, in each diff layout, at
@@ -140,11 +129,11 @@ fn settings_walkthrough_sections_fit_a_narrow_window() {
 #[test]
 fn settings_walkthrough_sample_lines_fit_their_panes() {
     const MIN_WIDTH: f32 = 960.0;
-    let paths = isolated_paths("sample");
+    let scratch = ScratchDir::new("settings-sample");
     for (width, name) in [(1280.0, "1280"), (MIN_WIDTH, "min")] {
-        let mut harness = harness(paths.clone(), width);
+        let mut harness = harness(&scratch, width);
         harness.state_mut().navigator.go(Route::Settings);
-        wait_for(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
+        wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
         open(&mut harness, "Appearance");
         for layout in [DiffLayout::SideBySide, DiffLayout::Inline, DiffLayout::NewOnly] {
             let settings = &mut harness.state_mut().services.settings;
@@ -156,9 +145,7 @@ fn settings_walkthrough_sample_lines_fit_their_panes() {
                 cv_settings::settings::sample_slack(&harness.ctx).expect("the sample showed");
             assert!(slack >= 0.0, "{layout:?} at {name}: a line is cut by {:.1} pt", -slack);
         }
-        drop(harness);
     }
-    test_support::remove_dir(paths.config_dir().parent().expect("scratch root"));
 }
 
 /// "File tree side" in Appearance: Right is saved, and the Files tab then puts the tree right. The
@@ -169,7 +156,7 @@ fn settings_walkthrough_file_tree_side_moves_the_tree() {
     let host = GitHubHost::with_pull_request_files(scratch.path(), &[tree_side::long_file()]);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
-    wait_for(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
+    wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
 
     for word in ["tree", "sidebar", "left", "right"] {
         harness.key_press_modifiers(Modifiers::COMMAND, Key::F);
@@ -186,10 +173,10 @@ fn settings_walkthrough_file_tree_side_moves_the_tree() {
     settle(&mut harness);
     harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "Right").rect());
     settle(&mut harness);
-    assert_eq!(tree_side::saved(&scratch).file_tree_side, TreeSide::Right, "Right is saved");
+    assert_eq!(saved_settings(&harness).file_tree_side, TreeSide::Right, "Right is saved");
 
     harness.key_press_modifiers(Modifiers::ALT, Key::ArrowLeft);
-    wait_for(&mut harness, "the pull request list", |harness| {
+    wait_until(&mut harness, "the pull request list", |harness| {
         harness.state().route == Route::MyPullRequests
     });
     tree_side::open_long_file(&mut harness);
@@ -206,10 +193,10 @@ fn settings_walkthrough_checkboxes_center_on_their_rows() {
         ("Appearance", "Comments in the diff", "Off, a count beside a line"),
         ("Links", "Open pull request links from the clipboard", "When the window comes to"),
     ];
-    let paths = isolated_paths("switches");
-    let mut harness = harness(paths.clone(), 1280.0);
+    let scratch = ScratchDir::new("settings-switches");
+    let mut harness = harness(&scratch, 1280.0);
     harness.state_mut().navigator.go(Route::Settings);
-    wait_for(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
+    wait_until(&mut harness, "Settings", |harness| harness.state().route == Route::Settings);
     for (section, name, description) in SWITCHES {
         open(&mut harness, section);
         harness.get_by_role_and_label(Role::CheckBox, name).scroll_to_me();
@@ -223,8 +210,6 @@ fn settings_walkthrough_checkboxes_center_on_their_rows() {
             .y;
         assert!((control - block).abs() <= 1.0, "{name}: box at {control}, text block at {block}");
     }
-    drop(harness);
-    test_support::remove_dir(paths.config_dir().parent().expect("scratch root"));
 }
 
 /// Shows the sample: beside the rows it is always in view, above them it is at the top.
@@ -246,56 +231,19 @@ fn open(harness: &mut Harness<'_, ReviewApp>, title: &str) {
     settle(harness);
 }
 
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
-}
-
-fn harness(paths: AppPaths, width: f32) -> Harness<'static, ReviewApp> {
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    for (id, name, kind, base_url) in [
+/// The app on `scratch` with a GitHub and a GitLab connection, in a window `width` wide.
+fn harness(scratch: &ScratchDir, width: f32) -> Harness<'static, ReviewApp> {
+    let connections = [
         ("gh", "Contoso GitHub", ProviderKind::GitHub, "https://github.com"),
         ("gl", "Tabletop", ProviderKind::GitLab, "https://gitlab.com"),
-    ] {
-        store
-            .upsert(Connection {
-                id: id.to_owned(),
-                name: name.to_owned(),
-                kind,
-                base_url: base_url.to_owned(),
-                organizations: Vec::new(),
-                token: Some("scripted".to_owned()),
-            })
-            .expect("store the connection");
-    }
-    let builder = Harness::builder().with_size([width, 900.0]).with_step_dt(1.0 / 60.0);
-    let mut harness = super::startup::start(builder, move |creation| {
-        ReviewApp::new(creation, paths, scripted_provider)
+    ]
+    .map(|(id, name, kind, base_url)| Connection {
+        name: name.to_owned(),
+        token: Some("scripted".to_owned()),
+        ..samples::connection(id, kind, base_url)
     });
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
-    harness
-}
-
-fn isolated_paths(name: &str) -> AppPaths {
-    let root = std::env::temp_dir().join(format!("review-settings-{name}-{}", std::process::id()));
-    test_support::remove_dir(&root);
-    AppPaths::new(root.join("config"), root.join("cache"))
-}
-
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    let started = Instant::now();
-    loop {
-        harness.step();
-        if is_done(harness) {
-            settle(harness);
-            return;
-        }
-        assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        test_support::let_threads_run(Duration::from_millis(10));
-    }
+    let builder = Harness::builder().with_size([width, 900.0]).with_step_dt(1.0 / 60.0);
+    app_with(builder, saved_paths(scratch, &connections), scripted_provider)
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

@@ -533,13 +533,14 @@ mod tests {
     use egui_kittest::Harness;
     use egui_kittest::kittest::{NodeT, Queryable};
     use review_core::{PullRequestState, PullRequestSummary, UserIdentity};
-    use review_store::{AppPaths, ThemePreference};
+    use review_store::ThemePreference;
 
     use cv_base::theme::{self, style};
     use cv_lists::pull_request_list::PullRequestListPage;
     use cv_runtime::intents::open_search;
     use cv_runtime::route::Route;
     use cv_services::Services;
+    use cv_testkit::ScratchDir;
 
     use super::{BOX_HEIGHT, JumpAction, JumpBox, MAX_VISIBLE_RESULTS, ROW_HEIGHT, popup_chrome};
 
@@ -548,6 +549,8 @@ mod tests {
         page: PullRequestListPage,
         services: Services,
         picked: Option<JumpAction>,
+        /// The services' data folders; declared last so it drops after them.
+        _scratch: ScratchDir,
     }
 
     fn box_rect() -> Rect {
@@ -586,14 +589,19 @@ mod tests {
     }
 
     fn scene(name: &str, rows: u64, height: f32) -> Harness<'static, Scene> {
-        let root = std::env::temp_dir().join(format!("review-jump-{name}-{}", std::process::id()));
-        cv_testkit::remove_dir(&root);
+        let scratch = ScratchDir::new(&format!("jump-{name}"));
         let services = Services::new(
             egui::Context::default(),
-            AppPaths::new(root.join("config"), root.join("cache")),
+            scratch.app_paths(),
             cv_providers::create_provider,
         );
-        let scene = Scene { jump: JumpBox::default(), page: page(rows), services, picked: None };
+        let scene = Scene {
+            jump: JumpBox::default(),
+            page: page(rows),
+            services,
+            picked: None,
+            _scratch: scratch,
+        };
         let builder = Harness::builder()
             .with_size([900.0, height])
             .with_max_steps(240)

@@ -12,7 +12,7 @@
 use std::fmt::Write as _;
 use std::path::Path;
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use async_trait::async_trait;
 use egui::{Modifiers, Role, Vec2, vec2};
@@ -26,18 +26,19 @@ use review_core::{
     ReviewThread, ReviewVote, Reviewer, RunStatus, ThreadAnchor, ThreadComment, ThreadOrigin,
     ThreadStatus, Timestamp, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
+use review_store::AppPaths;
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use super::action_e2e::shows_file_view;
+use super::walkthrough::{
+    app_with, files_tab, has, pump, saved_paths, settle_background, shows_file_view, tab_rect,
+    wait_until, wheel,
+};
 use super::{ReviewApp, clip_check};
 use cv_base::platform::FOCUS_MODE_KEY;
 use cv_pr_diff::find::bar::last_bar as last_find_bar;
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir, git};
+use cv_testkit::{Clicks, ScratchDir, git, samples};
 
 const CONNECTION: &str = "clip-audit";
 /// The same host without a token: its stage cards offer to add one.
@@ -99,8 +100,7 @@ fn clip_audit_every_screen_keeps_its_text_and_controls_inside() {
     let scratch = ScratchDir::new("clip-audit");
     let fixture = create_origin(&scratch.path().join("origin"));
     *FIXTURE.lock().unwrap_or_else(PoisonError::into_inner) = Some(fixture);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    save_connections(&paths);
+    let paths = saved_paths(&scratch, &connections());
     let mut audit = Audit { harness: harness(paths), findings: Vec::new() };
 
     audit.walk_lists();
@@ -154,7 +154,7 @@ impl Audit {
     fn walk_lists(&mut self) {
         let harness = &mut self.harness;
         harness.state_mut().navigator.go(Route::MyPullRequests);
-        wait_for(harness, "the list", |harness| has(harness, &TITLE[..40]));
+        wait_until(harness, "the list", |harness| has(harness, &TITLE[..40]));
         assert!(has(harness, "Browse repositories"), "the empty Favorites card shows");
         self.check("01-list-mine");
         self.check_at("01-list-mine", &[NARROW]);
@@ -176,7 +176,7 @@ impl Audit {
             connection_id: CONNECTION.to_owned(),
             repository_key: REPOSITORY.to_owned(),
         });
-        wait_for(harness, "the repository's list", |harness| {
+        wait_until(harness, "the repository's list", |harness| {
             harness.query_by_role_and_label(Role::Tab, "Merged").is_some()
                 && has(harness, &TITLE[..40])
         });
@@ -186,7 +186,7 @@ impl Audit {
     fn walk_overview(&mut self) {
         let harness = &mut self.harness;
         open(harness, CONNECTION, REPOSITORY);
-        wait_for(harness, "the overview", |harness| {
+        wait_until(harness, "the overview", |harness| {
             has(harness, "Fabrikam Logistics Platform Reviewers")
         });
         self.check("04-overview");
@@ -194,13 +194,7 @@ impl Audit {
         // Over the main column, below the header.
         harness.hover_at(egui::pos2(BASE_SIZE.x * 0.35, BASE_SIZE.y * 0.6));
         for _ in 0..12 {
-            harness.event(egui::Event::MouseWheel {
-                unit: egui::MouseWheelUnit::Point,
-                delta: vec2(0.0, -400.0),
-                phase: egui::TouchPhase::Move,
-                modifiers: Modifiers::NONE,
-                source: egui::MouseWheelSource::Wheel,
-            });
+            harness.event(wheel(-400.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
             harness.step();
         }
         settle(harness);
@@ -215,21 +209,22 @@ impl Audit {
 
     fn walk_files(&mut self) {
         let harness = &mut self.harness;
-        harness.click_at(tab(harness, "Files"));
-        wait_for(harness, "the file tree", |harness| {
+        files_tab(harness);
+        wait_until(harness, "the file tree", |harness| {
             harness.query_by_label("File categories").is_some()
         });
         // A card's height waits on its file's line counts: counted later, the cards move.
-        wait_for(harness, "the line counts", |harness| {
+        wait_until(harness, "the line counts", |harness| {
             harness.state().pull_requests.iter().all(|(_, page)| !page.is_counting_lines())
         });
         pump(harness, 2.0);
         self.check("07-files-summary");
         filter_tree(&mut self.harness, "Handlers");
         let harness = &mut self.harness;
-        wait_for(harness, "the handler's folder", |harness| {
+        wait_until(harness, "the handler's folder", |harness| {
             tree_node(harness, "Handlers").is_some()
         });
+        settle_background(harness);
         harness.click_at(tree_node(harness, "Handlers").expect("the folder").rect());
         pump(harness, 2.0);
         self.check("08-folder-summary-with-comments");
@@ -239,7 +234,7 @@ impl Audit {
                 .expect("the handler")
                 .rect(),
         );
-        wait_for(harness, "the long diff", |harness| shows_file_view(harness, LONG_PATH));
+        wait_until(harness, "the long diff", |harness| shows_file_view(harness, LONG_PATH));
         pump(harness, 1.0);
         self.check("09-diff-side-by-side");
         self.find_in_diff();
@@ -275,14 +270,15 @@ impl Audit {
             filter_tree(&mut self.harness, filter);
             let harness = &mut self.harness;
             let file = name.rsplit('/').next().unwrap_or(name);
-            wait_for(harness, file, |harness| tree_node(harness, file).is_some());
+            wait_until(harness, file, |harness| tree_node(harness, file).is_some());
+            settle_background(harness);
             harness.click_at(tree_node(harness, file).expect("the file").rect());
             pump(harness, 2.0);
             self.check(state);
         }
         let harness = &mut self.harness;
-        harness.click_at(tab(harness, "Commits"));
-        wait_for(harness, "the commits", |harness| has(harness, "Keep the composition keyed"));
+        harness.click_at(tab_rect(harness, "Commits").expect("the Commits tab"));
+        wait_until(harness, "the commits", |harness| has(harness, "Keep the composition keyed"));
         self.check("16-commits");
     }
 
@@ -294,7 +290,7 @@ impl Audit {
         harness.step();
         harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::F);
         harness.event(egui::Event::Text("compositionKey".to_owned()));
-        wait_for(harness, "the find widget's hits", |harness| {
+        wait_until(harness, "the find widget's hits", |harness| {
             last_find_bar(&harness.ctx).is_some_and(|shown| shown.count.contains(" of "))
         });
         self.check("09b-diff-find-widget");
@@ -307,14 +303,14 @@ impl Audit {
     fn walk_pipelines(&mut self) {
         let harness = &mut self.harness;
         harness.click_at(harness.get_by_role_and_label(Role::Tab, "Pipelines").rect());
-        wait_for(harness, "the checks table", |harness| {
+        wait_until(harness, "the checks table", |harness| {
             harness.query_by_label("Filter checks").is_some()
         });
         pump(harness, 1.0);
         self.check("17-checks");
         let harness = &mut self.harness;
         harness.click_at(harness.get_by_label(&format!("{RUN}, Failed")).rect());
-        wait_for(harness, "the stage graph", |harness| has(harness, "Stage Build and unit test"));
+        wait_until(harness, "the stage graph", |harness| has(harness, "Stage Build and unit test"));
         pump(harness, 1.0);
         self.check("18-stages-100");
         for (steps, state) in [(-4_i32, "19-stages-50"), (9, "20-stages-200")] {
@@ -336,7 +332,7 @@ impl Audit {
         harness.click_at(
             harness.get_by_label(&format!("{RETRIED_JOB}, 3 attempts. Switch attempt")).rect(),
         );
-        wait_for(harness, "the attempts list", |harness| egui::Popup::is_any_open(&harness.ctx));
+        wait_until(harness, "the attempts list", |harness| egui::Popup::is_any_open(&harness.ctx));
         settle(harness);
         self.check("21-attempts");
         let harness = &mut self.harness;
@@ -346,11 +342,12 @@ impl Audit {
             harness.key_press(egui::Key::Escape);
             settle(harness);
         }
-        wait_for(harness, "the retried job", |harness| {
+        wait_until(harness, "the retried job", |harness| {
             harness.query_by_role_and_label(Role::Link, RETRIED_JOB).is_some()
         });
+        settle_background(harness);
         harness.click_at(harness.get_by_role_and_label(Role::Link, RETRIED_JOB).rect());
-        wait_for(harness, "the log", |harness| harness.query_by_label("Copy log").is_some());
+        wait_until(harness, "the log", |harness| harness.query_by_label("Copy log").is_some());
         pump(harness, 1.0);
         self.check("22-log");
         let harness = &mut self.harness;
@@ -361,20 +358,22 @@ impl Audit {
         harness.key_press(egui::Key::Escape);
         settle(harness);
         harness.click_at(harness.get_by_role_and_label(Role::TreeItem, WAITING_JOB).rect());
-        wait_for(harness, "the waiting job", |harness| has(harness, "Waiting for an agent"));
+        wait_until(harness, "the waiting job", |harness| has(harness, "Waiting for an agent"));
         self.check("24-job-state");
 
         let harness = &mut self.harness;
         open(harness, ANONYMOUS, REPOSITORY);
-        wait_for(harness, "the anonymous pull request", |harness| {
+        wait_until(harness, "the anonymous pull request", |harness| {
             harness.query_by_role_and_label(Role::Tab, "Pipelines").is_some()
         });
+        settle_background(harness);
         harness.click_at(harness.get_by_role_and_label(Role::Tab, "Pipelines").rect());
-        wait_for(harness, "the checks table", |harness| {
+        wait_until(harness, "the checks table", |harness| {
             harness.query_by_label("Filter checks").is_some()
         });
+        settle_background(harness);
         harness.click_at(harness.get_by_label(&format!("{RUN}, Failed")).rect());
-        wait_for(harness, "the stage graph", |harness| has(harness, "Stage Build and unit test"));
+        wait_until(harness, "the stage graph", |harness| has(harness, "Stage Build and unit test"));
         pump(harness, 1.0);
         self.check("25-stages-without-token");
     }
@@ -382,15 +381,10 @@ impl Audit {
     fn walk_shell(&mut self) {
         let harness = &mut self.harness;
         open(harness, CONNECTION, SLOW_REPOSITORY);
-        wait_for(harness, "the slow pull request", |harness| {
-            harness
-                .query_by(|node| {
-                    node.role() == Role::Tab
-                        && node.label().is_some_and(|label| label.starts_with("Files"))
-                })
-                .is_some()
+        wait_until(harness, "the slow pull request", |harness| {
+            tab_rect(harness, "Files").is_some()
         });
-        harness.click_at(tab(harness, "Files"));
+        files_tab(harness);
         pump(harness, 2.0);
         self.check("26-files-preparing");
         let harness = &mut self.harness;
@@ -424,10 +418,6 @@ fn resize(harness: &mut Harness<'_, ReviewApp>, size: Vec2, pixels_per_point: f3
         harness.step();
     }
     harness.set_size(size);
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
 }
 
 /// The file tree's row whose path ends with `name`.
@@ -465,17 +455,19 @@ fn filter_tree(harness: &mut Harness<'_, ReviewApp>, text: &str) {
 /// Opens the outdated thread's original version from the handler's diff.
 fn open_origin(harness: &mut Harness<'_, ReviewApp>) {
     const SHOW_ORIGIN: &str = "Show original version";
-    wait_for(harness, "the outdated thread", |harness| {
+    wait_until(harness, "the outdated thread", |harness| {
         harness.query_by_label(SHOW_ORIGIN).is_some() || has(harness, "not shown in this diff")
     });
+    settle_background(harness);
     if harness.query_by_label(SHOW_ORIGIN).is_none() {
         harness.click_at(harness.get_by_label_contains("not shown in this diff").rect());
-        wait_for(harness, "the outdated card", |harness| {
+        wait_until(harness, "the outdated card", |harness| {
             harness.query_by_label(SHOW_ORIGIN).is_some()
         });
+        settle_background(harness);
     }
     harness.click_at(harness.get_by_label(SHOW_ORIGIN).rect());
-    wait_for(harness, "the original version", |harness| has(harness, "Showing the version from"));
+    wait_until(harness, "the original version", |harness| has(harness, "Showing the version from"));
 }
 
 fn open(harness: &mut Harness<'_, ReviewApp>, connection_id: &str, repository_key: &str) {
@@ -490,37 +482,14 @@ fn open(harness: &mut Harness<'_, ReviewApp>, connection_id: &str, repository_ke
 fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
     let builder =
         Harness::builder().with_size(BASE_SIZE).with_step_dt(1.0 / 60.0).allow_missing_glyphs();
-    let mut harness = super::startup::start(builder, |creation| {
-        ReviewApp::new(creation, paths, scripted_provider)
-    });
+    let mut harness = app_with(builder, paths, scripted_provider);
     clip_check::install(&harness.ctx);
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
     harness.state_mut().title_bar.integrate_for_test();
     harness
 }
 
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
-    settle(harness);
-}
-
 fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..12 {
-        harness.step();
-    }
-}
-
-/// Advances simulated time; each frame gives background work a moment of real time.
-fn pump(harness: &mut Harness<'_, ReviewApp>, seconds: f64) {
-    let end = harness.ctx.input(|input| input.time) + seconds;
-    while harness.ctx.input(|input| input.time) < end {
-        harness.step();
-        test_support::let_threads_run(Duration::from_millis(2));
-    }
+    harness.run_steps(12);
 }
 
 fn write(root: &Path, path: &str, bytes: &[u8]) {
@@ -630,8 +599,7 @@ fn generated_path(index: usize) -> String {
     )
 }
 
-fn save_connections(paths: &AppPaths) {
-    let mut store = ConnectionStore::open(paths).expect("empty store");
+fn connections() -> Vec<Connection> {
     let hosts = [
         (CONNECTION, "Contoso Fabrikam Industries Enterprise (dev.azure.com)", true),
         (ANONYMOUS, "Contoso Fabrikam Industries Enterprise without a token", false),
@@ -639,18 +607,16 @@ fn save_connections(paths: &AppPaths) {
         (BROKEN, "Northwind Broken Host With An Expired Certificate", true),
         (EMPTY, "Tailspin Toys Host Without Any Pull Requests", true),
     ];
-    for (id, name, has_token) in hosts {
-        store
-            .upsert(Connection {
-                id: id.to_owned(),
-                name: name.to_owned(),
-                kind: ProviderKind::AzureDevOps,
-                base_url: format!("https://dev.azure.com/{ORGANIZATION}"),
-                organizations: vec![ORGANIZATION.to_owned()],
-                token: has_token.then(|| "scripted".to_owned()),
-            })
-            .expect("store the connection");
-    }
+    let base_url = format!("https://dev.azure.com/{ORGANIZATION}");
+    hosts
+        .into_iter()
+        .map(|(id, name, has_token)| Connection {
+            name: name.to_owned(),
+            organizations: vec![ORGANIZATION.to_owned()],
+            token: has_token.then(|| "scripted".to_owned()),
+            ..samples::connection(id, ProviderKind::AzureDevOps, &base_url)
+        })
+        .collect()
 }
 
 fn scripted_provider(connection: Connection, _http: reqwest::Client) -> Arc<dyn Provider> {
@@ -1343,13 +1309,4 @@ impl Provider for ScriptedProvider {
     ) -> Result<()> {
         Ok(())
     }
-}
-
-/// The pull request tab whose label starts with `name` ("Files (12)").
-fn tab(harness: &Harness<'_, ReviewApp>, name: &str) -> egui::Rect {
-    harness
-        .get_by(|node| {
-            node.role() == Role::Tab && node.label().is_some_and(|label| label.starts_with(name))
-        })
-        .rect()
 }

@@ -9,8 +9,8 @@ use egui_kittest::kittest::Queryable;
 use review_store::{AppPaths, AppSettings, LastPlace, LastTab, PullRequestStart, ViewedFiles};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, shows_file_view, shows_folder_view, wait_until};
-use super::github_mock::{ExtraFile, GitHubHost};
+use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
+use super::walkthrough::{app, files_tab, shows_file_view, shows_folder_view, wait_until};
 use cv_runtime::route::{PullRequestTab, Route};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -30,7 +30,7 @@ fn files() -> Vec<ExtraFile> {
 }
 
 fn paths(scratch: &ScratchDir) -> AppPaths {
-    AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"))
+    scratch.app_paths()
 }
 
 fn tab(harness: &Harness<'_, ReviewApp>) -> Option<PullRequestTab> {
@@ -101,14 +101,7 @@ fn open_resume_files_option_and_the_place_left_survive_a_restart() {
     let mut harness = app(&scratch, std::slice::from_ref(&connection));
     open_pull_request(&mut harness);
     assert_eq!(tab(&harness), Some(PullRequestTab::Overview), "the tab left on");
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(&mut harness);
     wait_until(&mut harness, "the file left open", |harness| shows_file_view(harness, LAST));
     assert!(!shows_file_view(&harness, FIRST));
 }
@@ -131,7 +124,7 @@ fn open_resume_a_vanished_file_falls_back_to_the_first_file() {
     // The first app's background work (the mirror it opens for the page, a git process that
     // outlives the app) ends before the second app opens the same mirror: two at once fail on
     // git's config lock ("could not lock config file ... File exists").
-    super::request_budget::wait_idle(&mut harness);
+    super::walkthrough::wait_idle(&mut harness);
     drop(harness);
 
     let paths = paths(&scratch);

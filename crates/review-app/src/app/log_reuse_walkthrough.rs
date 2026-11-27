@@ -15,15 +15,14 @@ use review_core::{
     PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, RerunAction, Result,
     ReviewThread, ReviewVote, RunStatus, RunningLogs, ThreadComment, ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
+use review_store::AppPaths;
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::ReviewApp;
+use super::walkthrough::{app_with, has, saved_paths, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_settings::onboarding::CliTools;
-use cv_testkit as test_support;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const ID: &str = "log-reuse";
 const REPOSITORY: &str = "erika/billing";
@@ -38,7 +37,13 @@ static DOWNLOADS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 #[test]
 fn log_reuse_finished_logs_open_from_disk_and_a_cut_download_is_fetched_again() {
-    let paths = start();
+    let scratch = ScratchDir::new(ID);
+    let connection = Connection {
+        name: "example.com".to_owned(),
+        token: Some("glpat-walkthrough".to_owned()),
+        ..samples::connection(ID, ProviderKind::GitLab, "https://gitlab.example.com")
+    };
+    let paths = saved_paths(&scratch, &[connection]);
     let mut harness = open(&paths);
     open_run(&mut harness);
 
@@ -60,7 +65,7 @@ fn log_reuse_finished_logs_open_from_disk_and_a_cut_download_is_fetched_again() 
     harness.key_press(egui::Key::J);
     wait_for_log(&mut harness, "lint");
     harness.key_press(egui::Key::J);
-    wait_for(&mut harness, "the cut-off download", |harness| {
+    wait_until(&mut harness, "the cut-off download", |harness| {
         has(harness, "flaky (current page)") && has(harness, "The log of flaky did not download")
     });
     assert_eq!(downloads(CUT_OFF), 1);
@@ -90,34 +95,11 @@ fn log_reuse_finished_logs_open_from_disk_and_a_cut_download_is_fetched_again() 
     );
 }
 
-/// A fresh data folder with the scripted connection.
-fn start() -> AppPaths {
-    let root = std::env::temp_dir().join(format!("review-{ID}-{}", std::process::id()));
-    test_support::remove_dir(&root);
-    let paths = AppPaths::new(root.join("config"), root.join("cache"));
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: ID.to_owned(),
-            name: "example.com".to_owned(),
-            kind: ProviderKind::GitLab,
-            base_url: "https://gitlab.example.com".to_owned(),
-            organizations: Vec::new(),
-            token: Some("glpat-walkthrough".to_owned()),
-        })
-        .expect("store the connection");
-    paths
-}
-
 /// The app on `paths`, at the pull request.
 fn open(paths: &AppPaths) -> Harness<'static, ReviewApp> {
-    let app_paths = paths.clone();
     let builder =
         Harness::builder().with_size(SIZE).with_step_dt(1.0 / 60.0).allow_missing_glyphs();
-    let mut harness = super::startup::start(builder, move |creation| {
-        ReviewApp::new(creation, app_paths, scripted_provider)
-    });
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
+    let mut harness = app_with(builder, paths.clone(), scripted_provider);
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: ID.to_owned(),
         repository_key: REPOSITORY.to_owned(),
@@ -127,18 +109,20 @@ fn open(paths: &AppPaths) -> Harness<'static, ReviewApp> {
 }
 
 fn open_run(harness: &mut Harness<'_, ReviewApp>) {
-    wait_for(harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
+    wait_until(harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
     harness.click_at(harness.get_by_label("Pipelines").rect());
-    wait_for(harness, "the checks table", |harness| {
+    wait_until(harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
     });
     harness.click_at(harness.get_by_label(&format!("{RUN}, Succeeded")).rect());
-    wait_for(harness, "the stage graph", |harness| harness.query_by_label("Stage test").is_some());
+    wait_until(harness, "the stage graph", |harness| {
+        harness.query_by_label("Stage test").is_some()
+    });
 }
 
 /// Waits until `job`'s log is shown and nothing loads any more.
 fn wait_for_log(harness: &mut Harness<'_, ReviewApp>, job: &str) {
-    wait_for(harness, &format!("the log of {job}"), |harness| {
+    wait_until(harness, &format!("the log of {job}"), |harness| {
         has(harness, &format!("{job} (current page)"))
             && harness.query_by_label("Copy log").is_some()
             && harness.state().services.background.running() == 0
@@ -166,21 +150,6 @@ fn count_whole(dir: &Path) -> usize {
             .filter(|entry| entry.file_name().to_string_lossy().ends_with(".whole.log"))
             .count()
     })
-}
-
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_by_label_contains(text).is_some()
-}
-
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
-    for _ in 0..10 {
-        harness.step();
-    }
 }
 
 fn person(id: &str, name: &str, login: &str) -> UserIdentity {

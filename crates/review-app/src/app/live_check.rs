@@ -21,12 +21,12 @@ use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{Connection, ProviderKind};
-use review_store::{AppPaths, ConnectionStore, DiffLayout, FilesStart};
+use review_store::{AppPaths, DiffLayout, FilesStart};
 
 use super::ReviewApp;
+use super::walkthrough::{saved_paths, wheel};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_testkit as test_support;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const CONNECTION_ID: &str = "live";
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(600);
@@ -37,8 +37,8 @@ fn live_walkthrough_of_a_public_pull_request() {
     let platform = Platform::from_environment();
     let repository = std::env::var("REVIEW_LIVE_REPO")
         .unwrap_or_else(|_| platform.default_repository.to_owned());
-    let paths = isolated_paths();
-    save_anonymous_connection(&paths, &platform);
+    let scratch = ScratchDir::new("live-public");
+    let paths = live_paths(&scratch, &platform);
 
     let mut harness = realtime_harness(&paths);
     // The diff walkthrough measures a file's diff; the folder view, where the Files tab starts
@@ -305,7 +305,7 @@ fn wait_for_colors(
             return None;
         }
         assert!(started.elapsed() < NETWORK_TIMEOUT, "timed out while coloring");
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 
@@ -417,8 +417,8 @@ fn live_large_pull_request() {
         .expect("REVIEW_LIVE_PR names the pull request")
         .parse()
         .expect("a number");
-    let paths = isolated_paths();
-    save_anonymous_connection(&paths, &platform);
+    let scratch = ScratchDir::new("live-large");
+    let paths = live_paths(&scratch, &platform);
     let mut harness = realtime_harness(&paths);
     println!("memory at start {}", memory());
 
@@ -556,8 +556,8 @@ fn live_leaving_a_pull_request_sends_nothing_for_it() {
         .expect("REVIEW_LIVE_PR names the pull request")
         .parse()
         .expect("a number");
-    let paths = isolated_paths();
-    save_anonymous_connection(&paths, &platform);
+    let scratch = ScratchDir::new("live-leave");
+    let paths = live_paths(&scratch, &platform);
     let builder = Harness::builder().with_size([1440.0, 900.0]).allow_missing_glyphs();
     let mut harness = super::startup::start(builder, |creation| {
         ReviewApp::new(creation, paths.clone(), cv_providers::create_provider)
@@ -635,7 +635,7 @@ fn probe_due_while_inactive(harness: &mut Harness<'_, ReviewApp>) {
     let end = time(harness) + 130.0;
     while time(harness) < end {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(3));
+        cv_testkit::let_threads_run(Duration::from_millis(3));
     }
     assert!(harness.state().services.refresh.pending_count() > 0, "the probe waits for the window");
 }
@@ -656,7 +656,7 @@ fn wait_for_quiet(harness: &mut Harness<'_, ReviewApp>) {
             quiet_since = Instant::now();
         }
         assert!(started.elapsed() < NETWORK_TIMEOUT, "background work did not finish");
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 
@@ -702,13 +702,7 @@ fn scroll(
     harness.hover_at(at);
     frames.step(harness);
     for _ in 0..notches {
-        harness.event(egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Point,
-            delta: egui::vec2(0.0, delta),
-            phase: egui::TouchPhase::Move,
-            modifiers: egui::Modifiers::NONE,
-            source: egui::MouseWheelSource::Wheel,
-        });
+        harness.event(wheel(delta, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
         frames.step(harness);
     }
     for _ in 0..30 {
@@ -753,14 +747,6 @@ impl FrameTimes {
     }
 }
 
-/// Fresh folders for a live check, whose app may reach the real hosts (and wait on them as long as
-/// they take).
-fn isolated_paths() -> AppPaths {
-    cv_testkit::allow_real_network();
-    let root = std::env::temp_dir().join(format!("review-live-{}", std::process::id()));
-    AppPaths::new(root.join("config"), root.join("cache"))
-}
-
 struct Platform {
     kind: ProviderKind,
     default_repository: &'static str,
@@ -790,22 +776,20 @@ impl Platform {
     }
 }
 
-fn save_anonymous_connection(paths: &AppPaths, platform: &Platform) {
-    let mut store = ConnectionStore::open(paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: CONNECTION_ID.to_owned(),
-            name: format!("{} (anonymous)", platform.kind.label()),
-            kind: platform.kind,
-            base_url: platform.kind.default_base_url().to_owned(),
-            organizations: platform
-                .organizations
-                .iter()
-                .map(|organization| (*organization).to_owned())
-                .collect(),
-            token: None,
-        })
-        .expect("store the connection");
+/// `scratch`'s data folders with the anonymous connection to `platform` saved, for a live check
+/// whose app may reach the real hosts (and wait on them as long as they take).
+fn live_paths(scratch: &ScratchDir, platform: &Platform) -> AppPaths {
+    cv_testkit::allow_real_network();
+    let connection = Connection {
+        name: format!("{} (anonymous)", platform.kind.label()),
+        organizations: platform
+            .organizations
+            .iter()
+            .map(|organization| (*organization).to_owned())
+            .collect(),
+        ..samples::connection(CONNECTION_ID, platform.kind, platform.kind.default_base_url())
+    };
+    saved_paths(scratch, &[connection])
 }
 
 fn wait_until(
@@ -826,7 +810,7 @@ fn wait_until(
             let tree: String = format!("{:?}", harness.root()).chars().take(8000).collect();
             panic!("{reason} while waiting for {what}; screen:\n{tree}");
         }
-        test_support::let_threads_run(Duration::from_millis(40));
+        cv_testkit::let_threads_run(Duration::from_millis(40));
     }
 }
 
@@ -835,6 +819,6 @@ fn settle(harness: &mut Harness<'_, ReviewApp>, duration: Duration) {
     let started = Instant::now();
     while started.elapsed() < duration {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(40));
+        cv_testkit::let_threads_run(Duration::from_millis(40));
     }
 }

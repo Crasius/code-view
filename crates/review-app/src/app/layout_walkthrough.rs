@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use eframe::App as _;
@@ -20,14 +20,16 @@ use review_core::{
     PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result, ReviewThread,
     ReviewVote, ThreadComment, ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, AppSettings, ConnectionStore, DiffLayout, PaneSizes, TreeSide};
+use review_store::{AppPaths, AppSettings, DiffLayout, PaneSizes, TreeSide};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::action_e2e::{shows_file_view, shows_folder_view};
+use super::walkthrough::{
+    app_with, saved_paths, saved_settings, settle_background, shows_file_view, shows_folder_view,
+    wait_until,
+};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir, git};
+use cv_testkit::{Clicks, ScratchDir, git, samples};
 use cv_widgets::skeleton;
 
 const CONNECTION_ID: &str = "local-layout";
@@ -57,21 +59,20 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         .unwrap()
         .get_or_insert_with(HashMap::new)
         .insert(CONNECTION_ID.to_owned(), fixture);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    save_connection(&paths, CONNECTION_ID);
-    let mut harness = harness(paths.clone());
+    let mut harness = harness(saved_paths(&scratch, &[connection(CONNECTION_ID)]));
 
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: CONNECTION_ID.to_owned(),
         repository_key: REPOSITORY.to_owned(),
         number: NUMBER,
     }));
-    wait_for(&mut harness, "the overview", |harness| {
+    wait_until(&mut harness, "the overview", |harness| {
         harness.query_by_label("Resize side column").is_some()
     });
-    wait_for(&mut harness, "the file count", |harness| {
+    wait_until(&mut harness, "the file count", |harness| {
         harness.query_by_label_contains("Files (").is_some()
     });
+    settle_background(&mut harness);
 
     // Overview: the side column grows when its boundary moves left, and the width is saved.
     let handle = center(&harness, "Resize side column");
@@ -81,7 +82,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         (side - (PaneSizes::DEFAULT.overview_side + 120.0)).abs() < 1.0,
         "side column is {side}"
     );
-    assert_eq!(saved(&paths).panes.overview_side, side, "persisted on release");
+    assert_eq!(saved_settings(&harness).panes.overview_side, side, "persisted on release");
     let handle = center(&harness, "Resize side column");
     double_click(&mut harness, handle);
     assert_eq!(
@@ -89,7 +90,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         PaneSizes::DEFAULT.overview_side
     );
     assert_eq!(
-        saved(&paths).panes.overview_side,
+        saved_settings(&harness).panes.overview_side,
         PaneSizes::DEFAULT.overview_side,
         "the reset is saved too"
     );
@@ -102,7 +103,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         (1.1, AppSettings::DEFAULT_CODE_FONT_SIZE)
     );
     assert!(harness.query_by_label("Zoom 110 %").is_some(), "the overlay names the level");
-    assert_eq!(saved(&paths).ui_scale, 1.1);
+    assert_eq!(saved_settings(&harness).ui_scale, 1.1);
     harness.click_at(harness.get_by_label("Reset").rect());
     settle(&mut harness);
     assert_eq!(harness.state().services.settings.ui_scale, 1.0);
@@ -113,30 +114,31 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     );
 
     // Commits: SHA and time sit in fixed columns. The tab shows its count once the commits loaded.
-    wait_for(&mut harness, "the commit count", |harness| {
+    wait_until(&mut harness, "the commit count", |harness| {
         harness.query_by_label_contains("Commits (").is_some()
     });
     harness.click_at(harness.get_by_label_contains("Commits (").rect());
-    wait_for(&mut harness, "the commit row", |harness| {
+    wait_until(&mut harness, "the commit row", |harness| {
         harness.query_by_role_and_label(Role::Link, "feature").is_some()
     });
 
     // Files tab with the long diff.
     harness.click_at(harness.get_by_label_contains("Files (").rect());
-    wait_for(&mut harness, "the file tree", |harness| {
+    wait_until(&mut harness, "the file tree", |harness| {
         harness.query_by_label("Resize file tree").is_some()
     });
     let filter =
         harness.get_by(|node| node.placeholder().is_some_and(|text| text.contains("Filter files")));
     harness.click_at(filter.rect());
     filter.type_text("widgets.rs");
-    wait_for(&mut harness, "the filtered file", |harness| {
+    wait_until(&mut harness, "the filtered file", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, CODE_PATH).is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, CODE_PATH).rect());
-    wait_for(&mut harness, "the diff", |harness| {
+    wait_until(&mut harness, "the diff", |harness| {
         shows_file_view(harness, CODE_PATH) && harness.query_by_label("Resize diff sides").is_some()
     });
+    settle_background(&mut harness);
 
     // The tree sits at its side of the diff, its splitter on its inner edge; `inward` points from
     // the tree towards the diff.
@@ -162,7 +164,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         (tree_width - (PaneSizes::DEFAULT.file_tree + 100.0)).abs() < 1.0,
         "file tree is {tree_width}"
     );
-    assert_eq!(saved(&paths).panes.file_tree, tree_width);
+    assert_eq!(saved_settings(&harness).panes.file_tree, tree_width);
 
     // The tree can be dragged almost across the whole window and back: the handle stays reachable.
     let window_width = harness.ctx.content_rect().width();
@@ -182,13 +184,13 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         (restored - tree_width).abs() < 1.0,
         "dragged back to {restored}, expected {tree_width}"
     );
-    assert_eq!(saved(&paths).panes.file_tree, restored);
+    assert_eq!(saved_settings(&harness).panes.file_tree, restored);
 
     let split = center(&harness, "Resize diff sides");
     drag(&mut harness, split, vec2(-160.0, 0.0));
     let diff_split = harness.state().services.settings.panes.diff_split;
     assert!(diff_split < 0.45, "old side share is {diff_split}");
-    assert_eq!(saved(&paths).panes.diff_split, diff_split);
+    assert_eq!(saved_settings(&harness).panes.diff_split, diff_split);
 
     // Ctrl+wheel over the diff changes the code size only.
     let diff = harness.get_by_label(&format!("Diff of {CODE_PATH}")).rect().center();
@@ -199,7 +201,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         (AppSettings::DEFAULT_CODE_FONT_SIZE + 2.0, 1.0)
     );
     assert!(harness.query_by_label("Code 15 px").is_some());
-    assert_eq!(saved(&paths).code_font_size, 15.0);
+    assert_eq!(saved_settings(&harness).code_font_size, 15.0);
 
     // Middle click in the diff, pointer below the origin: the diff scrolls down.
     let origin = diff + vec2(-200.0, 0.0);
@@ -228,11 +230,11 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::A);
     harness.step();
     harness.get_by_role(Role::TextInput).type_text("README");
-    wait_for(&mut harness, "the README", |harness| {
+    wait_until(&mut harness, "the README", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, "README.md").is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, "README.md").rect());
-    wait_for(&mut harness, "the preview", |harness| {
+    wait_until(&mut harness, "the preview", |harness| {
         harness.query_by_label("Resize Before and After").is_some()
     });
     settle(&mut harness);
@@ -268,23 +270,22 @@ fn folder_view_zooms_the_code_over_cards_and_the_app_elsewhere() {
     let scratch = ScratchDir::new("folder-zoom");
     let fixture = create_origin(&scratch.path().join("origin"));
     FIXTURES.lock().unwrap().get_or_insert_with(HashMap::new).insert(FOLDER_ID.to_owned(), fixture);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    save_connection(&paths, FOLDER_ID);
-    let mut harness = harness(paths.clone());
+    let mut harness = harness(saved_paths(&scratch, &[connection(FOLDER_ID)]));
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: FOLDER_ID.to_owned(),
         repository_key: REPOSITORY.to_owned(),
         number: NUMBER,
     }));
-    wait_for(&mut harness, "the file count", |harness| {
+    wait_until(&mut harness, "the file count", |harness| {
         harness.query_by_label_contains("Files (").is_some()
     });
     harness.click_at(harness.get_by_label_contains("Files (").rect());
     // A card draws its code with the file view's diff view, under the same label.
     let card = format!("Diff of {GADGETS_PATH}");
-    wait_for(&mut harness, "the folder view's cards", |harness| {
+    wait_until(&mut harness, "the folder view's cards", |harness| {
         shows_folder_view(harness) && harness.query_by_label(&card).is_some()
     });
+    settle_background(&mut harness);
     let scale = harness.ctx.pixels_per_point();
 
     let code = harness.get_by_label(&card).rect().center();
@@ -297,7 +298,7 @@ fn folder_view_zooms_the_code_over_cards_and_the_app_elsewhere() {
     );
     assert_eq!(harness.ctx.pixels_per_point(), scale, "the app keeps its scale");
     assert!(harness.query_by_label("Code 14 px").is_some(), "the overlay names the code size");
-    assert_eq!(saved(&paths).code_font_size, 14.0);
+    assert_eq!(saved_settings(&harness).code_font_size, 14.0);
 
     let header = harness.get_by_label("4 changed files").rect().center();
     ctrl_wheel(&mut harness, header, 1.0);
@@ -323,27 +324,23 @@ fn switching_files_keeps_the_header_still_without_placeholders() {
     let scratch = ScratchDir::new("switch");
     let fixture = create_origin(&scratch.path().join("origin"));
     FIXTURES.lock().unwrap().get_or_insert_with(HashMap::new).insert(SWITCH_ID.to_owned(), fixture);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    save_connection(&paths, SWITCH_ID);
-    let mut harness = harness(paths);
+    let mut harness = harness(saved_paths(&scratch, &[connection(SWITCH_ID)]));
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: SWITCH_ID.to_owned(),
         repository_key: REPOSITORY.to_owned(),
         number: NUMBER,
     }));
-    wait_for(&mut harness, "the file count", |harness| {
+    wait_until(&mut harness, "the file count", |harness| {
         harness.query_by_label_contains("Files (").is_some()
     });
     harness.click_at(harness.get_by_label_contains("Files (").rect());
-    wait_for(&mut harness, "the tree", |harness| {
+    wait_until(&mut harness, "the tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, CODE_PATH).is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, CODE_PATH).rect());
-    wait_for(&mut harness, "the diff", |harness| shows_file_view(harness, CODE_PATH));
+    wait_until(&mut harness, "the diff", |harness| shows_file_view(harness, CODE_PATH));
     // Line counts, colors and the diffs of the neighbouring files.
-    wait_for(&mut harness, "the work ahead", |harness| {
-        harness.state().services.background.running() == 0
-    });
+    settle_background(&mut harness);
     let reference = header_controls(&harness);
     assert!(reference.len() >= 8, "the header shows its controls: {reference:#?}");
 
@@ -352,15 +349,14 @@ fn switching_files_keeps_the_header_still_without_placeholders() {
         // even in another folder, where the open file's neighbours do not reach.
         harness.get_by_role_and_label(Role::TreeItem, path).hover();
         harness.run_steps(12); // 200 ms at 60 frames per second: past the 150 ms dwell.
-        wait_for(&mut harness, "the hovered file's diff", |harness| {
-            harness.state().services.background.running() == 0
-        });
+        // The hovered file's diff.
+        settle_background(&mut harness);
         harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
         let clicked = harness.ctx.input(|input| input.time);
         for step in 0..40 {
             harness.step();
             // Wall time at least as long as the frames say, so a slow load really is late.
-            test_support::let_threads_run(Duration::from_millis(16));
+            cv_testkit::let_threads_run(Duration::from_millis(16));
             let waited = harness.ctx.input(|input| input.time) - clicked;
             // The click's frame still draws the file it left, with that file's placeholder if its
             // own load is late; a placeholder counts for `path` once the header names it.
@@ -395,9 +391,7 @@ fn switching_files_keeps_the_header_still_without_placeholders() {
         }
         // Moving on releases what the last file's plan loaded ahead, so the next file is ready
         // ahead only once this file's plan has finished (slow under a loaded test run).
-        wait_for(&mut harness, "the work ahead", |harness| {
-            harness.state().services.background.running() == 0
-        });
+        settle_background(&mut harness);
     }
 }
 
@@ -442,11 +436,7 @@ fn rects(controls: &[(String, egui::Rect)]) -> Vec<egui::Rect> {
 
 fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
     let builder = Harness::builder().with_size([1440.0, 900.0]).with_step_dt(1.0 / 60.0);
-    super::startup::start(builder, |creation| ReviewApp::new(creation, paths, local_provider))
-}
-
-fn saved(paths: &AppPaths) -> AppSettings {
-    AppSettings::load(&paths.settings_file()).expect("settings file")
+    app_with(builder, paths, local_provider)
 }
 
 fn center(harness: &Harness<'_, ReviewApp>, label: &str) -> Pos2 {
@@ -516,17 +506,6 @@ fn hooked_frame(harness: &mut Harness<'_, ReviewApp>, events: Vec<Event>) {
     harness.step();
 }
 
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    let started = Instant::now();
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
-    println!("{what} after {:.1} s", started.elapsed().as_secs_f32());
-    settle(harness);
-}
-
 fn settle(harness: &mut Harness<'_, ReviewApp>) {
     for _ in 0..20 {
         harness.step();
@@ -585,18 +564,12 @@ fn create_origin(origin: &Path) -> Fixture {
     }
 }
 
-fn save_connection(paths: &AppPaths, id: &str) {
-    let mut store = ConnectionStore::open(paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: id.to_owned(),
-            name: "Local".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: ProviderKind::GitHub.default_base_url().to_owned(),
-            organizations: Vec::new(),
-            token: None,
-        })
-        .expect("store the connection");
+/// The anonymous GitHub connection `id`, whose provider serves the origin saved under `id`.
+fn connection(id: &str) -> Connection {
+    Connection {
+        name: "Local".to_owned(),
+        ..samples::connection(id, ProviderKind::GitHub, ProviderKind::GitHub.default_base_url())
+    }
 }
 
 #[expect(

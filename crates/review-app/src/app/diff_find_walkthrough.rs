@@ -20,8 +20,8 @@ use egui_kittest::kittest::Queryable;
 use review_store::DiffLayout;
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
-use super::github_mock::{ExtraFile, GitHubHost};
+use super::github_mock::{ExtraFile, GitHubHost, open_pull_request};
+use super::walkthrough::{app, files_tab, open_in_tree, shows_file_view, wait_until, wheel};
 use cv_base::theme::{self, icons};
 use cv_code::find_paint::{HitSide, last_current as last_current_find};
 use cv_pr_diff::diff_overview::{forget_view_box, last_view_box};
@@ -76,14 +76,7 @@ fn the_find_widget_searches_the_focused_pane() {
     let host = GitHubHost::with_pull_request_files(scratch.path(), &[code_file(), doc_file()]);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(&mut harness);
     harness.state_mut().services.settings.diff_layout = DiffLayout::SideBySide;
     open_in_tree(&mut harness, CODE);
     let label = format!("Diff of {CODE}");
@@ -247,14 +240,6 @@ fn rendered_columns(harness: &mut Harness<'_, ReviewApp>) {
     assert!(before.pane.contains_rect(before.rect), "inside Before: {before:?}");
 }
 
-fn open_in_tree(harness: &mut Harness<'_, ReviewApp>, path: &str) {
-    wait_until(harness, "the file's row in the tree", |harness| {
-        harness.query_by_role_and_label(Role::TreeItem, path).is_some()
-    });
-    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
-    harness.step();
-}
-
 /// The point `share` of the way across `rect`, halfway down.
 fn at_share(rect: Rect, share: f32) -> Pos2 {
     pos2(rect.left() + rect.width() * share, rect.center().y)
@@ -358,14 +343,7 @@ fn a_newly_opened_file_starts_at_its_top() {
     let host = GitHubHost::with_pull_request_files(scratch.path(), &files);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(&mut harness);
     harness.state_mut().services.settings.diff_layout = DiffLayout::SideBySide;
 
     for (from, to) in [("src/a.rs", "src/b.rs"), ("src/b.rs", "src/c.rs")] {
@@ -401,13 +379,7 @@ fn scroll_down(harness: &mut Harness<'_, ReviewApp>, over: Pos2) {
     harness.hover_at(over);
     harness.step();
     wait_until(harness, "the diff scrolled down", |harness| {
-        harness.event(egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Point,
-            delta: egui::vec2(0.0, -600.0),
-            phase: egui::TouchPhase::Move,
-            modifiers: Modifiers::NONE,
-            source: egui::MouseWheelSource::Wheel,
-        });
+        harness.event(wheel(-600.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
         last_view_box(&harness.ctx).is_some_and(|(strip, view)| view.top() > strip.top() + 100.0)
     });
 }

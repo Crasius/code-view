@@ -10,8 +10,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
-use super::action_e2e::wait_until;
-use super::mini_chat_walkthrough::{FIRST, answered, primary_click};
+use super::mini_chat_walkthrough::{FIRST, answered};
+use super::walkthrough::{click_now, wait_until};
 use cv_pr_assistant::mini::SHRINK;
 use cv_testkit::Clicks;
 
@@ -43,7 +43,7 @@ fn the_model_chip_sits_in_the_title_line_of_card_panel_and_mini_chat() {
     });
 
     let center = harness.get_by_label(FIRST).rect().center();
-    primary_click(&mut harness, center);
+    click_now(&mut harness, center);
     wait_until(&mut harness, "the chip in the mini chat's title line", |harness| {
         harness.query_by_label(SHRINK).is_some()
             && is_in_line(chip(harness), button(harness, SHRINK))
@@ -86,7 +86,7 @@ fn is_in_line(chip: Rect, button: Rect) -> bool {
 /// Opens the chip's menu and picks `item`.
 fn pick(harness: &mut Harness<'_, ReviewApp>, item: &str) {
     let at = chip(harness).center();
-    primary_click(harness, at);
+    click_now(harness, at);
     wait_until(harness, "the chip's menu", |harness| harness.query_by_label(item).is_some());
     harness.click_at(harness.get_by_label(item).rect());
     harness.run_steps(4);

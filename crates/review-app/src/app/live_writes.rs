@@ -31,9 +31,10 @@ use serde_json::{Value, json};
 
 use self::hosts::{FILE, Released, State, TestPullRequest};
 use super::ReviewApp;
+use super::walkthrough::{files_tab, has, hover_until_add_comment, set_focus, wheel};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(300);
 const LINE_COMMENT: &str = "Live check: does the first line read well?";
@@ -124,7 +125,7 @@ impl Drop for WritesReport {
 /// The scratch folders, holding only the released connection as the owner saved it: its token
 /// stays protected by the system's store, which these folders use.
 fn released_paths(scratch: &ScratchDir, released: &Released) -> AppPaths {
-    test_support::allow_system_token_vault();
+    cv_testkit::allow_system_token_vault();
     let owner = AppPaths::from_environment().connections_file();
     let text = std::fs::read_to_string(&owner).expect("the owner's connections file");
     let saved: Value = serde_json::from_str(&text).expect("connections JSON");
@@ -136,8 +137,7 @@ fn released_paths(scratch: &ScratchDir, released: &Released) -> AppPaths {
         .unwrap_or_else(|| panic!("the owner saved no connection {}", released.connection_id))
         .clone();
     released.assert_connection(&entry);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"))
-        .with_token_vault(TokenVault::System);
+    let paths = scratch.app_paths().with_token_vault(TokenVault::System);
     std::fs::create_dir_all(paths.config_dir()).expect("the config folder");
     let file = json!({ "connections": [entry] });
     std::fs::write(paths.connections_file(), file.to_string()).expect("the connections file");
@@ -146,14 +146,7 @@ fn released_paths(scratch: &ScratchDir, released: &Released) -> AppPaths {
 
 /// Opens [`FILE`] in the Files tab and comments on one of its lines.
 fn comment_on_a_line(harness: &mut Harness<'_, ReviewApp>) {
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(harness);
     wait_until(harness, "the file tree", |harness| {
         harness.query_by_role_and_label(Role::TreeItem, FILE).is_some()
     });
@@ -164,18 +157,7 @@ fn comment_on_a_line(harness: &mut Harness<'_, ReviewApp>) {
     });
     settle(harness, Duration::from_millis(500));
     let diff = harness.query_all_by_label_contains(&diff_label).next().expect("the diff").rect();
-    // The "+" shows only while a line is hovered.
-    'search: for x in [0.5, 0.75, 0.25] {
-        let mut y = diff.top() + 2.0;
-        while y < diff.top() + 160.0 {
-            harness.hover_at(egui::pos2(diff.left() + diff.width() * x, y));
-            harness.step();
-            if harness.query_by_label("Add comment").is_some() {
-                break 'search;
-            }
-            y += 3.0;
-        }
-    }
+    hover_until_add_comment(harness, diff, &[0.5, 0.75, 0.25]);
     harness.click_at(harness.get_by_label("Add comment").rect());
     wait_until(harness, "the line composer", |harness| {
         harness.query_by_label_contains("Comment on line").is_some()
@@ -336,7 +318,7 @@ fn merge_guard_then_merge(harness: &mut Harness<'_, ReviewApp>, pull_request: &T
     let commits_before = commits_tab(harness);
     show_header(harness);
     wait_until(harness, "the merge button", |harness| merge_button(harness).is_some());
-    set_window_focus(harness, false);
+    set_focus(harness, false);
     pull_request.push_commit();
     merge(harness);
     wait_until(harness, "the merge's answer", |harness| {
@@ -349,7 +331,7 @@ fn merge_guard_then_merge(harness: &mut Harness<'_, ReviewApp>, pull_request: &T
     );
     assert_eq!(state, State::Open, "the guarded merge merged nothing");
     assert_eq!(commits_tab(harness), commits_before, "the page still shows the reviewed head");
-    set_window_focus(harness, true);
+    set_focus(harness, true);
     let reload = harness.get_by_role_and_label(Role::Button, "Reload").rect();
     click(harness, reload);
     wait_until(harness, "the pushed commit", |harness| commits_tab(harness) != commits_before);
@@ -395,23 +377,10 @@ fn show_header(harness: &mut Harness<'_, ReviewApp>) {
     harness.hover_at(egui::pos2(500.0, window.center().y));
     harness.step();
     for _ in 0..10 {
-        harness.event(egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Point,
-            delta: egui::vec2(0.0, 4000.0),
-            phase: egui::TouchPhase::Move,
-            modifiers: egui::Modifiers::NONE,
-            source: egui::MouseWheelSource::Wheel,
-        });
+        harness.event(wheel(4000.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
         harness.step();
     }
     settle(harness, Duration::from_secs(1));
-}
-
-fn set_window_focus(harness: &mut Harness<'_, ReviewApp>, is_focused: bool) {
-    harness.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().focused =
-        Some(is_focused);
-    harness.input_mut().focused = is_focused;
-    harness.step();
 }
 
 fn tab(harness: &mut Harness<'_, ReviewApp>, label: &str) {
@@ -433,13 +402,7 @@ fn reveal(harness: &mut Harness<'_, ReviewApp>, text: &str) -> Rect {
         harness.step();
         let delta =
             if shown.is_some_and(|body| body.top() < window.top() + 80.0) { 120.0 } else { -120.0 };
-        harness.event(egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Point,
-            delta: egui::vec2(0.0, delta),
-            phase: egui::TouchPhase::Move,
-            modifiers: egui::Modifiers::NONE,
-            source: egui::MouseWheelSource::Wheel,
-        });
+        harness.event(wheel(delta, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
         for _ in 0..3 {
             harness.step();
         }
@@ -513,10 +476,6 @@ fn hinted<'h>(harness: &'h Harness<'_, ReviewApp>, placeholder: &'static str) ->
         .query_by(move |node| node.placeholder().is_some_and(|hint| hint.starts_with(placeholder)))
 }
 
-fn has(harness: &Harness<'_, ReviewApp>, text: &str) -> bool {
-    harness.query_all_by_label_contains(text).next().is_some()
-}
-
 fn wait_for_toast(harness: &mut Harness<'_, ReviewApp>, text: &str) {
     wait_until(harness, text, |harness| has(harness, text));
     println!("{text}");
@@ -541,7 +500,7 @@ fn wait_for_label(
 {}",
             screen(harness)
         );
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 
@@ -572,7 +531,7 @@ fn wait_until(
             "timed out waiting for {what}; screen:\n{}",
             screen(harness)
         );
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 
@@ -581,7 +540,7 @@ fn settle(harness: &mut Harness<'_, ReviewApp>, duration: Duration) {
     let started = Instant::now();
     while started.elapsed() < duration {
         harness.step();
-        test_support::let_threads_run(Duration::from_millis(20));
+        cv_testkit::let_threads_run(Duration::from_millis(20));
     }
 }
 

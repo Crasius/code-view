@@ -10,9 +10,10 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, shows_file_view, wait_until};
-use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread};
-use cv_testkit::Clicks;
+use super::github_mock::{ExtraFile, FILE, GitHubHost, MockThread, open_pull_request};
+use super::walkthrough::{
+    app, files_tab, open_in_tree, shows_file_view, wait_for_diff, wait_until,
+};
 use cv_testkit::ScratchDir;
 
 const FIRST: &str = "src/a.rs";
@@ -42,14 +43,7 @@ fn bug_keys_mark_viewed_then_step_and_triage_threads() {
     // J steps on here, not the option that opens the next unviewed file.
     harness.state_mut().services.settings.open_next_unviewed = false;
     open_pull_request(&mut harness);
-    harness.click_at(
-        harness
-            .get_by(|node| {
-                node.role() == Role::Tab
-                    && node.label().is_some_and(|label| label.starts_with("Files"))
-            })
-            .rect(),
-    );
+    files_tab(&mut harness);
 
     // Viewed, the open file stays listed, so J steps from it; once the next opens, it leaves.
     open_in_tree(&mut harness, FIRST);
@@ -107,20 +101,6 @@ fn bug_keys_mark_viewed_then_step_and_triage_threads() {
     harness.run_steps(6);
     assert!(is_selected(&harness, SECOND_THREAD), "the panel no longer takes N");
     assert!(!shows_file_view(&harness, FILE), "nor opens a thread");
-}
-
-fn open_in_tree(harness: &mut Harness<'_, ReviewApp>, path: &str) {
-    wait_until(harness, "the file's row in the tree", |harness| {
-        harness.query_by_role_and_label(Role::TreeItem, path).is_some()
-    });
-    harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
-    harness.step();
-}
-
-fn wait_for_diff(harness: &mut Harness<'_, ReviewApp>, path: &str) {
-    wait_until(harness, &format!("the file view of {path}"), |harness| {
-        shows_file_view(harness, path)
-    });
 }
 
 /// The threads panel's row of the thread reading `text` is the selected one.

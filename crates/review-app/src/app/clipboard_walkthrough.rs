@@ -10,19 +10,20 @@ use std::time::{Duration, Instant};
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_store::{AppPaths, AppSettings};
 
 use super::ReviewApp;
-use super::action_e2e::{app, open_pull_request, press, type_into, wait_until};
 use super::github_mock::{
     FAILING_NUMBER, FORBIDDEN_NUMBER, GitHubHost, HIDDEN_NUMBER, NUMBER, READABLE_NUMBER,
-    REPOSITORY, SLOW_NUMBER, TITLE,
+    REPOSITORY, SLOW_NUMBER, TITLE, open_pull_request,
+};
+use super::walkthrough::{
+    app, opened_urls, press, saved_settings, set_focus, settle_background, type_into, wait_until,
 };
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_shell::links::clipboard_links::ClipboardSource;
 use cv_shell::links::link_access::BUDGET;
 use cv_testkit::Clicks;
-use cv_testkit::{self as test_support, ScratchDir};
+use cv_testkit::ScratchDir;
 
 const CONNECTION_ID: &str = "gh";
 
@@ -64,7 +65,7 @@ fn clipboard_link_opens_once_with_back_and_not_again_after_a_restart() {
         "the toast offers to turn it off"
     );
     assert_eq!(
-        saved_settings(&scratch).last_clipboard_link.as_deref(),
+        saved_settings(&harness).last_clipboard_link.as_deref(),
         Some(link.as_str()),
         "the canonical link is saved"
     );
@@ -79,7 +80,7 @@ fn clipboard_link_opens_once_with_back_and_not_again_after_a_restart() {
     come_back(&mut harness);
     clipboard.copy(&link);
     come_back(&mut harness);
-    idle(&mut harness);
+    settle_background(&mut harness);
     assert_eq!(harness.state().route, Route::MyPullRequests, "a handled link stays handled");
 
     // Not after a restart either.
@@ -88,7 +89,7 @@ fn clipboard_link_opens_once_with_back_and_not_again_after_a_restart() {
     let restarted = fake_clipboard(&mut harness);
     restarted.copy(&link);
     come_back(&mut harness);
-    idle(&mut harness);
+    settle_background(&mut harness);
     assert_eq!(harness.state().route, Route::MyPullRequests, "the restart remembers the link");
 
     // A new link opens, and its page reuses the check's read of the detail.
@@ -104,7 +105,7 @@ fn clipboard_link_opens_once_with_back_and_not_again_after_a_restart() {
     );
     // The check's read and the live probe at the page's start, which asks the same URLs. A page
     // that read the detail itself would probe only after that read: three.
-    idle(&mut harness);
+    settle_background(&mut harness);
     assert_eq!(detail_reads(&host, READABLE_NUMBER), 2, "the page did not read the detail again");
 }
 
@@ -130,10 +131,10 @@ fn clipboard_link_the_token_cannot_read_stays_closed_with_ways_out() {
 
     // Once per copy: neither the same copy nor another form of the link checks or toasts again.
     come_back(&mut harness);
-    idle(&mut harness);
+    settle_background(&mut harness);
     clipboard.copy(&format!("{hidden}/files#diff-1"));
     come_back(&mut harness);
-    idle(&mut harness);
+    settle_background(&mut harness);
     assert_eq!(detail_reads(&host, HIDDEN_NUMBER), 1, "one check per copied link");
     assert_eq!(harness.query_all_by_label_contains(refusal).count(), 1, "one toast");
 
@@ -204,7 +205,7 @@ fn clipboard_link_waits_while_a_reply_is_written() {
     // The open pull request's own link changes nothing.
     clipboard.copy(&format!("{}/{REPOSITORY}/pull/{NUMBER}", connection.base_url));
     come_back(&mut harness);
-    idle(&mut harness);
+    settle_background(&mut harness);
     assert!(
         harness.query_by_label_contains("from the clipboard").is_none(),
         "no toast for the page already open"
@@ -239,7 +240,7 @@ fn clipboard_links_respect_the_setting_and_unknown_hosts() {
     harness.state_mut().services.settings.open_clipboard_links = false;
     clipboard.copy(&format!("{}/{REPOSITORY}/pull/{NUMBER}", connection.base_url));
     come_back(&mut harness);
-    idle(&mut harness);
+    settle_background(&mut harness);
     assert_eq!(harness.state().route, Route::MyPullRequests);
     assert!(harness.query_by_label_contains("from the clipboard").is_none());
 
@@ -256,13 +257,13 @@ fn clipboard_links_respect_the_setting_and_unknown_hosts() {
     wait_until(&mut harness, "the setting off", |harness| {
         !harness.state().services.settings.open_clipboard_links
     });
-    assert!(!saved_settings(&scratch).open_clipboard_links, "saved");
+    assert!(!saved_settings(&harness).open_clipboard_links, "saved");
     harness.state_mut().services.settings.open_clipboard_links = true;
 
     // A pull request on a host no connection knows does nothing.
     clipboard.copy("https://example.org/acme/widgets/pull/1");
     come_back(&mut harness);
-    idle(&mut harness);
+    settle_background(&mut harness);
     assert_eq!(harness.state().route, Route::PullRequest(key(NUMBER)));
     assert!(harness.query_by_label_contains("copied link").is_none(), "no toast for unknown hosts");
 
@@ -296,23 +297,12 @@ fn fake_clipboard(harness: &mut Harness<'_, ReviewApp>) -> Arc<FakeClipboard> {
     clipboard
 }
 
-/// The window goes to the background and comes back, like after copying in the browser.
+/// The window goes to the background and comes back, like after copying in the browser. The frame
+/// it comes back in starts the clipboard read as background work, so [`settle_background`] after
+/// it waits for the read and for what the read started.
 fn come_back(harness: &mut Harness<'_, ReviewApp>) {
-    for is_focused in [false, true] {
-        harness.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().focused =
-            Some(is_focused);
-        harness.input_mut().focused = is_focused;
-        harness.step();
-    }
-}
-
-/// Long enough for a clipboard read to arrive and act.
-fn idle(harness: &mut Harness<'_, ReviewApp>) {
-    let until = Instant::now() + Duration::from_millis(500);
-    while Instant::now() < until {
-        harness.step();
-        test_support::let_threads_run(Duration::from_millis(10));
-    }
+    set_focus(harness, false);
+    set_focus(harness, true);
 }
 
 /// The host's answers to `GET /pulls/{number}`.
@@ -326,17 +316,7 @@ fn step_collecting_urls(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
     let mut opened = Vec::new();
     for _ in 0..3 {
         harness.step();
-        opened.extend(harness.output().platform_output.commands.iter().filter_map(|command| {
-            match command {
-                egui::OutputCommand::OpenUrl(open) => Some(open.url.clone()),
-                _ => None,
-            }
-        }));
+        opened.extend(opened_urls(harness));
     }
     opened
-}
-
-fn saved_settings(scratch: &ScratchDir) -> AppSettings {
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    AppSettings::load(&paths.settings_file()).expect("settings")
 }

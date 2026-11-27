@@ -8,8 +8,8 @@ use std::time::Duration;
 use egui::Role;
 use egui_kittest::kittest::Queryable;
 
-use super::action_e2e::{app, wait_until};
 use super::github_mock::{GitHubHost, HIDDEN_NUMBER, READABLE_NUMBER, REPOSITORY};
+use super::walkthrough::{app, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_shell::single_instance::queue_link;
 use cv_testkit::ScratchDir;

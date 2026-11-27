@@ -4,20 +4,17 @@
 use egui::{Key, Modifiers, Role, ViewportId};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_store::AppPaths;
 
 use super::ReviewApp;
+use super::walkthrough::app_with;
 use cv_runtime::route::Route;
-use cv_testkit as test_support;
+use cv_testkit::ScratchDir;
 
 const WIDTH: f32 = 1280.0;
 
-fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
-    let mut harness = Harness::builder()
-        .with_size([WIDTH, 360.0])
-        .with_pixels_per_point(1.0)
-        .with_step_dt(1.0 / 60.0)
-        .build_eframe(|creation| ReviewApp::new(creation, paths, cv_providers::create_provider));
+fn harness(scratch: &ScratchDir) -> Harness<'static, ReviewApp> {
+    let builder = Harness::builder().with_size([WIDTH, 360.0]).with_step_dt(1.0 / 60.0);
+    let mut harness = app_with(builder, scratch.app_paths(), cv_providers::create_provider);
     let app = harness.state_mut();
     app.title_bar.integrate_for_test();
     app.navigator.go(Route::RepositoryPullRequests {
@@ -42,10 +39,8 @@ fn set_window(harness: &mut Harness<'_, ReviewApp>, is_focused: bool, is_maximiz
 
 #[test]
 fn title_bar_caption_buttons_maximized_and_search() {
-    let scratch = std::env::temp_dir().join(format!("review-title-bar-{}", std::process::id()));
-    test_support::remove_dir(&scratch);
-    let paths = AppPaths::new(scratch.join("config"), scratch.join("cache"));
-    let mut harness = harness(paths);
+    let scratch = ScratchDir::new("title-bar");
+    let mut harness = harness(&scratch);
 
     for button in ["Minimize", "Maximize", "Close"] {
         assert!(
@@ -77,6 +72,4 @@ fn title_bar_caption_buttons_maximized_and_search() {
     settle(&mut harness);
     assert_eq!(harness.state().route, Route::MyPullRequests, "Enter runs the highlighted result");
     assert!(harness.query_by_label(filter).is_none(), "the results close after a pick");
-    drop(harness);
-    test_support::remove_dir(&scratch);
 }

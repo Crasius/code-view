@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
 use async_trait::async_trait;
 use egui::{Event, Key, Modifiers, PointerButton, Role, pos2};
@@ -21,14 +20,14 @@ use review_core::{
     PullRequestSummary, RepositoryInfo, Result, ReviewThread, ReviewVote, RunStatus, ThreadComment,
     ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
+use review_store::AppPaths;
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
+use super::walkthrough::{app_with, saved_paths, settle_background, wait_until};
 use cv_base::platform;
 use cv_runtime::route::{PullRequestKey, PullRequestTab, Route};
-use cv_testkit::Clicks;
-use cv_testkit::{ScratchDir, git};
+use cv_testkit::{Clicks, ScratchDir, git, samples};
 
 const CONNECTION_ID: &str = "local-navigation";
 const CONNECTION_NAME: &str = "Acme GitHub";
@@ -62,13 +61,11 @@ fn navigation_breadcrumbs_back_and_linked_items() {
         .unwrap()
         .get_or_insert_with(HashMap::new)
         .insert(CONNECTION_ID.to_owned(), fixture);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    save_connection(&paths);
-    let mut harness = harness(paths);
+    let mut harness = harness(saved_paths(&scratch, &[connection()]));
 
     // From outside (a link from another app): the trail is the pull request's structure.
     harness.state_mut().navigator.jump(Route::PullRequest(key(NUMBER)));
-    wait_for(&mut harness, "the linked states", |harness| {
+    wait_until(&mut harness, "the linked states", |harness| {
         harness.query_by_label_contains("Speed up login").is_some()
     });
 
@@ -100,14 +97,14 @@ fn navigation_breadcrumbs_back_and_linked_items() {
 
     // A plain click on a pull request row opens it in the app.
     harness.click_at(harness.get_by_label("#59 Speed up login (Merged)").rect());
-    wait_for(&mut harness, "pull request 59", |harness| {
+    wait_until(&mut harness, "pull request 59", |harness| {
         harness.query_by_label("Pull request #59 (current page)").is_some()
     });
     assert_eq!(harness.state().route, Route::PullRequest(key(59)));
 
     // Alt+Left goes back to the first pull request; its states come from the cache.
     harness.key_press_modifiers(Modifiers::ALT, egui::Key::ArrowLeft);
-    wait_for(&mut harness, "pull request 7 again", |harness| {
+    wait_until(&mut harness, "pull request 7 again", |harness| {
         harness.query_by_label("Pull request #7 (current page)").is_some()
     });
     assert_eq!(harness.state().route, Route::PullRequest(key(NUMBER)));
@@ -152,7 +149,8 @@ fn navigation_breadcrumbs_back_and_linked_items() {
 fn back_and_forward_through_tabs(harness: &mut Harness<'_, ReviewApp>) {
     let pull_request = Route::PullRequest(key(NUMBER));
     harness.state_mut().navigator.go(pull_request.clone());
-    wait_for(harness, "the pull request again", |harness| tab_node(harness, "Files").is_some());
+    wait_until(harness, "the pull request again", |harness| tab_node(harness, "Files").is_some());
+    settle_background(harness);
     assert_eq!(place(harness), (pull_request.clone(), Some(PullRequestTab::Overview)));
     click_tab(harness, "Files");
     click_tab(harness, "Pipelines");
@@ -274,18 +272,7 @@ fn key(number: u64) -> PullRequestKey {
 
 fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
     let builder = Harness::builder().with_size([1440.0, 900.0]).with_step_dt(1.0 / 60.0);
-    super::startup::start(builder, |creation| ReviewApp::new(creation, paths, local_provider))
-}
-
-fn wait_for(
-    harness: &mut Harness<'_, ReviewApp>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, ReviewApp>) -> bool,
-) {
-    let started = Instant::now();
-    super::action_e2e::wait_for(harness, what, |harness| is_done(harness).then_some(()), |_| {});
-    println!("{what} after {:.1} s", started.elapsed().as_secs_f32());
-    settle(harness);
+    app_with(builder, paths, local_provider)
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {
@@ -317,18 +304,15 @@ pub(super) fn create_origin(origin: &Path) -> Fixture {
     }
 }
 
-fn save_connection(paths: &AppPaths) {
-    let mut store = ConnectionStore::open(paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: CONNECTION_ID.to_owned(),
-            name: CONNECTION_NAME.to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: ProviderKind::GitHub.default_base_url().to_owned(),
-            organizations: Vec::new(),
-            token: None,
-        })
-        .expect("store the connection");
+fn connection() -> Connection {
+    Connection {
+        name: CONNECTION_NAME.to_owned(),
+        ..samples::connection(
+            CONNECTION_ID,
+            ProviderKind::GitHub,
+            ProviderKind::GitHub.default_base_url(),
+        )
+    }
 }
 
 #[expect(
