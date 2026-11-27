@@ -1,91 +1,16 @@
 //! End-to-end: a local "remote" repository served over file://, mirrored blob-less, then diffed.
 
-use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
-use review_core::{FileCategory, GitRemote};
-use review_git::{
+use review_core::{FileCategory, GitRemote, ProviderError};
+
+use crate::test_repo::{Scratch, file_remote, git, numbered_lines, write};
+use crate::{
     ChangeKind, ChangedFile, DiffOptions, EdgeChange, FULL_FILE_CONTEXT, FileDiff, GitEvent,
     GitMirror, LineKind, WhitespaceSummary, local_ref_name,
 };
-
-/// A temporary folder for one test, removed when the test ends.
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!("review-git-{name}-{}", std::process::id()));
-        // A folder an earlier run with the same process id left behind; usually there is none.
-        let _stale_folder_may_be_missing = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).expect("create the scratch folder");
-        Self(path)
-    }
-
-    /// An empty repository in `origin/` on `main` that serves blob-less clones and fetches by id.
-    fn origin(&self) -> PathBuf {
-        let origin = self.0.join("origin");
-        std::fs::create_dir_all(&origin).expect("create the origin folder");
-        git(&origin, &["init", "-q", "-b", "main"]);
-        git(&origin, &["config", "uploadpack.allowFilter", "true"]);
-        git(&origin, &["config", "uploadpack.allowAnySHA1InWant", "true"]);
-        origin
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        // Best effort: a folder left in the temp directory harms nothing.
-        let _cleanup_is_best_effort = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-/// `origin` as the remote a mirror fetches from.
-fn file_remote(origin: &Path) -> GitRemote {
-    GitRemote {
-        clone_url: format!("file:///{}", origin.display().to_string().replace('\\', "/")),
-        authorization_header: None,
-    }
-}
-
-#[expect(
-    clippy::disallowed_methods,
-    reason = "test driver: builds the fixture repository with git before the code under test runs"
-)]
-fn git(dir: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args([
-            "-c",
-            "user.name=Test",
-            "-c",
-            "user.email=test@example.org",
-            "-c",
-            "core.autocrlf=false",
-        ])
-        .args(args)
-        .output()
-        .expect("git runs");
-    assert!(output.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&output.stderr));
-    String::from_utf8_lossy(&output.stdout).trim().to_owned()
-}
-
-fn write(dir: &Path, path: &str, content: impl AsRef<[u8]>) {
-    let full = dir.join(path);
-    std::fs::create_dir_all(full.parent().expect("a file path has a folder")).expect("mkdir");
-    std::fs::write(full, content).expect("write the file");
-}
-
-/// `line 1\n` up to `line {count}\n`.
-fn numbered_lines(count: u32) -> String {
-    (1..=count).fold(String::new(), |mut text, line| {
-        writeln!(text, "line {line}").expect("writing to a String cannot fail");
-        text
-    })
-}
 
 /// `main` with a source file and a doc; `feature` changes the source, adds a test and renames the
 /// doc.
@@ -101,7 +26,7 @@ struct FeatureBranch {
 fn feature_branch(name: &str) -> FeatureBranch {
     let scratch = Scratch::new(name);
     let origin = scratch.origin();
-    let original = numbered_lines(50);
+    let original = numbered_lines("", 50);
     write(&origin, "src/lib.rs", &original);
     write(
         &origin,
@@ -146,9 +71,8 @@ async fn mirrors_and_diffs_a_feature_branch() {
 
 async fn fetches_with_progress_and_reports_gone_refs(mirror: &GitMirror, head: &str, target: &str) {
     let refs = ["refs/heads/feature", "refs/heads/main", "refs/heads/missing"].map(str::to_owned);
-    let updates = Arc::new(Mutex::new(Vec::new()));
-    let sink_updates = updates.clone();
-    let sink = move |event: GitEvent| sink_updates.lock().expect("not poisoned").push(event);
+    let updates = Mutex::new(Vec::new());
+    let sink = |event: GitEvent| updates.lock().expect("not poisoned").push(event);
     let gone = mirror.ensure_commits(&refs, &[head, target], &sink).await.expect("fetched");
     let events = updates.lock().expect("not poisoned").clone();
     assert!(
@@ -160,7 +84,11 @@ async fn fetches_with_progress_and_reports_gone_refs(mirror: &GitMirror, head: &
         "git fetch --progress reports at least one phase: {events:?}"
     );
     assert_eq!(gone, ["refs/heads/missing"], "a ref the remote does not have is reported as gone");
-    assert_eq!(local_ref_name("refs/heads/feature"), "refs/review/heads/feature");
+    assert_eq!(
+        git(mirror.git_dir(), &["rev-parse", &local_ref_name("refs/heads/feature")]),
+        head,
+        "the fetch wrote the ref where callers look"
+    );
 }
 
 /// The tree-only list first, then the detailed one that downloads the blobs; returns the changed
@@ -246,7 +174,7 @@ async fn finds_files_in_trees(mirror: &GitMirror, fixture: &FeatureBranch, sourc
 async fn fetches_a_force_pushed_head_by_id_and_reads_the_file_as_it_was() {
     let scratch = Scratch::new("origin-version");
     let origin = scratch.origin();
-    let original = numbered_lines(20);
+    let original = numbered_lines("", 20);
     write(&origin, "src/lib.rs", &original);
     git(&origin, &["add", "-A"]);
     git(&origin, &["commit", "-q", "-m", "base"]);
@@ -268,11 +196,10 @@ async fn fetches_a_force_pushed_head_by_id_and_reads_the_file_as_it_was() {
     mirror.ensure_commits(&refs, &[&new_head, &base], &|_| {}).await.unwrap();
     assert!(mirror.commit(&old_head).await.is_err(), "no fetched ref reaches the replaced head");
 
-    let fetches = Arc::new(Mutex::new(0));
-    let counted = fetches.clone();
-    let sink = move |event: GitEvent| {
+    let fetches = Mutex::new(0);
+    let sink = |event: GitEvent| {
         if matches!(event, GitEvent::Command(_)) {
-            *counted.lock().unwrap() += 1;
+            *fetches.lock().unwrap() += 1;
         }
     };
     mirror.ensure_commits_by_id(&[&base, &old_head], &sink).await.unwrap();
@@ -298,7 +225,7 @@ async fn fetches_a_force_pushed_head_by_id_and_reads_the_file_as_it_was() {
     let missing = "0123456789abcdef0123456789abcdef01234567";
     let error = mirror.ensure_commits_by_id(&[missing], &|_| {}).await.unwrap_err();
     assert!(
-        error.to_string().contains("git failed") || error.to_string().contains(missing),
+        matches!(&error, ProviderError::Local(message) if message.starts_with("git failed")),
         "{error}"
     );
 }

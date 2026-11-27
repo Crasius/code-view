@@ -54,7 +54,74 @@ pub struct FileDiff {
 impl FileDiff {
     /// Parses `git diff` unified output of a single file.
     pub fn parse_unified(output: &[u8]) -> FileDiff {
-        parse(output)
+        let text = String::from_utf8_lossy(output);
+        let mut diff = FileDiff {
+            text: String::with_capacity(text.len()),
+            lines: Vec::with_capacity(text.len() / 40),
+            is_binary: false,
+            whitespace: None,
+        };
+        let mut old_line = 0u32;
+        let mut new_line = 0u32;
+        let mut is_in_hunk = false;
+
+        // Git ends every output line with LF; a CR before it belongs to the file's line (CRLF).
+        for line in text.split('\n') {
+            if line.starts_with(HUNK_PREFIX) {
+                let line = line.strip_suffix('\r').unwrap_or(line);
+                let Some((old_start, new_start, section)) = parse_hunk_header(line) else {
+                    continue;
+                };
+                old_line = old_start;
+                new_line = new_start;
+                is_in_hunk = true;
+                if !diff.push(LineKind::Hunk, old_start, new_start, section) {
+                    break;
+                }
+                continue;
+            }
+            if !is_in_hunk {
+                let is_binary_marker = BINARY_MARKERS.iter().any(|marker| line.starts_with(marker));
+                diff.is_binary |= is_binary_marker;
+                continue;
+            }
+            let mut chars = line.chars();
+            let Some(marker) = chars.next() else {
+                continue;
+            };
+            let (kind, old, new) = match marker {
+                ' ' => (LineKind::Context, old_line, new_line),
+                '+' => (LineKind::Added, 0, new_line),
+                '-' => (LineKind::Deleted, old_line, 0),
+                '\\' => {
+                    if let Some(previous) = diff.lines.last_mut() {
+                        previous.missing_newline = true;
+                    }
+                    continue;
+                }
+                // A new file header inside the output ends the hunk (should not happen for
+                // single-file diffs); so does a line without a marker, such as one that starts
+                // with a multi-byte character.
+                _ => {
+                    is_in_hunk = false;
+                    continue;
+                }
+            };
+            // The text starts right after the marker.
+            if !diff.push(kind, old, new, chars.as_str()) {
+                break;
+            }
+            if kind != LineKind::Added {
+                old_line = old_line.saturating_add(1);
+            }
+            if kind != LineKind::Deleted {
+                new_line = new_line.saturating_add(1);
+            }
+        }
+        diff.text.shrink_to_fit();
+        diff.lines.shrink_to_fit();
+        diff.whitespace = whitespace::summarize(&diff);
+        diff
     }
 
     pub fn lines(&self) -> &[DiffLine] {
@@ -124,77 +191,6 @@ impl FileDiff {
 const HUNK_PREFIX: &str = "@@ -";
 const BINARY_MARKERS: [&str; 2] = ["Binary files ", "GIT binary patch"];
 
-pub(crate) fn parse(output: &[u8]) -> FileDiff {
-    let text = String::from_utf8_lossy(output);
-    let mut diff = FileDiff {
-        text: String::with_capacity(text.len()),
-        lines: Vec::with_capacity(text.len() / 40),
-        is_binary: false,
-        whitespace: None,
-    };
-    let mut old_line = 0u32;
-    let mut new_line = 0u32;
-    let mut is_in_hunk = false;
-
-    // Git ends every output line with LF; a CR before it belongs to the file's line (CRLF).
-    for line in text.split('\n') {
-        if line.starts_with(HUNK_PREFIX) {
-            let line = line.strip_suffix('\r').unwrap_or(line);
-            let Some((old_start, new_start, section)) = parse_hunk_header(line) else {
-                continue;
-            };
-            old_line = old_start;
-            new_line = new_start;
-            is_in_hunk = true;
-            if !diff.push(LineKind::Hunk, old_start, new_start, section) {
-                break;
-            }
-            continue;
-        }
-        if !is_in_hunk {
-            let is_binary_marker = BINARY_MARKERS.iter().any(|marker| line.starts_with(marker));
-            diff.is_binary |= is_binary_marker;
-            continue;
-        }
-        let mut chars = line.chars();
-        let Some(marker) = chars.next() else {
-            continue;
-        };
-        let (kind, old, new) = match marker {
-            ' ' => (LineKind::Context, old_line, new_line),
-            '+' => (LineKind::Added, 0, new_line),
-            '-' => (LineKind::Deleted, old_line, 0),
-            '\\' => {
-                if let Some(previous) = diff.lines.last_mut() {
-                    previous.missing_newline = true;
-                }
-                continue;
-            }
-            // A new file header inside the output ends the hunk (should not happen for
-            // single-file diffs); so does a line without a marker, such as one that starts with a
-            // multi-byte character.
-            _ => {
-                is_in_hunk = false;
-                continue;
-            }
-        };
-        // The text starts right after the marker.
-        if !diff.push(kind, old, new, chars.as_str()) {
-            break;
-        }
-        if kind != LineKind::Added {
-            old_line = old_line.saturating_add(1);
-        }
-        if kind != LineKind::Deleted {
-            new_line = new_line.saturating_add(1);
-        }
-    }
-    diff.text.shrink_to_fit();
-    diff.lines.shrink_to_fit();
-    diff.whitespace = whitespace::summarize(&diff);
-    diff
-}
-
 /// `@@ -12,7 +12,9 @@ fn main()` → `(12, 12, "fn main()")`.
 fn parse_hunk_header(line: &str) -> Option<(u32, u32, &str)> {
     let rest = line.strip_prefix(HUNK_PREFIX)?;
@@ -225,7 +221,7 @@ mod tests {
 
     #[test]
     fn parses_hunks_and_line_numbers() {
-        let diff = parse(SAMPLE.as_bytes());
+        let diff = FileDiff::parse_unified(SAMPLE.as_bytes());
         let kinds: Vec<LineKind> = diff.lines().iter().map(|line| line.kind).collect();
         assert_eq!(
             kinds,
@@ -251,7 +247,7 @@ mod tests {
     #[test]
     fn detects_binary() {
         let output = "diff --git a/x.png b/x.png\nindex 1..2 100644\nBinary files a/x.png and b/x.png differ\n";
-        let diff = parse(output.as_bytes());
+        let diff = FileDiff::parse_unified(output.as_bytes());
         assert!(diff.is_binary);
         assert!(diff.is_empty());
     }
@@ -260,7 +256,7 @@ mod tests {
     /// multi-byte character instead of a marker.
     #[test]
     fn a_line_without_a_marker_ends_the_hunk_instead_of_panicking() {
-        let diff = parse("@@ -1 +1 @@\n-a\n+b\n\u{e9}t\u{e9}\n+c\n".as_bytes());
+        let diff = FileDiff::parse_unified("@@ -1 +1 @@\n-a\n+b\n\u{e9}t\u{e9}\n+c\n".as_bytes());
         let kinds: Vec<LineKind> = diff.lines().iter().map(|line| line.kind).collect();
         assert_eq!(kinds, [LineKind::Hunk, LineKind::Deleted, LineKind::Added]);
     }
@@ -268,7 +264,7 @@ mod tests {
     #[test]
     fn keeps_carriage_returns_as_line_endings() {
         let output = "@@ -1,2 +1,2 @@ fn main()\r\n-a\n+a\r\n b\r\n";
-        let diff = parse(output.as_bytes());
+        let diff = FileDiff::parse_unified(output.as_bytes());
         let lines = diff.lines();
         assert_eq!(diff.text(&lines[0]), "fn main()");
         assert_eq!((diff.text(&lines[1]), lines[1].has_cr), ("a", false));

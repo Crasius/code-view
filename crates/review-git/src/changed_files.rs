@@ -30,17 +30,6 @@ impl ChangeKind {
         };
         Some(kind)
     }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            ChangeKind::Added => "add",
-            ChangeKind::Modified => "edit",
-            ChangeKind::Deleted => "delete",
-            ChangeKind::Renamed => "rename",
-            ChangeKind::Copied => "copy",
-            ChangeKind::TypeChanged => "type change",
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

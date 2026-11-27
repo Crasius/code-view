@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use crate::changed_files::{self, ChangedFile};
 use crate::command::{self, GitCommand, Objects};
 use crate::commits::{self, CommitInfo};
-use crate::file_diff::{self, FileDiff};
+use crate::file_diff::FileDiff;
 use crate::line_counts::{self, COUNT_WAIT, CountSink, Wanted, WantedBy};
 use crate::progress::{GitEvent, ProgressSink};
 
@@ -20,10 +20,6 @@ pub const FULL_FILE_CONTEXT: u32 = 1_000_000;
 /// The file in a mirror's git dir whose lock the opener holds that creates or sets it up; git
 /// ignores files it does not know there.
 const INIT_LOCK: &str = "codeview-init.lock";
-
-/// The git dirs `git init` created, for the tests to count initializations.
-#[cfg(test)]
-static CREATED: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
 
 /// A bare, blob-less partial clone of one remote repository under the app's cache directory.
 /// Cheap to clone (`Arc` it); fetches are serialized per mirror.
@@ -108,8 +104,6 @@ impl GitMirror {
             let init_args: [&std::ffi::OsStr; 3] =
                 ["init".as_ref(), "--bare".as_ref(), "--quiet".as_ref()];
             GitCommand::new(&self.git_dir, None).run(init_args).await?;
-            #[cfg(test)]
-            CREATED.lock().expect("not poisoned").push(self.git_dir.clone());
         }
         // The lock's owner before us may have written them all.
         for (name, value) in self.missing_settings(&settings).await {
@@ -142,7 +136,7 @@ impl GitMirror {
         &self,
         refs: &[String],
         commits: &[&str],
-        progress: &ProgressSink,
+        progress: &ProgressSink<'_>,
     ) -> Result<Vec<String>> {
         let _guard = self.fetch_lock.lock().await;
         if self.has_commits(commits).await? {
@@ -187,7 +181,7 @@ impl GitMirror {
     pub async fn ensure_commits_by_id(
         &self,
         commits: &[&str],
-        progress: &ProgressSink,
+        progress: &ProgressSink<'_>,
     ) -> Result<()> {
         let _guard = self.fetch_lock.lock().await;
         if self.has_commits(commits).await? {
@@ -213,7 +207,7 @@ impl GitMirror {
             .ok_or_else(|| ProviderError::Local(format!("commit {sha} is not in the mirror")))
     }
 
-    async fn fetch(&self, refspecs: &[String], progress: &ProgressSink) -> Result<()> {
+    async fn fetch(&self, refspecs: &[String], progress: &ProgressSink<'_>) -> Result<()> {
         let mut args: Vec<&str> = vec![
             "fetch",
             "--progress",
@@ -387,7 +381,7 @@ impl GitMirror {
         }
         args.push(file.path.as_str());
         let output = command::stdout_of(self.git().command(args, objects)).await?;
-        Ok(file_diff::parse(&output))
+        Ok(FileDiff::parse_unified(&output))
     }
 
     /// Raw blob bytes by object id (from [`ChangedFile::old_oid`] / [`ChangedFile::new_oid`]).
@@ -592,10 +586,14 @@ fn mirror_dir_name(clone_url: &str) -> String {
 }
 
 #[cfg(test)]
+#[path = "mirror_tests.rs"]
+mod roundtrip;
+
+#[cfg(test)]
 mod tests {
     use review_core::GitRemote;
 
-    use super::{CREATED, GitMirror, config_value, mirror_dir_name};
+    use super::{GitMirror, config_value, mirror_dir_name};
 
     /// Two pages, or a page and a second app, open the same new mirror at once: every open
     /// succeeds, git initializes the repository once and the others reuse it.
@@ -622,12 +620,9 @@ mod tests {
 
         let git_dir = &git_dirs[0];
         assert!(git_dirs.iter().all(|dir| dir == git_dir));
-        let created = CREATED.lock().expect("not poisoned");
-        assert_eq!(created.iter().filter(|dir| *dir == git_dir).count(), 1, "one init");
         let config = std::fs::read_to_string(git_dir.join("config")).expect("config");
         assert_eq!(config_value(&config, "remote.origin.url"), Some(remote.clone_url.as_str()));
         assert_eq!(config_value(&config, "remote.origin.partialclonefilter"), Some("blob:none"));
-        drop(created);
         // Best effort: a folder left in the temp directory harms nothing.
         let _cleanup_is_best_effort = std::fs::remove_dir_all(&cache);
     }

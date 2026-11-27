@@ -27,7 +27,7 @@ pub enum GitEvent {
     Message(String),
 }
 
-pub type ProgressSink = dyn Fn(GitEvent) + Send + Sync;
+pub type ProgressSink<'a> = dyn Fn(GitEvent) + Send + Sync + 'a;
 
 const REMOTE_PREFIX: &str = "remote: ";
 

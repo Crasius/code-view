@@ -137,7 +137,7 @@ fn count_pair(
 }
 
 /// Whitespace as `git diff -w` sees it (C's `isspace` within a line).
-pub fn is_whitespace(character: char) -> bool {
+fn is_whitespace(character: char) -> bool {
     matches!(character, ' ' | '\t' | '\u{b}' | '\u{c}' | '\r')
 }
 
