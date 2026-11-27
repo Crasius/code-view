@@ -8,83 +8,40 @@ use std::time::Duration;
 use egui::{Key, Modifiers, Pos2, Rect, Role, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_core::{Connection, ProviderKind};
 use serde_json::json;
-use wiremock::matchers::{body_string_contains, method, path};
-use wiremock::{Mock, Request, ResponseTemplate};
 
 use super::ReviewApp;
-use super::github_mock::{GitHubHost, NUMBER, OWNER, REPOSITORY, TITLE, search_row};
-use super::mock_host::MockHost;
+use super::github_mock::{GitHubHost, NUMBER, OWNER, REPOSITORY, TITLE, pull_path, search_row};
 use super::walkthrough::{app, wait_idle, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_testkit::{Clicks, ScratchDir, samples};
+use cv_testkit::{Clicks, ScratchDir};
 
 /// Longer than any test runs: the detail never arrives while the header is checked.
 const DETAIL_DELAY: Duration = Duration::from_secs(120);
 
-/// A GitHub Enterprise stand-in whose "mine" search lists pull request [`NUMBER`], and whose detail
-/// answers only after [`DETAIL_DELAY`]. Everything else is a quick 404.
-struct SlowDetail {
-    host: MockHost,
+/// A host whose "mine" search lists pull request [`NUMBER`], and whose detail answers only after
+/// [`DETAIL_DELAY`].
+fn slow_detail() -> GitHubHost {
+    let host = GitHubHost::start(OWNER, &[search_row(NUMBER, TITLE, REPOSITORY)]);
+    host.delay_detail(DETAIL_DELAY);
+    host
 }
 
-impl SlowDetail {
-    fn start() -> Self {
-        let host = MockHost::start(|_| ResponseTemplate::new(404));
-        let ok = |body| ResponseTemplate::new(200).set_body_json(body);
-        let search = json!({ "data": { "search": {
-            "pageInfo": { "hasNextPage": false, "endCursor": null },
-            "nodes": [search_row(NUMBER, TITLE, REPOSITORY)]
-        } } });
-        let mocks = [
-            Mock::given(method("GET"))
-                .and(path(format!("/api/v3/users/{OWNER}")))
-                .respond_with(ok(json!({ "login": OWNER, "type": "Organization" }))),
-            Mock::given(method("POST"))
-                .and(path("/api/graphql"))
-                .and(body_string_contains("search(type: ISSUE"))
-                .respond_with(ok(search)),
-            // The detail is the pull and its reviews, asked together: only the pull is slow.
-            Mock::given(method("GET"))
-                .and(path(format!("/api/v3/repos/{REPOSITORY}/pulls/{NUMBER}")))
-                .respond_with(ok(json!({})).set_delay(DETAIL_DELAY)),
-            Mock::given(method("GET"))
-                .and(path(format!("/api/v3/repos/{REPOSITORY}/pulls/{NUMBER}/reviews")))
-                .respond_with(ok(json!([]))),
-        ];
-        for mock in mocks {
-            host.mount(mock);
-        }
-        Self { host }
-    }
+/// The requests for pull request `number`'s detail so far.
+fn detail_requests(host: &GitHubHost, number: u64) -> usize {
+    host.count("GET", &pull_path(number))
+}
 
-    fn connection(&self) -> Connection {
-        Connection {
-            name: "Acme".to_owned(),
-            organizations: vec![OWNER.to_owned()],
-            token: Some("mock-only".to_owned()),
-            ..samples::connection("gh", ProviderKind::GitHub, &self.host.uri())
-        }
-    }
-
-    /// The detail was asked for (and is held back).
-    fn was_detail_asked(&self) -> bool {
-        self.detail_requests() > 0
-    }
-
-    /// The requests for the detail so far.
-    fn detail_requests(&self) -> usize {
-        let detail = format!("/api/v3/repos/{REPOSITORY}/pulls/{NUMBER}");
-        self.host.requests().iter().filter(|request| request.url.path() == detail).count()
-    }
+/// The detail of pull request [`NUMBER`] was asked for.
+fn was_detail_asked(host: &GitHubHost) -> bool {
+    detail_requests(host, NUMBER) > 0
 }
 
 #[test]
 fn the_header_paints_the_clicked_row_while_the_detail_loads() {
     let scratch = ScratchDir::new("list-warm-header");
-    let host = SlowDetail::start();
-    let mut harness = app(&scratch, &[host.connection()]);
+    let host = slow_detail();
+    let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     let row = format!("{NUMBER} {TITLE}");
     wait_until(&mut harness, "the pull request row", |harness| {
         harness.query_by_label(&row).is_some()
@@ -104,7 +61,7 @@ fn the_header_paints_the_clicked_row_while_the_detail_loads() {
     );
     // While the detail is on its way: the request leaves on the app's background runtime, which
     // may not have sent it yet when the page painted.
-    wait_until(&mut harness, "the detail request", |_| host.was_detail_asked());
+    wait_until(&mut harness, "the detail request", |_| was_detail_asked(&host));
     assert!(harness.query_by_label("Updating…").is_some(), "the row is not shown as final");
     assert!(
         harness.query_by_label("More actions").is_none(),
@@ -115,8 +72,8 @@ fn the_header_paints_the_clicked_row_while_the_detail_loads() {
 #[test]
 fn the_header_paints_the_row_the_title_bar_search_opened() {
     let scratch = ScratchDir::new("list-warm-jump");
-    let host = SlowDetail::start();
-    let mut harness = app(&scratch, &[host.connection()]);
+    let host = slow_detail();
+    let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     let row = format!("{NUMBER} {TITLE}");
     wait_until(&mut harness, "the pull request row", |harness| {
         harness.query_by_label(&row).is_some()
@@ -140,7 +97,7 @@ fn the_header_paints_the_row_the_title_bar_search_opened() {
     );
     assert!(harness.query_by_label(TITLE).is_some(), "the header shows the row's title at once");
     // While the detail is on its way.
-    wait_until(&mut harness, "the detail request", |_| host.was_detail_asked());
+    wait_until(&mut harness, "the detail request", |_| was_detail_asked(&host));
     assert!(harness.query_by_label("Updating…").is_some(), "the row is not shown as final");
 }
 
@@ -159,12 +116,10 @@ fn on_title(row: Rect) -> Pos2 {
 /// The pull request's detail (`GET /pulls/7`, with its reviews), and the repository over git: the
 /// mirror's fetches of commits and blobs.
 fn pulls_and_git(host: &GitHubHost) -> (usize, usize) {
-    let requests: Vec<Request> = host.requests();
-    let pull = format!("/api/v3/repos/{REPOSITORY}/pulls/{NUMBER}");
     let git = format!("/{REPOSITORY}.git/");
-    let pulls = requests.iter().filter(|request| request.url.path() == pull).count();
-    let fetches = requests.iter().filter(|request| request.url.path().starts_with(&git)).count();
-    (pulls, fetches)
+    let fetches =
+        host.requests().iter().filter(|request| request.url.path().starts_with(&git)).count();
+    (detail_requests(host, NUMBER), fetches)
 }
 
 #[test]
@@ -208,11 +163,11 @@ fn a_resting_pointer_warms_the_page_so_the_click_fetches_nothing_again() {
 #[test]
 fn a_click_while_the_detail_is_read_ahead_joins_its_request() {
     let scratch = ScratchDir::new("list-warm-join");
-    let host = SlowDetail::start();
-    let mut harness = app(&scratch, &[host.connection()]);
+    let host = slow_detail();
+    let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     let row = row_rect(&mut harness);
     harness.hover_at(on_title(row));
-    wait_until(&mut harness, "the read ahead of the rested row", |_| host.was_detail_asked());
+    wait_until(&mut harness, "the read ahead of the rested row", |_| was_detail_asked(&host));
     harness.click_at(harness.get_by_label(&format!("{NUMBER} {TITLE}")).rect());
     for _ in 0..10 {
         harness.step();
@@ -222,14 +177,14 @@ fn a_click_while_the_detail_is_read_ahead_joins_its_request() {
     harness.step();
     assert!(matches!(harness.state().route, Route::PullRequest(_)), "the click opened the page");
     assert!(harness.query_by_label("Updating…").is_some(), "which waits for the detail");
-    assert_eq!(host.detail_requests(), 1, "on the request the list sent");
+    assert_eq!(detail_requests(&host, NUMBER), 1, "on the request the list sent");
 }
 
 #[test]
 fn a_pointer_that_moves_on_before_the_dwell_starts_nothing() {
     let scratch = ScratchDir::new("list-warm-pass");
-    let host = SlowDetail::start();
-    let mut harness = app(&scratch, &[host.connection()]);
+    let host = slow_detail();
+    let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     let row = row_rect(&mut harness);
     // A quarter second a frame: the pointer never stays the 400 ms on the row.
     for step in 0..8u8 {
@@ -240,19 +195,13 @@ fn a_pointer_that_moves_on_before_the_dwell_starts_nothing() {
     for _ in 0..8 {
         harness.step();
     }
-    assert!(!host.was_detail_asked(), "nothing warmed while the pointer was on its way");
+    assert!(!was_detail_asked(&host), "nothing warmed while the pointer was on its way");
 
     harness.hover_at(on_title(row));
     for _ in 0..3 {
         harness.step();
     }
-    wait_until(&mut harness, "the warm-up of the rested row", |_| host.was_detail_asked());
-}
-
-/// The detail requests of pull request `number`.
-fn detail_requests(host: &GitHubHost, number: u64) -> usize {
-    let pull = format!("/api/v3/repos/{REPOSITORY}/pulls/{number}");
-    host.requests().iter().filter(|request| request.url.path() == pull).count()
+    wait_until(&mut harness, "the warm-up of the rested row", |_| was_detail_asked(&host));
 }
 
 /// Resting on the second row reads the first three: the rested one and those painted above and

@@ -14,7 +14,7 @@ use egui_kittest::kittest::Queryable;
 use super::ReviewApp;
 use super::github_mock::{
     FAILING_NUMBER, FORBIDDEN_NUMBER, GitHubHost, HIDDEN_NUMBER, NUMBER, READABLE_NUMBER,
-    REPOSITORY, SLOW_NUMBER, TITLE, open_pull_request,
+    REPOSITORY, SLOW_NUMBER, TITLE, open_pull_request, pull_path,
 };
 use super::walkthrough::{
     app, opened_urls, press, saved_settings, set_focus, settle_background, type_into, wait_until,
@@ -106,7 +106,11 @@ fn clipboard_link_opens_once_with_back_and_not_again_after_a_restart() {
     // The check's read and the live probe at the page's start, which asks the same URLs. A page
     // that read the detail itself would probe only after that read: three.
     settle_background(&mut harness);
-    assert_eq!(detail_reads(&host, READABLE_NUMBER), 2, "the page did not read the detail again");
+    assert_eq!(
+        host.count("GET", &pull_path(READABLE_NUMBER)),
+        2,
+        "the page did not read the detail again"
+    );
 }
 
 #[test]
@@ -135,7 +139,7 @@ fn clipboard_link_the_token_cannot_read_stays_closed_with_ways_out() {
     clipboard.copy(&format!("{hidden}/files#diff-1"));
     come_back(&mut harness);
     settle_background(&mut harness);
-    assert_eq!(detail_reads(&host, HIDDEN_NUMBER), 1, "one check per copied link");
+    assert_eq!(host.count("GET", &pull_path(HIDDEN_NUMBER)), 1, "one check per copied link");
     assert_eq!(harness.query_all_by_label_contains(refusal).count(), 1, "one toast");
 
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Open on GitHub").rect());
@@ -303,12 +307,6 @@ fn fake_clipboard(harness: &mut Harness<'_, ReviewApp>) -> Arc<FakeClipboard> {
 fn come_back(harness: &mut Harness<'_, ReviewApp>) {
     set_focus(harness, false);
     set_focus(harness, true);
-}
-
-/// The host's answers to `GET /pulls/{number}`.
-fn detail_reads(host: &GitHubHost, number: u64) -> usize {
-    let detail = format!("/api/v3/repos/{REPOSITORY}/pulls/{number}");
-    host.requests().iter().filter(|request| request.url.path() == detail).count()
 }
 
 /// The URLs the next frames ask the system to open.

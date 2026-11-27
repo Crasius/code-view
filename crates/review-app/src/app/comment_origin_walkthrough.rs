@@ -12,8 +12,10 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::github_mock::{CURRENT_TEXT, FILE, GitHubHost, THREAD_TEXT, open_pull_request};
-use super::walkthrough::{app, files_tab, shows_file_view, wait_until, wheel};
+use super::github_mock::{
+    CURRENT_TEXT, FILE, GitHubHost, ReplacedHead, THREAD_TEXT, open_pull_request,
+};
+use super::walkthrough::{app, files_tab, press, shows_file_view, wait_until, wheel};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -42,7 +44,7 @@ fn rewritten_file() -> String {
 fn comment_origin_shows_the_version_an_outdated_thread_was_written_on() {
     let scratch = ScratchDir::new("comment-origin");
     let mut host = GitHubHost::with_pull_request(scratch.path());
-    let replaced = host.force_push_outdating_the_thread(&rewritten_file(), true);
+    let replaced = host.force_push_outdating_the_thread(&rewritten_file(), ReplacedHead::Kept);
     let banner = format!("Showing the version from {}", &replaced[..7]);
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
     open_pull_request(&mut harness);
@@ -52,9 +54,7 @@ fn comment_origin_shows_the_version_an_outdated_thread_was_written_on() {
         harness.query_by_label(SHOW_ORIGIN).is_some()
     });
     assert!(harness.query_by_label("Outdated").is_some(), "the card is marked outdated");
-    harness.get_by_label(SHOW_ORIGIN).scroll_to_me();
-    settle(&mut harness);
-    harness.click_at(harness.get_by_label(SHOW_ORIGIN).rect());
+    press(&mut harness, SHOW_ORIGIN);
     wait_until(&mut harness, "the original version from the overview", |harness| {
         harness.query_by_label_contains(&banner).is_some()
     });
@@ -97,7 +97,6 @@ fn comment_origin_shows_the_version_an_outdated_thread_was_written_on() {
     let origin_diff = rect_of_diff(&harness);
     let marker = rect_of(&harness, MARKER);
     let comment = rect_of(&harness, THREAD_TEXT);
-    println!("origin diff {origin_diff:?}, marker {marker:?}, comment {comment:?}");
     // Line 1 is the diff's first row: the marker sits in it, the card right below it.
     let row = marker.center().y - origin_diff.top();
     assert!(row > 0.0 && row < 16.0, "the marker is on the first row: {row} below the diff's top");
@@ -133,7 +132,7 @@ fn comment_origin_shows_the_version_an_outdated_thread_was_written_on() {
 fn comment_origin_falls_back_to_the_comments_lines_when_the_commit_is_gone() {
     let scratch = ScratchDir::new("comment-origin-gone");
     let mut host = GitHubHost::with_pull_request(scratch.path());
-    let replaced = host.force_push_outdating_the_thread(&rewritten_file(), false);
+    let replaced = host.force_push_outdating_the_thread(&rewritten_file(), ReplacedHead::Collected);
     let banner = format!(
         "The version from {} is not available: showing the lines the comment was written on",
         &replaced[..7]

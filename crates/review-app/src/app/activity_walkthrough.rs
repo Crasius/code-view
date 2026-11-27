@@ -8,21 +8,18 @@
 use egui::{Key, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{AccessKitNode, NodeT, Queryable};
-use review_agent::{
-    AgentEvent, AgentKind, FakeAgent, ModelInfo, StepKind, StepOutcome, ToolStep, Usage,
-};
+use review_agent::{AgentEvent, FakeAgent, StepKind, StepOutcome, ToolStep, Usage};
 use review_store::chats_dir;
 use serde_json::Value;
 
 use super::ReviewApp;
+use super::assistant_script::{ask, install_claude, wait_for_prompts, wait_for_session};
 use super::github_mock::{FILE, GitHubHost, open_pull_request};
-use super::walkthrough::{app, type_into, wait_for, wait_until};
-use cv_services::agents::FakeCli;
+use super::walkthrough::{app, wait_until};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 use cv_widgets::buttons;
 
-const PLACEHOLDER: &str = "Ask anything about this pull request";
 const QUESTION: &str = "Would a hunk without the marker still parse?";
 const COMMAND: &str = "cargo test -p review-diff hunk";
 const THINKING: &str = "The parser branches on the first byte.";
@@ -57,10 +54,11 @@ fn activity_shows_the_running_steps_then_folds_into_the_summary() {
     let scratch = ScratchDir::new("activity-running");
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    set_claude(&harness);
+    install_claude(&harness, true);
     open_pull_request(&mut harness);
-    ask(&mut harness);
-    let agent = wait_for_agent(&mut harness);
+    ask(&mut harness, QUESTION);
+    let (_, mut agent) = wait_for_session(&mut harness);
+    wait_for_prompts(&mut harness, &mut agent);
     work(&agent);
 
     let read = format!("Read {FILE}");
@@ -107,10 +105,11 @@ fn activity_of_an_older_chat_shows_its_summary() {
     let host = GitHubHost::with_pull_request(scratch.path());
     let dir = {
         let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-        set_claude(&harness);
+        install_claude(&harness, true);
         open_pull_request(&mut harness);
-        ask(&mut harness);
-        let agent = wait_for_agent(&mut harness);
+        ask(&mut harness, QUESTION);
+        let (_, mut agent) = wait_for_session(&mut harness);
+        wait_for_prompts(&mut harness, &mut agent);
         let read = ToolStep {
             id: "t1".into(),
             tool: "Read".into(),
@@ -183,41 +182,4 @@ fn step(harness: &Harness<'_, ReviewApp>, label: &str) -> Option<String> {
     harness
         .query_by(|node| node.role() == Role::ListItem && node.label().as_deref() == Some(label))
         .and_then(|node| node.accesskit_node().description())
-}
-
-fn set_claude(harness: &Harness<'_, ReviewApp>) {
-    let model = ModelInfo {
-        id: "claude-haiku".to_owned(),
-        display_name: "Haiku".to_owned(),
-        description: String::new(),
-        is_default: false,
-        efforts: Vec::new(),
-    };
-    let cli = FakeCli::Installed { models: vec![model], is_signed_in: true };
-    harness.state().services.agents.fake.set(AgentKind::Claude, cli);
-}
-
-fn ask(harness: &mut Harness<'_, ReviewApp>) {
-    type_into(harness, PLACEHOLDER, QUESTION);
-    harness.key_press(Key::Enter);
-    harness.step();
-}
-
-/// The started session's agent, once the question reached it.
-fn wait_for_agent(harness: &mut Harness<'_, ReviewApp>) -> FakeAgent {
-    let mut agent: Option<FakeAgent> = None;
-    wait_for(
-        harness,
-        "the question to reach the agent",
-        |harness| {
-            if agent.is_none() {
-                agent = harness.state().services.agents.fake.take_session().map(|(_, agent)| agent);
-            }
-            if agent.as_mut()?.take_prompts().is_empty() {
-                return None;
-            }
-            agent.take()
-        },
-        |_| {},
-    )
 }

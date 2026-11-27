@@ -43,7 +43,7 @@ impl egui::Plugin for A11yCheck {
 /// One line per name that is empty or holds an icon glyph: role, field, text and bounds. An empty
 /// placeholder or description is egui's way of having none (a field without a hint reports `""`),
 /// so only an empty label or label value counts as a missing name.
-pub fn findings<'a>(nodes: impl Iterator<Item = &'a Node>) -> Vec<String> {
+fn findings<'a>(nodes: impl Iterator<Item = &'a Node>) -> Vec<String> {
     let mut found = Vec::new();
     for node in nodes.filter(|node| node.role() != Role::TextRun) {
         for (field, text) in names(node) {
@@ -77,12 +77,11 @@ fn is_icon_glyph(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use egui::accesskit::{Node, Role};
-    use egui_kittest::kittest::{NodeT, Queryable};
+    use egui::accesskit::Role;
+    use egui_kittest::kittest::Queryable;
 
     use super::super::github_mock::{GitHubHost, open_diff, open_pull_request};
     use super::super::walkthrough::app;
-    use super::findings;
     use cv_testkit::ScratchDir;
 
     #[test]
@@ -93,10 +92,6 @@ mod tests {
         open_pull_request(&mut harness);
         open_diff(&mut harness);
 
-        let nodes: Vec<&Node> =
-            harness.query_all_by(|_| true).map(|node| node.accesskit_node().data()).collect();
-        let found = findings(nodes.iter().copied());
-        assert!(found.is_empty(), "{found:#?}");
         // The arrow between the branches reads as the word it stands for.
         assert!(
             harness

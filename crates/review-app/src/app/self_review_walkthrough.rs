@@ -13,19 +13,17 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
-use std::time::Duration;
 
 use async_trait::async_trait;
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{
-    Capabilities, Connection, GitRemote, Label, MergeOptions, MergeStrategy, NewThread,
-    PipelineJob, PipelineRun, Provider, ProviderError, ProviderKind, PullRequestDetail,
-    PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result, ReviewThread,
-    ReviewVote, Reviewer, ThreadComment, ThreadStatus, UserIdentity,
+    Capabilities, Connection, MergeStrategy, ProviderError, ProviderKind, PullRequestDetail,
+    PullRequestQuery, PullRequestState, PullRequestSummary, Result, ReviewVote, Reviewer,
+    UserIdentity,
 };
-use tokio::io::AsyncWrite;
+use tokio::sync::watch;
 
 use super::ReviewApp;
 use super::walkthrough::{
@@ -33,24 +31,22 @@ use super::walkthrough::{
 };
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::self_review;
+use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{Clicks, ScratchDir, samples};
 
 const REPOSITORY: &str = "contoso/site";
 const GRACE: &str = "grace";
 
 /// What a connection's scripted provider was asked to add, the reviewers it keeps per pull
-/// request, and whether its next add is refused. Each test has its own connection.
+/// request, and whether its next add is refused.
 #[derive(Default)]
 struct Calls {
     adds: Mutex<Vec<(u64, String)>>,
     reviewers: Mutex<HashMap<u64, Vec<Reviewer>>>,
     refuses_next: AtomicBool,
-    /// Adds wait while this is set, so a test can look at the card meanwhile.
-    holds_adds: AtomicBool,
+    /// Adds wait while this holds `true`, so a test can look at the card meanwhile.
+    holds_adds: watch::Sender<bool>,
 }
-
-static CALLS: LazyLock<Mutex<HashMap<String, Arc<Calls>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[test]
 fn self_review_adds_me_from_the_reviewers_card_once() {
@@ -223,7 +219,7 @@ fn self_review_refused_row_request_retries_from_its_toast() {
 fn self_review_holds_the_new_row_with_a_skeleton_of_its_size() {
     let scratch = ScratchDir::new("self-review-skeleton");
     let (mut harness, calls) = start(&scratch, "skeleton", true);
-    calls.holds_adds.store(true, Ordering::SeqCst);
+    calls.holds_adds.send_replace(true);
     open(&mut harness, "skeleton", 1);
     wait_until(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
     press_button(&mut harness, self_review::LABEL);
@@ -231,7 +227,7 @@ fn self_review_holds_the_new_row_with_a_skeleton_of_its_size() {
     let placeholder = skeleton_row(&harness).expect("the skeleton row");
     let field = add_field(&harness, placeholder.bottom());
 
-    calls.holds_adds.store(false, Ordering::SeqCst);
+    calls.holds_adds.send_replace(false);
     let grace = "Reviewer Grace Hopper";
     wait_until(&mut harness, "Grace's row", |harness| harness.query_by_label(grace).is_some());
     assert!(skeleton_row(&harness).is_none(), "Grace's row replaced the skeleton");
@@ -281,7 +277,7 @@ fn start(
     has_token: bool,
 ) -> (Harness<'static, ReviewApp>, Arc<Calls>) {
     let calls = Arc::new(Calls::default());
-    CALLS.lock().unwrap().insert(name.to_owned(), calls.clone());
+    let script_calls = calls.clone();
     let connection = Connection {
         name: "Contoso".to_owned(),
         organizations: vec!["contoso".to_owned()],
@@ -289,7 +285,13 @@ fn start(
         ..samples::connection(name, ProviderKind::GitHub, "https://github.com")
     };
     let builder = Harness::builder().with_size([1280.0, 860.0]).with_step_dt(1.0 / 30.0);
-    let harness = app_with(builder, saved_paths(scratch, &[connection]), scripted_provider);
+    let harness =
+        app_with(builder, saved_paths(scratch, &[connection]), move |connection: Connection, _| {
+            Arc::new(Scripted(SelfReviewScript {
+                calls: script_calls.clone(),
+                has_token: connection.token.is_some(),
+            }))
+        });
     (harness, calls)
 }
 
@@ -307,39 +309,26 @@ fn button(harness: &Harness<'_, ReviewApp>, label: &str) -> bool {
     harness.query_by_role_and_label(Role::Button, label).is_some()
 }
 
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "a ProviderFactory, whose signature hands the connection and the client over"
-)]
-fn scripted_provider(connection: Connection, _http: reqwest::Client) -> Arc<dyn Provider> {
-    let calls = CALLS.lock().unwrap().get(&connection.id).cloned().unwrap_or_default();
-    Arc::new(ScriptedProvider { calls, has_token: connection.token.is_some() })
-}
-
-struct ScriptedProvider {
+struct SelfReviewScript {
     calls: Arc<Calls>,
     has_token: bool,
 }
 
-fn person(id: &str, name: &str, login: &str) -> UserIdentity {
+fn grace() -> UserIdentity {
     UserIdentity {
-        id: id.to_owned(),
-        display_name: name.to_owned(),
-        login: Some(login.to_owned()),
+        id: "9".to_owned(),
+        display_name: "Grace Hopper".to_owned(),
+        login: Some(GRACE.to_owned()),
         avatar_url: None,
     }
 }
 
-fn grace() -> UserIdentity {
-    person("9", "Grace Hopper", GRACE)
-}
-
 fn summary(number: u64, reviewers: Vec<Reviewer>) -> PullRequestSummary {
     let (title, author) = match number {
-        1 => ("First change", person("1", "Ada Lovelace", "ada")),
-        2 => ("Second change", person("1", "Ada Lovelace", "ada")),
+        1 => ("First change", samples::author()),
+        2 => ("Second change", samples::author()),
         3 => ("Grace's change", grace()),
-        _ => ("Fourth change", person("1", "Ada Lovelace", "ada")),
+        _ => ("Fourth change", samples::author()),
     };
     PullRequestSummary {
         repository_key: REPOSITORY.to_owned(),
@@ -370,18 +359,14 @@ static CAPABILITIES: LazyLock<Capabilities> = LazyLock::new(|| Capabilities {
     running_logs: review_core::RunningLogs::WhenFinished,
 });
 
-impl ScriptedProvider {
-    fn unused<T>() -> Result<T> {
-        Err(ProviderError::Unsupported("Not part of the self review walkthrough.".to_owned()))
-    }
-
+impl SelfReviewScript {
     fn reviewers(&self, number: u64) -> Vec<Reviewer> {
         self.calls.reviewers.lock().unwrap().get(&number).cloned().unwrap_or_default()
     }
 }
 
 #[async_trait]
-impl Provider for ScriptedProvider {
+impl Script for SelfReviewScript {
     fn capabilities(&self) -> &Capabilities {
         &CAPABILITIES
     }
@@ -392,14 +377,6 @@ impl Provider for ScriptedProvider {
         } else {
             Err(ProviderError::requires_token("Reading the current user"))
         }
-    }
-
-    async fn list_repositories(&self, _search: Option<&str>) -> Result<Vec<RepositoryInfo>> {
-        Ok(Vec::new())
-    }
-
-    async fn git_remote(&self, _repo: &str) -> Result<GitRemote> {
-        Err(ProviderError::Unsupported("No files in this walkthrough.".to_owned()))
     }
 
     async fn list_pull_requests(
@@ -413,56 +390,14 @@ impl Provider for ScriptedProvider {
         Ok(PullRequestDetail {
             summary: summary(number, self.reviewers(number)),
             description: "Waits for a reviewer.".to_owned(),
-            target_sha: "b".repeat(40),
-            head_sha: "a".repeat(40),
-            merge_status: review_core::MergeStatus::Mergeable,
-            git_fetch_refs: Vec::new(),
-            closed_at: None,
-            auto_complete: None,
+            ..samples::detail(REPOSITORY, number)
         })
-    }
-
-    async fn merge(&self, _repo: &str, _number: u64, _options: &MergeOptions) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn close(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn reopen(&self, _repo: &str, _number: u64) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_draft(&self, _repo: &str, _number: u64, _is_draft: bool) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn update_title_description(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _title: &str,
-        _description: &str,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn set_vote(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _vote: ReviewVote,
-        _comment: Option<&str>,
-    ) -> Result<()> {
-        Self::unused()
     }
 
     async fn add_reviewer(&self, _repo: &str, number: u64, user: &str) -> Result<()> {
         self.calls.adds.lock().unwrap().push((number, user.to_owned()));
-        while self.calls.holds_adds.load(Ordering::SeqCst) {
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
+        let mut held = self.calls.holds_adds.subscribe();
+        held.wait_for(|held| !held).await.map(drop).expect("the test holds the sender");
         if self.calls.refuses_next.swap(false, Ordering::SeqCst) {
             return Err(ProviderError::Local(
                 "GitHub did not request a review from grace: reviewers must be collaborators on \
@@ -478,73 +413,5 @@ impl Provider for ScriptedProvider {
         };
         self.calls.reviewers.lock().unwrap().entry(number).or_default().push(reviewer);
         Ok(())
-    }
-
-    async fn remove_reviewer(&self, _repo: &str, _number: u64, _reviewer_id: &str) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn threads(&self, _repo: &str, _number: u64) -> Result<Vec<ReviewThread>> {
-        Ok(Vec::new())
-    }
-
-    async fn create_thread(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread: &NewThread,
-    ) -> Result<ReviewThread> {
-        Self::unused()
-    }
-
-    async fn reply(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _body: &str,
-    ) -> Result<ThreadComment> {
-        Self::unused()
-    }
-
-    async fn set_thread_status(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _thread_id: &str,
-        _status: ThreadStatus,
-    ) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn available_labels(&self, _repo: &str) -> Result<Vec<Label>> {
-        Ok(Vec::new())
-    }
-
-    async fn set_labels(&self, _repo: &str, _number: u64, _labels: &[String]) -> Result<()> {
-        Self::unused()
-    }
-
-    async fn pipeline_runs(&self, _repo: &str, _number: u64) -> Result<Vec<PipelineRun>> {
-        Ok(Vec::new())
-    }
-
-    async fn pipeline_jobs(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _run_id: &str,
-    ) -> Result<Vec<PipelineJob>> {
-        Ok(Vec::new())
-    }
-
-    async fn download_log(
-        &self,
-        _repo: &str,
-        _number: u64,
-        _log_id: &str,
-        _sink: &mut (dyn AsyncWrite + Unpin + Send),
-    ) -> Result<()> {
-        Self::unused()
     }
 }

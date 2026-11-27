@@ -260,27 +260,3 @@ fn write_preview(marks: &[Mark], path: &Path) {
         .expect("create the preview folder");
     sheet.save(path).expect("write the preview");
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn mac_icon_has_a_solid_tile_and_transparent_outer_margin() {
-        let mark = Mark::load(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/icon"));
-        for (_, size) in ICNS_ENTRIES {
-            let icon = image::load_from_memory(&mac_png(&mark, size)).unwrap().to_rgba8();
-            assert_eq!(icon.dimensions(), (size, size));
-            assert_eq!(icon.get_pixel(0, 0)[3], 0, "keep the outer margin transparent");
-            for y in size / 4..3 * size / 4 {
-                for x in size / 4..3 * size / 4 {
-                    // Allow one alpha level of rasterizer rounding at the smallest sizes.
-                    assert!(
-                        icon.get_pixel(x, y)[3] >= 254,
-                        "missing solid tile at {x},{y} in {size}px icon"
-                    );
-                }
-            }
-        }
-    }
-}

@@ -2,9 +2,11 @@
 //! ([`super::github_mock`]) with a blob-less mirror. On a large pull request whose chunked
 //! download of the changed blobs is held, a file opened deep in tree order gets its blobs from a
 //! small chunk of the count with its neighbours, not from a fetch of its own. Their blobs come at
-//! most twice: once in that chunk, once more only when the chunk outlasts `COUNT_WAIT`. The counts arrive chunk by chunk: one held chunk let through adds its files
-//! while the other still waits. A thread row the pointer rests on has its file's diff loaded
-//! ahead, so the click on it shows the diff at once.
+//! most twice: once in that chunk, once more only when the chunk outlasts `COUNT_WAIT`. The diffs
+//! never wait for the counts: while every chunk is held, the folder summary shows its first card's
+//! code and a file opened from the tree its diff. The counts arrive chunk by chunk: one held chunk
+//! let through adds its files while the other still waits. A thread row the pointer rests on has
+//! its file's diff loaded ahead, so the click on it shows the diff at once.
 //! `cargo test -p review-app --bin CodeView count_priority`
 
 use std::collections::HashSet;
@@ -15,7 +17,7 @@ use std::time::Duration;
 
 use egui::Role;
 use egui_kittest::Harness;
-use egui_kittest::kittest::{NodeT, Queryable};
+use egui_kittest::kittest::{AccessKitNode, NodeT, Queryable};
 use review_store::FilesStart;
 
 use super::ReviewApp;
@@ -23,8 +25,8 @@ use super::github_mock::{
     ExtraFile, FILE, GitHubHost, MockThread, REPOSITORY, THREAD_TEXT, open_pull_request,
 };
 use super::walkthrough::{
-    app, files_tab, has_cached_diff, settle_background, shows_file_view, wait_for, wait_until,
-    wait_until_unsettled,
+    app, files_tab, has_cached_diff, open_in_tree, settle_background, shows_file_view,
+    shows_folder_view, wait_for, wait_until, wait_until_unsettled,
 };
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -78,35 +80,37 @@ fn mirror_dir(scratch: &ScratchDir) -> PathBuf {
     mirrors.flatten().map(|entry| entry.path()).find(|path| path.is_dir()).expect("a mirror")
 }
 
-/// Every fetch into the partial clone leaves one promisor pack: the blobs of each, in fetch
-/// order is not known, once per pack they came in.
-fn fetched_blobs(mirror: &Path) -> Vec<Vec<String>> {
+/// Every fetch into the partial clone leaves one promisor pack.
+fn promisor_packs(mirror: &Path) -> Vec<PathBuf> {
     let packs = std::fs::read_dir(mirror.join("objects/pack")).expect("the pack folder");
+    packs
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|pack| pack.extension().is_some_and(|extension| extension == "promisor"))
+        .collect()
+}
+
+/// The blobs of each fetch, in fetch order is not known, once per pack they came in.
+fn fetched_blobs(mirror: &Path) -> Vec<Vec<String>> {
     let mut fetches = Vec::new();
-    for pack in packs.flatten().map(|entry| entry.path()) {
-        if pack.extension().is_some_and(|extension| extension == "promisor") {
-            let index = pack.with_extension("idx").display().to_string();
-            let listed = cv_testkit::git(mirror, &["verify-pack", "-v", &index]);
-            let blobs = listed.lines().filter(|line| line.contains(" blob "));
-            fetches.push(blobs.filter_map(|line| line.get(..40)).map(str::to_owned).collect());
-        }
+    for pack in promisor_packs(mirror) {
+        let index = pack.with_extension("idx").display().to_string();
+        let listed = cv_testkit::git(mirror, &["verify-pack", "-v", &index]);
+        let blobs = listed.lines().filter(|line| line.contains(" blob "));
+        fetches.push(blobs.filter_map(|line| line.get(..40)).map(str::to_owned).collect());
     }
     fetches
 }
 
 /// Types `text` into the file tree's filter, so its rows fit on screen.
 fn filter_tree(harness: &mut Harness<'_, ReviewApp>, text: &str) {
-    const HINT: &str = "Filter files";
-    wait_until(harness, "the file tree's filter", |harness| {
-        harness
-            .query_by(|node| node.placeholder().is_some_and(|hint| hint.ends_with(HINT)))
-            .is_some()
-    });
-    harness.get_by(|node| node.placeholder().is_some_and(|hint| hint.ends_with(HINT))).focus();
+    let is_filter = |node: &AccessKitNode<'_>| {
+        node.placeholder().is_some_and(|hint| hint.ends_with("Filter files"))
+    };
+    wait_until(harness, "the file tree's filter", |harness| harness.query_by(is_filter).is_some());
+    harness.get_by(is_filter).focus();
     harness.step();
-    harness
-        .get_by(|node| node.placeholder().is_some_and(|hint| hint.ends_with(HINT)))
-        .type_text(text);
+    harness.get_by(is_filter).type_text(text);
     harness.step();
 }
 
@@ -139,18 +143,18 @@ fn count_priority_a_file_opened_deep_in_tree_order_counts_with_its_neighbours_fi
     // The neighbours (the previous and the next file of its folder) came with it, as wanted
     // files of the count: a fetch of the opened file's own would bring its two blobs alone.
     let neighbours = blob_ids(&scratch, &[DEEP[0], DEEP[2]]);
-    let fetched = wait_for(
-        &mut harness,
-        "the neighbours' blobs",
-        |_| {
-            let fetched: HashSet<String> = fetched_blobs(&mirror).into_iter().flatten().collect();
-            neighbours.iter().all(|id| fetched.contains(id)).then_some(fetched)
-        },
-        |_| {},
-    );
+    let fetched = loop {
+        let packs = promisor_packs(&mirror).len();
+        let fetched: HashSet<String> = fetched_blobs(&mirror).into_iter().flatten().collect();
+        if neighbours.iter().all(|id| fetched.contains(id)) {
+            break fetched;
+        }
+        wait_until_unsettled(&mut harness, "the next fetch into the mirror", |_| {
+            promisor_packs(&mirror).len() > packs
+        });
+    };
     assert!(fetched.is_superset(&blob_ids(&scratch, &[opened]).into_iter().collect()));
     assert!(harness.query_by_label(COUNTING).is_some(), "the held chunks still count");
-    let early = fetched_blobs(&mirror).len();
 
     held.open();
     wait_until(&mut harness, "every file counted", |harness| {
@@ -164,12 +168,6 @@ fn count_priority_a_file_opened_deep_in_tree_order_counts_with_its_neighbours_fi
         let times = fetches.iter().filter(|blobs| blobs.contains(&id)).count();
         assert!(times <= 2, "a blob of the deep folder came in {times} fetches");
     }
-    let changed = MANY + DEEP.len() + 1;
-    let chunks = review_git::download_chunk_sizes(changed).len();
-    println!(
-        "count_priority: {early} fetches until the deep file showed (commits and trees included), {} in all; tree-order chunks alone: {chunks}",
-        fetches.len()
-    );
 }
 
 fn thread_row<'h>(
@@ -238,7 +236,7 @@ fn count_priority_a_resting_pointer_on_a_thread_row_loads_its_file_ahead() {
     // Not rested on: src/lib.rs's diff loads after the click. How many frames that takes is the
     // machine's speed (a local git diff can land in the click's next frame), so the cache tells.
     assert!(!has_cached_diff(&harness, FILE), "{FILE} was not loaded before its row was clicked");
-    let (cold_frames, cold_skeleton) = click_row_until_shown(&mut harness, THREAD_TEXT, FILE);
+    click_row_until_shown(&mut harness, THREAD_TEXT, FILE);
     // Rested on: web/far.rs's diff is in the cache when the click lands.
     assert!(!has_cached_diff(&harness, FAR), "{FAR} was not loaded before the pointer rested");
     let row = thread_row(&harness, FAR_THREAD).expect("the far thread's row").rect();
@@ -250,9 +248,6 @@ fn count_priority_a_resting_pointer_on_a_thread_row_loads_its_file_ahead() {
     settle_background(&mut harness);
     assert!(has_cached_diff(&harness, FAR), "the resting pointer loaded {FAR} ahead");
     let (warm_frames, warm_skeleton) = click_row_until_shown(&mut harness, FAR_THREAD, FAR);
-    println!(
-        "count_priority hover: cold {cold_frames} frames (skeleton {cold_skeleton}), rested {warm_frames} frames (skeleton {warm_skeleton})"
-    );
     assert!(!warm_skeleton, "the rested thread's diff showed without loading");
     assert_eq!(warm_frames, FIRST_FRAME_AFTER_THE_CLICK, "the rested thread's diff shows at once");
 }
@@ -288,8 +283,20 @@ fn count_priority_counts_arrive_chunk_by_chunk() {
         harness.query_by_label(&counted_label(0)).is_some()
     });
 
+    // The diffs never wait for the counts: a folder summary card draws its code with the file
+    // view's diff view, under the same label, and a file opened from the tree shows its diff.
+    wait_until(&mut harness, "the first card's code", |harness| {
+        shows_folder_view(harness) && harness.query_by_label(&format!("Diff of {FILE}")).is_some()
+    });
+    assert!(harness.query_by_label(COUNTING).is_some(), "the first card showed while counting");
+    let opened = "src/part_03.rs";
+    open_in_tree(&mut harness, opened);
+    wait_until(&mut harness, "the opened file's diff", |harness| shows_file_view(harness, opened));
+    assert!(harness.query_by_label(COUNTING).is_some(), "the opened file showed while counting");
+
     held.let_through(1);
-    // Either chunk: a summary card's diff may have brought a few blobs before the count began.
+    // Either chunk: a summary card's diff or the opened file may have brought a few blobs of
+    // their own.
     let with_one_chunk = |harness: &Harness<'_, ReviewApp>| {
         (16..=FEW).any(|counted| harness.query_by_label(&counted_label(counted)).is_some())
     };
