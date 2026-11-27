@@ -72,7 +72,8 @@ fn a_frame_of_the_tab_leaves_the_shared_runs_as_it_found_them() {
         number: 7,
     };
     let now = services.now();
-    services.cache.put(&pull_request_part(&key.storage_key(), "runs"), runs(), now);
+    let cached = Arc::<[PipelineRun]>::from(runs());
+    services.cache.put(&pull_request_part(&key.storage_key(), "runs"), cached, now);
     let session = PullRequestSession::open(key, &mut services).expect("the session opens");
     *harness.state_mut() = Some(Scene { tab: PipelinesTab::default(), session, services });
     let shared = |harness: &Harness<'_, Option<Scene>>| {

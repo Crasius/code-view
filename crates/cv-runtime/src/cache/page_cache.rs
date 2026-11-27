@@ -83,7 +83,7 @@ macro_rules! saved_as_json {
 }
 
 saved_as_json!(Vec<PullRequestSummary>, PullRequestDetail, Vec<ReviewThread>, Vec<RepositoryInfo>);
-impl PageValue for Vec<PipelineRun> {}
+impl PageValue for Arc<[PipelineRun]> {}
 impl PageValue for Arc<Vec<ChangedFile>> {}
 impl PageValue for Vec<CommitInfo> {}
 /// The row a pull request was opened from (a list click or the title bar's search), under its
@@ -323,7 +323,7 @@ mod tests {
             default_branch: Some("main".into()),
         }];
         let mut cache = PageCache::with_cold(cold.clone());
-        cache.put("runs", Vec::<PipelineRun>::new(), 10.0);
+        cache.put("runs", Arc::<[PipelineRun]>::from([]), 10.0);
         cache.put("repositories", repositories.clone(), 10.0);
         cold.flush();
         assert!(cold.read(COLD_KIND, COLD_VERSION, "repositories").is_some(), "on the disk");
@@ -331,7 +331,7 @@ mod tests {
         let mut restarted = PageCache::with_cold(cold);
         assert_eq!(restarted.get::<Vec<RepositoryInfo>>("repositories"), Some(repositories));
         assert!(restarted.is_stale("repositories", 0.0), "a saved answer refreshes at once");
-        assert_eq!(restarted.get::<Vec<PipelineRun>>("runs"), None);
+        assert_eq!(restarted.get::<Arc<[PipelineRun]>>("runs"), None);
     }
 
     /// The warm-up's detail, asked for before the page's own and arriving after it, never replaces
