@@ -28,7 +28,10 @@ use finding::{Finding, Rule};
 use repo::{Repo, RepoError};
 use tree::Source;
 
+const USAGE: &str = "usage: repo-lint [--base <rev>] [--lengths | --shrink-allowlist] [PATH...]";
+
 enum Mode {
+    Help,
     Check,
     Lengths,
     ShrinkAllowlist,
@@ -62,14 +65,9 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Options, RepoErr
             }
             "--lengths" => options.mode = Mode::Lengths,
             "--shrink-allowlist" => options.mode = Mode::ShrinkAllowlist,
-            "--help" | "-h" => {
-                return Err(RepoError(
-                    "usage: repo-lint [--base <rev>] [--lengths | --shrink-allowlist] [PATH...]"
-                        .into(),
-                ));
-            }
+            "--help" | "-h" => options.mode = Mode::Help,
             flag if flag.starts_with('-') => {
-                return Err(RepoError(format!("unknown option {flag}")));
+                return Err(RepoError(format!("unknown option {flag}\n{USAGE}")));
             }
             path => options.paths.push(path.to_owned()),
         }
@@ -79,32 +77,60 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Options, RepoErr
 
 /// Runs the chosen mode; returns whether the repository is clean.
 fn run(options: &Options) -> Result<bool, RepoError> {
-    let repo = Repo::open()?;
-    let scope = Scope::new(&repo, &options.paths);
-    let mut sources = BTreeMap::new();
-    for path in &repo.rust_files {
-        sources.insert(path.clone(), Source::parse(repo.read(path)?));
-    }
-    let roots = repo.crates.iter().flat_map(|krate| krate.roots.iter().cloned());
-    let mut is_test =
-        tree::classify(roots, |p| sources.get(p).map(|s| &s.items), |p| sources.contains_key(p));
-    for path in sources.keys() {
-        is_test.entry(path.clone()).or_insert(false);
-    }
-    let lengths: BTreeMap<String, usize> = sources
-        .iter()
-        .map(|(path, source)| {
-            let shipped = if is_test.get(path) == Some(&true) { 0 } else { source.shipped_lines() };
-            (path.clone(), shipped)
-        })
-        .collect();
     match options.mode {
-        Mode::Lengths => print_lengths(&lengths, &scope),
-        Mode::ShrinkAllowlist => shrink_allowlist(&repo, &lengths),
-        Mode::Check => {
-            let findings = check(&repo, &scope, &options.base, &sources, &is_test, &lengths)?;
-            report(&findings)
+        Mode::Help => {
+            writeln!(io::stdout(), "{USAGE}")?;
+            Ok(true)
         }
+        Mode::Lengths => {
+            let tree = Tree::read()?;
+            print_lengths(&tree.lengths, &Scope::new(&tree.repo, &options.paths))
+        }
+        Mode::ShrinkAllowlist => {
+            let tree = Tree::read()?;
+            shrink_allowlist(&tree.repo, &tree.lengths)
+        }
+        Mode::Check => {
+            let tree = Tree::read()?;
+            let scope = Scope::new(&tree.repo, &options.paths);
+            report(&check(&tree, &scope, &options.base)?)
+        }
+    }
+}
+
+/// The repository with every Rust file parsed, classified as shipped or test-only and counted.
+struct Tree {
+    repo: Repo,
+    sources: BTreeMap<String, Source>,
+    is_test: BTreeMap<String, bool>,
+    /// Shipped lines per file; 0 for a test-only file.
+    lengths: BTreeMap<String, usize>,
+}
+
+impl Tree {
+    fn read() -> Result<Tree, RepoError> {
+        let repo = Repo::open()?;
+        let mut sources = BTreeMap::new();
+        for path in &repo.rust_files {
+            sources.insert(path.clone(), Source::parse(repo.read(path)?));
+        }
+        let roots = repo.crates.iter().flat_map(|krate| krate.roots.iter().cloned());
+        let mut is_test = tree::classify(
+            roots,
+            |p| sources.get(p).map(|s| &s.items),
+            |p| sources.contains_key(p),
+        );
+        for path in sources.keys() {
+            is_test.entry(path.clone()).or_insert(false);
+        }
+        let lengths = sources
+            .iter()
+            .map(|(path, source)| {
+                let test_only = is_test.get(path) == Some(&true);
+                (path.clone(), if test_only { 0 } else { source.shipped_lines() })
+            })
+            .collect();
+        Ok(Tree { repo, sources, is_test, lengths })
     }
 }
 
@@ -115,7 +141,7 @@ struct Scope {
 
 impl Scope {
     fn new(repo: &Repo, paths: &[String]) -> Scope {
-        let root = repo.root.to_string_lossy().replace('\\', "/");
+        let root = repo::slashed(&repo.root);
         let prefixes = paths
             .iter()
             .map(|path| {
@@ -137,14 +163,8 @@ impl Scope {
     }
 }
 
-fn check(
-    repo: &Repo,
-    scope: &Scope,
-    base: &str,
-    sources: &BTreeMap<String, Source>,
-    is_test: &BTreeMap<String, bool>,
-    lengths: &BTreeMap<String, usize>,
-) -> Result<Vec<Finding>, RepoError> {
+fn check(tree: &Tree, scope: &Scope, base: &str) -> Result<Vec<Finding>, RepoError> {
+    let Tree { repo, sources, is_test, lengths } = tree;
     let mut findings = Vec::new();
     for (path, source) in sources.iter().filter(|(path, _)| scope.covers(path)) {
         let file_is_test = is_test.get(path) == Some(&true);
@@ -170,6 +190,7 @@ fn length_findings(
     base: &str,
     lengths: &BTreeMap<String, usize>,
 ) -> Result<Vec<Finding>, RepoError> {
+    repo.verify_revision(base)?;
     let allowlist = read_allowlist(repo.read_optional(length::ALLOWLIST).as_deref())?;
     let mut findings: Vec<Finding> = lengths
         .iter()

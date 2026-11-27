@@ -82,6 +82,15 @@ impl Repo {
         std::fs::read_to_string(self.root.join(path)).ok()
     }
 
+    /// Fails unless `revision` names a commit, so a mistyped or unfetched base is an error and
+    /// not a base without an allowlist.
+    pub fn verify_revision(&self, revision: &str) -> Result<(), RepoError> {
+        let commit = format!("{revision}^{{commit}}");
+        run("git", &["rev-parse", "--verify", "--quiet", &commit], Some(&self.root))
+            .map(drop)
+            .map_err(|_| RepoError(format!("--base {revision}: no such commit")))
+    }
+
     /// The file at `revision`, or `None` when it does not exist there.
     pub fn read_at(&self, revision: &str, path: &str) -> Option<String> {
         run("git", &["show", &format!("{revision}:{path}")], Some(&self.root)).ok()
@@ -145,7 +154,7 @@ fn is_vendored(path: &str) -> bool {
     path.split('/').rev().skip(1).any(|folder| folder == "vendor")
 }
 
-fn slashed(path: &Path) -> String {
+pub fn slashed(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
