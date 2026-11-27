@@ -50,8 +50,8 @@ pub fn avatar(ui: &mut Ui, identity: &UserIdentity, size: f32) -> Response {
     response.on_hover_text(&identity.display_name)
 }
 
-/// [`avatar`] with its vote's ring and badge over `fill`, the surface it sits on; the ring reaches
-/// [`RING_REACH`] past the allocated square into the item spacing.
+/// [`avatar`] with its vote's ring and badge, cut out of `palette.surface` (the card or row it sits
+/// on); the ring reaches [`RING_REACH`] past the allocated square into the item spacing.
 pub fn voted(ui: &mut Ui, identity: &UserIdentity, size: f32, vote: ReviewVote) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
     let palette = cv_base::theme::palette(ui.ctx());

@@ -131,11 +131,7 @@ fn pivot_tab(
     }
     let hover = row::hover_amount(ui, &response);
     let pill = rect.shrink2(vec2(0.0, 6.0));
-    let fill = if response.is_pointer_button_down_on() {
-        palette.pressed
-    } else {
-        palette.hover.gamma_multiply(hover)
-    };
+    let fill = row::state_fill(ui, &response, egui::Color32::TRANSPARENT);
     ui.painter().rect_filled(pill, style::RADIUS_CONTROL, fill);
     let (font, color) = if is_selected {
         (theme::fonts::semibold_font(style::BODY_SIZE), palette.text)

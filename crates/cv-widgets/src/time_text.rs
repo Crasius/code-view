@@ -29,7 +29,7 @@ pub fn exact(moment: OffsetDateTime) -> String {
         .expect("formatting a UTC OffsetDateTime with a static description cannot fail")
 }
 
-/// "1h 4m", "14m 25s", "12s": short enough for table columns, the same everywhere.
+/// "1h 4m", "14m 25s", "12s": short enough for table columns.
 pub fn duration(start: OffsetDateTime, end: OffsetDateTime) -> String {
     let seconds = (end - start).whole_seconds().max(0);
     match seconds {
