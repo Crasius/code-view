@@ -30,6 +30,7 @@ pub mod provider_icon;
 pub mod refresh_status;
 pub mod row;
 pub mod scroll;
+pub mod scroll_keys;
 pub mod settle;
 pub mod skeleton;
 pub mod splitter;

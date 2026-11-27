@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use time::OffsetDateTime;
 
 /// "just now", "5 min ago", "3 h ago", "2 d ago", or a date for anything older than a month.
@@ -33,6 +35,18 @@ pub fn duration(start: OffsetDateTime, end: OffsetDateTime) -> String {
     }
 }
 
+/// `42 s`, `3 min 5 s`, `40 min`: whole seconds, rounded up so it never shows 0 while waiting.
+pub fn countdown(remaining: Duration) -> String {
+    let seconds = remaining.as_secs() + u64::from(remaining.subsec_nanos() > 0);
+    match seconds {
+        0..=89 => format!("{} s", seconds.max(1)),
+        90..=599 if !seconds.is_multiple_of(60) => {
+            format!("{} min {} s", seconds / 60, seconds % 60)
+        }
+        _ => format!("{} min", seconds.div_ceil(60)),
+    }
+}
+
 pub fn from_unix(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(seconds).unwrap_or(OffsetDateTime::UNIX_EPOCH)
 }
@@ -64,5 +78,14 @@ mod tests {
         assert_eq!(duration(start, datetime!(2026-10-18 12:14:25 UTC)), "14m 25s");
         assert_eq!(duration(start, datetime!(2026-10-18 12:00:07 UTC)), "7s");
         assert_eq!(duration(start, datetime!(2026-10-18 13:04 UTC)), "1h 4m");
+    }
+
+    #[test]
+    fn counts_down_in_readable_units() {
+        assert_eq!(countdown(Duration::from_millis(41_200)), "42 s");
+        assert_eq!(countdown(Duration::from_millis(10)), "1 s");
+        assert_eq!(countdown(Duration::from_secs(185)), "3 min 5 s");
+        assert_eq!(countdown(Duration::from_secs(120)), "2 min");
+        assert_eq!(countdown(Duration::from_mins(40)), "40 min");
     }
 }
