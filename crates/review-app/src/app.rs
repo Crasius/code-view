@@ -57,6 +57,8 @@ mod assistant_script;
 #[cfg(test)]
 mod assistant_walkthrough;
 #[cfg(test)]
+mod background_window_walkthrough;
+#[cfg(test)]
 mod branch_copy_walkthrough;
 #[cfg(test)]
 #[cfg(windows)]
@@ -109,6 +111,8 @@ mod frame_rate_walkthrough;
 #[cfg(test)]
 mod github_mock;
 #[cfg(test)]
+mod gitlab_mock;
+#[cfg(test)]
 mod hide_header_walkthrough;
 #[cfg(test)]
 mod image_copy_walkthrough;
@@ -160,6 +164,8 @@ mod provider_icons_walkthrough;
 mod remove_connection_e2e;
 #[cfg(test)]
 mod request_budget;
+#[cfg(test)]
+mod restart_walkthrough;
 #[cfg(test)]
 mod scripted_platforms;
 #[cfg(test)]

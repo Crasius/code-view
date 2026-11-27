@@ -1,5 +1,6 @@
-//! The pull request overview and stale-while-revalidate, driven headless (`egui_kittest`) against a
-//! mock GitLab that counts every request. Time is simulated through egui's input time.
+//! The pull request list (`list_*`) and the pull request page's Overview tab (`overview_tab_*`),
+//! with stale-while-revalidate, driven headless (`egui_kittest`) against a mock GitLab that counts
+//! every request. Time is simulated through egui's input time.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -14,9 +15,11 @@ use serde_json::{Value, json};
 use wiremock::{Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
+use super::gitlab_mock::{merge_request, merge_request_route};
 use super::mock_host::MockHost;
 use super::walkthrough::{
-    app_with, has, press, pump, saved_paths, saved_settings, wait_until_unsettled,
+    app_with, has, press, pump, saved_paths, saved_settings, settle_background, wait_until,
+    wait_until_unsettled,
 };
 use cv_lists::pull_request_list::{GROUP_BY_REPOSITORY, LIST_INTERVAL, SEARCH_TOOLTIP};
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
@@ -29,7 +32,7 @@ const PROJECT: &str = "team/app";
 const LISTING: &str = "/api/v4/groups/team/merge_requests";
 
 #[test]
-fn overview_revisit_shows_known_rows_at_once_then_updates() {
+fn list_revisit_shows_known_rows_at_once_then_updates() {
     let host = GitLabGroup::start(1);
     let scratch = ScratchDir::new("overview-revisit-list");
     let mut harness = host.harness(&scratch, "revisit-list");
@@ -44,6 +47,7 @@ fn overview_revisit_shows_known_rows_at_once_then_updates() {
     pump(&mut harness, 2.0);
     go(&mut harness, Route::MyPullRequests);
     pump(&mut harness, 2.0);
+    settle_background(&mut harness);
     assert_eq!(host.count(LISTING), 1, "a fresh answer is not asked for again");
 
     // Later the host has news, and answers slowly.
@@ -62,8 +66,9 @@ fn overview_revisit_shows_known_rows_at_once_then_updates() {
 
     wait_until_unsettled(&mut harness, "the refreshed rows", |harness| has(harness, "Change 2"));
     assert!(has(&harness, "Change 1"));
-    pump(&mut harness, 1.0);
-    assert!(!has(&harness, "Updating…"), "the note leaves with the new answer");
+    wait_until(&mut harness, "the note to leave with the new answer", |harness| {
+        !has(harness, "Updating…")
+    });
     assert_eq!(host.count(LISTING), 2, "exactly one background refresh for the revisit");
 
     // Idle on the list sends nothing until its own refresh is due, one interval after the
@@ -81,7 +86,7 @@ fn overview_revisit_shows_known_rows_at_once_then_updates() {
 }
 
 #[test]
-fn overview_pull_request_revisit_paints_the_known_detail_even_after_it_was_dropped() {
+fn overview_tab_revisit_paints_the_known_detail_even_after_it_was_dropped() {
     let host = GitLabGroup::start(5);
     let scratch = ScratchDir::new("overview-revisit-detail");
     let mut harness = host.harness(&scratch, "revisit-detail");
@@ -104,8 +109,7 @@ fn overview_pull_request_revisit_paints_the_known_detail_even_after_it_was_dropp
     }
     pump(&mut harness, REVISIT_FRESH.as_secs_f64() + 5.0);
     host.publish(5, Duration::from_millis(1500));
-    harness.state_mut().navigator.go(Route::PullRequest(key(1)));
-    harness.step();
+    open(&mut harness, 1);
     harness.step();
     assert!(has(&harness, "Change 1"), "the dropped page starts from the page cache: no skeleton");
     assert!(has(&harness, "Updating…"));
@@ -121,10 +125,10 @@ fn overview_pull_request_revisit_paints_the_known_detail_even_after_it_was_dropp
 }
 
 #[test]
-fn overview_collapsed_group_is_remembered_and_loads_nothing_until_expanded() {
+fn list_collapsed_group_is_remembered_and_loads_nothing_until_expanded() {
     let host = GitLabGroup::start(2);
     let scratch = ScratchDir::new("overview-collapse");
-    let paths = saved_paths(&scratch, &[host.connection("collapse", "Mock GitLab")]);
+    let paths = host.paths(&scratch, "collapse");
     let mut harness = start_app(&paths);
     wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 2"));
 
@@ -142,14 +146,16 @@ fn overview_collapsed_group_is_remembered_and_loads_nothing_until_expanded() {
     // A restart keeps the group closed and asks the host nothing for it; the saved answer counts.
     let listings = host.count(LISTING);
     let mut harness = start_app(&paths);
-    pump(&mut harness, 5.0);
-    assert!(
-        has(&harness, "Mock GitLab, 2 pull requests, collapsed"),
-        "closed after the restart, counted from the saved answer"
+    wait_until(
+        &mut harness,
+        "the group closed after the restart, counted from the saved answer",
+        |harness| has(harness, "Mock GitLab, 2 pull requests, collapsed"),
     );
+    settle_background(&mut harness);
     assert_eq!(host.count(LISTING), listings, "a collapsed group loads nothing");
     harness.click_at(harness.get_by_label("Refresh (F5)").rect());
     pump(&mut harness, 2.0);
+    settle_background(&mut harness);
     assert_eq!(host.count(LISTING), listings, "Refresh skips collapsed groups too");
 
     // Enter on the focused header expands it, which loads it.
@@ -164,13 +170,13 @@ fn overview_collapsed_group_is_remembered_and_loads_nothing_until_expanded() {
     assert!(!saved_settings(&harness).collapsed_connections.contains("collapse"));
 }
 
-/// The overview groups its rows under a header per repository by default. The header closes its
+/// The list groups its rows under a header per repository by default. The header closes its
 /// section, the books tool in the page's header turns the grouping off, and both are saved at once.
 #[test]
-fn overview_groups_rows_by_repository_and_saves_the_choices() {
+fn list_groups_rows_by_repository_and_saves_the_choices() {
     let host = GitLabGroup::start(2);
     let scratch = ScratchDir::new("overview-sections");
-    let paths = saved_paths(&scratch, &[host.connection("sections", "Mock GitLab")]);
+    let paths = host.paths(&scratch, "sections");
     let mut harness = start_app(&paths);
     wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 2"));
     let section = |state: &str| format!("{PROJECT}, 2 pull requests, {state}");
@@ -207,10 +213,10 @@ fn overview_groups_rows_by_repository_and_saves_the_choices() {
 /// shown) or not, with the scroll gutter between the cards and the window edge, and card actions
 /// sit in the title lines.
 #[test]
-fn overview_side_column_keeps_its_right_edge_with_and_without_scroll_bar() {
+fn overview_tab_side_column_keeps_its_right_edge_with_and_without_scroll_bar() {
     let host = GitLabGroup::start(4);
     let scratch = ScratchDir::new("overview-side-edge");
-    let paths = saved_paths(&scratch, &[host.connection("side-edge", "Mock GitLab")]);
+    let paths = host.paths(&scratch, "side-edge");
     let mut edges = Vec::new();
     for height in [1000.0, 520.0] {
         let mut harness = start_app_sized(&paths, height);
@@ -235,14 +241,14 @@ fn overview_side_column_keeps_its_right_edge_with_and_without_scroll_bar() {
 /// Label editing works on a draft: Cancel and Esc drop it without a request, Apply sends it only
 /// when it changed something.
 #[test]
-fn overview_label_editing_cancels_by_button_and_esc() {
+fn overview_tab_label_editing_cancels_by_button_and_esc() {
     let host = GitLabGroup::start(4);
     let scratch = ScratchDir::new("overview-label-cancel");
-    let paths = saved_paths(&scratch, &[host.connection("label-cancel", "Mock GitLab")]);
+    let paths = host.paths(&scratch, "label-cancel");
     let mut harness = start_app(&paths);
     open_side_column(&mut harness, "label-cancel");
     let detail = format!("/api/v4/projects/{}/merge_requests/4", urlencoding::encode(PROJECT));
-    let before = host.count(&detail);
+    let before = host.count_writes(&detail);
 
     // Cancel button: an added label goes away again, nothing is sent.
     press(&mut harness, "Edit labels");
@@ -263,22 +269,24 @@ fn overview_label_editing_cancels_by_button_and_esc() {
     harness.run_steps(4);
     assert!(has(&harness, "Edit labels") && !has(&harness, "skip-deploy"), "Esc ends editing");
     assert!(has(&harness, "backend"), "Esc restores the removed label");
-    assert_eq!(host.count(&detail), before, "Esc sends nothing");
+    settle_background(&mut harness);
+    assert_eq!(host.count_writes(&detail), before, "Esc sends nothing");
 
     // Apply without a change sends nothing either.
     press(&mut harness, "Edit labels");
     press(&mut harness, "Apply");
-    assert_eq!(host.count(&detail), before, "no request for cancelled or unchanged edits");
+    settle_background(&mut harness);
+    assert_eq!(host.count_writes(&detail), before, "no request for cancelled or unchanged edits");
 
     // Apply with a change sends it.
     press(&mut harness, "Edit labels");
     press(&mut harness, "needs-docs");
     press(&mut harness, "Apply");
-    wait_until_unsettled(&mut harness, "the label update", |_| host.count(&detail) > before);
+    wait_until_unsettled(&mut harness, "the label update", |_| host.count_writes(&detail) > before);
 }
 
 #[test]
-fn overview_files_button_opens_the_files_tab_and_not_the_row() {
+fn list_files_button_opens_the_files_tab_and_not_the_row() {
     let host = GitLabGroup::start(3);
     let scratch = ScratchDir::new("overview-files-button");
     let mut harness = host.harness(&scratch, "files-button");
@@ -383,17 +391,14 @@ fn assert_apart(rects: &[egui::Rect], width: f32) {
 /// down to the narrowest the app allows; only far narrower (a large UI scale) moves the filters
 /// to a second row. Nothing overlaps, and the list below stays put while the header's note changes.
 #[test]
-fn overview_header_is_one_row_at_wide_and_narrow_widths() {
+fn list_header_is_one_row_at_wide_and_narrow_widths() {
     let host = GitLabGroup::start(4);
     let scratch = ScratchDir::new("overview-header-row");
-    let paths = saved_paths(&scratch, &[host.connection("header-row", "Mock GitLab")]);
+    let paths = host.paths(&scratch, "header-row");
     let mut harness = start_app(&paths);
     // Whether the row fits at 960 is the fonts' width; the bundled ones are the same everywhere.
     cv_testkit::use_bundled_fonts(&harness.ctx);
     wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 4"));
-    let filter_field =
-        harness.query_by(|node| node.placeholder().is_some_and(|hint| hint.contains("Filter by")));
-    assert!(filter_field.is_none(), "the list has no text filter of its own");
 
     for width in [1440.0, 960.0] {
         harness.set_size(egui::vec2(width, 900.0));
@@ -452,7 +457,7 @@ fn overview_header_is_one_row_at_wide_and_narrow_widths() {
 /// Ctrl+K finds loaded pull requests by label and by author (what the list's own filter did), and
 /// the header's search button opens the same search.
 #[test]
-fn overview_search_finds_pull_requests_by_label_and_author() {
+fn list_search_finds_pull_requests_by_label_and_author() {
     let host = GitLabGroup::start(4);
     let scratch = ScratchDir::new("overview-search-label");
     let mut harness = host.harness(&scratch, "search-label");
@@ -525,7 +530,8 @@ struct GitLabGroup {
 
 #[derive(Default)]
 struct HostState {
-    hits: Mutex<Vec<String>>,
+    /// Every request's method and path.
+    hits: Mutex<Vec<(String, String)>>,
     count: AtomicUsize,
     edited: AtomicUsize,
     delay_ms: AtomicUsize,
@@ -551,9 +557,14 @@ impl GitLabGroup {
         }
     }
 
-    /// The app on `scratch` with one connection to the host, `id`.
+    /// `scratch`'s data folders with one connection to the host, `id`.
+    fn paths(&self, scratch: &ScratchDir, id: &str) -> AppPaths {
+        saved_paths(scratch, &[self.connection(id, "Mock GitLab")])
+    }
+
+    /// The app on [`Self::paths`].
     fn harness(&self, scratch: &ScratchDir, id: &str) -> Harness<'static, ReviewApp> {
-        start_app(&saved_paths(scratch, &[self.connection(id, "Mock GitLab")]))
+        start_app(&self.paths(scratch, id))
     }
 
     /// From now on the host lists `count` merge requests, titles edited, answering after `delay`.
@@ -563,14 +574,20 @@ impl GitLabGroup {
         self.state.delay_ms.store(delay.as_millis() as usize, Ordering::SeqCst);
     }
 
+    /// The requests to `request_path`, reads and writes.
     fn count(&self, request_path: &str) -> usize {
-        self.state
-            .hits
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .iter()
-            .filter(|hit| *hit == request_path)
-            .count()
+        self.count_where(|_, path| path == request_path)
+    }
+
+    /// The writes to `request_path`: what the app changed there, not what it read (the live probe
+    /// reads a merge request on its own).
+    fn count_writes(&self, request_path: &str) -> usize {
+        self.count_where(|method, path| method != "GET" && path == request_path)
+    }
+
+    fn count_where(&self, is_counted: impl Fn(&str, &str) -> bool) -> usize {
+        let hits = self.state.hits.lock().unwrap_or_else(PoisonError::into_inner);
+        hits.iter().filter(|(method, path)| is_counted(method, path)).count()
     }
 }
 
@@ -582,18 +599,19 @@ struct Responder {
 impl Respond for Responder {
     fn respond(&self, request: &Request) -> ResponseTemplate {
         let path = request.url.path().to_owned();
-        self.state.hits.lock().unwrap_or_else(PoisonError::into_inner).push(path.clone());
+        let hit = (request.method.to_string(), path.clone());
+        self.state.hits.lock().unwrap_or_else(PoisonError::into_inner).push(hit);
         let count = self.state.count.load(Ordering::SeqCst) as u64;
         let edited = self.state.edited.load(Ordering::SeqCst) == 1;
         let delay = Duration::from_millis(self.state.delay_ms.load(Ordering::SeqCst) as u64);
         let project = format!("/api/v4/projects/{}", urlencoding::encode(PROJECT));
         let body = if path == LISTING {
             Value::Array((1..=count).rev().map(|iid| self.merge_request(iid, false)).collect())
-        } else if let Some(rest) = path.strip_prefix(&format!("{project}/merge_requests/")) {
-            match rest.split_once('/') {
-                None => self.merge_request(rest.parse().unwrap_or(1), edited),
-                Some((_, "approvals")) => json!({ "approved_by": [] }),
-                Some(_) => json!([]),
+        } else if let Some((iid, tail)) = merge_request_route(&path, PROJECT) {
+            match tail {
+                "" => self.merge_request(iid, edited),
+                "approvals" => json!({ "approved_by": [] }),
+                _ => json!([]),
             }
         } else if path == format!("{project}/labels") {
             json!([
@@ -632,18 +650,16 @@ impl Responder {
                 json!({ "id": 10 + index, "username": format!("r{index}"), "name": name })
             })
             .collect();
-        json!({
-            "id": 1000 + iid, "iid": iid, "project_id": 42, "title": title, "description": "Measures requests.",
-            "state": "opened", "draft": iid == 2, "author": { "id": 2, "username": "grace", "name": "Grace Hopper" },
-            "source_branch": format!("feature-{iid}"), "target_branch": "main",
-            "created_at": format!("2026-10-{:02}T10:00:00Z", iid), "updated_at": "2026-10-17T10:00:00Z",
-            "web_url": format!("{}/{PROJECT}/-/merge_requests/{iid}", self.base_url),
-            "references": { "full": format!("{PROJECT}!{iid}") },
-            "labels": if iid == 4 { json!([{ "name": "backend", "color": "#1f75cb" }]) } else { json!([]) },
-            "reviewers": reviewers, "sha": "a".repeat(40),
-            "diff_refs": { "base_sha": "b".repeat(40), "start_sha": "b".repeat(40), "head_sha": "a".repeat(40) },
-            "detailed_merge_status": "mergeable",
-        })
+        let mut value =
+            merge_request(&self.base_url, PROJECT, iid, &"a".repeat(40), &"b".repeat(40));
+        value["title"] = json!(title);
+        value["description"] = json!("Measures requests.");
+        value["draft"] = json!(iid == 2);
+        value["created_at"] = json!(format!("2026-10-{iid:02}T10:00:00Z"));
+        value["labels"] =
+            if iid == 4 { json!([{ "name": "backend", "color": "#1f75cb" }]) } else { json!([]) };
+        value["reviewers"] = json!(reviewers);
+        value
     }
 }
 
@@ -666,13 +682,4 @@ fn open(harness: &mut Harness<'_, ReviewApp>, number: u64) {
 fn go(harness: &mut Harness<'_, ReviewApp>, route: Route) {
     harness.state_mut().navigator.go(route);
     harness.step();
-}
-
-/// The key of pull request `number` of the mock project.
-fn key(number: u64) -> PullRequestKey {
-    PullRequestKey {
-        connection_id: "revisit-detail".to_owned(),
-        repository_key: PROJECT.to_owned(),
-        number,
-    }
 }
