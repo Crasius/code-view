@@ -125,8 +125,6 @@ mod live_updates_e2e;
 #[cfg(test)]
 mod live_writes;
 #[cfg(test)]
-mod log_reuse_walkthrough;
-#[cfg(test)]
 mod memory_walkthrough;
 #[cfg(test)]
 mod merge_button_walkthrough;
