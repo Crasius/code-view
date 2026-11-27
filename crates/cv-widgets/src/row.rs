@@ -278,7 +278,7 @@ mod tests {
     ) -> (f32, egui::Color32, egui::Color32) {
         let mut seen = (0.0, egui::Color32::PLACEHOLDER, egui::Color32::PLACEHOLDER);
         let input = egui::RawInput { time: Some(time), ..egui::RawInput::default() };
-        let mut output = ctx.run_ui(input, |ui| {
+        let output = ctx.run_ui(input, |ui| {
             let palette = theme::palette(ui.ctx());
             let rect = Rect::from_min_size(egui::pos2(0.0, 0.0), vec2(28.0, 28.0));
             let response = ui.interact(rect, egui::Id::unique("toggle"), Sense::click());
@@ -294,7 +294,7 @@ mod tests {
                 super::toggle_color(&palette, &disabled, on),
             );
         });
-        output.textures_delta.clear();
+        output.drop_without_applying_deltas();
         seen
     }
 

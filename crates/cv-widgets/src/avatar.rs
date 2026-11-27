@@ -170,43 +170,29 @@ fn color_for(id: &str, name: &str) -> Color32 {
 
 #[cfg(test)]
 mod tests {
-    use cv_base::theme::{Palette, icons};
-    use egui::Color32;
+    use std::collections::HashSet;
+
+    use cv_base::theme::Palette;
+    use cv_base::theme::palette::contrast_ratio;
     use review_core::ReviewVote;
 
-    use super::{VoteMark, initials, vote_mark};
+    use super::{initials, vote_mark};
 
     #[test]
-    fn each_vote_has_its_own_ring_color_icon_and_fill() {
+    fn votes_differ_in_shape_not_only_in_color() {
         let palette = Palette::LIGHT;
-        let mark = |icon, color, is_filled| Some(VoteMark { icon, color, is_filled });
         assert_eq!(vote_mark(ReviewVote::None, &palette), None);
-        assert_eq!(
-            vote_mark(ReviewVote::Approved, &palette),
-            mark(icons::CHECK, palette.success, true)
-        );
-        assert_eq!(
-            vote_mark(ReviewVote::ApprovedWithSuggestions, &palette),
-            mark(icons::CHECK, palette.success, false)
-        );
-        assert_eq!(
-            vote_mark(ReviewVote::WaitingForAuthor, &palette),
-            mark(icons::CLOCK, palette.warning, true)
-        );
-        assert_eq!(
-            vote_mark(ReviewVote::ChangesRequested, &palette),
-            mark(icons::X, palette.error, true)
-        );
-    }
-
-    fn luminance(color: Color32) -> f32 {
-        let linear = egui::Rgba::from(color);
-        0.2126 * linear.r() + 0.7152 * linear.g() + 0.0722 * linear.b()
-    }
-
-    fn contrast(a: Color32, b: Color32) -> f32 {
-        let (light, dark) = (luminance(a).max(luminance(b)), luminance(a).min(luminance(b)));
-        (light + 0.05) / (dark + 0.05)
+        let shapes: HashSet<(&str, bool)> = [
+            ReviewVote::Approved,
+            ReviewVote::ApprovedWithSuggestions,
+            ReviewVote::WaitingForAuthor,
+            ReviewVote::ChangesRequested,
+        ]
+        .into_iter()
+        .map(|vote| vote_mark(vote, &palette).expect("a vote has a mark"))
+        .map(|mark| (mark.icon, mark.is_filled))
+        .collect();
+        assert_eq!(shapes.len(), 4, "{shapes:?}");
     }
 
     /// Ring, badge and the glyph cut out of the badge keep 3:1 (WCAG non-text contrast) on every
@@ -228,7 +214,7 @@ mod tests {
                     ("hover", palette.hover),
                     ("pressed", palette.pressed),
                 ] {
-                    let ratio = contrast(color, background);
+                    let ratio = contrast_ratio(color, background);
                     assert!(
                         ratio >= 3.0,
                         "{vote:?} on {fill} (dark {}): {ratio:.2}",

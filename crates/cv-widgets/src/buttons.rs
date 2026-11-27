@@ -33,6 +33,7 @@ enum Kind {
 }
 
 /// What a button shows: an optional icon slot and an optional label.
+#[derive(Default)]
 struct Content<'a> {
     icon: Option<&'a str>,
     is_busy: bool,
@@ -45,13 +46,7 @@ struct Content<'a> {
 /// The one filled accent button per screen.
 pub fn primary(ui: &mut Ui, text: &str) -> Response {
     let label = label_galley(ui, text, Kind::Primary);
-    let content = Content {
-        icon: None,
-        is_busy: false,
-        is_active: false,
-        label: Some(label),
-        accessible: None,
-    };
+    let content = Content { label: Some(label), ..Content::default() };
     paint(ui, Kind::Primary, content, style::CONTROL_HEIGHT)
 }
 
@@ -64,26 +59,14 @@ pub fn primary_icon(ui: &mut Ui, icon: &str, text: &str) -> Response {
 /// keeps its width and label, so starting the work never resizes or relabels it.
 pub fn primary_busy(ui: &mut Ui, icon: &str, text: &str, is_busy: bool) -> Response {
     let label = label_galley(ui, text, Kind::Primary);
-    let content = Content {
-        icon: Some(icon),
-        is_busy,
-        is_active: false,
-        label: Some(label),
-        accessible: None,
-    };
+    let content = Content { icon: Some(icon), is_busy, label: Some(label), ..Content::default() };
     paint(ui, Kind::Primary, content, style::CONTROL_HEIGHT)
 }
 
 /// Filled error-coloured button that confirms a destructive step (e.g. discarding a draft).
 pub fn danger(ui: &mut Ui, icon: &str, text: &str) -> Response {
     let label = label_galley(ui, text, Kind::Danger);
-    let content = Content {
-        icon: Some(icon),
-        is_busy: false,
-        is_active: false,
-        label: Some(label),
-        accessible: None,
-    };
+    let content = Content { icon: Some(icon), label: Some(label), ..Content::default() };
     paint(ui, Kind::Danger, content, style::CONTROL_HEIGHT)
 }
 
@@ -91,13 +74,7 @@ pub fn danger(ui: &mut Ui, icon: &str, text: &str) -> Response {
 pub fn secondary(ui: &mut Ui, text: impl Into<WidgetText>) -> Response {
     let label =
         text.into().into_galley(ui, Some(TextWrapMode::Extend), f32::INFINITY, TextStyle::Button);
-    let content = Content {
-        icon: None,
-        is_busy: false,
-        is_active: false,
-        label: Some(label),
-        accessible: None,
-    };
+    let content = Content { label: Some(label), ..Content::default() };
     paint(ui, Kind::Secondary, content, style::CONTROL_HEIGHT)
 }
 
@@ -109,60 +86,29 @@ pub fn secondary_icon(ui: &mut Ui, icon: &str, text: &str) -> Response {
 /// Bordered button whose icon turns into a spinner while `is_busy` (disabled meanwhile).
 pub fn secondary_busy(ui: &mut Ui, icon: &str, text: &str, is_busy: bool) -> Response {
     let label = label_galley(ui, text, Kind::Secondary);
-    let content = Content {
-        icon: Some(icon),
-        is_busy,
-        is_active: false,
-        label: Some(label),
-        accessible: None,
-    };
+    let content = Content { icon: Some(icon), is_busy, label: Some(label), ..Content::default() };
     paint(ui, Kind::Secondary, content, style::CONTROL_HEIGHT)
 }
 
 /// Bordered square icon button, e.g. the caret half of a split button.
 pub fn secondary_square(ui: &mut Ui, icon: &str, tooltip: &str) -> Response {
-    let content = Content {
-        icon: Some(icon),
-        is_busy: false,
-        is_active: false,
-        label: None,
-        accessible: Some(tooltip),
-    };
+    let content = Content { icon: Some(icon), accessible: Some(tooltip), ..Content::default() };
     paint(ui, Kind::Secondary, content, style::CONTROL_HEIGHT).on_hover_text(tooltip)
 }
 
 /// Borderless command-bar button: icon plus optional text.
 pub fn subtle(ui: &mut Ui, icon: &str, text: &str) -> Response {
-    if text.is_empty() {
-        let content = Content {
-            icon: Some(icon),
-            is_busy: false,
-            is_active: false,
-            label: None,
-            accessible: None,
-        };
-        return paint(ui, Kind::Subtle, content, SUBTLE_HEIGHT);
-    }
-    let label = label_galley(ui, text, Kind::Subtle);
     let content = Content {
         icon: Some(icon),
-        is_busy: false,
-        is_active: false,
-        label: Some(label),
-        accessible: None,
+        label: (!text.is_empty()).then(|| label_galley(ui, text, Kind::Subtle)),
+        ..Content::default()
     };
     paint(ui, Kind::Subtle, content, SUBTLE_HEIGHT)
 }
 
 /// Icon-only button with a tooltip naming the action (and its shortcut, if any).
 pub fn icon(ui: &mut Ui, icon: &str, tooltip: &str) -> Response {
-    let content = Content {
-        icon: Some(icon),
-        is_busy: false,
-        is_active: false,
-        label: None,
-        accessible: Some(tooltip),
-    };
+    let content = Content { icon: Some(icon), accessible: Some(tooltip), ..Content::default() };
     paint(ui, Kind::Subtle, content, SUBTLE_HEIGHT).on_hover_text(tooltip)
 }
 
@@ -178,10 +124,9 @@ pub fn icon_toggle(
     let glyph = if is_on { on_icon } else { off_icon };
     let content = Content {
         icon: Some(glyph),
-        is_busy: false,
         is_active: is_on,
-        label: None,
         accessible: Some(tooltip),
+        ..Content::default()
     };
     let response = paint(ui, Kind::Subtle, content, SUBTLE_HEIGHT);
     response.widget_info(|| {
@@ -473,13 +418,13 @@ mod tests {
         let ctx = Context::default();
         theme::fonts::install(&ctx);
         let mut widths = Vec::new();
-        let mut output = ctx.run_ui(RawInput::default(), |ui| {
+        let output = ctx.run_ui(RawInput::default(), |ui| {
             for text in ["Copy log", "First error"] {
                 let painted = super::subtle(ui, icons::COPY, text).rect.width();
                 widths.push((painted, super::subtle_width(ui, text)));
             }
         });
-        output.textures_delta.clear();
+        output.drop_without_applying_deltas();
         for (painted, planned) in widths {
             assert!((painted - planned).abs() < 0.01, "painted {painted}, planned {planned}");
         }

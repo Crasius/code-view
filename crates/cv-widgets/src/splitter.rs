@@ -345,11 +345,11 @@ impl Splitter {
 
 #[cfg(test)]
 mod tests {
-    use egui::{Event, Modifiers, PointerButton, Pos2, Rangef, pos2};
+    use egui::{Event, Modifiers, PointerButton, Pos2, pos2};
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
 
-    use super::{Splitter, pane_range, share_range};
+    use super::{Axis, Splitter, pane_range, share_range};
 
     struct State {
         width: f32,
@@ -357,19 +357,36 @@ mod tests {
         resets: usize,
     }
 
-    fn harness(width: f32) -> Harness<'static, State> {
+    /// A splitter across the whole window along `axis`, `width` from the near edge.
+    fn harness(width: f32, axis: Axis) -> Harness<'static, State> {
+        let size = match axis {
+            Axis::Vertical => [800.0, 400.0],
+            Axis::Horizontal => [400.0, 800.0],
+        };
         Harness::builder()
-            .with_size([800.0, 400.0])
+            .with_size(size)
             .with_step_dt(1.0 / 60.0)
             .with_max_steps(240)
             .build_ui_state(
-                |ui, state: &mut State| {
+                move |ui, state: &mut State| {
                     let rect = ui.max_rect();
-                    let x = rect.left() + state.width;
-                    let response = Splitter::new("test", "Resize test pane")
+                    let splitter = Splitter::new("test", "Resize test pane")
                         .default_value(300.0)
-                        .range(100.0..=600.0)
-                        .show(ui, x, Rangef::new(rect.top(), rect.bottom()), &mut state.width);
+                        .range(100.0..=600.0);
+                    let response = match axis {
+                        Axis::Vertical => splitter.show(
+                            ui,
+                            rect.left() + state.width,
+                            rect.y_range(),
+                            &mut state.width,
+                        ),
+                        Axis::Horizontal => splitter.show_horizontal(
+                            ui,
+                            rect.top() + state.width,
+                            rect.x_range(),
+                            &mut state.width,
+                        ),
+                    };
                     state.committed += usize::from(response.committed);
                     state.resets += usize::from(response.is_reset);
                 },
@@ -413,7 +430,7 @@ mod tests {
 
     #[test]
     fn dragging_moves_the_boundary_within_its_range() {
-        let mut harness = harness(300.0);
+        let mut harness = harness(300.0, Axis::Vertical);
         harness.run();
         let start = handle(&harness);
         harness.hover_at(start);
@@ -437,7 +454,7 @@ mod tests {
 
     #[test]
     fn double_click_and_enter_reset_to_the_default() {
-        let mut harness = harness(480.0);
+        let mut harness = harness(480.0, Axis::Vertical);
         harness.run();
         let center = handle(&harness);
         harness.hover_at(center);
@@ -471,23 +488,7 @@ mod tests {
     /// The flat boundary follows the pointer's y, clamps at both ends and steps with ↑/↓.
     #[test]
     fn a_horizontal_boundary_moves_with_the_pointer_and_the_arrow_keys() {
-        let mut harness = Harness::builder()
-            .with_size([400.0, 800.0])
-            .with_step_dt(1.0 / 60.0)
-            .with_max_steps(240)
-            .build_ui_state(
-                |ui, state: &mut State| {
-                    let rect = ui.max_rect();
-                    let y = rect.top() + state.width;
-                    let response = Splitter::new("test", "Resize test pane")
-                        .default_value(300.0)
-                        .range(100.0..=600.0)
-                        .show_horizontal(ui, y, rect.x_range(), &mut state.width);
-                    state.committed += usize::from(response.committed);
-                    state.resets += usize::from(response.is_reset);
-                },
-                State { width: 300.0, committed: 0, resets: 0 },
-            );
+        let mut harness = harness(300.0, Axis::Horizontal);
         harness.run();
         let start = handle(&harness);
         harness.hover_at(start);

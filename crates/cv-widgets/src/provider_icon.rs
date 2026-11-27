@@ -77,7 +77,7 @@ fn kind_of(glyph: &str) -> Option<ProviderKind> {
 }
 
 /// The mark's brand color in this theme.
-pub fn color(palette: &Palette, kind: ProviderKind) -> Color32 {
+fn color(palette: &Palette, kind: ProviderKind) -> Color32 {
     match kind {
         ProviderKind::AzureDevOps => palette.platform_azure,
         ProviderKind::GitHub => palette.text,
@@ -104,13 +104,7 @@ pub fn paint(painter: &Painter, palette: &Palette, center: Pos2, size: f32, kind
 }
 
 /// Paints `kind`'s mark in one `color` (on filled buttons, disabled controls).
-pub fn paint_tinted(
-    painter: &Painter,
-    center: Pos2,
-    size: f32,
-    kind: ProviderKind,
-    color: Color32,
-) {
+fn paint_tinted(painter: &Painter, center: Pos2, size: f32, kind: ProviderKind, color: Color32) {
     match kind {
         ProviderKind::AzureDevOps => paint_azure(painter, center, size, color),
         ProviderKind::GitHub | ProviderKind::GitLab => {
@@ -223,7 +217,7 @@ pub fn tooltip_line(ui: &mut Ui, kind: ProviderKind, url: &str) {
 }
 
 /// "GitHub · github.com", "GitHub Enterprise Server · github.example.com", "Azure DevOps · dev.azure.com".
-pub fn describe(kind: ProviderKind, url: &str) -> String {
+fn describe(kind: ProviderKind, url: &str) -> String {
     let host = host(url);
     if host.is_empty() {
         return kind.label().to_owned();

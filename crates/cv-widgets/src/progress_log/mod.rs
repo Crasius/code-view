@@ -114,7 +114,7 @@ impl ProgressLog {
     /// The log as plain text for the clipboard, one timestamped line each.
     pub fn text(&self) -> String {
         let mut text = if self.dropped > 0 {
-            format!("({} earlier lines dropped)\n", crate::numbers::group_digits(self.dropped))
+            format!("({} earlier lines dropped)\n", group_digits(self.dropped))
         } else {
             String::new()
         };
@@ -153,7 +153,7 @@ pub fn show(ui: &mut Ui, log: &ProgressLog, panel: &Panel<'_>) {
         .stroke(egui::Stroke::new(1.0, palette.border))
         .corner_radius(style::RADIUS_CARD)
         .inner_margin(Margin::symmetric(12, 8));
-    let inner_height = height - 16.0;
+    let inner_height = height - frame.inner_margin.sum().y;
     let response = frame.show(ui, |ui| {
         ui.set_min_size(vec2(ui.available_width(), inner_height));
         ui.spacing_mut().item_spacing.y = 0.0;
@@ -188,8 +188,10 @@ pub fn show(ui: &mut Ui, log: &ProgressLog, panel: &Panel<'_>) {
                 }
             });
     });
-    let label = format!("{}, {} lines", panel.name, log.lines.len());
-    response.response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Log, true, &label));
+    response.response.widget_info(|| {
+        let label = format!("{}, {} lines", panel.name, log.lines.len());
+        egui::WidgetInfo::labeled(egui::Role::Log, true, label)
+    });
 }
 
 /// "Copy log", reading "Copied" for a moment after a click; copies [`ProgressLog::text`].
@@ -292,7 +294,6 @@ mod tests {
             log.report_git(GitEvent::Message(format!("line {index}")));
         }
         assert_eq!(log.lines.len(), MAX_LINES);
-        assert_eq!(log.dropped, 120);
         assert_eq!(log.lines.back().unwrap().text, format!("line {}", MAX_LINES + 119));
         assert!(log.text().starts_with("(120 earlier lines dropped)\n"));
     }

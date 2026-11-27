@@ -440,13 +440,13 @@ mod tests {
         ctx.set_pixels_per_point(pixels_per_point);
         let mut result = None;
         for _ in 0..2 {
-            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let output = ctx.run_ui(egui::RawInput::default(), |ui| {
                 let ctx = ui.ctx().clone();
                 let stamped = layout_job(&ctx, job.clone());
                 let laid_out = ctx.fonts_mut(|fonts| fonts.layout_job(job.clone()));
                 result = Some((stamped, laid_out));
             });
-            output.textures_delta.clear();
+            output.drop_without_applying_deltas();
         }
         result.expect("ran")
     }

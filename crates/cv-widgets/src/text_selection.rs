@@ -579,7 +579,7 @@ mod tests {
         let font = FontId::monospace(13.0);
         let mut result = None;
         for _ in 0..2 {
-            let mut output = ctx.run_ui(RawInput::default(), |ui| {
+            let output = ctx.run_ui(RawInput::default(), |ui| {
                 let job = egui::text::LayoutJob::simple_singleline(
                     "let total = 42;".to_owned(),
                     font.clone(),
@@ -590,7 +590,7 @@ mod tests {
                 let char_width = ui.ctx().fonts_mut(|fonts| fonts.glyph_width(&font, '0'));
                 result = Some((stamped, laid_out, char_width));
             });
-            output.textures_delta.clear();
+            output.drop_without_applying_deltas();
         }
         let (stamped, laid_out, char_width) = result.expect("ran");
         assert!(stamped.rows[0].row.glyphs.is_empty(), "the line is stamped");

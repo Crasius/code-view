@@ -243,12 +243,12 @@ mod tests {
         let mut delay = Duration::MAX;
         for frame in 0..4 {
             let input = RawInput { time: Some(f64::from(frame) / 60.0), ..RawInput::default() };
-            let mut output = ctx.run_ui(input, |ui| {
+            let output = ctx.run_ui(input, |ui| {
                 let rect = Rect::from_min_size(pos2(10.0, 10.0), vec2(icons::SIZE, icons::SIZE));
                 super::spinner(ui, rect, Color32::GRAY);
             });
-            output.textures_delta.clear();
             delay = output.viewport_output[&ViewportId::ROOT].repaint_delay;
+            output.drop_without_applying_deltas();
         }
         (delay, format!("{:?}", ctx.repaint_causes()))
     }
