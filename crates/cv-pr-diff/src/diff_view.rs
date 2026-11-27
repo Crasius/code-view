@@ -106,11 +106,8 @@ pub struct DiffView {
     removal: RemovalPopover,
     revealed: Revealed,
     #[cfg(any(test, feature = "test-support"))]
-    /// Geometry of the last frame, for tests that point at code.
+    /// What the last frame painted and where, for tests that point at code.
     probe: Option<Probe>,
-    #[cfg(any(test, feature = "test-support"))]
-    /// Where the new-comment card was painted in this pass, for tests that watch it frame by frame.
-    composer_card: Option<Rect>,
     /// The boundary between the sides is being dragged: rows show no hover or comment button.
     is_resizing: bool,
     /// The find widget and its hits.
@@ -179,13 +176,13 @@ impl DiffView {
         split: &mut f32,
         threads_ui: &mut ThreadsUi,
     ) -> Option<DiffEvent> {
-        #[cfg(any(test, feature = "test-support"))]
-        {
-            self.composer_card = None;
-        }
         self.place.is_embedded = false;
         self.rebuild_rows(ui, inputs, threads_ui);
         if inputs.layout == Layout::NewOnly && self.built.has_no_head_lines() {
+            #[cfg(any(test, feature = "test-support"))]
+            {
+                self.probe = None;
+            }
             return removals::show_empty_head(ui, inputs.diff);
         }
         let mut event = self.show_detached(ui, inputs, threads_ui);
@@ -374,7 +371,7 @@ impl DiffView {
                         self.sideways.wheel(ui, &frame, single_pane, screen.reach.max_offsets);
                     }
                     self.track_pointer(ui, background, &frame, inputs);
-                    self.paint_rows(ui, &frame, viewport, inputs, threads_ui).0
+                    self.paint_rows(ui, &frame, viewport, inputs, threads_ui)
                 })
             })
             .inner;
@@ -530,7 +527,7 @@ impl DiffView {
     }
 
     /// Paints the rows overlapping `viewport` (in row coordinates) and returns what the user did
-    /// with them and how many code rows were painted.
+    /// with them.
     fn paint_rows(
         &mut self,
         ui: &mut Ui,
@@ -538,7 +535,7 @@ impl DiffView {
         viewport: Rect,
         inputs: &DiffInputs<'_>,
         threads_ui: &mut ThreadsUi,
-    ) -> (Option<DiffEvent>, usize) {
+    ) -> Option<DiffEvent> {
         #[cfg(any(test, feature = "test-support"))]
         {
             self.probe = Some(Probe::of(frame, inputs.layout));
@@ -546,17 +543,21 @@ impl DiffView {
         let total_height = self.height();
         let mut row_event = None;
         let mut removals = Vec::new();
-        let mut painted = 0;
         let first = self.offsets.first_below(viewport.min.y);
         for row_index in first..self.built.rows.len() {
             let top = self.offsets[row_index];
             if top > viewport.max.y {
                 break;
             }
-            match self.built.rows[row_index].kind {
-                RowKind::Removal => removals.push(row_index),
-                RowKind::Line | RowKind::Expanded => painted += 1,
-                _ => {}
+            let kind = &self.built.rows[row_index].kind;
+            if matches!(kind, RowKind::Removal) {
+                removals.push(row_index);
+            }
+            #[cfg(any(test, feature = "test-support"))]
+            if matches!(kind, RowKind::Line | RowKind::Expanded)
+                && let Some(probe) = self.probe.as_mut()
+            {
+                probe.painted_rows += 1;
             }
             let height = self.offsets[row_index + 1] - top;
             let rect =
@@ -583,7 +584,7 @@ impl DiffView {
             let top = self.offsets[row_index];
             removals::show_wedge(ui, &mut self.removal, row, top, inputs.diff, frame, total_height);
         }
-        (row_event, painted)
+        row_event
     }
 
     /// Builds the rows again when what they show changed. `holds_card`: leave the composer out of
@@ -763,8 +764,8 @@ impl DiffView {
                 let shown =
                     self.drafting.show_card(ui, &row, inputs, frame, threads_ui, &mut self.cards);
                 #[cfg(any(test, feature = "test-support"))]
-                if shown.card.is_some() {
-                    self.composer_card = shown.card;
+                if let (Some(card), Some(probe)) = (shown.card, self.probe.as_mut()) {
+                    probe.composer_card = Some(card);
                 }
                 if shown.moved {
                     self.offsets.mark_dirty();
@@ -967,7 +968,13 @@ impl DiffView {
     #[cfg(any(test, feature = "test-support"))]
     /// Where the new-comment card was painted in the last pass, if it was.
     pub fn composer_card(&self) -> Option<Rect> {
-        self.composer_card
+        self.probe.and_then(|probe| probe.composer_card)
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    /// How many code rows the last pass painted, for the tests that hold a view to what is on screen.
+    pub fn painted_rows(&self) -> usize {
+        self.probe.map_or(0, |probe| probe.painted_rows)
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -1066,6 +1073,10 @@ struct Probe {
     line_height: f32,
     /// Columns per visual row of each pane's code when lines wrap.
     wrap_columns: Option<[usize; 2]>,
+    /// Where the new-comment card was painted in this pass.
+    composer_card: Option<Rect>,
+    /// Code rows painted in this pass.
+    painted_rows: usize,
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -1086,6 +1097,8 @@ impl Probe {
             wrap_columns: frame
                 .wrap_width
                 .map(|widths| widths.map(|width| (width / frame.metrics.char_width) as usize)),
+            composer_card: None,
+            painted_rows: 0,
         }
     }
 }

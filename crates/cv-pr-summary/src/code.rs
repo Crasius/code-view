@@ -142,7 +142,7 @@ pub fn show(
         split: output.split,
         split_committed: output.split_committed,
         #[cfg(test)]
-        rows: output.rows,
+        rows: view.painted_rows(),
         height: view.height(),
         scroll: view.take_scroll_request(),
         has_selection: view.has_selection(),
