@@ -25,9 +25,9 @@ use wiremock::{Request, Respond, ResponseTemplate};
 use super::ReviewApp;
 use super::mock_host::MockHost;
 use super::recording::{Recorder, iids, template};
-use super::walkthrough::{
-    app_with, opened_urls, saved_paths, wait_idle, wait_until_still, wait_until_unsettled,
-};
+#[cfg(debug_assertions)]
+use super::walkthrough::wait_until_still;
+use super::walkthrough::{app_with, opened_urls, saved_paths, wait_idle, wait_until_unsettled};
 use cv_testkit::{Clicks, ScratchDir, samples};
 use cv_widgets::numbers::number_prefix;
 

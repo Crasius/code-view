@@ -36,8 +36,8 @@ pub(super) fn app_on_scripted_gitlab(paths: AppPaths) -> Harness<'static, Review
     })
 }
 
-/// GitLab as the user met it: a fine-grained token without "Merge Request: Read", then a token
-/// with the api scope. Denials are explained by the real GitLab provider.
+/// The real GitLab provider behind the scripted answers of the module doc; the connection's token
+/// picks the limited or the complete script.
 struct ScriptedGitLab {
     gitlab: provider_gitlab::GitLabProvider,
     connection: Connection,
