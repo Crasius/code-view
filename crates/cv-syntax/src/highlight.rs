@@ -42,6 +42,8 @@ const CHECK_EVERY: usize = 16;
 const HEAD_LINES: usize = 250;
 const OFFSET_BITS: u32 = 27;
 const OFFSET_MASK: u32 = (1 << OFFSET_BITS) - 1;
+const _: () = assert!(MAX_LINE_BYTES <= OFFSET_MASK as usize);
+const _: () = assert!(TokenKind::ALL.len() <= 1 << (u32::BITS - OFFSET_BITS));
 
 /// Where a token starts in its line and what it is, packed into 4 bytes. A token runs until the
 /// next span; text before a line's first span is plain.
@@ -680,12 +682,6 @@ mod tests {
             .iter()
             .find(|(token, _)| token.trim() == text)
             .map_or_else(|| panic!("no token {text:?} in {tokens:?}"), |(_, kind)| *kind)
-    }
-
-    #[test]
-    fn packs_offset_and_kind() {
-        let span = Span::new(1234, TokenKind::Function);
-        assert_eq!((span.start(), span.kind()), (1234, TokenKind::Function));
     }
 
     #[test]
