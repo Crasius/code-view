@@ -6,9 +6,7 @@
 
 <!-- The checks of AGENTS.md (Commands) you ran and their results, and the tests you added. -->
 
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo run -q -p repo-lint`
-- [ ] `cargo clippy --workspace --all-targets -- -D warnings` and `cargo clippy --workspace -- -D warnings`
+- [ ] `sh scripts/check.sh` (`--list` names its steps)
 - [ ] the tests of the crates I changed
 
 ## Contributor license agreement
