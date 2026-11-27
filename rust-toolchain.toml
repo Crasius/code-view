@@ -1,6 +1,7 @@
 # RS-DO-02: one exact toolchain for every machine and CI, so clippy -D warnings means the same
 # everywhere. Bump it only in a change that also fixes the new clippy findings.
-# `rust-version` in Cargo.toml stays the oldest compiler the code claims to build with.
+# `rust-version` in Cargo.toml follows this pin and moves with it, as do the `RUST_IMAGE` pin in
+# ci/checks.yml and the rust image in .github/workflows/pull-request.yml.
 [toolchain]
 channel = "1.99.1"
 components = ["clippy", "rustfmt"]
