@@ -41,7 +41,6 @@ pub struct ImageFailure {
     /// The host or repository path it was asked from.
     pub place: String,
     pub can_retry: bool,
-    /// What the card offers beside a retry.
     pub remedy: Remedy,
 }
 
@@ -55,6 +54,7 @@ impl ImageFailure {
 /// The one fix an image's card offers beside a retry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Remedy {
+    /// The card offers only the retry, when `can_retry` allows it.
     None,
     /// The image is private and the connection does not reach it: the card offers to fix its token.
     SignIn,
