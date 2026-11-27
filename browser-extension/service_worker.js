@@ -6,18 +6,15 @@
 const HOST = 'de.crasius.codeview';
 // A link opened with a modifier key stays in the browser once, for this long.
 const PASS_MS = 10000;
+// The app's single-instance line limit (docs/browser-extension.md, Single instance).
+const MAX_URL = 8192;
 
-function askHost(request) {
-  return new Promise((resolve) => {
-    chrome.runtime.sendNativeMessage(HOST, request, (answer) => {
-      if (chrome.runtime.lastError || !answer) {
-        const message = chrome.runtime.lastError ? chrome.runtime.lastError.message : 'No answer';
-        resolve({ type: 'error', state: 'unreachable', message });
-        return;
-      }
-      resolve(answer);
-    });
-  });
+async function askHost(request) {
+  try {
+    return (await chrome.runtime.sendNativeMessage(HOST, request)) ?? { type: 'error', message: 'No answer' };
+  } catch (error) {
+    return { type: 'error', message: error.message };
+  }
 }
 
 async function isEnabled() {
@@ -25,26 +22,39 @@ async function isEnabled() {
   return enabled;
 }
 
-// Addresses the user opened with Ctrl, Shift, Meta, Alt or the middle button, with when.
-async function takePass(url) {
-  const { passes = {} } = await chrome.storage.session.get('passes');
-  const now = Date.now();
-  const kept = Object.fromEntries(Object.entries(passes).filter(([, at]) => now - at < PASS_MS));
-  const hasPass = url in kept;
-  delete kept[url];
-  await chrome.storage.session.set({ passes: kept });
-  return hasPass;
+// Every read-modify-write of the passes runs after the one before, so none overwrites another.
+let passQueue = Promise.resolve();
+
+function withPasses(update) {
+  const next = passQueue.then(update);
+  passQueue = next.catch(() => {});
+  return next;
 }
 
-async function addPass(url) {
-  const { passes = {} } = await chrome.storage.session.get('passes');
-  passes[url] = Date.now();
-  await chrome.storage.session.set({ passes });
+// Addresses the user opened with Ctrl, Shift, Meta, Alt or the middle button, with when.
+function takePass(url) {
+  return withPasses(async () => {
+    const { passes = {} } = await chrome.storage.session.get('passes');
+    const now = Date.now();
+    const kept = Object.fromEntries(Object.entries(passes).filter(([, at]) => now - at < PASS_MS));
+    const hasPass = url in kept;
+    delete kept[url];
+    await chrome.storage.session.set({ passes: kept });
+    return hasPass;
+  });
+}
+
+function addPass(url) {
+  return withPasses(async () => {
+    const { passes = {} } = await chrome.storage.session.get('passes');
+    passes[url] = Date.now();
+    await chrome.storage.session.set({ passes });
+  });
 }
 
 function isHttpsUrl(value) {
   try {
-    return typeof value === 'string' && value.length <= 8192 && new URL(value).protocol === 'https:';
+    return typeof value === 'string' && value.length <= MAX_URL && new URL(value).protocol === 'https:';
   } catch {
     return false;
   }
@@ -66,10 +76,6 @@ async function navigation(url) {
 }
 
 async function handle(message, sender) {
-  const isOwnPage = sender.id === chrome.runtime.id;
-  if (!isOwnPage) {
-    return { error: 'unknown sender' };
-  }
   const fromTab = sender.tab && sender.frameId === 0;
   switch (message && message.type) {
     case 'navigation':
