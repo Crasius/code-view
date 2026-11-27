@@ -15,6 +15,7 @@
 )]
 
 mod card;
+mod context;
 mod drafts;
 mod edits;
 mod event;
@@ -30,7 +31,6 @@ pub mod samples;
 pub mod suggestion;
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 
 use cv_pr_session::actions::{ActionRunner, Refresh};
 use cv_pr_session::session::PullRequestSession;
@@ -39,11 +39,12 @@ use cv_runtime::route::PullRequestKey;
 use cv_runtime::toasts::ToastAction;
 use cv_services::Services;
 use cv_services::writes::Effect;
-use review_core::{NewThread, Provider, ProviderKind, ReviewThread, ThreadStatus, UserIdentity};
+use review_core::{NewThread, ProviderKind, ReviewThread, ThreadStatus, UserIdentity};
 use review_store::ThreadStore;
 
 use self::card::NewComments;
 pub use self::card::{CardOptions, show as show_card, show_pending as show_pending_card};
+pub use self::context::ThreadContext;
 pub use self::drafts::{GENERAL_KEY, new_thread_key};
 pub use self::event::{Jump, ThreadEvent};
 pub use self::links::thread_url;
@@ -65,33 +66,6 @@ const SETTLE_WINDOW_SECONDS: f64 = 0.5;
 /// The id a new thread's card has while it is on its way.
 pub fn pending_id(key: &str) -> String {
     format!("pending:{key}")
-}
-
-/// What the cards need to know about the pull request this frame.
-#[derive(Clone)]
-pub struct ThreadContext {
-    pub platform: ProviderKind,
-    pub can_write: bool,
-    /// The pull request's author, who gets the "Author" badge.
-    pub author_id: Option<String>,
-    /// The pull request's web page, for thread links.
-    pub web_url: Option<String>,
-    pub connection_id: String,
-    /// The pull request's platform, for thread links and what the user may do per comment.
-    pub(crate) provider: Option<Arc<dyn Provider>>,
-}
-
-impl ThreadContext {
-    fn new(platform: ProviderKind, connection_id: &str) -> Self {
-        Self {
-            platform,
-            can_write: false,
-            author_id: None,
-            web_url: None,
-            connection_id: connection_id.to_owned(),
-            provider: None,
-        }
-    }
 }
 
 /// Per pull request: drafts, open composers, collapsed cards, read marks and posts.
