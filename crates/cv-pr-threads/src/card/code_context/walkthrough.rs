@@ -13,7 +13,7 @@ use cv_widgets::focus;
 use egui::{Margin, Rect};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_core::{FileCategory, ProviderKind, ReviewThread, ThreadAnchor, ThreadStatus};
+use review_core::{ProviderKind, ReviewThread, ThreadAnchor, ThreadStatus};
 use review_git::{ChangeKind, ChangedFile};
 use review_store::ThemePreference;
 
@@ -299,16 +299,9 @@ fn coupon(count: u32) -> String {
 fn the_skeleton_of_a_short_added_file_has_the_height_of_its_code() {
     let path = "src/coupon.rs";
     let file = ChangedFile {
-        path: path.into(),
-        old_path: None,
-        kind: ChangeKind::Added,
-        old_oid: "0".repeat(40),
-        new_oid: "2".repeat(40),
         additions: Some(5),
         deletions: Some(0),
-        is_binary: false,
-        category: FileCategory::Code,
-        whitespace_only: false,
+        ..ChangedFile::sample(path, ChangeKind::Added)
     };
     let text = coupon(5);
     let diff = text.lines().fold("@@ -0,0 +1,5 @@\n".to_owned(), |mut diff, line| {
