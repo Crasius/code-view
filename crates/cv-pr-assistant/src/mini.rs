@@ -1,12 +1,13 @@
 //! The mini chat: with "Keep the answer beside the code" on (Settings → Assistant, or the chip
-//! menu of the card and panel), a citation followed from an answer opens the Files tab as before
-//! and a small chat floats in a corner of the Files tab's content, never over the file tree or the
-//! tab bar. It keeps that answer in view, steps through its references (◀ ▶, Alt+, and Alt+.)
-//! with the diff following, and takes a follow-up into the same conversation, from the draft the
-//! card and panel write too; a new answer replaces the old one there. While the conversation's
-//! latest question runs, it offers Stop in place of Send, on an earlier answer too. It shrinks to a pill, drags to another corner (kept in
-//! the settings) and fades while it covers the cited lines, unless the pointer is on it. A reference
-//! to a file the pull request does not change shows a notice with its way on, never a dead end.
+//! menu of the card and panel), a citation followed from an answer opens the Files tab, and a
+//! small chat floats in a corner of the Files tab's content, never over the file tree or the tab
+//! bar. It keeps that answer in view, steps through its references (◀ ▶, Alt+, and Alt+.) with
+//! the diff following, and takes a follow-up into the same conversation, from the draft the card
+//! and panel write too; a new answer replaces the old one there. While the conversation's latest
+//! question runs, it offers Stop in place of Send, on an earlier answer too. It shrinks to a pill,
+//! drags to another corner (kept in the settings) and fades while it covers the cited lines,
+//! unless the pointer is on it. A reference to a file the pull request does not change shows a
+//! notice with its way on, never a dead end.
 //! The card's title line carries the agent and model chip ([`super::chip`]).
 //!
 //! Its state lives on the [`Assistant`], so it survives tab switches; the Files tab tells it
@@ -41,10 +42,10 @@ const COVERING_OPACITY: f32 = 0.35;
 
 /// One reference of an answer: a citation the checkout has, once per target.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Reference {
-    pub path: String,
-    pub start: u32,
-    pub end: u32,
+pub(crate) struct Reference {
+    pub(crate) path: String,
+    pub(crate) start: u32,
+    pub(crate) end: u32,
 }
 
 impl Reference {
@@ -66,7 +67,7 @@ fn references(linked: &str) -> Vec<Reference> {
 
 /// The reference after (`forward`) or before `current` among `count`; it stays at the ends. With
 /// none picked yet, forward goes to the first.
-pub fn step(current: Option<usize>, count: usize, forward: bool) -> Option<usize> {
+pub(crate) fn step(current: Option<usize>, count: usize, forward: bool) -> Option<usize> {
     match (current, forward) {
         (None, true) if count > 0 => Some(0),
         (Some(index), true) if index + 1 < count => Some(index + 1),
@@ -89,7 +90,7 @@ enum Face {
 
 /// The mini chat's state, on the assistant.
 #[derive(Default)]
-pub struct MiniChat {
+pub(crate) struct MiniChat {
     face: Face,
     /// The turn whose answer it shows.
     turn: usize,
@@ -116,7 +117,7 @@ impl MiniChat {
 
 /// A citation was followed into the Files tab: the mini chat (when it is on) shows the answer it
 /// came from, on that reference, appearing if it was not open.
-pub fn follow(assistant: &mut Assistant, path: &str, start: u32, end: u32) {
+pub(crate) fn follow(assistant: &mut Assistant, path: &str, start: u32, end: u32) {
     let target = Reference { path: path.to_owned(), start, end };
     let turns = assistant.chat.turns.len();
     let found = assistant.chat.turns.iter().enumerate().rev().find_map(|(turn, shown)| {
@@ -141,7 +142,7 @@ pub fn follow(assistant: &mut Assistant, path: &str, start: u32, end: u32) {
 
 /// Draws the mini chat over the Files tab's content, after the tab drew; returns the lines a step
 /// to another reference asks the diff to show.
-pub fn show(
+pub(crate) fn show(
     assistant: &mut Assistant,
     ctx: &Context,
     session: &PullRequestSession,
@@ -165,7 +166,7 @@ pub fn show(
         mini.close();
     }
     let room = this_pass(ctx, ROOM_ID).filter(|_| mini.face != Face::Closed)?;
-    assistant.links_publish(ctx, session);
+    assistant.resolver.publish(ctx, session);
     let shown = assistant.chat.turns.get(assistant.mini.turn);
     let linked = shown.and_then(|turn| assistant.links.get(assistant.mini.turn, &turn.answer));
     let references = linked.map(references).unwrap_or_default();
@@ -176,21 +177,19 @@ pub fn show(
     } else {
         None
     };
-    let is_changed = |path: &str| {
-        session.files().is_some_and(|files| files.iter().any(|file| file.path == path))
-    };
     let current = assistant.mini.current.and_then(|index| references.get(index));
-    let outside = current.filter(|reference| !is_changed(&reference.path));
+    let outside = current.filter(|reference| !assistant.resolver.is_changed(&reference.path));
     let place = Place { room, corner };
     let label = chip::label(assistant, services);
     let outside_path = outside.map(|reference| reference.path.as_str());
-    let drawn = draw(assistant, ctx, place, &references, (outside_path, &label));
+    let drawn = draw(assistant, ctx, place, &references, outside_path, &label);
     if let Some(picked) = chip::title_menu(ctx, Line::Mini, assistant, services) {
         actions::act(assistant, picked, session, services);
     }
     event = event.or(drawn);
     let changes = Changes { place, references: &references, session };
-    act(assistant, ctx, event?, &changes, services).filter(|(path, _, _)| is_changed(path))
+    let jump = act(assistant, ctx, event?, &changes, services)?;
+    assistant.resolver.is_changed(&jump.0).then_some(jump)
 }
 
 /// What carrying out an event reads.
@@ -276,7 +275,8 @@ fn draw(
     ctx: &Context,
     place: Place,
     references: &[Reference],
-    (outside, chip): (Option<&str>, &str),
+    outside: Option<&str>,
+    chip: &str,
 ) -> Option<Event> {
     let mini = &mut assistant.mini;
     let is_pill = mini.face == Face::Pill;

@@ -12,42 +12,63 @@ use cv_pr_session::web_link;
 use cv_runtime::background::{Task, TaskPoll};
 use cv_services::Services;
 use review_core::ProviderKind;
+use review_git::ChangedFile;
 use review_store::TurnEnd;
 
 use crate::{Assistant, checkout, citations};
 
+/// The changed file list the paths were made from (kept, so its address cannot be reused by
+/// another list), and the paths.
+type ChangedPaths = (Option<Arc<Vec<ChangedFile>>>, Arc<HashSet<String>>);
+
 /// The changed paths, kept for the file list they were made from.
 #[derive(Default)]
 pub struct Links {
-    changed: Option<(usize, Arc<HashSet<String>>)>,
+    changed: Option<ChangedPaths>,
 }
 
 impl Links {
-    /// Makes the answers drawn after this call resolve citation targets.
+    /// Makes the answers drawn after this call resolve citation targets, and [`Self::is_changed`]
+    /// read the pull request's current file list.
     pub fn publish(&mut self, ctx: &egui::Context, session: &PullRequestSession) {
+        let changed = self.changed_paths(session.files());
         let Some(detail) = session.detail.ready() else {
-            return;
-        };
-        let files = session.files();
-        let key = files.map_or(0, |files| Arc::as_ptr(files) as usize);
-        if self.changed.as_ref().is_none_or(|(kept, _)| *kept != key) {
-            let paths: HashSet<String> = files
-                .into_iter()
-                .flat_map(|files| files.iter().map(|file| file.path.clone()))
-                .collect();
-            self.changed = Some((key, Arc::new(paths)));
-        }
-        let Some((_, changed)) = &self.changed else {
             return;
         };
         let resolver = CitationLinks {
             inner: markdown::current_links(ctx),
-            changed: changed.clone(),
+            changed,
             kind: session.kind,
             pull_request_url: detail.summary.web_url.clone(),
             head: detail.head_sha.clone(),
         };
         markdown::publish_links(ctx, Arc::new(resolver));
+    }
+
+    /// The paths of `files`, made once per file list.
+    fn changed_paths(&mut self, files: Option<&Arc<Vec<ChangedFile>>>) -> Arc<HashSet<String>> {
+        if let Some((kept, paths)) = &self.changed {
+            let is_same = match (kept, files) {
+                (None, None) => true,
+                (Some(kept), Some(files)) => Arc::ptr_eq(kept, files),
+                _ => false,
+            };
+            if is_same {
+                return paths.clone();
+            }
+        }
+        let paths: HashSet<String> = files
+            .into_iter()
+            .flat_map(|files| files.iter().map(|file| file.path.clone()))
+            .collect();
+        let paths = Arc::new(paths);
+        self.changed = Some((files.cloned(), paths.clone()));
+        paths
+    }
+
+    /// Whether the pull request changes `path`, as of the last [`Self::publish`].
+    pub(crate) fn is_changed(&self, path: &str) -> bool {
+        self.changed.as_ref().is_some_and(|(_, paths)| paths.contains(path))
     }
 }
 
@@ -144,16 +165,14 @@ fn link_answers(checkout: &std::path::Path, answers: Vec<(usize, String)>) -> Ve
     answers
         .into_iter()
         .filter_map(|(index, answer)| {
-            let found = citations::find(&answer);
-            let valid: Vec<bool> = found
-                .iter()
-                .map(|citation| citations::is_in_checkout(checkout, &citation.path, citation.start))
-                .collect();
-            if !valid.contains(&true) {
+            let mut found = citations::find(&answer);
+            found.retain(|citation| {
+                citations::is_in_checkout(checkout, &citation.path, citation.start)
+            });
+            if found.is_empty() {
                 return None;
             }
-            let mut flags = valid.into_iter();
-            let text = citations::link(&answer, &found, |_| flags.next().unwrap_or(false));
+            let text = citations::link(&answer, &found);
             Some((index, Linked { answer, text }))
         })
         .collect()
@@ -162,8 +181,26 @@ fn link_answers(checkout: &std::path::Path, answers: Vec<(usize, String)>) -> Ve
 #[cfg(test)]
 mod tests {
     use cv_testkit::ScratchDir;
+    use review_git::ChangeKind;
 
     use super::*;
+
+    /// A new file list gets its own paths, even when it sits where a dropped list was: the paths
+    /// were once kept by the list's address alone, which a later list can reuse.
+    #[test]
+    fn a_new_file_list_never_gets_the_paths_of_a_dropped_one() {
+        let mut links = Links::default();
+        let first = Arc::new(vec![ChangedFile::sample("src/old.rs", ChangeKind::Modified)]);
+        assert!(links.changed_paths(Some(&first)).contains("src/old.rs"));
+        drop(first);
+        let second = Arc::new(vec![ChangedFile::sample("src/new.rs", ChangeKind::Added)]);
+
+        let paths = links.changed_paths(Some(&second));
+
+        assert!(paths.contains("src/new.rs"));
+        assert!(!paths.contains("src/old.rs"));
+        assert!(links.is_changed("src/new.rs"));
+    }
 
     #[test]
     fn answers_get_links_for_the_lines_the_checkout_has() {
