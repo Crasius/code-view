@@ -116,7 +116,7 @@ pub async fn check_out(
         }
     }
     if request.target == Target::Clone && !state.is_clean() {
-        return Err(CheckoutError::Dirty(state.tracked_changes()));
+        return Err(CheckoutError::Dirty(state.tracked_changes().map(str::to_owned).collect()));
     }
     if let Target::Worktree { path } = &request.target
         && is_taken(path)

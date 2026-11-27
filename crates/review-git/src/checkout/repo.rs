@@ -33,8 +33,8 @@ impl TreeState {
     }
 
     /// The changed tracked files' lines, untracked ones left out.
-    pub fn tracked_changes(&self) -> Vec<String> {
-        self.changes.iter().filter(|line| !line.starts_with("??")).cloned().collect()
+    pub fn tracked_changes(&self) -> impl Iterator<Item = &str> + '_ {
+        self.changes.iter().map(String::as_str).filter(|line| !line.starts_with("??"))
     }
 }
 
@@ -44,15 +44,6 @@ pub struct Worktree {
     pub path: PathBuf,
     /// The branch checked out there; `None` when detached.
     pub branch: Option<String>,
-}
-
-/// How a branch and the pull request's head relate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Divergence {
-    /// Commits of the pull request the branch lacks.
-    pub behind: usize,
-    /// Commits of the branch the pull request lacks.
-    pub ahead: usize,
 }
 
 impl LocalRepo {
@@ -138,12 +129,9 @@ impl LocalRepo {
         Ok(self.count(ancestor, descendant).await? == 0)
     }
 
-    /// How `local` and `head` relate.
-    pub async fn divergence(&self, local: &str, head: &str) -> Result<Divergence> {
-        Ok(Divergence {
-            behind: self.count(head, local).await?,
-            ahead: self.count(local, head).await?,
-        })
+    /// The commits of `head` that `local` lacks.
+    pub async fn behind(&self, local: &str, head: &str) -> Result<usize> {
+        self.count(head, local).await
     }
 
     /// `4be19a0  wip: try shorter ttl` for each commit of `tip` that `base` lacks, newest first.
@@ -268,7 +256,7 @@ mod tests {
         assert_eq!(state.branch.as_deref(), Some("main"));
         assert_eq!(state.changes, ["M  src/a.rs", "?? notes.md"]);
         assert!(!state.is_clean());
-        assert_eq!(state.tracked_changes(), ["M  src/a.rs"]);
+        assert_eq!(state.tracked_changes().collect::<Vec<_>>(), ["M  src/a.rs"]);
 
         let untracked = parse_status("## feature/x\n?? scratch.txt\n");
         assert_eq!(untracked.branch.as_deref(), Some("feature/x"));

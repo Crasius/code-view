@@ -5,7 +5,6 @@
 use egui::{Rect, Sense, Stroke, Ui, pos2, vec2};
 
 use cv_base::theme::{self, icons, style};
-use cv_pr_page::checkout;
 use cv_services::Services;
 use cv_widgets::{focus, row, states};
 
@@ -76,7 +75,7 @@ pub(super) fn show(
         );
         focus::ring(ui, &response, rect);
         if response.on_hover_text("Show the checkout").clicked() {
-            checkout::reveal(ui.ctx(), key);
+            cv_pr_page::reveal_checkout(ui.ctx(), key);
             action = Some(JumpAction::Open { key: key.clone(), listed: None });
         }
         covered = covered.union(rect);

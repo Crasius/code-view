@@ -16,24 +16,41 @@ pub enum Removal {
     Changed(Vec<String>),
 }
 
-/// Removes the worktree at `path` of the clone `clone`. With changes in it, only when `force`
-/// (the user confirmed a second time). The branch stays unless it was the checkout's own and still
-/// points at `own_tip`: then nothing of the user's is on it, and it goes too.
+/// What a removal does with changes in the worktree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Changes {
+    /// A worktree with changes stays, and the removal reports them.
+    Keep,
+    /// The user confirmed a second time: the changes go with the worktree.
+    Discard,
+}
+
+/// The branch the checkout made for itself.
+#[derive(Debug, Clone, Copy)]
+pub struct OwnBranch<'a> {
+    pub name: &'a str,
+    /// The commit the checkout made the branch at; the branch goes only while it still points here.
+    pub tip: &'a str,
+}
+
+/// Removes the worktree at `path` of the clone `clone`; `changes` says what happens to changes in
+/// it. The branch stays unless it was the checkout's own and still points at its tip: then nothing
+/// of the user's is on it, and it goes too.
 pub async fn remove_worktree(
     clone: &Path,
     path: &Path,
-    force: bool,
-    own_branch: Option<(&str, &str)>,
+    changes: Changes,
+    own_branch: Option<OwnBranch<'_>>,
 ) -> Result<Removal, CheckoutError> {
     if path.exists() {
         let state = LocalRepo::new(path).state().await?;
-        if !state.changes.is_empty() && !force {
+        if !state.changes.is_empty() && changes == Changes::Keep {
             return Ok(Removal::Changed(state.changes));
         }
     }
     let repo = LocalRepo::new(clone);
     let mut args: Vec<OsString> = vec!["worktree".into(), "remove".into()];
-    if force {
+    if changes == Changes::Discard {
         args.push("--force".into());
     }
     args.push(path.as_os_str().to_owned());
@@ -42,11 +59,11 @@ pub async fn remove_worktree(
     } else {
         repo.git().run(["worktree", "prune"]).await?;
     }
-    if let Some((branch, own_tip)) = own_branch
-        && repo.branch_tip(branch).await?.as_deref() == Some(own_tip)
+    if let Some(own) = own_branch
+        && repo.branch_tip(own.name).await?.as_deref() == Some(own.tip)
     {
-        let branch_ref = format!("refs/heads/{branch}");
-        repo.git().run(["update-ref", "-d", branch_ref.as_str(), own_tip]).await?;
+        let branch_ref = format!("refs/heads/{}", own.name);
+        repo.git().run(["update-ref", "-d", branch_ref.as_str(), own.tip]).await?;
     }
     Ok(Removal::Removed)
 }

@@ -71,6 +71,35 @@ mod tests {
     }
 
     #[test]
+    fn rewriting_log_lines_changes_every_record_and_saves_only_a_change() {
+        let dir = TestDir::new("checkout-rewrite");
+        let file = dir.path().join("checkouts.json");
+        let mut records = CheckoutRecords::load(file.clone()).expect("no file is no records");
+        let mut first = record(1);
+        first.log.push("a secret".into());
+        records.put(first).expect("saved");
+        let mut second = record(2);
+        second.log = vec!["first secret".into(), "plain".into(), "second secret".into()];
+        records.put(second).expect("saved");
+
+        let unchanged = records.rewrite_log_lines(str::to_owned).expect("nothing to save");
+        assert!(!unchanged, "lines that stay the same are not saved again");
+
+        let hide = |line: &str| line.replace("secret", "<redacted>");
+        let saved = records.rewrite_log_lines(hide).expect("saved");
+        assert!(saved, "a changed line is saved");
+        let expected = [
+            (1, vec!["checked out", "a <redacted>"]),
+            (2, vec!["first <redacted>", "plain", "second <redacted>"]),
+        ];
+        let loaded = CheckoutRecords::load(file).expect("loads");
+        for (number, log) in expected {
+            assert_eq!(records.find("gh", "acme/app", number).unwrap().log, log);
+            assert_eq!(loaded.find("gh", "acme/app", number).unwrap().log, log, "on disk");
+        }
+    }
+
+    #[test]
     fn a_records_log_keeps_its_newest_lines() {
         let mut record = record(1);
         record.append_log((0..MAX_LOG_LINES + 5).map(|index| format!("line {index}")));
