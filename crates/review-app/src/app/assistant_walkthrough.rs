@@ -15,7 +15,8 @@ use super::assistant_script::{
 };
 use super::github_mock::{FILE, GitHubHost, TITLE, open_diff, open_pull_request};
 use super::walkthrough::{
-    app, click_now, press, saved_settings, shows_file_view, type_into, wait_for, wait_until, wheel,
+    app, click_now, hover_until, press, saved_settings, settle_background, shows_file_view,
+    type_into, wait_for, wait_until, wheel,
 };
 use cv_pr_assistant::CARD_LABEL;
 use cv_pr_assistant::mini::{self, ANSWERING, FOLLOW_UP};
@@ -222,11 +223,9 @@ fn terminal_button_opens_the_cli_in_the_checkout() {
         harness.query_by_label(TERMINAL).is_some()
             && harness.query_by_label_contains("haiku").is_some()
     });
-    let button = harness.get_by_label(TERMINAL);
-    assert!(button.accesskit_node().is_disabled(), "no checkout yet");
-    button.hover();
+    assert!(harness.get_by_label(TERMINAL).accesskit_node().is_disabled(), "no checkout yet");
     let hint = "Ask a first question to prepare the checkout";
-    wait_until(&mut harness, "the disabled button's hint", |harness| {
+    hover_until(&mut harness, Role::Button, TERMINAL, "the disabled button's hint", |harness| {
         harness.query_by_label(hint).is_some()
     });
 
@@ -828,7 +827,7 @@ fn mini_chat_on_an_earlier_answer_waits_for_the_running_one() {
 /// Regression, in the owner's state: the panel over kept conversations with both agents (an
 /// answered one, a failed one with a failed command), loaded from disk. The question being written
 /// stays through switching the model and the agent both ways, also while a question runs and after
-/// it failed.
+/// the switch stopped it.
 #[test]
 fn draft_survives_switching_over_kept_conversations() {
     use review_agent::{AgentError, StepOutcome};
@@ -890,10 +889,19 @@ fn draft_survives_switching_over_kept_conversations() {
     assert_eq!(composer_text(&harness), "And now?", "switched away while a question runs");
     pick_in_chip(&mut harness, "Claude · ", "Codex");
     assert_eq!(composer_text(&harness), "And now?", "back to the running question");
+    // Switching away ended the Codex CLI, and the kept conversation shows its question as stopped
+    // (`cv_pr_assistant`, `show_conversation`); a failure the ended session still sends stays out.
+    wait_until(&mut harness, "the question the switch stopped", |harness| {
+        harness.query_by_label_contains("Stopped.").is_some()
+    });
     codex.emit(AgentEvent::Failed(AgentError::Turn("Again denied.".into())));
-    harness.run_steps(10);
+    settle_background(&mut harness);
+    assert!(
+        harness.query_by_label_contains("Again denied.").is_none(),
+        "the ended session's failure"
+    );
     pick_in_chip(&mut harness, "Codex · ", "Claude");
-    assert_eq!(composer_text(&harness), "And now?", "switched away after it failed");
+    assert_eq!(composer_text(&harness), "And now?", "switched away after it stopped");
 }
 
 /// Regression: the mini chat writes the same draft as the card. A follow-up typed there is still

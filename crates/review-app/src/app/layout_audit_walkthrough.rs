@@ -25,18 +25,19 @@ use review_core::{
     Result, ReviewThread, ReviewVote, Reviewer, RunStatus, ThreadAnchor, ThreadComment,
     ThreadOrigin, ThreadStatus, Timestamp, UserIdentity,
 };
-use review_store::AppPaths;
+use review_store::{AppPaths, DiffLayout};
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::walkthrough::{
-    app_with, files_tab, has, pump, saved_paths, settle_background, shows_file_view, tab_rect,
-    wait_until, wheel,
+    app_with, files_tab, has, press_role, pump, saved_paths, settle_background, shows,
+    shows_file_view, tab_rect, wait_until, wait_until_still, wheel,
 };
 use super::{ReviewApp, clip_check};
 use cv_base::platform::FOCUS_MODE_KEY;
 use cv_pr_diff::find::bar::last_bar as last_find_bar;
 use cv_runtime::route::{PullRequestKey, Route};
+use cv_shell::focus_mode::EXIT_HINT;
 use cv_testkit::provider::{Script, Scripted};
 use cv_testkit::{Clicks, ScratchDir, git, samples};
 
@@ -126,7 +127,7 @@ impl Audit {
         let started = Instant::now();
         for (index, &(width, height, pixels_per_point)) in sizes.iter().enumerate() {
             resize(&mut self.harness, vec2(width, height), pixels_per_point);
-            settle(&mut self.harness);
+            wait_for_rest(&mut self.harness);
             let size = format!("{width:.0}x{height:.0}@{pixels_per_point:.0}x");
             assert_eq!(
                 self.harness.ctx.content_rect().size(),
@@ -144,7 +145,7 @@ impl Audit {
             }
         }
         resize(&mut self.harness, BASE_SIZE, 1.0);
-        settle(&mut self.harness);
+        wait_for_rest(&mut self.harness);
         println!("checked {state} in {:.1} s", started.elapsed().as_secs_f32());
     }
 
@@ -164,11 +165,13 @@ impl Audit {
                 })
                 .rect(),
         );
-        settle(harness);
+        wait_until(harness, "the repository picker", |harness| {
+            egui::Popup::is_any_open(&harness.ctx)
+        });
         self.check("02-list-repository-picker");
         let harness = &mut self.harness;
         harness.key_press(egui::Key::Escape);
-        settle(harness);
+        wait_for_rest(harness);
         harness.state_mut().navigator.go(Route::RepositoryPullRequests {
             connection_id: CONNECTION.to_owned(),
             repository_key: REPOSITORY.to_owned(),
@@ -194,14 +197,21 @@ impl Audit {
             harness.event(wheel(-400.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
             harness.step();
         }
-        settle(harness);
+        wait_for_rest(harness);
         self.check("05-overview-activity");
         let harness = &mut self.harness;
-        harness.click_at(harness.get_by_label("Merge options").rect());
-        settle(harness);
+        // The scroll slid the header away; the keyboard focus on the merge button brings it back.
+        harness.get_by_role_and_label(Role::Button, "Merge options").focus();
+        let window = harness.ctx.content_rect();
+        wait_until_still(harness, "the merge button back in view", |harness| {
+            let button = harness.query_by_role_and_label(Role::Button, "Merge options")?;
+            Some(button.rect()).filter(|rect| window.contains_rect(*rect))
+        });
+        press_role(harness, Role::Button, "Merge options");
+        wait_until(harness, "the merge options", |harness| egui::Popup::is_any_open(&harness.ctx));
         self.check("06-merge-options");
         self.harness.key_press(egui::Key::Escape);
-        settle(&mut self.harness);
+        wait_for_rest(&mut self.harness);
     }
 
     fn walk_files(&mut self) {
@@ -237,28 +247,34 @@ impl Audit {
         self.find_in_diff();
         let harness = &mut self.harness;
         harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "Inline").rect());
-        settle(harness);
+        wait_until(harness, "the inline diff", |harness| {
+            harness.state().services.settings.diff_layout == DiffLayout::Inline
+        });
+        wait_for_rest(harness);
         self.check("10-diff-inline");
         // The same diff with the file tree at the right edge.
         let harness = &mut self.harness;
         harness.click_at(harness.get_by_label("Move the file tree to the right").rect());
-        settle(harness);
+        wait_until(harness, "the file tree at the right", |harness| {
+            shows(harness, "Move the file tree to the left")
+        });
+        wait_for_rest(harness);
         self.check("10b-diff-inline-tree-right");
         let harness = &mut self.harness;
         harness.click_at(harness.get_by_label("Move the file tree to the left").rect());
-        settle(harness);
+        wait_for_rest(harness);
         let harness = &mut self.harness;
         open_origin(harness);
         self.check("11-diff-original-version");
         let harness = &mut self.harness;
         harness.key_press(egui::Key::Escape);
-        settle(harness);
+        wait_for_rest(harness);
         harness.key_press_modifiers(FOCUS_MODE_KEY.modifiers, FOCUS_MODE_KEY.logical_key);
-        settle(harness);
+        wait_for_focus_mode(harness);
         self.check("12-focus-files");
         let harness = &mut self.harness;
         harness.key_press(egui::Key::Escape);
-        settle(harness);
+        wait_for_rest(harness);
         for (filter, name, state) in [
             ("README", "README.md", "13-preview-markdown"),
             ("logo", IMAGE_PATH, "14-preview-image"),
@@ -293,7 +309,7 @@ impl Audit {
         self.check("09b-diff-find-widget");
         let harness = &mut self.harness;
         harness.key_press(egui::Key::Escape);
-        settle(harness);
+        wait_for_rest(harness);
         assert!(last_find_bar(&harness.ctx).is_none(), "Esc closed the find widget");
     }
 
@@ -330,14 +346,14 @@ impl Audit {
             harness.get_by_label(&format!("{RETRIED_JOB}, 3 attempts. Switch attempt")).rect(),
         );
         wait_until(harness, "the attempts list", |harness| egui::Popup::is_any_open(&harness.ctx));
-        settle(harness);
+        wait_for_rest(harness);
         self.check("21-attempts");
         let harness = &mut self.harness;
         // The list closes by itself at a size where its stage card is off-canvas; Esc then
         // would leave the run.
         if egui::Popup::is_any_open(&harness.ctx) {
             harness.key_press(egui::Key::Escape);
-            settle(harness);
+            wait_for_rest(harness);
         }
         wait_until(harness, "the retried job", |harness| {
             harness.query_by_role_and_label(Role::Link, RETRIED_JOB).is_some()
@@ -349,11 +365,11 @@ impl Audit {
         self.check("22-log");
         let harness = &mut self.harness;
         harness.key_press_modifiers(FOCUS_MODE_KEY.modifiers, FOCUS_MODE_KEY.logical_key);
-        settle(harness);
+        wait_for_focus_mode(harness);
         self.check("23-focus-log");
         let harness = &mut self.harness;
         harness.key_press(egui::Key::Escape);
-        settle(harness);
+        wait_for_rest(harness);
         harness.click_at(harness.get_by_role_and_label(Role::TreeItem, WAITING_JOB).rect());
         wait_until(harness, "the waiting job", |harness| has(harness, "Waiting for an agent"));
         self.check("24-job-state");
@@ -387,16 +403,21 @@ impl Audit {
         let harness = &mut self.harness;
         harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::K);
         harness.event(egui::Event::Text("fabrikam logistics".to_owned()));
-        settle(harness);
+        wait_until(harness, "the search's results", |harness| {
+            shows(harness, &format!("!{NUMBER} {TITLE}"))
+        });
+        wait_for_rest(harness);
         self.check("27-search");
         let harness = &mut self.harness;
         harness.key_press(egui::Key::Escape);
-        settle(harness);
+        wait_for_rest(harness);
         let services = &mut harness.state_mut().services;
         let retry = cv_runtime::toasts::ToastAction::retry(egui::Id::unique("layout_audit.retry"));
         services.toasts.error(format!("Could not reach {REPOSITORY}: the connection to dev.azure.com was reset while the request was in flight."), retry);
-        services.toasts.success(format!("Rerun of {RETRIED_JOB} started."));
-        settle(harness);
+        let rerun = format!("Rerun of {RETRIED_JOB} started.");
+        services.toasts.success(rerun.clone());
+        wait_until(harness, "the toasts", |harness| shows(harness, &rerun));
+        wait_for_rest(harness);
         self.check("28-toasts");
         let harness = &mut self.harness;
         harness.state_mut().navigator.go(Route::Settings);
@@ -442,11 +463,16 @@ fn filter_tree(harness: &mut Harness<'_, ReviewApp>, text: &str) {
                 || node.value().is_some_and(|value| !value.is_empty())
         })
         .expect("the file filter");
+    let id = field.accesskit_node().id();
     field.focus();
     harness.step();
     harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::A);
     harness.event(egui::Event::Text(text.to_owned()));
-    settle(harness);
+    wait_until(harness, &format!("the file filter holding {text:?}"), |harness| {
+        harness
+            .query_by(|node| node.id() == id)
+            .is_some_and(|field| field.value().as_deref() == Some(text))
+    });
 }
 
 /// Opens the outdated thread's original version from the handler's diff.
@@ -489,8 +515,22 @@ fn harness(paths: AppPaths, fixture: Fixture) -> Harness<'static, ReviewApp> {
     harness
 }
 
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    harness.run_steps(12);
+/// Waits until focus mode is on (its strip offers the way out) and the screen is at rest.
+fn wait_for_focus_mode(harness: &mut Harness<'_, ReviewApp>) {
+    wait_until(harness, "focus mode", |harness| shows(harness, EXIT_HINT));
+    wait_for_rest(harness);
+}
+
+/// Waits until no node on screen moved from one frame to the next: the state an audit inspects.
+/// Background work may still run (a mirror that never finishes preparing).
+fn wait_for_rest(harness: &mut Harness<'_, ReviewApp>) {
+    wait_until_still(harness, "the screen", |harness| {
+        let rects: Vec<_> = harness
+            .query_all_by(|_| true)
+            .filter_map(|node| node.accesskit_node().bounding_box())
+            .collect();
+        Some(rects)
+    });
 }
 
 fn write(root: &Path, path: &str, bytes: &[u8]) {

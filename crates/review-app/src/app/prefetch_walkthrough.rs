@@ -66,15 +66,6 @@ fn shows_diff(harness: &Harness<'_, ReviewApp>, path: &str) -> bool {
     harness.query_by_label(&format!("Diff of {path}")).is_some()
 }
 
-/// Steps frames for `duration` of wall clock, so background work goes on.
-fn pump(harness: &mut Harness<'_, ReviewApp>, duration: Duration) {
-    let started = Instant::now();
-    while started.elapsed() < duration {
-        harness.step();
-        cv_testkit::let_threads_run(Duration::from_millis(5));
-    }
-}
-
 /// Clicks `path` in the tree and steps until its diff shows: the wall clock and the frames from
 /// the click to the first frame that shows it.
 fn switch_to(harness: &mut Harness<'_, ReviewApp>, path: &str) -> (Duration, usize) {
@@ -133,7 +124,7 @@ fn prefetch_latency() {
     let (_host, mut harness) = opened_on_first_file(&scratch);
     let mut report = Vec::new();
     let mut measure = |harness: &mut Harness<'_, ReviewApp>, what: &str, path: &str| {
-        pump(harness, Duration::from_millis(1_500));
+        settle_background(harness);
         let (elapsed, frames) = switch_to(harness, path);
         report.push(format!(
             "{what:<40} {path:<20} {:>7.1} ms {frames:>3} frames",

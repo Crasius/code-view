@@ -26,7 +26,8 @@ use tokio::sync::watch;
 
 use super::ReviewApp;
 use super::walkthrough::{
-    app_with, has, press_button, pump, saved_paths, secondary_press, settle_background, wait_until,
+    app_with, has, hover_until, press_button, saved_paths, secondary_press, settle_background,
+    wait_until,
 };
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::self_review;
@@ -127,13 +128,14 @@ fn is_off_with_its_reason_without_a_token() {
     wait_until(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
     let node = harness.get_by_role_and_label(Role::Button, self_review::LABEL);
     assert!(node.accesskit_node().is_disabled(), "no token, no request");
-    harness.get_by_role_and_label(Role::Button, self_review::LABEL).hover();
-    pump(&mut harness, 1.5);
-    assert!(
-        has(&harness, "This connection has no token"),
-        "the tooltip says why and how to fix it"
+    hover_until(
+        &mut harness,
+        Role::Button,
+        self_review::LABEL,
+        "the reason in the tooltip",
+        |harness| has(harness, "This connection has no token"),
     );
-    assert!(button(&harness, "Add a token"), "with the way to a token beside it");
+    assert!(button(&harness, "Add a token"), "the tooltip has the way to a token beside it");
     harness.key_press_modifiers(egui::Modifiers::ALT, egui::Key::R);
     settle_background(&mut harness);
     assert!(calls.adds.lock().unwrap().is_empty(), "Alt+R asks nothing either");
@@ -171,9 +173,9 @@ fn keeps_a_refused_request_retryable_with_its_reason() {
     assert!(button(&harness, self_review::LABEL), "the button stays to try again");
     let inline = "Could not add you as a reviewer: GitHub did not";
     assert!(has(&harness, inline), "the reason, inline under the button");
-    harness.get_by_role_and_label(Role::Button, self_review::LABEL).hover();
-    pump(&mut harness, 1.5);
-    assert!(has(&harness, "Click to try again"), "its tooltip offers the retry");
+    hover_until(&mut harness, Role::Button, self_review::LABEL, "the tooltip's retry", |harness| {
+        has(harness, "Click to try again")
+    });
 
     press_button(&mut harness, self_review::LABEL);
     wait_until(&mut harness, "Grace in the reviewer card", |harness| {

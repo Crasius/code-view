@@ -6,9 +6,9 @@
 
 mod log_reuse;
 
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
 
 use async_trait::async_trait;
 use egui::Role;
@@ -25,8 +25,8 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::ReviewApp;
 use super::walkthrough::{
-    app_with, has, opened_urls, saved_paths, saved_settings, settle_background, wait_for,
-    wait_until, wheel,
+    SETTLE_FRAMES, app_with, has, opened_urls, pump, saved_paths, saved_settings,
+    settle_background, wait_for, wait_until, wait_until_still, wheel,
 };
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::provider::{Script, Scripted};
@@ -141,11 +141,9 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
             })
             .rect(),
     );
-    settle(&mut harness);
-    assert!(
-        harness.query_by_label("Security scan #88, Succeeded").is_some(),
-        "status checks are options"
-    );
+    wait_until(&mut harness, "status checks among the switcher's options", |harness| {
+        harness.query_by_label("Security scan #88, Succeeded").is_some()
+    });
     harness.click_at(harness.get_by_label("Docs preview #412, Succeeded").rect());
     wait_until(&mut harness, "the docs pipeline", |harness| {
         harness.query_by_label("Stage deploy").is_some()
@@ -153,8 +151,9 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
     assert!(harness.query_by_label_contains("Docs preview #412, 12 of 14").is_some());
     // The Jobs pivot shown last does not stick: the next pipeline opens at its stages.
     harness.click_at(harness.get_by_label("Jobs").rect());
-    settle(&mut harness);
-    assert!(harness.query_by_label("Stage deploy").is_none(), "the flat job list");
+    wait_until(&mut harness, "the flat job list", |harness| {
+        harness.query_by_label("Stage deploy").is_none()
+    });
     harness.click_at(harness.get_by_role_and_label(Role::Link, "Pipelines").rect());
     wait_until(&mut harness, "the checks table", |harness| {
         harness.query_by_label("Filter checks").is_some()
@@ -172,11 +171,9 @@ fn pipelines_overview_card_opens_a_run_and_the_breadcrumb_leads_back() {
         "the header names the job"
     );
     harness.key_press(egui::Key::Escape);
-    settle(&mut harness);
-    assert!(
-        harness.query_by_label("Stage Analyze").is_some(),
-        "Esc on the log goes back to the stages"
-    );
+    wait_until(&mut harness, "Esc on the log to go back to the stages", |harness| {
+        harness.query_by_label("Stage Analyze").is_some()
+    });
     assert!(
         harness.query_by_label_contains("Pipeline #2279, 1 of 14").is_some(),
         "and the header to the run"
@@ -265,19 +262,18 @@ fn pipelines_checks_table_sorts_filters_steps_and_reruns_failed() {
 
     // Status chips filter, combine and are remembered.
     harness.click_at(harness.get_by_label("Failed, 3 checks").rect());
-    settle(&mut harness);
-    assert_eq!(row_labels(&harness).len(), 3);
+    wait_until(&mut harness, "the failed checks", |harness| row_labels(harness).len() == 3);
     harness.click_at(harness.get_by_label("Running, 2 checks").rect());
-    settle(&mut harness);
-    assert_eq!(row_labels(&harness).len(), 5, "chips add up");
-    assert_eq!(
-        saved_settings(&harness).pipelines.status_filter,
-        [CheckFilter::Failed, CheckFilter::Running].into()
-    );
+    wait_until(&mut harness, "the chips to add up and be saved", |harness| {
+        row_labels(harness).len() == 5
+            && saved_settings(harness).pipelines.status_filter
+                == BTreeSet::from([CheckFilter::Failed, CheckFilter::Running])
+    });
     harness.click_at(harness.get_by_label("All, 20 checks").rect());
-    settle(&mut harness);
-    assert_eq!(row_labels(&harness)[..7], rows[..7]);
-    assert!(saved_settings(&harness).pipelines.status_filter.is_empty());
+    wait_until(&mut harness, "every check again, with no filter saved", |harness| {
+        row_labels(harness).get(..7) == rows.get(..7)
+            && saved_settings(harness).pipelines.status_filter.is_empty()
+    });
 
     // ↓ ↓ ↓ Enter opens the third row.
     harness.key_press(egui::Key::ArrowDown);
@@ -422,7 +418,9 @@ fn pipelines_job_clicks_stay_in_the_app() {
         .max_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
         .expect("the log pane's action");
     harness.click_at(pane_action.rect());
-    collect_frames(&mut harness, &mut opened, 10);
+    collect_until(&mut harness, &mut opened, "the job in Azure DevOps", |harness| {
+        !opened_urls(harness).is_empty()
+    });
     assert_eq!(opened, [format!("{ADO_RESULTS}&view=logs&j=skipped")]);
 }
 
@@ -461,7 +459,9 @@ fn pipelines_github_running_job_waits_for_its_log_and_loads_it_when_done() {
     });
     assert!(has(&harness, "Pytest (current page)"), "the breadcrumb names the step");
     harness.click_at(harness.get_by_label("Watch live on GitHub").rect());
-    collect_frames(&mut harness, &mut opened, 10);
+    collect_until(&mut harness, &mut opened, "the step on GitHub", |harness| {
+        !opened_urls(harness).is_empty()
+    });
     assert_eq!(opened, [format!("{GH_JOB_URL}#step:5:1")]);
     assert_eq!(logs(), Vec::<String>::new(), "no request for a log GitHub does not serve yet");
 
@@ -472,7 +472,7 @@ fn pipelines_github_running_job_waits_for_its_log_and_loads_it_when_done() {
     });
     assert_eq!(logs(), ["501"], "fetched once, when the job finished");
     assert!(has(&harness, "Pytest (current page)"), "the step stays selected");
-    step_frames(&mut harness, 10 * 60);
+    pump(&mut harness, NO_REFETCH_SECONDS);
     assert_eq!(logs(), ["501"], "a finished job's log is not fetched again");
 }
 
@@ -495,7 +495,6 @@ fn pipelines_gitlab_running_job_log_follows_the_job() {
     };
     let top_line = |harness: &Harness<'_, ReviewApp>| {
         cv_shell::focus_mode::top_line(&harness.ctx, cv_shell::focus_mode::Surface::Log)
-            .map_or(0, |(line, _)| line)
     };
     wait_until(&mut harness, "the tabs", |harness| harness.query_by_label("Pipelines").is_some());
     harness.click_at(harness.get_by_label("Pipelines").rect());
@@ -509,21 +508,21 @@ fn pipelines_gitlab_running_job_log_follows_the_job() {
     harness.click_at(harness.get_by_role_and_label(Role::Link, GL_JOB).rect());
 
     wait_until(&mut harness, "the live log", |harness| has(harness, "200 lines · live"));
-    let at_open = top_line(&harness);
+    let at_open = top_line(&harness).map_or(0, |(line, _)| line);
     assert!(at_open > 150, "a live log opens at its end, top line {at_open}");
     wait_until(&mut harness, "what the job added", |harness| has(harness, "250 lines · live"));
-    let followed = top_line(&harness);
+    let followed = top_line(&harness).map_or(0, |(line, _)| line);
     assert!(followed >= at_open + 50, "the view follows the end: {at_open} -> {followed}");
 
     // Scrolled up, the log keeps its place while it grows.
     harness.get_by_role(Role::Document).hover();
     harness.event(wheel(2000.0, egui::TouchPhase::Move, egui::MouseWheelSource::Wheel));
     // The wheel scrolls smoothly; once it settled the view stays where it went.
-    step_frames(&mut harness, 60);
-    let scrolled = top_line(&harness);
-    assert!(scrolled < followed, "scrolled up: {followed} -> {scrolled}");
+    let scrolled = wait_until_still(&mut harness, "the log scrolled up", |harness| {
+        top_line(harness).filter(|(line, _)| *line < followed)
+    });
     wait_until(&mut harness, "more of the job", |harness| has(harness, "300 lines · live"));
-    assert_eq!(top_line(&harness), scrolled, "no jump while scrolled up");
+    assert_eq!(top_line(&harness), Some(scrolled), "no jump while scrolled up");
 
     // The job finishes: its end comes once, then nothing more is fetched. A fetch while the log
     // was still live may already bring the end; the fetch for the end starts the frame the job
@@ -535,9 +534,13 @@ fn pipelines_gitlab_running_job_log_follows_the_job() {
             && harness.state().services.background.running() == 0
     });
     let after_end = requests();
-    step_frames(&mut harness, 10 * 60);
+    pump(&mut harness, NO_REFETCH_SECONDS);
     assert_eq!(requests(), after_end, "a finished job's log is not fetched again");
 }
+
+/// The simulated time in which a finished job's log is watched for a fetch that must not come; a
+/// live GitLab log refreshes every 4 s.
+const NO_REFETCH_SECONDS: f64 = 10.0;
 
 /// The log toolbar's line count once the log is no longer live.
 fn line_count(harness: &Harness<'_, ReviewApp>) -> Option<usize> {
@@ -547,13 +550,6 @@ fn line_count(harness: &Harness<'_, ReviewApp>) -> Option<usize> {
         let text = node.label().or_else(|| node.value())?;
         text.strip_suffix(" lines")?.replace(',', "").parse().ok()
     })
-}
-
-fn step_frames(harness: &mut Harness<'_, ReviewApp>, frames: usize) {
-    for _ in 0..frames {
-        harness.step();
-        cv_testkit::let_threads_run(Duration::from_millis(1));
-    }
 }
 
 /// A retried job shows its attempts; picking attempt 1 loads it (only then) and opens its failed
@@ -665,7 +661,8 @@ fn pipelines_attempts_open_earlier_attempts_in_the_app() {
     assert!(opened.is_empty(), "attempts open in the app, never the browser: {opened:?}");
 }
 
-/// Steps until `is_done` and 10 frames more, keeping every URL the app asked the platform to open.
+/// [`wait_until`], keeping every URL the app asked the platform to open, in the frames after the
+/// condition too.
 fn collect_until(
     harness: &mut Harness<'_, ReviewApp>,
     opened: &mut Vec<String>,
@@ -681,11 +678,7 @@ fn collect_until(
         },
         |_| {},
     );
-    collect_frames(harness, opened, 10);
-}
-
-fn collect_frames(harness: &mut Harness<'_, ReviewApp>, opened: &mut Vec<String>, frames: usize) {
-    for _ in 0..frames {
+    for _ in 0..SETTLE_FRAMES {
         harness.step();
         opened.extend(opened_urls(harness));
     }
@@ -752,12 +745,6 @@ fn row_labels(harness: &Harness<'_, ReviewApp>) -> Vec<String> {
         .collect();
     rows.sort_by(|a, b| a.0.total_cmp(&b.0));
     rows.into_iter().map(|(_, label)| label).collect()
-}
-
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..10 {
-        harness.step();
-    }
 }
 
 fn at(minute: i64, second: i64) -> Timestamp {

@@ -66,25 +66,22 @@ fn crumb_trail_follows_the_way_the_user_came() {
     assert_trail(&harness, &from_list);
 
     // (d) Back and forward restore each page with the trail it had.
-    harness.key_press_modifiers(Modifiers::ALT, Key::ArrowLeft);
-    settle(&mut harness);
-    assert!(is_on(&harness, 13));
-    assert_trail(&harness, &linked);
-    harness.key_press_modifiers(Modifiers::ALT, Key::ArrowLeft);
-    settle(&mut harness);
-    assert!(is_on(&harness, 12));
-    assert_trail(&harness, &from_list);
-    harness.key_press_modifiers(Modifiers::ALT, Key::ArrowRight);
-    settle(&mut harness);
-    assert!(is_on(&harness, 13));
-    assert_trail(&harness, &linked);
+    for (arrow, number, trail) in [
+        (Key::ArrowLeft, 13, &linked[..]),
+        (Key::ArrowLeft, 12, &from_list[..]),
+        (Key::ArrowRight, 13, &linked[..]),
+    ] {
+        harness.key_press_modifiers(Modifiers::ALT, arrow);
+        wait_until(&mut harness, &format!("Alt+{arrow:?} to pull request {number}"), |harness| {
+            is_on(harness, number)
+        });
+        assert_trail(&harness, trail);
+    }
 
     // A crumb goes up the trail it shows.
-    click_crumb(&mut harness, PR_12);
-    assert!(is_on(&harness, 12));
+    click_crumb(&mut harness, PR_12, &pull_request(12));
     assert_trail(&harness, &from_list);
-    click_crumb(&mut harness, LIST);
-    assert_eq!(harness.state().route, list());
+    click_crumb(&mut harness, LIST, &list());
     assert_trail(&harness, &[(review_core::APP_NAME, list()), (LIST, list())]);
 
     entries_without_a_way(&mut harness);
@@ -95,7 +92,9 @@ fn crumb_trail_follows_the_way_the_user_came() {
 fn entries_without_a_way(harness: &mut Harness<'_, ReviewApp>) {
     harness.key_press_modifiers(Modifiers::COMMAND, Key::K);
     harness.event(egui::Event::Text("Thirteenth".to_owned()));
-    harness.run_steps(3);
+    wait_until(harness, "the search's result", |harness| {
+        harness.query_by_role_and_label(Role::Button, "#13 Thirteenth change").is_some()
+    });
     harness.key_press(Key::Enter);
     wait_until(harness, "the searched pull request", |harness| is_on(harness, 13));
     assert_trail(harness, &structure(13));
@@ -108,7 +107,9 @@ fn entries_without_a_way(harness: &mut Harness<'_, ReviewApp>) {
     assert_trail(harness, &structure(13));
 
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Repositories").rect());
-    settle(harness);
+    wait_until(harness, "the repositories page", |harness| {
+        harness.state().route == Route::Repositories
+    });
     assert_trail(
         harness,
         &[(review_core::APP_NAME, list()), ("Repositories", Route::Repositories)],
@@ -129,7 +130,11 @@ fn repositories_down_to_a_pull_request(harness: &mut Harness<'_, ReviewApp>) {
     assert_trail(harness, &structure(12));
 
     // Up to the connection and down again: the same structure.
-    click_crumb(harness, CONNECTION_NAME);
+    click_crumb(
+        harness,
+        CONNECTION_NAME,
+        &Route::Connection { connection_id: CONNECTION_ID.to_owned() },
+    );
     assert_trail(harness, &structure(12)[..2]);
     wait_until(harness, "the repository row", |harness| repository_row(harness).is_some());
     settle_background(harness);
@@ -200,10 +205,13 @@ fn crumb_link<'a>(
         .find(|node| node.rect().bottom() <= BAR_BOTTOM)
 }
 
-fn click_crumb(harness: &mut Harness<'_, ReviewApp>, text: &str) {
+/// Clicks the crumb `text` and waits for the page it leads to, `to`.
+fn click_crumb(harness: &mut Harness<'_, ReviewApp>, text: &str, to: &Route) {
     harness
         .click_at(crumb_link(harness, text).unwrap_or_else(|| panic!("the crumb {text}")).rect());
-    settle(harness);
+    wait_until(harness, &format!("the crumb {text} to lead to {to:?}"), |harness| {
+        harness.state().route == *to
+    });
 }
 
 /// The repositories page's row of the repository (the crumb of the same name is in the bar).
@@ -239,10 +247,6 @@ fn start(scratch: &ScratchDir) -> Harness<'static, ReviewApp> {
     app_with(builder, saved_paths(scratch, &[connection]), |_, _| {
         Arc::new(Scripted(CrumbTrailScript))
     })
-}
-
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    harness.run_steps(20);
 }
 
 struct CrumbTrailScript;

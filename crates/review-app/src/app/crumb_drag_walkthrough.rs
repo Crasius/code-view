@@ -9,7 +9,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
-use super::walkthrough::app_with;
+use super::walkthrough::{app_with, wait_until};
 use cv_base::platform;
 use cv_runtime::route::Route;
 use cv_testkit::ScratchDir;
@@ -17,6 +17,9 @@ use cv_testkit::ScratchDir;
 const STEP: f32 = 1.0 / 60.0;
 /// The page the walkthrough starts on: its trail is the app's name (a link) and itself.
 const PAGE: &str = "Repositories";
+/// The frames after the release that a gesture still counts: a click navigates in them, and a
+/// second window drag a late release sent would show in them.
+const RELEASE_FRAMES: usize = 3;
 
 /// What the frames of one gesture sent the window, and the cursors they asked for.
 #[derive(Default)]
@@ -28,15 +31,14 @@ struct Gesture {
 fn harness(scratch: &ScratchDir) -> Harness<'static, ReviewApp> {
     let builder = Harness::builder().with_size([1200.0, 480.0]).with_step_dt(STEP);
     let mut harness = app_with(builder, scratch.app_paths(), cv_providers::create_provider);
-    harness.state_mut().navigator.go(Route::Repositories);
-    settle(&mut harness);
+    go_to_page(&mut harness);
     harness
 }
 
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..20 {
-        harness.step();
-    }
+/// Goes to [`PAGE`] and waits until its crumb is the current page.
+fn go_to_page(harness: &mut Harness<'_, ReviewApp>) {
+    harness.state_mut().navigator.go(Route::Repositories);
+    wait_until(harness, "the current page's crumb", |harness| current_crumb(harness).is_some());
 }
 
 /// One frame, counting the window drags it sent and whether it showed the grabbing hand.
@@ -81,7 +83,7 @@ fn press(harness: &mut Harness<'_, ReviewApp>, from: Pos2, to: Pos2, seconds: f3
         step(harness, &mut gesture);
     }
     button(harness, to, false);
-    for _ in 0..3 {
+    for _ in 0..RELEASE_FRAMES {
         step(harness, &mut gesture);
     }
     gesture
@@ -91,9 +93,11 @@ fn crumb(harness: &Harness<'_, ReviewApp>, role: Role, label: &str) -> Pos2 {
     harness.get_by_role_and_label(role, label).rect().center()
 }
 
-fn current_crumb(harness: &Harness<'_, ReviewApp>) -> Pos2 {
+fn current_crumb(harness: &Harness<'_, ReviewApp>) -> Option<Pos2> {
     let value = format!("{PAGE} (current page)");
-    harness.get_by(|node| node.value().as_deref() == Some(value.as_str())).rect().center()
+    harness
+        .query_by(|node| node.value().as_deref() == Some(value.as_str()))
+        .map(|node| node.rect().center())
 }
 
 #[test]
@@ -110,8 +114,7 @@ fn long_press_on_a_breadcrumb_moves_the_window_instead_of_navigating() {
     assert_eq!(gesture.grabbing_frames, 0, "a click shows no grabbing hand");
 
     // Held still past the long press: one window drag, the grabbing hand, no navigation.
-    harness.state_mut().navigator.go(Route::Repositories);
-    settle(&mut harness);
+    go_to_page(&mut harness);
     let app = crumb(&harness, Role::Link, review_core::APP_NAME);
     let gesture = press(&mut harness, app, app, long + 0.2);
     assert_eq!(gesture.drags, 1, "a long press starts exactly one window drag");
@@ -126,7 +129,7 @@ fn long_press_on_a_breadcrumb_moves_the_window_instead_of_navigating() {
     assert_eq!(harness.state().route, Route::Repositories, "nor is it a click");
 
     // The current page's crumb is no link, yet held it moves the window too.
-    let page = current_crumb(&harness);
+    let page = current_crumb(&harness).expect("the current page's crumb");
     let gesture = press(&mut harness, page, page, long + 0.2);
     assert_eq!(gesture.drags, 1, "the current page's crumb moves the window when held");
     assert_eq!(harness.state().route, Route::Repositories);

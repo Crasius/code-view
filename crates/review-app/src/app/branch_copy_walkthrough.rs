@@ -17,7 +17,7 @@ use egui_kittest::kittest::Queryable;
 
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, NUMBER, REPOSITORY, TITLE, open_pull_request};
-use super::walkthrough::{app, secondary_press, wait_until};
+use super::walkthrough::{app, hover_until, secondary_press, shows, wait_until};
 use cv_runtime::route::Route;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -52,9 +52,9 @@ fn branch_copy_from_the_row_menu_and_the_header_chips() {
             && harness.query_by_role_and_label(Role::Button, TARGET_CHIP).is_some()
     });
     let source = harness.get_by_role_and_label(Role::Button, SOURCE_CHIP).rect();
-    harness.get_by_role_and_label(Role::Button, SOURCE_CHIP).hover();
-    harness.run_steps(10);
-    assert!(harness.query_by_label("Copy branch name").is_some(), "the tooltip");
+    hover_until(&mut harness, Role::Button, SOURCE_CHIP, "the chip's tooltip", |harness| {
+        shows(harness, "Copy branch name")
+    });
     harness.click_at(harness.get_by_role_and_label(Role::Button, SOURCE_CHIP).rect());
     assert_eq!(copied(&mut harness).as_deref(), Some("feature"), "the chip copies the source");
     let confirmed = harness.get_by_role_and_label(Role::Button, "Copied feature").rect();
@@ -105,9 +105,9 @@ fn number_copy_from_the_row_menu_and_the_header_number() {
         harness.query_by_role_and_label(Role::Button, NUMBER_LINK).is_some()
     });
     let number = harness.get_by_role_and_label(Role::Button, NUMBER_LINK).rect();
-    harness.get_by_role_and_label(Role::Button, NUMBER_LINK).hover();
-    harness.run_steps(10);
-    assert!(harness.query_by_label("Copy link to pull request").is_some(), "the tooltip");
+    hover_until(&mut harness, Role::Button, NUMBER_LINK, "the number's tooltip", |harness| {
+        shows(harness, "Copy link to pull request")
+    });
     harness.click_at(harness.get_by_role_and_label(Role::Button, NUMBER_LINK).rect());
     // The list and the detail come from different mock payloads; both end in the same path.
     let copy = copied(&mut harness).expect("the number copies the link");

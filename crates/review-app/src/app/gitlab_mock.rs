@@ -1,7 +1,8 @@
 //! What the scripted GitLab hosts of the walkthroughs share: the merge request object of the REST
-//! API v4 that each scenario adds its own fields to, the split of a request path below a
-//! project's merge requests, and [`GitLabProject`], a plain host for a walkthrough that needs
-//! only a list and its merge requests. A host with answers of its own keeps its own router.
+//! API v4 that each scenario adds its own fields to, a user, the list's line counts from GraphQL,
+//! the split of a request path below a project's merge requests, and [`GitLabProject`], a plain
+//! host for a walkthrough that needs only a list and its merge requests. A host with answers of
+//! its own keeps its own router.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -12,6 +13,7 @@ use serde_json::{Value, json};
 use wiremock::{Request, Respond, ResponseTemplate};
 
 use super::mock_host::MockHost;
+use super::recording::iids;
 use super::walkthrough::LIMIT;
 use cv_testkit::samples;
 
@@ -42,6 +44,18 @@ pub(super) fn merge_request(
         "diff_refs": { "base_sha": base, "start_sha": base, "head_sha": head },
         "detailed_merge_status": "mergeable",
     })
+}
+
+/// A user of the REST API v4 whose name is its `username`.
+pub(super) fn user(id: u64, username: &str) -> Value {
+    json!({ "id": id, "username": username, "name": username })
+}
+
+/// GraphQL's `diffStatsSummary` of the merge requests a request names: iid × 10 lines added, iid
+/// deleted, in 2 files.
+pub(super) fn diff_stats_summaries(request: &Request) -> Value {
+    let nodes: Vec<Value> = iids(&request.body).into_iter().map(|iid| json!({ "iid": iid.to_string(), "diffStatsSummary": { "additions": iid * 10, "deletions": iid, "fileCount": 2 } })).collect();
+    json!({ "data": { "project": { "mergeRequests": { "nodes": nodes } } } })
 }
 
 /// The merge request a request `path` below `project`'s merge requests asks about, and what of it:

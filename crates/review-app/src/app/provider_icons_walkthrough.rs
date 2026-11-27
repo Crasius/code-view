@@ -12,8 +12,8 @@ use review_core::{Connection, ProviderKind};
 use super::ReviewApp;
 use super::scripted_platforms::{HOSTS, origin, platforms, title};
 use super::walkthrough::{
-    app_with, files_tab, has, opened_urls, press, saved_paths, settle_background, shows,
-    shows_folder_view, wait_for, wait_until,
+    app_with, files_tab, has, hover_until, opened_urls, press, saved_paths, settle_background,
+    shows, shows_folder_view, wait_until,
 };
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::{Clicks, ScratchDir, samples};
@@ -91,30 +91,14 @@ fn provider_icons_name_the_platform_everywhere() {
 /// Hovering the connection's crumb opens a tooltip that names the platform and host too.
 fn crumb_tooltip(harness: &mut Harness<'_, ReviewApp>, connection_name: &str, mark: &str) {
     let marks = harness.query_all_by_label(mark).count();
-    hover_until(harness, connection_name, "This connection's repositories");
+    hover_until(harness, Role::Link, connection_name, "the crumb's tooltip", |harness| {
+        has(harness, "This connection's repositories")
+    });
     assert!(harness.query_all_by_label(mark).count() > marks, "the crumb's tooltip names {mark}");
     harness.event(egui::Event::PointerGone);
     wait_until(harness, "the crumb's tooltip closed", |harness| {
         !has(harness, "This connection's repositories")
     });
-}
-
-/// Rests the pointer on the link labelled `link` until `tooltip` shows; the pointer follows the
-/// link when a late layout moves it. egui keeps a tooltip hidden for as long as the last click is
-/// not 0.1 s older than the pointer's last move (a pointer resting after a click), so a caller
-/// hovers before it clicks there.
-fn hover_until(harness: &mut Harness<'_, ReviewApp>, link: &str, tooltip: &str) {
-    wait_for(
-        harness,
-        &format!("the tooltip of {link}"),
-        |harness| has(harness, tooltip).then_some(()),
-        |harness| {
-            let center = harness.get_by_role_and_label(Role::Link, link).rect().center();
-            if harness.ctx.input(|input| input.pointer.hover_pos()) != Some(center) {
-                harness.hover_at(center);
-            }
-        },
-    );
 }
 
 /// The pull request header's platform mark: a link (Enter opens the pull request), with a hover
@@ -132,7 +116,9 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
         harness.query_by_role_and_label(Role::Link, LINK).is_some()
     });
     // The tooltip before the clicks below: after a click on the mark it stays hidden.
-    hover_until(harness, LINK, "Right-click for more links");
+    hover_until(harness, Role::Link, LINK, "the mark's tooltip", |harness| {
+        has(harness, "Right-click for more links")
+    });
     harness.event(egui::Event::PointerGone);
     harness.get_by_role_and_label(Role::Link, LINK).focus();
     harness.step();

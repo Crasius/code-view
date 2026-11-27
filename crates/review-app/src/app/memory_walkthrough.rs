@@ -44,13 +44,14 @@ use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 use super::ReviewApp;
 #[cfg(feature = "measurements")]
 use super::assistant_script;
-use super::gitlab_mock::{PROJECT_ID, merge_request, merge_request_route};
+use super::gitlab_mock::{
+    PROJECT_ID, diff_stats_summaries, merge_request, merge_request_route, user,
+};
+use super::walkthrough::{
+    self, has, long_session_builder, saved_paths, wait_idle, wait_until_unsettled,
+};
 #[cfg(feature = "measurements")]
-use super::request_budget::scroll_list;
-use super::request_budget::{diff_stats_summaries, harness_builder, user};
-use super::walkthrough::{self, has, saved_paths, wait_idle, wait_until_unsettled};
-#[cfg(feature = "measurements")]
-use super::walkthrough::{click_first, pump};
+use super::walkthrough::{click_first, pump, scroll_list};
 #[cfg(any(windows, feature = "measurements"))]
 use cv_base::platform::heap::live_bytes;
 use cv_runtime::route::{PullRequestKey, Route};
@@ -599,7 +600,7 @@ impl Fixture {
             ..samples::connection(&self.connection_id, ProviderKind::GitLab, &self.server.uri())
         };
         let paths = saved_paths(&self.scratch, &[connection]);
-        let builder = harness_builder().renderer(textures.clone());
+        let builder = long_session_builder().renderer(textures.clone());
         let mut harness = walkthrough::app_with(builder, paths, cv_providers::create_provider);
         harness.state_mut().services.settings.files_start = review_store::FilesStart::FirstFile;
         let model = ModelInfo {

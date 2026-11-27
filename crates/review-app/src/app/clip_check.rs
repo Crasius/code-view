@@ -27,6 +27,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
+use super::a11y_check::is_icon_glyph;
+use super::walkthrough::wait_until_unsettled;
 use cv_pr_diff::find::bar::painted_now as find_widget_now;
 use cv_widgets::surfaces;
 
@@ -480,8 +482,13 @@ fn stray_controls(
     findings
 }
 
+/// How many tooltip delays the pointer rests on a cut text before the audit takes it as having no
+/// tooltip: egui shows one after one delay.
+const TOOLTIP_DELAYS: f64 = 2.0;
+
 /// Texts cut with "…" whose full wording does not appear in a tooltip on hover: hovers each one
-/// and waits past the tooltip delay. Returns one line per text.
+/// for [`TOOLTIP_DELAYS`] of simulated time, and lets its tooltip close before the next. Returns
+/// one line per text.
 pub fn untold_elisions(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
     let captured = frame(harness);
     // An open popup takes the pointer; its own texts are checked once it is the page.
@@ -500,31 +507,54 @@ pub fn untold_elisions(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
         .collect();
     elided.sort_by(|a, b| a.text.cmp(&b.text));
     elided.dedup_by(|a, b| a.text == b.text);
+    let time = |harness: &Harness<'_, ReviewApp>| harness.ctx.input(|input| input.time);
+    let patience = TOOLTIP_DELAYS * f64::from(harness.ctx.global_style().interaction.tooltip_delay);
     let mut findings = Vec::new();
     for text in elided {
         harness.hover_at(text.visible().center());
-        let mut has_tooltip = false;
-        for _ in 0..40 {
-            harness.step();
-            let shown = frame(harness);
-            if shown.texts.iter().any(|tip| tip.layer.order == Order::Tooltip) {
-                has_tooltip = true;
-                break;
-            }
+        let deadline = time(harness) + patience;
+        let mut is_told = false;
+        while !is_told && time(harness) <= deadline {
+            is_told = frame(harness).texts.iter().any(|tip| {
+                tip.layer.order == Order::Tooltip && !tip.is_elided && tells(&tip.text, &text.text)
+            });
         }
-        if !has_tooltip {
+        if !is_told {
             findings.push(format!(
-                "elided text {:?} {} has no tooltip",
+                "elided text {:?} {} has no tooltip with its full text",
                 short(&text.text),
                 show(text.ink)
             ));
         }
         harness.event(egui::Event::PointerGone);
-        for _ in 0..3 {
-            harness.step();
-        }
+        wait_until_unsettled(harness, "the tooltip to close", |harness| {
+            harness.ctx.memory(|memory| {
+                !memory
+                    .areas()
+                    .visible_layer_ids()
+                    .iter()
+                    .any(|layer| layer.order == Order::Tooltip)
+            })
+        });
     }
     findings
+}
+
+/// Whether the tooltip `tip` holds `text` in full. A tooltip is also the accessible description,
+/// so it tells an icon of `text` in words ([`super::a11y_check`]): "feature → main" reads
+/// "feature into main". The runs of `text` between its icons are looked for in `tip`, in order; a
+/// text of icons and blanks only has no words a tooltip could tell.
+fn tells(tip: &str, text: &str) -> bool {
+    let mut rest = tip;
+    let mut runs =
+        text.split(is_icon_glyph).map(str::trim).filter(|run| !run.is_empty()).peekable();
+    runs.peek().is_some()
+        && runs.all(|run| {
+            rest.find(run).is_some_and(|at| {
+                rest = &rest[at + run.len()..];
+                true
+            })
+        })
 }
 
 fn short(text: &str) -> String {
@@ -538,4 +568,29 @@ fn short(text: &str) -> String {
 
 fn show(rect: Rect) -> String {
     format!("[{:.0},{:.0} {:.0}×{:.0}]", rect.left(), rect.top(), rect.width(), rect.height())
+}
+
+#[cfg(test)]
+mod tests {
+    use cv_base::theme::icons::ARROW_RIGHT;
+
+    use super::tells;
+
+    #[test]
+    fn a_tooltip_tells_a_text_only_with_all_of_it() {
+        let branches = format!("!4  ·  feature {ARROW_RIGHT} main");
+        let cases = [
+            ("Fix the parser\nShow this commit's changes", "Fix the parser", true),
+            ("Show this commit's changes", "Fix the parser", false),
+            ("Fix the", "Fix the parser", false),
+            ("!4  ·  feature into main", branches.as_str(), true),
+            ("!4  ·  main into feature", branches.as_str(), false),
+            ("!4  ·  feature", branches.as_str(), false),
+            ("Show this commit's changes", ARROW_RIGHT, false),
+            ("Show this commit's changes", " ", false),
+        ];
+        for (tip, text, is_told) in cases {
+            assert_eq!(tells(tip, text), is_told, "{tip:?} tells {text:?}");
+        }
+    }
 }

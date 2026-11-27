@@ -22,8 +22,8 @@ use review_store::{AppPaths, AppSettings, DiffLayout, PaneSizes, TreeSide};
 use super::ReviewApp;
 use super::github_mock::FolderBytes;
 use super::walkthrough::{
-    app_with, saved_paths, saved_settings, settle_background, shows_file_view, shows_folder_view,
-    wait_until,
+    app_with, pump, saved_paths, saved_settings, settle_background, shows_file_view,
+    shows_folder_view, wait_until, wait_until_still,
 };
 use cv_pr_rendered::file_header::NEXT_CHANGE_HINT;
 use cv_runtime::route::{PullRequestKey, Route};
@@ -37,6 +37,16 @@ const NUMBER: u64 = 7;
 const CODE_PATH: &str = "src/widgets.rs";
 const GADGETS_PATH: &str = "src/gadgets.rs";
 const LOGO_PATH: &str = "assets/logo.png";
+
+/// The frames the pointer stays below the autoscroll's origin: autoscroll keeps on all along.
+const AUTOSCROLL_FRAMES: usize = 30;
+
+/// How long the pointer rests on a file row: past cv-pr-files' 150 ms prefetch dwell.
+const ROW_DWELL_SECONDS: f64 = 0.2;
+
+/// The frames after a click on a file row in which the header must hold still and no placeholder
+/// may show early.
+const WATCHED_FRAMES: usize = 40;
 
 #[derive(Clone)]
 struct Fixture {
@@ -96,7 +106,9 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     assert!(harness.query_by_label("Zoom 110 %").is_some(), "the overlay names the level");
     assert_eq!(saved_settings(&harness).ui_scale, 1.1);
     harness.click_at(harness.get_by_label("Reset").rect());
-    settle(&mut harness);
+    wait_until(&mut harness, "the zoom's reset", |harness| {
+        (harness.state().services.settings.ui_scale - 1.0).abs() < f32::EPSILON
+    });
     assert_eq!(harness.state().services.settings.ui_scale, 1.0);
     assert_eq!(
         harness.query_all_by_label("Description").count(),
@@ -198,7 +210,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     hooked_frame(&mut harness, vec![middle(origin, true)]);
     hooked_frame(&mut harness, vec![middle(origin, false)]);
     hooked_frame(&mut harness, vec![Event::PointerMoved(origin + vec2(0.0, 140.0))]);
-    for _ in 0..30 {
+    for _ in 0..AUTOSCROLL_FRAMES {
         hooked_frame(&mut harness, Vec::new());
     }
     assert!(harness.state().autoscroll.is_active());
@@ -223,11 +235,9 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         harness.query_by_role_and_label(Role::TreeItem, "README.md").is_some()
     });
     harness.click_at(harness.get_by_role_and_label(Role::TreeItem, "README.md").rect());
-    wait_until(&mut harness, "the preview", |harness| {
-        harness.query_by_label("Resize Before and After").is_some()
+    let handle = wait_until_still(&mut harness, "the preview's boundary", |harness| {
+        harness.query_by_label("Resize Before and After").map(|node| node.rect().center())
     });
-    settle(&mut harness);
-    let handle = center(&harness, "Resize Before and After");
     drag(&mut harness, handle, vec2(120.0, 0.0));
     assert!(harness.state().services.settings.panes.preview_split > 0.55);
 
@@ -235,15 +245,17 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
     let next = harness.get_by_label(NEXT_CHANGE_HINT);
     assert!(!next.accesskit_node().is_disabled(), "the change arrows work on the preview");
     harness.click_at(harness.get_by_label("New only").rect());
-    settle(&mut harness);
-    assert_eq!(harness.state().services.settings.diff_layout, DiffLayout::NewOnly);
+    wait_until(&mut harness, "New only", |harness| {
+        harness.state().services.settings.diff_layout == DiffLayout::NewOnly
+    });
     assert!(
         harness.query_by_label("Resize Before and After").is_none(),
         "New only shows one column"
     );
     harness.key_press_modifiers(Modifiers::ALT, egui::Key::N);
-    settle(&mut harness);
-    assert_eq!(harness.state().services.settings.diff_layout, DiffLayout::SideBySide);
+    wait_until(&mut harness, "Alt+N to switch to side by side", |harness| {
+        harness.state().services.settings.diff_layout == DiffLayout::SideBySide
+    });
     assert!(
         harness.query_by_label("Resize Before and After").is_some(),
         "Alt+N returns to the columns"
@@ -335,12 +347,12 @@ fn switching_files_keeps_the_header_still_without_placeholders() {
         // A pointer rests on the row before it clicks: past the dwell, its diff loads ahead
         // even in another folder, where the open file's neighbours do not reach.
         harness.get_by_role_and_label(Role::TreeItem, path).hover();
-        harness.run_steps(12); // 200 ms at 60 frames per second: past the 150 ms dwell.
+        pump(&mut harness, ROW_DWELL_SECONDS);
         // The hovered file's diff.
         settle_background(&mut harness);
         harness.click_at(harness.get_by_role_and_label(Role::TreeItem, path).rect());
         let clicked = harness.ctx.input(|input| input.time);
-        for step in 0..40 {
+        for step in 0..WATCHED_FRAMES {
             harness.step();
             // Wall time at least as long as the frames say, so a slow load really is late.
             cv_testkit::let_threads_run(Duration::from_millis(16));
@@ -457,7 +469,7 @@ fn drag(harness: &mut Harness<'_, ReviewApp>, from: Pos2, by: egui::Vec2) {
     harness.step();
     harness.event(button(from + by, false));
     harness.step();
-    settle(harness);
+    wait_for_saved_panes(harness);
 }
 
 fn double_click(harness: &mut Harness<'_, ReviewApp>, at: Pos2) {
@@ -468,10 +480,21 @@ fn double_click(harness: &mut Harness<'_, ReviewApp>, at: Pos2) {
         harness.event(button(at, false));
         harness.step();
     }
-    settle(harness);
+    wait_for_saved_panes(harness);
 }
 
+/// Waits until the settings file holds the pane sizes the app uses: a drag saves on release.
+fn wait_for_saved_panes(harness: &mut Harness<'_, ReviewApp>) {
+    wait_until(harness, "the pane sizes to be saved", |harness| {
+        saved_settings(harness).panes == harness.state().services.settings.panes
+    });
+}
+
+/// Ctrl+wheel by `notches` at `at`, then waits until the zoom it changed (the app's or the
+/// code's) is applied and saved.
 fn ctrl_wheel(harness: &mut Harness<'_, ReviewApp>, at: Pos2, notches: f32) {
+    let zoom = |settings: &AppSettings| (settings.ui_scale, settings.code_font_size);
+    let before = zoom(&harness.state().services.settings);
     harness.hover_at(at);
     harness.step();
     harness.event(Event::MouseWheel {
@@ -481,8 +504,10 @@ fn ctrl_wheel(harness: &mut Harness<'_, ReviewApp>, at: Pos2, notches: f32) {
         modifiers: Modifiers::COMMAND,
         source: MouseWheelSource::Wheel,
     });
-    harness.step();
-    settle(harness);
+    wait_until(harness, "the zoom to apply and be saved", |harness| {
+        let now = zoom(&harness.state().services.settings);
+        now != before && zoom(&saved_settings(harness)) == now
+    });
 }
 
 /// One frame whose raw input first runs through the app's `raw_input_hook`, as eframe does.
@@ -493,12 +518,6 @@ fn hooked_frame(harness: &mut Harness<'_, ReviewApp>, events: Vec<Event>) {
     harness.state_mut().raw_input_hook(&ctx, &mut input);
     *harness.input_mut() = input;
     harness.step();
-}
-
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    for _ in 0..20 {
-        harness.step();
-    }
 }
 
 /// A repository with a long Rust file changed every few lines, a small one, a changed README and a

@@ -9,7 +9,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::ReviewApp;
-use super::walkthrough::app_with;
+use super::walkthrough::{app_with, wait_for, wait_until, wait_until_found, wait_until_still};
 use cv_base::platform;
 use cv_runtime::route::{Landing, PullRequestKey, Route};
 use cv_runtime::trail::Trail;
@@ -50,14 +50,41 @@ fn full_trail() -> Vec<String> {
     trail
 }
 
-/// Opens the pull request page in place of navigation, which refuses it (no connection).
-fn enter_pull_request(harness: &mut Harness<'_, ReviewApp>) {
+/// Opens the pull request page in place of navigation, which refuses it (no connection), and
+/// waits for its trail up to `last`.
+fn enter_pull_request(harness: &mut Harness<'_, ReviewApp>, last: &str) {
     let Route::PullRequest(key) = pull_request() else { unreachable!("a pull request route") };
     let app = harness.state_mut();
     app.open_pull_request(key, Landing::Default);
     app.route = pull_request();
     app.trail = Trail::structural(&pull_request());
-    settle(harness);
+    wait_for_trail(harness, last);
+}
+
+/// Waits until the title bar's crumbs end at `last` and hold still: the trail is folded.
+fn wait_for_trail(harness: &mut Harness<'_, ReviewApp>, last: &str) {
+    wait_until_still(harness, &format!("the trail up to {last}"), |harness| {
+        let crumbs = shown_crumbs(harness);
+        crumbs.last().is_some_and(|(name, _)| name == last).then_some(crumbs)
+    });
+}
+
+/// The rows of the open "…" list, once it shows.
+fn wait_for_rows(harness: &mut Harness<'_, ReviewApp>, what: &str) -> Vec<String> {
+    wait_until_found(harness, what, |harness| {
+        let rows = hidden_rows(harness);
+        (!rows.is_empty()).then_some(rows)
+    })
+}
+
+/// Waits until the "…" list is closed.
+fn wait_until_closed(harness: &mut Harness<'_, ReviewApp>, what: &str) {
+    wait_until(harness, what, |harness| hidden_rows(harness).is_empty());
+}
+
+/// The level a crumb or a folded row asked the page to open, once the click took.
+fn wait_for_trail_click(harness: &mut Harness<'_, ReviewApp>, what: &str) -> usize {
+    wait_for(harness, what, |harness| breadcrumbs::take_trail_click(&harness.ctx), |_| {})
 }
 
 /// The app on `scratch`, without a connection, at the pull request in a window `width` wide.
@@ -65,7 +92,7 @@ fn harness(scratch: &ScratchDir, width: f32) -> Harness<'static, ReviewApp> {
     let builder = Harness::builder().with_size([width, 360.0]).with_step_dt(1.0 / 60.0);
     let mut harness = app_with(builder, scratch.app_paths(), cv_providers::create_provider);
     harness.state_mut().title_bar.integrate_for_test();
-    enter_pull_request(&mut harness);
+    enter_pull_request(&mut harness, PULL_REQUEST);
     let mut levels: Vec<(String, &'static str)> =
         FOLDERS.iter().map(|folder| ((*folder).to_owned(), "Files in this folder")).collect();
     levels.push((FILE.to_owned(), "The open file"));
@@ -75,12 +102,8 @@ fn harness(scratch: &ScratchDir, width: f32) -> Harness<'static, ReviewApp> {
         "Summary of all changed files",
         levels,
     );
-    settle(&mut harness);
+    wait_for_trail(&mut harness, FILE);
     harness
-}
-
-fn settle(harness: &mut Harness<'_, ReviewApp>) {
-    harness.run_steps(20);
 }
 
 /// The crumbs shown in the title bar, left to right: name and rect.
@@ -161,9 +184,10 @@ fn check_layout(harness: &mut Harness<'_, ReviewApp>, width: f32) -> Vec<String>
     full_trail().into_iter().filter(|name| !names.contains(&name.as_str())).collect()
 }
 
-fn open_overflow(harness: &mut Harness<'_, ReviewApp>) {
+/// Clicks "…" and returns the rows of the list it opens.
+fn open_overflow(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
     harness.click_at(harness.get_by_role_and_label(Role::Button, OVERFLOW).rect());
-    settle(harness);
+    wait_for_rows(harness, "the list of hidden levels")
 }
 
 #[test]
@@ -177,27 +201,23 @@ fn breadcrumbs_fold_into_an_overflow_list_and_stay_clear_of_the_caption() {
             "{width}: {hidden:?}"
         );
 
-        settle(&mut harness);
-        open_overflow(&mut harness);
         assert_eq!(
-            hidden_rows(&harness),
+            open_overflow(&mut harness),
             hidden,
             "{width}: the list names the folded crumbs in trail order"
         );
         harness.key_press(Key::Escape);
-        settle(&mut harness);
-        assert!(hidden_rows(&harness).is_empty(), "{width}: Esc closes the list");
+        wait_until_closed(&mut harness, &format!("{width}: Esc closing the list"));
 
         // A folded level leads exactly where its crumb would.
         open_overflow(&mut harness);
         harness.click_at(harness.get_by_role_and_label(Role::MenuItem, CONNECTION).rect());
-        settle(&mut harness);
-        assert_eq!(
-            harness.state().route,
-            Route::Connection { connection_id: CONNECTION.to_owned() }
-        );
+        let connection = Route::Connection { connection_id: CONNECTION.to_owned() };
+        wait_until(&mut harness, &format!("{width}: the connection's page"), |harness| {
+            harness.state().route == connection
+        });
         assert!(hidden_rows(&harness).is_empty(), "{width}: the list closes after a pick");
-        enter_pull_request(&mut harness);
+        enter_pull_request(&mut harness, FILE);
         assert_eq!(
             check_layout(&mut harness, width),
             hidden,
@@ -208,10 +228,9 @@ fn breadcrumbs_fold_into_an_overflow_list_and_stay_clear_of_the_caption() {
         {
             open_overflow(&mut harness);
             harness.click_at(harness.get_by_role_and_label(Role::MenuItem, folder).rect());
-            settle(&mut harness);
             let level = FOLDERS.iter().position(|other| other == folder).map(|index| index + 1);
             assert_eq!(
-                breadcrumbs::take_trail_click(&harness.ctx),
+                Some(wait_for_trail_click(&mut harness, &format!("{width}: the folder's level"))),
                 level,
                 "{width}: a folded folder opens that folder"
             );
@@ -222,22 +241,18 @@ fn breadcrumbs_fold_into_an_overflow_list_and_stay_clear_of_the_caption() {
         harness.step();
         focus::use_keyboard(&harness.ctx);
         harness.key_press(Key::Enter);
-        settle(&mut harness);
-        let rows = hidden_rows(&harness);
+        let rows = wait_for_rows(&mut harness, &format!("{width}: Enter opening the list"));
         assert_eq!(rows, hidden, "{width}: Enter opens the list");
         assert!(
             harness.get_by_role_and_label(Role::MenuItem, &rows[0]).is_focused(),
             "{width}: the first row takes focus"
         );
         harness.key_press(Key::ArrowDown);
-        settle(&mut harness);
-        assert!(
-            harness.get_by_role_and_label(Role::MenuItem, &rows[1]).is_focused(),
-            "{width}: Down moves to the next row"
-        );
+        wait_until(&mut harness, &format!("{width}: Down moving to the next row"), |harness| {
+            harness.get_by_role_and_label(Role::MenuItem, &rows[1]).is_focused()
+        });
         harness.key_press(Key::Escape);
-        settle(&mut harness);
-        assert_eq!(hidden_rows(&harness), Vec::<String>::new(), "{width}: Esc closes the menu");
+        wait_until_closed(&mut harness, &format!("{width}: Esc closing the menu"));
         assert!(
             harness.get_by_role_and_label(Role::Button, OVERFLOW).is_focused(),
             "{width}: Esc returns to \"…\""
@@ -256,15 +271,21 @@ fn the_files_trail_ends_at_the_pull_request_whose_crumb_leads_to_all_files() {
         "Summary of all changed files",
         Vec::new(),
     );
-    settle(&mut harness);
+    wait_for_trail(&mut harness, PULL_REQUEST);
     let names: Vec<String> = shown_crumbs(&harness).into_iter().map(|(name, _)| name).collect();
     assert_eq!(names, [review_core::APP_NAME, CONNECTION, REPOSITORY, PULL_REQUEST]);
     harness.click_at(harness.get_by_role_and_label(Role::Link, PULL_REQUEST).rect());
-    settle(&mut harness);
-    assert_eq!(breadcrumbs::take_trail_click(&harness.ctx), Some(0), "the summary of all files");
+    assert_eq!(
+        wait_for_trail_click(&mut harness, "the pull request crumb's level"),
+        0,
+        "the summary of all files"
+    );
 
     // At the top of the Files tab the pull request is the current page, not a link.
     breadcrumbs::publish_trail(&harness.ctx, &pull_request(), "", Vec::new());
-    settle(&mut harness);
+    wait_until(&mut harness, "the pull request as the current page", |harness| {
+        let current = format!("{PULL_REQUEST} (current page)");
+        harness.query_by(|node| node.value().as_deref() == Some(current.as_str())).is_some()
+    });
     assert!(harness.query_by_role_and_label(Role::Link, PULL_REQUEST).is_none());
 }

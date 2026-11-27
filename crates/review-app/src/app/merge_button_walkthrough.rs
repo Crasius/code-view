@@ -25,7 +25,8 @@ use review_core::{
 
 use super::ReviewApp;
 use super::walkthrough::{
-    app_with, has, opened_urls, press, pump, saved_paths, saved_settings, set_focus, wait_until,
+    app_with, has, hover_until, opened_urls, press, pump, saved_paths, saved_settings, set_focus,
+    wait_until,
 };
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_testkit::provider::{Script, Scripted};
@@ -153,9 +154,9 @@ fn merge_button_is_disabled_with_conflicts_and_warns_when_forced_past_policies()
     });
     let main = harness.get_by_role_and_label(Role::Button, "Squash merge");
     assert!(main.accesskit_node().is_disabled(), "conflicts disable the button");
-    harness.get_by_role_and_label(Role::Button, "Squash merge").hover();
-    pump(&mut harness, 1.5);
-    assert!(has(&harness, "This pull request has merge conflicts"), "the tooltip says why");
+    hover_until(&mut harness, Role::Button, "Squash merge", "the tooltip's reason", |harness| {
+        has(harness, "This pull request has merge conflicts")
+    });
     // The overview card has its own; the tooltip opens above the page, its action comes last.
     harness.click_at(
         harness
