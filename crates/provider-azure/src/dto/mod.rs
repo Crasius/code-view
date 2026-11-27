@@ -50,8 +50,10 @@ impl PropertyValue {
     }
 }
 
-/// RFC 3339 timestamps. Azure DevOps writes up to seven fractional digits and uses
-/// `0001-01-01T00:00:00` (no offset) for "not set"; optional fields map that to `None`.
+/// RFC 3339 timestamps. Azure DevOps writes up to seven fractional digits. Optional fields read any
+/// value that is not RFC 3339 as `None`; that covers the `0001-01-01T00:00:00` (no offset) Azure
+/// DevOps sends for "not set", and keeps an optional date in an unseen shape from failing the whole
+/// answer.
 pub(crate) mod date {
     use serde::{Deserialize, Deserializer};
     use time::OffsetDateTime;

@@ -5,22 +5,15 @@
 
 use review_core::Provider;
 use serde_json::{Value, json};
-use wiremock::matchers::{method, path, query_param};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::MockServer;
 
-use crate::support::{COLLECTION, REPO, TOKEN, provider};
-
-const PULL: &str = "/coll/My%20Project/_apis/git/repositories/web/pullrequests/7";
+use crate::support::{COLLECTION, REPO, TOKEN, api, ok, pr_path, provider};
 
 fn pull_request(source: &str, vote: i32) -> Value {
-    json!({
-        "pullRequestId": 7, "status": "active", "title": "Change",
-        "repository": { "name": "web", "project": { "name": "My Project" } },
-        "createdBy": { "id": "author", "displayName": "Grace" }, "creationDate": "2026-01-01T10:00:00Z",
-        "sourceRefName": "refs/heads/feature", "targetRefName": "refs/heads/main",
-        "lastMergeSourceCommit": { "commitId": source }, "lastMergeTargetCommit": { "commitId": "target1" },
+    crate::support::pull_request(&json!({
+        "lastMergeSourceCommit": { "commitId": source },
         "reviewers": [{ "id": "r1", "displayName": "Linus", "vote": vote }],
-    })
+    }))
 }
 
 fn threads(last_updated: &str) -> Value {
@@ -32,10 +25,8 @@ fn threads(last_updated: &str) -> Value {
 
 async fn mount_sequence(server: &MockServer, url_path: &str, answers: &[Value]) {
     for (index, answer) in answers.iter().enumerate() {
-        Mock::given(method("GET"))
-            .and(path(url_path))
-            .and(query_param("api-version", "7.1"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(answer))
+        api("GET", url_path)
+            .respond_with(ok(answer.clone()))
             .up_to_n_times(1)
             .with_priority(u8::try_from(index + 1).expect("fewer than 255 answers"))
             .expect(1)
@@ -53,14 +44,14 @@ async fn replies_votes_and_pushes_change_the_revision() {
         pull_request("head1", 10),
         pull_request("head2", 10),
     ];
-    mount_sequence(&server, PULL, &pulls).await;
+    mount_sequence(&server, &pr_path(""), &pulls).await;
     let replies = [
         threads("2026-01-01T10:00:00Z"),
         threads("2026-01-02T09:00:00Z"),
         threads("2026-01-02T09:00:00Z"),
         threads("2026-01-02T09:00:00Z"),
     ];
-    mount_sequence(&server, &format!("{PULL}/threads"), &replies).await;
+    mount_sequence(&server, &pr_path("/threads"), &replies).await;
     let provider = provider(&server, &[COLLECTION], Some(TOKEN));
 
     let opened = provider.revision(REPO, 7).await.expect("probe");

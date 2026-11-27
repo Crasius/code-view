@@ -3,23 +3,17 @@
 
 use review_core::Provider;
 use serde_json::{Value, json};
-use wiremock::matchers::{body_json, header, method, path, query_param};
+use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use crate::support::{AUTHORIZATION, COLLECTION, REPO, TOKEN, provider};
-
-const COMMENT: &str =
-    "/coll/My%20Project/_apis/git/repositories/web/pullrequests/7/threads/41/comments/2";
+use crate::support::{COLLECTION, REPO, TOKEN, api, pr_path, provider};
 
 #[tokio::test]
 async fn edits_a_comment_by_its_content() {
     let server = MockServer::start().await;
     let edited: Value =
         serde_json::from_str(include_str!("../fixtures/comment_edited.json")).expect("fixture");
-    Mock::given(method("PATCH"))
-        .and(path(COMMENT))
-        .and(query_param("api-version", "7.1"))
-        .and(header("authorization", AUTHORIZATION))
+    api("PATCH", &pr_path("/threads/41/comments/2"))
         .and(body_json(json!({ "content": "Use a slice here." })))
         .respond_with(ResponseTemplate::new(200).set_body_json(edited))
         .expect(1)
@@ -37,10 +31,7 @@ async fn edits_a_comment_by_its_content() {
 #[tokio::test]
 async fn deletes_a_comment() {
     let server = MockServer::start().await;
-    Mock::given(method("DELETE"))
-        .and(path(COMMENT))
-        .and(query_param("api-version", "7.1"))
-        .and(header("authorization", AUTHORIZATION))
+    api("DELETE", &pr_path("/threads/41/comments/2"))
         .respond_with(ResponseTemplate::new(200))
         .expect(1)
         .mount(&server)
@@ -67,7 +58,7 @@ async fn deleted_comments_stay_hidden() {
           "comments": [comment(3, true)] }
     ] });
     Mock::given(method("GET"))
-        .and(path("/coll/My%20Project/_apis/git/repositories/web/pullrequests/7/threads"))
+        .and(path(pr_path("/threads")))
         .respond_with(ResponseTemplate::new(200).set_body_json(threads))
         .mount(&server)
         .await;
