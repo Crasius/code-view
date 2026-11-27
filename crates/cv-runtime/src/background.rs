@@ -173,7 +173,19 @@ pub enum TaskPoll<T> {
     Lost,
 }
 
+/// The message a view shows for a [`TaskPoll::Lost`] task.
+pub const TASK_LOST: &str = "The background task stopped unexpectedly.";
+
 impl<T> Task<T> {
+    /// A task that already finished with `value`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn ready(value: T) -> Self {
+        let (sender, receiver) = oneshot::channel();
+        // The receiver is alive right here, so the send cannot fail.
+        let _receiver_alive = sender.send(value);
+        Self { receiver }
+    }
+
     pub fn poll(&mut self) -> TaskPoll<T> {
         match self.receiver.try_recv() {
             Ok(value) => TaskPoll::Done(value),
@@ -189,7 +201,12 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, Instant};
 
-    use super::{Background, EXIT_WAIT, TaskPoll};
+    use super::{Background, EXIT_WAIT, Task, TaskPoll};
+
+    #[test]
+    fn a_ready_task_is_done_at_the_first_poll() {
+        assert!(matches!(Task::ready(7).poll(), TaskPoll::Done(7)));
+    }
 
     /// A task that panics counts out like one that ends, whichever way it started; a kept one
     /// no longer holds the app's exit for the whole [`EXIT_WAIT`].

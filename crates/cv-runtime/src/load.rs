@@ -3,7 +3,7 @@ use std::future::Future;
 use review_core::ProviderError;
 use tokio::sync::mpsc;
 
-use super::background::{Background, Task, TaskPoll};
+use super::background::{Background, TASK_LOST, Task, TaskPoll};
 
 /// The state of one asynchronous value a view shows.
 #[derive(Default)]
@@ -25,21 +25,37 @@ impl<T: Send + 'static> Load<T> {
 
     /// Moves a finished task into `Ready`/`Failed`. Returns true when the state changed this frame.
     pub fn poll(&mut self) -> bool {
-        let Load::Loading(task) = self else {
+        let Some(result) = self.finished() else {
             return false;
         };
-        let next = match task.poll() {
-            TaskPoll::Pending => return false,
-            TaskPoll::Done(Ok(value)) => Load::Ready(value),
-            TaskPoll::Done(Err(error)) => Load::Failed(error.to_string()),
-            TaskPoll::Lost => Load::Failed("The background task stopped unexpectedly.".into()),
+        *self = match result {
+            Ok(value) => Load::Ready(value),
+            Err(message) => Load::Failed(message),
         };
-        *self = next;
         true
     }
 }
 
 impl<T> Load<T> {
+    /// Polls; when the load finished this call, takes its result and leaves `Idle`.
+    pub fn take_finished(&mut self) -> Option<Result<T, String>> {
+        let result = self.finished()?;
+        *self = Load::Idle;
+        Some(result)
+    }
+
+    /// The result of a running task that finished, with the error as the text a view shows.
+    fn finished(&mut self) -> Option<Result<T, String>> {
+        let Load::Loading(task) = self else {
+            return None;
+        };
+        match task.poll() {
+            TaskPoll::Pending => None,
+            TaskPoll::Done(result) => Some(result.map_err(|error| error.to_string())),
+            TaskPoll::Lost => Some(Err(TASK_LOST.to_owned())),
+        }
+    }
+
     pub fn ready(&self) -> Option<&T> {
         match self {
             Load::Ready(value) => Some(value),
@@ -218,9 +234,40 @@ impl<T> Live<T> {
 mod tests {
     use std::time::{Duration, Instant};
 
-    use super::Live;
-    use crate::background::Background;
+    use review_core::ProviderError;
+
+    use super::{Live, Load};
+    use crate::background::{Background, Task};
     use crate::refresh::LiveWatch;
+
+    #[test]
+    fn a_pending_load_gives_nothing_and_keeps_loading() {
+        let background = Background::new(egui::Context::default());
+        let (_release, released) = tokio::sync::oneshot::channel::<()>();
+        let mut load = Load::default();
+        load.start(&background, async move {
+            let _released_or_test_gone = released.await;
+            Ok(3)
+        });
+        assert!(load.take_finished().is_none());
+        assert!(load.is_loading());
+    }
+
+    #[test]
+    fn a_finished_load_gives_its_value_once_and_is_idle_after() {
+        let mut load = Load::Loading(Task::ready(Ok(3)));
+        assert_eq!(load.take_finished(), Some(Ok(3)));
+        assert!(load.is_idle());
+        assert_eq!(load.take_finished(), None);
+    }
+
+    #[test]
+    fn a_failed_load_gives_its_error_text() {
+        let mut load =
+            Load::<u32>::Loading(Task::ready(Err(ProviderError::Local("no repo".into()))));
+        assert_eq!(load.take_finished(), Some(Err("no repo".to_owned())));
+        assert!(load.is_idle());
+    }
 
     /// Polls until a value arrives, as the frames would.
     fn poll_until_new(live: &mut Live<u32>) {
