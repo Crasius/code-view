@@ -3,7 +3,7 @@
 
 use super::super::Env;
 use super::super::focus_strip;
-use super::super::origin_view::{OriginEvent, OriginInputs, OriginView};
+use super::super::origin_view::{OriginAction, OriginEvent, OriginInputs, OriginView};
 use super::choices::diff_options;
 use cv_pr_session::session::PullRequestSession;
 use cv_pr_threads::{Jump, ThreadsUi};
@@ -85,11 +85,11 @@ pub(crate) fn show_strip(
     };
     let web_url = web_url(origin.thread_id(), session, threads_ui);
     match focus_strip::show_origin(ui, &origin.face(), web_url.as_deref(), session.kind, services) {
-        Some(focus_strip::OriginAction::Back) => {
+        Some(OriginAction::Back) => {
             *slot = None;
             ui.ctx().request_discard("the original version closed");
         }
-        Some(focus_strip::OriginAction::Retry) => origin.retry(),
+        Some(OriginAction::Retry) => origin.retry(),
         None => {}
     }
 }

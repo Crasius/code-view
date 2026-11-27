@@ -3,9 +3,9 @@
 //! works through the files (`review`: keys, viewed marks, stepping), the folder summary and the
 //! original version in its place, the notices, the binary download, what a rendered Markdown diff
 //! asks for (`rendered`), the summary's diff source, the file it opens on (`start`, and `resume`
-//! for the place the user left it at), its breadcrumb levels and what it lets go while its page is
-//! out of sight (`hibernate`). The tab itself, [`super::FilesTab`], ties them together; `probe`
-//! reads its open file for other crates' walkthroughs.
+//! for the place the user left it at) and what it lets go while its page is out of sight
+//! (`hibernate`). The tab itself, [`super::FilesTab`], ties them together; `probe` reads its open
+//! file for other crates' walkthroughs.
 
 pub(crate) mod choices;
 pub(crate) mod download;

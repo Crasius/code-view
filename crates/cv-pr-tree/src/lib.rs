@@ -711,7 +711,6 @@ mod tests {
         assert!(harness.query_by_label("scripts").is_some());
     }
 
-    /// The tri-state counts every file below a folder, deeper ones too, and only those.
     /// A folder's viewed mark sits in the files' viewed column, left of the folder glyph, with the
     /// same hit area as a file's checkbox at the same depth.
     #[test]
@@ -737,6 +736,7 @@ mod tests {
         assert!(harness.query_by_label("Move the file tree to the right").is_none());
     }
 
+    /// The tri-state counts every file below a folder, deeper ones too, and only those.
     #[test]
     fn folder_marks_count_every_file_below_the_folder() {
         use super::{FolderMark, folder_counts, is_below};
@@ -863,8 +863,8 @@ mod tests {
         assert_eq!(harness.state().last_event.as_deref(), Some("review Approve"));
     }
 
-    /// The change kind stays readable without the old letter badges: in words for assistive
-    /// technology, and the rename source in the row's description.
+    /// The change kind is named in words in the row's accessible description, with the rename
+    /// source and the line counts.
     #[test]
     fn change_kinds_are_named_in_the_description() {
         let mut harness = build(icon_scene(ThemePreference::Light), [760.0, 1880.0]);

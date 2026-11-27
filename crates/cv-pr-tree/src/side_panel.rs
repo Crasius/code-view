@@ -1,8 +1,8 @@
 //! The file tree pane of the Files tab: search (Ctrl+P's go to file, see `goto`), the category
 //! dropdown with the hide-viewed toggle and the switch that moves the pane to the other window
-//! edge, the review progress (`progress`) and the file tree. The header keeps an 8 px rhythm and never overlaps itself:
-//! every piece is placed in a rect measured for it, and what does not fit beside the progress text
-//! moves to its own line.
+//! edge, the review progress (`progress`) and the file tree. The header keeps an 8 px rhythm and
+//! never overlaps itself: every piece is placed in a rect measured for it, and the progress line
+//! cuts its text rather than wrapping (`progress`).
 
 use egui::{FontId, Rect, Sense, TextEdit, Ui, pos2, vec2};
 use review_store::TreeSide;

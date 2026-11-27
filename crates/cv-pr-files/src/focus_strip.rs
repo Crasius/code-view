@@ -16,7 +16,7 @@ use review_core::{DiffSide, ProviderKind};
 use review_git::ChangedFile;
 use review_store::{DiffLayout, TreeSide};
 
-use super::origin_view::{self, Face};
+use super::origin_view::{self, Face, OriginAction};
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, icons, style};
 use cv_pr_diff::diff_view::{ChangePosition, Direction};
@@ -58,12 +58,6 @@ pub(crate) struct StripInputs<'a> {
 pub(crate) struct StripAction {
     pub header: HeaderAction,
     pub step_file: Option<Direction>,
-}
-
-/// What the bar asks of a comment's original version.
-pub(crate) enum OriginAction {
-    Back,
-    Retry,
 }
 
 /// Draws the bar at the top of `ui`. Switches that are settings (layout, whitespace, the file tree,

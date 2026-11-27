@@ -122,26 +122,26 @@ impl Prefetch {
         is_wanted: impl Fn(&ChangedFile) -> bool,
     ) -> bool {
         let rested = rested.or(self.thread_rested.as_ref());
-        let wanted = wanted(order, open, rested, is_wanted, can_load_ahead);
+        let ahead = wanted(order, open, rested, is_wanted, can_load_ahead);
         // The count does not know sizes before it counted: the near files whatever their size.
-        let near = self::wanted(order, open, rested, |_| true, |_| true);
+        let near = wanted(order, open, rested, |_| true, |_| true);
         let open_file = open.and_then(|position| order.get(position)).copied();
         self.count_wanted.clear();
-        for file in open_file.into_iter().chain(near).chain(wanted.iter().copied()) {
+        for file in open_file.into_iter().chain(near).chain(ahead.iter().copied()) {
             if !self.count_wanted.contains(&file.path) {
                 self.count_wanted.push(file.path.clone());
             }
         }
         // Compared in place: planning runs every frame.
         let is_same = self.compare.as_ref() == Some(compare)
-            && wanted.len() == self.planned.len()
-            && wanted.iter().zip(&self.planned).all(|(file, key)| key.is_of(file, compare.options));
+            && ahead.len() == self.planned.len()
+            && ahead.iter().zip(&self.planned).all(|(file, key)| key.is_of(file, compare.options));
         if is_same {
             return false;
         }
         self.compare = Some(compare.clone());
-        self.planned = wanted.iter().map(|file| compare.key(file)).collect();
-        self.queue = wanted.into_iter().cloned().collect();
+        self.planned = ahead.iter().map(|file| compare.key(file)).collect();
+        self.queue = ahead.into_iter().cloned().collect();
         true
     }
 

@@ -77,7 +77,8 @@ pub(crate) struct OriginView {
     hunk: Option<Arc<FileDiff>>,
 }
 
-enum BannerAction {
+/// What the banner, or focus mode's strip in its place, asks of the original version.
+pub(crate) enum OriginAction {
     Back,
     Retry,
 }
@@ -175,8 +176,8 @@ impl OriginView {
         // In focus mode the strip says what the banner says, with the same ways out.
         let banner = if focus_mode::is_shown(ui.ctx()) { None } else { self.banner(ui, inputs) };
         let mut event = match banner {
-            Some(BannerAction::Back) => Some(OriginEvent::Back),
-            Some(BannerAction::Retry) => {
+            Some(OriginAction::Back) => Some(OriginEvent::Back),
+            Some(OriginAction::Retry) => {
                 self.retry();
                 ui.ctx().request_repaint();
                 None
@@ -320,7 +321,7 @@ impl OriginView {
 
     /// "Showing the version from 1a2b3c4 · 3 days ago" with the file, Open on the platform and
     /// Back to latest. While the commits are gone it says what is shown instead.
-    fn banner(&self, ui: &mut Ui, inputs: &OriginInputs<'_>) -> Option<BannerAction> {
+    fn banner(&self, ui: &mut Ui, inputs: &OriginInputs<'_>) -> Option<OriginAction> {
         let palette = theme::palette(ui.ctx());
         let Face { text, missing, .. } = self.face();
         let mut event = None;
@@ -338,14 +339,14 @@ impl OriginView {
                             .on_hover_text("Back to the latest version (Esc)")
                             .clicked()
                         {
-                            event = Some(BannerAction::Back);
+                            event = Some(OriginAction::Back);
                         }
                         if let Some(reason) = &missing
                             && buttons::subtle(ui, icons::ARROW_CLOCKWISE, "Retry")
                                 .on_hover_text(reason)
                                 .clicked()
                         {
-                            event = Some(BannerAction::Retry);
+                            event = Some(OriginAction::Retry);
                         }
                         if let Some(url) = &inputs.web_url
                             && buttons::subtle(
