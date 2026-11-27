@@ -13,7 +13,7 @@ pub type ProviderFactory = fn(Connection, reqwest::Client) -> Arc<dyn Provider>;
 /// so every page, load and cache that holds the handle uses the new settings from its next call
 /// on. Stored connections' providers report token problems to [`ProviderRegistry::issues`].
 pub struct ProviderRegistry {
-    /// Any closure, so a test hands the fixture it captured instead of looking it up in a static.
+    /// Boxed so a caller can pass a closure that captures its provider.
     factory: Box<dyn Fn(Connection, reqwest::Client) -> Arc<dyn Provider> + Send + Sync>,
     http: reqwest::Client,
     providers: HashMap<String, (Connection, Arc<WatchedProvider>)>,
@@ -141,7 +141,7 @@ mod tests {
         );
     }
 
-    /// A test hands its fixture to the registry through the closure, not through a static.
+    /// A test hands its fixture to the registry through the closure.
     #[tokio::test]
     async fn a_registry_built_from_a_closure_hands_out_the_provider_it_captured() {
         let server = MockServer::start().await;
