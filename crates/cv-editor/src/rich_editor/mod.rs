@@ -48,7 +48,7 @@ use std::sync::Arc;
 
 use cv_base::theme::{self, style};
 use egui::mutex::Mutex;
-use egui::{Context, Id, Ui, Vec2, vec2};
+use egui::{Context, Id, Ui};
 use review_core::ProviderKind;
 
 use self::history::History;
@@ -57,13 +57,7 @@ use self::layout::LayoutCache;
 use self::model::{Document, Marks, Pos, Selection};
 use self::serialize::InlineCache;
 use crate::markdown_editor::PullRequestContext;
-
-/// Height of the text area before it starts to scroll.
-const MAX_HEIGHT: f32 = 360.0;
-/// Inside the text area, as the Markdown composer's.
-const MARGIN: Vec2 = vec2(12.0, 10.0);
-/// Height one row of `min_rows` reserves.
-const ROW_HEIGHT: f32 = 22.0;
+use crate::markdown_editor::toolbar_layout::{MAX_HEIGHT, ROW_HEIGHT, TEXT_MARGIN};
 
 /// How one rich editor looks and behaves.
 pub struct RichOptions<'a> {
@@ -158,7 +152,7 @@ pub fn show_with(
         if clicked.is_some() {
             ui.memory_mut(|memory| memory.request_focus(text_id));
         }
-        let min_height = options.min_rows as f32 * ROW_HEIGHT + 2.0 * MARGIN.y;
+        let min_height = options.min_rows as f32 * ROW_HEIGHT + TEXT_MARGIN.sum().y;
         let max_height = MAX_HEIGHT.min(ui.ctx().content_rect().height() * 0.5).max(min_height);
         egui::ScrollArea::vertical()
             .id_salt(id.with("rich_scroll"))

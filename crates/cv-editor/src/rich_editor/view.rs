@@ -15,8 +15,9 @@ use super::caret::{self, Placed};
 use super::input::{self, Command, Frame, link_at};
 use super::layout::{ChipKind, ITEM_INDENT, Marker, QUOTE_INDENT, indent};
 use super::model::{Container, Kind, Pos, Selection};
-use super::{MARGIN, Popup, RichOptions, State};
+use super::{Popup, RichOptions, State};
 use crate::markdown_editor::PullRequestContext;
+use crate::markdown_editor::toolbar_layout::TEXT_MARGIN;
 
 /// Width of the caret.
 const CARET_WIDTH: f32 = 2.0;
@@ -342,14 +343,14 @@ impl Body<'_> {
         let palette = theme::palette(&ctx);
         let width = ui.available_width();
         let people = PullRequestContext::current(&ctx);
-        state.layout.prepare(&ctx, palette, width - 2.0 * MARGIN.x, state.platform, people);
+        state.layout.prepare(&ctx, palette, width - TEXT_MARGIN.sum().x, state.platform, people);
         let total = state.layout.offsets(&state.doc).total;
-        let size = vec2(width, (total + 2.0 * MARGIN.y).max(self.min_height));
+        let size = vec2(width, (total + TEXT_MARGIN.sum().y).max(self.min_height));
         let rect = Rect::from_min_size(ui.cursor().min, size);
         ui.allocate_rect(rect, Sense::hover());
         let sense = if self.options.is_enabled { Sense::click_and_drag() } else { Sense::hover() };
         let response = ui.interact(rect, self.text_id, sense);
-        let origin = rect.min + MARGIN;
+        let origin = rect.min + TEXT_MARGIN.left_top();
         let frame =
             Frame { ui, origin, page_height: self.page_height, now: ui.input(|input| input.time) };
 

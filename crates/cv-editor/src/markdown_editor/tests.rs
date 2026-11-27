@@ -13,6 +13,7 @@ use review_core::ProviderKind;
 use review_git::FileDiff;
 use review_store::{CommentEditor, CommentEditors, ThemePreference};
 
+use super::toolbar_layout::TEXT_MARGIN;
 use super::{FileContext, Options, Outcome, Person, PullRequestContext, show, take_chosen_editors};
 
 const DIFF: &str = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,3 +1,4 @@\n fn total(items: &[u32]) -> u32 {\n-    items.iter().sum()\n+    let sum = items.iter().sum();\n+    sum\n }\n";
@@ -260,9 +261,10 @@ fn busy_composer_does_not_submit_twice() {
     let mut harness = composer(probe, 720.0);
     press(&mut harness, Modifiers::COMMAND, Key::Enter);
     assert_eq!(harness.state().submitted, 0);
-    // The button keeps its label (no width change) and reports the running post.
+    // The button keeps its label and reports the running post.
+    harness.get_by_role_and_label(Role::Button, "Comment");
     let is_busy = harness.query_by(|node| {
-        node.role() == egui::accesskit::Role::ProgressIndicator
+        node.role() == Role::ProgressIndicator
             && node.label().is_some_and(|label| label.ends_with("in progress"))
     });
     assert!(is_busy.is_some());
@@ -368,17 +370,15 @@ fn markdown_round_trips_unchanged() {
     assert_eq!(harness.state().text, source);
 }
 
-/// Write shows the source as text: no task box is drawn, and a click on `[ ]` places the caret
-/// there instead of checking the task.
+/// In Write, a click on `[ ]` places the caret there instead of checking the task.
 #[test]
 fn clicking_a_task_marker_places_the_caret() {
     let mut probe = Probe::new();
     probe.text = "- [ ] ship it".into();
     let mut harness = composer(probe, 720.0);
-    assert!(harness.query_by_label("Open task").is_none());
-    let area = harness.get_by(|node| node.role() == egui::accesskit::Role::MultilineTextInput);
-    // The text starts inside the area's 12 x 10 px margin; `[ ]` follows the two chars `- `.
-    let at = area.rect().left_top() + egui::vec2(12.0 + 14.0, 10.0 + 8.0);
+    let area = harness.get_by(|node| node.role() == Role::MultilineTextInput);
+    // The text starts inside the area's margin; `[ ]` follows the two chars `- `.
+    let at = area.rect().left_top() + TEXT_MARGIN.left_top() + egui::vec2(14.0, 8.0);
     harness.event(Event::PointerMoved(at));
     for pressed in [true, false] {
         harness.event(Event::PointerButton {

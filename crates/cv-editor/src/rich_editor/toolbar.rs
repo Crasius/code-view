@@ -1,21 +1,19 @@
-//! The formatting toolbar: buttons in groups, drawn as the Markdown composer draws its own
-//! (the size, gaps, dividers and fitting of `markdown_editor::toolbar_layout`, the same overflow
-//! menu), each showing whether its format is on at the caret. A button's accessible name is its
-//! label; the tooltip adds the shortcut.
+//! The formatting toolbar: buttons in groups, drawn by `markdown_editor::toolbar_layout` as the
+//! Markdown composer's own, each showing whether its format is on at the caret. A button's
+//! accessible name is its label; the tooltip adds the shortcut.
 
 use cv_base::platform::shortcut;
-use cv_base::theme::{self, icons, motion, style};
-use cv_widgets::{focus, glyph, row};
-use egui::{Align2, Color32, Sense, Ui, vec2};
+use cv_base::theme::icons;
+use egui::Ui;
 
 use super::State;
 use super::edit::structure::ListStyle;
 use super::edit::{self as edit_ops};
 use super::input::{Command, link_at};
 use super::model::{Container, Kind, ListKind, Mark};
-use crate::markdown_editor::toolbar_layout::{
-    BUTTON_GAP, BUTTON_SIZE, divider, group_width, visible_groups,
-};
+use crate::markdown_editor::toolbar_layout::{self, item};
+
+type Item = toolbar_layout::Item<Action>;
 
 #[cfg(not(target_os = "macos"))]
 const HEADING_SHORTCUTS: [&str; 3] = ["Ctrl+Alt+1", "Ctrl+Alt+2", "Ctrl+Alt+3"];
@@ -47,22 +45,6 @@ impl Action {
             Action::Mention => Command::Mention,
         }
     }
-}
-
-pub struct Item {
-    pub action: Action,
-    pub icon: &'static str,
-    pub label: &'static str,
-    pub shortcut: &'static str,
-}
-
-const fn item(
-    action: Action,
-    icon: &'static str,
-    label: &'static str,
-    shortcut: &'static str,
-) -> Item {
-    Item { action, icon, label, shortcut }
 }
 
 const MARKS: &[Item] = &[
@@ -193,103 +175,6 @@ fn groups(can_mention: bool) -> Vec<Vec<&'static Item>> {
 
 /// Draws the buttons right-aligned into the rest of the row; returns the clicked button's command.
 pub fn show(ui: &mut Ui, active: &Active, can_mention: bool, is_enabled: bool) -> Option<Command> {
-    let groups = groups(can_mention);
-    let widths: Vec<f32> = groups.iter().map(|group| group_width(group.len())).collect();
-    let shown = visible_groups(&widths, ui.available_width());
-    let mut clicked = None;
-    ui.add_enabled_ui(is_enabled, |ui| {
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.spacing_mut().item_spacing.x = BUTTON_GAP;
-            if shown < groups.len() {
-                if let Some(action) = overflow(ui, &groups[shown..], active) {
-                    clicked = Some(action);
-                }
-                divider(ui);
-            }
-            for (index, group) in groups[..shown].iter().enumerate().rev() {
-                for item in group.iter().rev() {
-                    if button(ui, item, active.is_active(item.action)).clicked() {
-                        clicked = Some(item.action);
-                    }
-                }
-                if index > 0 {
-                    divider(ui);
-                }
-            }
-        });
-    });
-    clicked.map(Action::command)
-}
-
-fn button(ui: &mut Ui, item: &Item, is_active: bool) -> egui::Response {
-    let palette = theme::palette(ui.ctx());
-    let (rect, response) = ui.allocate_exact_size(vec2(BUTTON_SIZE, BUTTON_SIZE), Sense::click());
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::Role::Button, ui.is_enabled(), is_active, item.label)
-    });
-    let response = response.on_hover_text(format!("{} ({})", item.label, item.shortcut));
-    if ui.is_rect_visible(rect) {
-        let rest = if is_active { palette.selection } else { Color32::TRANSPARENT };
-        let fill = if ui.is_enabled() {
-            row::state_fill(ui, &response, rest)
-        } else {
-            Color32::TRANSPARENT
-        };
-        ui.painter().rect_filled(rect, style::RADIUS_CONTROL, fill);
-        let color = if !ui.is_enabled() {
-            palette.text_disabled
-        } else if is_active {
-            palette.accent_text
-        } else {
-            palette.text_secondary
-        };
-        let hover = row::hover_amount(ui, &response);
-        let color = if is_active { color } else { motion::mix(color, palette.text, hover) };
-        let font = icons::state_font(&palette, icons::SIZE, is_active);
-        ui.painter().text(rect.center(), Align2::CENTER_CENTER, item.icon, font, color);
-        focus::ring(ui, &response, rect);
-    }
-    response
-}
-
-fn overflow(ui: &mut Ui, groups: &[Vec<&'static Item>], active: &Active) -> Option<Action> {
-    let label = "More formatting";
-    let palette = theme::palette(ui.ctx());
-    let (rect, response) = ui.allocate_exact_size(vec2(BUTTON_SIZE, BUTTON_SIZE), Sense::click());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), label));
-    let response = response.on_hover_text(label);
-    let fill = row::state_fill(ui, &response, Color32::TRANSPARENT);
-    ui.painter().rect_filled(rect, style::RADIUS_CONTROL, fill);
-    let font = icons::rest_font(&palette, icons::SIZE);
-    ui.painter().text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        icons::DOTS_THREE,
-        font,
-        palette.text_secondary,
-    );
-    focus::ring(ui, &response, rect);
-    let mut clicked = None;
-    egui::Popup::menu(&response).show(|ui| {
-        ui.set_min_width(220.0);
-        for (index, group) in groups.iter().enumerate() {
-            if index > 0 {
-                ui.separator();
-            }
-            for item in group {
-                let entry = egui::Button::selectable(
-                    active.is_active(item.action),
-                    format!("{}   {}", item.icon, item.label),
-                )
-                .shortcut_text(egui::RichText::new(item.shortcut).color(palette.text_secondary))
-                .min_size(vec2(ui.available_width(), BUTTON_SIZE));
-                let entry = ui.add(entry);
-                glyph::speak_as(&entry, item.label);
-                if entry.clicked() {
-                    clicked = Some(item.action);
-                }
-            }
-        }
-    });
-    clicked
+    toolbar_layout::show(ui, &groups(can_mention), |action| active.is_active(action), is_enabled)
+        .map(Action::command)
 }

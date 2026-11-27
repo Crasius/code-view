@@ -3,6 +3,8 @@
 
 use std::ops::Range;
 
+use super::structure::InlineKind;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     Bold,
@@ -16,6 +18,32 @@ pub enum Format {
     NumberedList,
     TaskList,
     CodeBlock,
+}
+
+impl Format {
+    /// The span this format writes, `None` for the line and block formats.
+    pub fn inline_kind(self) -> Option<InlineKind> {
+        match self {
+            Self::Bold => Some(InlineKind::Bold),
+            Self::Italic => Some(InlineKind::Italic),
+            Self::Strikethrough => Some(InlineKind::Strike),
+            Self::InlineCode => Some(InlineKind::Code),
+            Self::Link => Some(InlineKind::Link),
+            Self::Heading
+            | Self::Quote
+            | Self::BulletList
+            | Self::NumberedList
+            | Self::TaskList
+            | Self::CodeBlock => None,
+        }
+    }
+}
+
+/// Which way Tab moves list items: one level in, or (Shift+Tab) one level out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Indent {
+    In,
+    Out,
 }
 
 /// Selection in character offsets, `start <= end`.
@@ -43,7 +71,7 @@ pub fn apply(text: &mut String, selection: Selection, format: Format) -> Selecti
         Format::Strikethrough => wrap(text, selection, "~~", "~~", "struck text"),
         Format::InlineCode => wrap(text, selection, "`", "`", "code"),
         Format::Link => link(text, selection),
-        Format::CodeBlock => code_block(text, selection, ""),
+        Format::CodeBlock => code_block(text, selection),
         Format::Heading => heading(text, selection),
         Format::Quote => prefix_lines(text, selection, Prefix::Stacks, |_| "> ".into()),
         Format::BulletList => {
@@ -172,18 +200,20 @@ fn insert_block(text: &mut String, selection: Selection, block: &str) -> Range<u
     block_start..block_start + char_len(block)
 }
 
-/// A fenced code block around the selection (or a placeholder line, selected).
-pub fn code_block(text: &mut String, selection: Selection, language: &str) -> Selection {
+/// Puts a fence tagged `tag` around `body` on lines of its own in place of the selection.
+/// Returns the char range of `body` in the new text.
+fn fence(text: &mut String, selection: Selection, tag: &str, body: &str) -> Range<usize> {
+    let inserted = insert_block(text, selection, &format!("```{tag}\n{body}\n```"));
+    let body_start = inserted.start + char_len("```") + char_len(tag) + 1;
+    body_start..body_start + char_len(body)
+}
+
+/// A fenced code block around the selection (or an empty line, with the caret on it).
+fn code_block(text: &mut String, selection: Selection) -> Selection {
     let Range { start, end } = byte_range(text, selection);
-    let code = if start == end {
-        String::new()
-    } else {
-        text[start..end].trim_end_matches('\n').to_owned()
-    };
-    let block = format!("```{language}\n{code}\n```");
-    let inserted = insert_block(text, selection, &block);
-    let code_start = inserted.start + 4 + char_len(language);
-    Selection { start: code_start, end: code_start + char_len(&code) }
+    let code = text[start..end].trim_end_matches('\n').to_owned();
+    let body = fence(text, selection, "", &code);
+    Selection { start: body.start, end: body.end }
 }
 
 /// Pasted code: a fence with the file's language; the caret lands after the block.
@@ -193,20 +223,16 @@ pub fn fenced_paste(
     code: &str,
     language: &str,
 ) -> Selection {
-    let block = format!("```{language}\n{}\n```", code.trim_end_matches(['\n', '\r']));
-    let inserted = insert_block(text, selection, &block);
-    let after = inserted.end + 1;
+    let body = fence(text, selection, language, code.trim_end_matches(['\n', '\r']));
+    let after = body.end + char_len("\n```") + 1;
     Selection::caret(after.min(char_len(text)))
 }
 
 /// A ```` ```suggestion ```` block holding `lines`, with the caret on its first line so the reviewer
 /// can start editing the proposed code right away.
 pub fn suggestion(text: &mut String, selection: Selection, lines: &str) -> Selection {
-    let body = lines.trim_end_matches(['\n', '\r']);
-    let block = format!("```suggestion\n{body}\n```");
-    let inserted = insert_block(text, selection, &block);
-    let body_start = inserted.start + char_len("```suggestion\n");
-    Selection { start: body_start, end: body_start + char_len(body) }
+    let body = fence(text, selection, "suggestion", lines.trim_end_matches(['\n', '\r']));
+    Selection { start: body.start, end: body.end }
 }
 
 /// How a line prefix meets a list marker the line starts with already.
@@ -227,9 +253,8 @@ fn prefix_lines(
     kind: Prefix,
     prefix_for: impl Fn(usize) -> String,
 ) -> Selection {
-    let Range { start, end } = byte_range(text, selection);
-    let line_start = text[..start].rfind('\n').map_or(0, |index| index + 1);
-    let line_end = text[end..].find('\n').map_or(text.len(), |index| end + index);
+    let Range { start: line_start, end: line_end } =
+        lines_around(text, byte_range(text, selection));
     let block: Vec<(&str, &str)> = text[line_start..line_end]
         .split('\n')
         .map(|line| match kind {
@@ -267,9 +292,8 @@ fn prefix_lines(
 /// Makes the touched lines `###` headings, or plain text again when they already are headings of
 /// any level.
 fn heading(text: &mut String, selection: Selection) -> Selection {
-    let Range { start, end } = byte_range(text, selection);
-    let line_start = text[..start].rfind('\n').map_or(0, |index| index + 1);
-    let line_end = text[end..].find('\n').map_or(text.len(), |index| end + index);
+    let Range { start: line_start, end: line_end } =
+        lines_around(text, byte_range(text, selection));
     let heading_prefix = |line: &str| {
         let hashes = line.bytes().take_while(|&byte| byte == b'#').count();
         ((1..=6).contains(&hashes) && line[hashes..].starts_with(' ')).then_some(hashes + 1)
@@ -409,6 +433,11 @@ fn line_bounds(text: &str, byte: usize) -> Range<usize> {
     start..end
 }
 
+/// The whole lines the byte range `bytes` touches.
+fn lines_around(text: &str, bytes: Range<usize>) -> Range<usize> {
+    line_bounds(text, bytes.start).start..line_bounds(text, bytes.end).end
+}
+
 /// Enter inside a list or quote: continues it on the next line, or ends it when the current item
 /// is empty. `None` when the caret is not in a list or quote (a plain newline then).
 pub fn continue_block(text: &mut String, selection: Selection) -> Option<Selection> {
@@ -449,12 +478,9 @@ pub fn newline_with_indent(text: &mut String, selection: Selection) -> Selection
 pub fn indent_items(
     text: &mut String,
     selection: Selection,
-    is_outdent: bool,
+    direction: Indent,
 ) -> Option<Selection> {
-    let Range { start, end } = byte_range(text, selection);
-    let first_line = line_bounds(text, start);
-    let last_line = line_bounds(text, end);
-    let block = first_line.start..last_line.end;
+    let block = lines_around(text, byte_range(text, selection));
     let previous: Vec<LinePrefix> = text[..block.start]
         .lines()
         .map(LinePrefix::parse)
@@ -472,7 +498,7 @@ pub fn indent_items(
         }
         any_item = true;
         let quote_len = prefix.quote.len();
-        let target = if is_outdent {
+        let target = if direction == Indent::Out {
             parents
                 .iter()
                 .rev()
@@ -637,17 +663,18 @@ mod tests {
     #[test]
     fn tab_nests_items_under_the_previous_one() {
         let mut text = "- one\n- two".to_owned();
-        let selection = indent_items(&mut text, Selection::caret(11), false).expect("list item");
+        let selection =
+            indent_items(&mut text, Selection::caret(11), Indent::In).expect("list item");
         assert_eq!(text, "- one\n  - two");
         assert_eq!(selection, Selection::caret(13));
-        let selection = indent_items(&mut text, selection, true).expect("list item");
+        let selection = indent_items(&mut text, selection, Indent::Out).expect("list item");
         assert_eq!(text, "- one\n- two");
         assert_eq!(selection, Selection::caret(11));
         let mut numbered = "1. one\n1. two".to_owned();
-        indent_items(&mut numbered, Selection::caret(13), false);
+        indent_items(&mut numbered, Selection::caret(13), Indent::In);
         assert_eq!(numbered, "1. one\n   1. two");
         let mut plain = "text".to_owned();
-        assert_eq!(indent_items(&mut plain, Selection::caret(2), false), None);
+        assert_eq!(indent_items(&mut plain, Selection::caret(2), Indent::In), None);
     }
 
     #[test]
