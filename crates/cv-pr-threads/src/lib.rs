@@ -751,8 +751,8 @@ impl ThreadsUi {
     /// Retry was clicked on the failed post under `key` and the next frame sent it again.
     pub fn retry_for_tests(&mut self, key: &str) {
         self.retry_requested = Some(key.to_owned());
-        if self.take_retry().is_some()
-            && matches!(self.posts.state(key), Some(PostState::Failed { .. }))
+        self.take_retry();
+        if matches!(self.posts.state(key), Some(PostState::Failed { .. }))
             && let Some(kind) = self.posts.kind(key).cloned()
         {
             self.posts.start_for_tests(key, kind);
@@ -790,10 +790,6 @@ mod tests {
     use super::samples::{self, comment_at, lines, person};
     use super::*;
 
-    fn thread(comments: Vec<ThreadComment>) -> ReviewThread {
-        samples::thread("t1", ThreadStatus::Active, None, comments)
-    }
-
     fn comment(id: &str, author: &UserIdentity, unix: i64) -> ThreadComment {
         comment_at(id, author, unix, "text")
     }
@@ -803,17 +799,23 @@ mod tests {
         let (jonas, mara, me) =
             (person("1", "Jonas Weber"), person("2", "Mara Lind"), person("3", "Erika"));
         let mut ui = ThreadsUi::for_tests(ProviderKind::GitHub);
-        let read = thread(vec![comment("a", &jonas, 100)]);
+        let read =
+            samples::thread("t1", ThreadStatus::Active, None, vec![comment("a", &jonas, 100)]);
         assert_eq!(ui.new_comments(&read), None, "nothing is new before the first visit");
         assert!(!ui.is_unread(&read));
         ui.visited_at(150);
         ui.set_me(me.clone());
-        let replied = thread(vec![
-            comment("a", &jonas, 100),
-            comment("b", &me, 160),
-            comment("c", &mara, 170),
-            comment("d", &jonas, 180),
-        ]);
+        let replied = samples::thread(
+            "t1",
+            ThreadStatus::Active,
+            None,
+            vec![
+                comment("a", &jonas, 100),
+                comment("b", &me, 160),
+                comment("c", &mara, 170),
+                comment("d", &jonas, 180),
+            ],
+        );
         let new = ui.new_comments(&replied).expect("two new replies");
         assert_eq!(
             (new.first, new.count, new.authors.clone(), new.is_new_thread()),
@@ -821,7 +823,12 @@ mod tests {
             "my own reply is not new"
         );
         assert!(ui.is_unread(&replied));
-        let mine = thread(vec![comment("a", &jonas, 100), comment("b", &me, 160)]);
+        let mine = samples::thread(
+            "t1",
+            ThreadStatus::Active,
+            None,
+            vec![comment("a", &jonas, 100), comment("b", &me, 160)],
+        );
         assert!(!ui.is_unread(&mine), "my own reply alone is no news");
         ui.mark_read(&replied);
         assert_eq!(ui.new_comments(&replied), None);
@@ -835,7 +842,8 @@ mod tests {
         assert!(ui.is_collapsed(&resolved));
         ui.toggle_collapsed(&resolved);
         assert!(!ui.is_collapsed(&resolved));
-        assert!(!ui.is_collapsed(&thread(Vec::new())), "active threads start open");
+        let active = samples::thread("t1", ThreadStatus::Active, None, Vec::new());
+        assert!(!ui.is_collapsed(&active), "active threads start open");
     }
 
     #[test]

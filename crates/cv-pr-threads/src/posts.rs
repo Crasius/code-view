@@ -189,7 +189,10 @@ impl Posts {
 
     /// Drops sent posts the threads loaded at `version` show, and says which they were.
     pub fn forget_delivered(&mut self, version: u64) -> Vec<Landed> {
-        let has_landed = |post: &Post| matches!(post.state, PostState::Sent { after_version } if version > after_version);
+        let has_landed = |post: &Post| match post.state {
+            PostState::Sent { after_version } => version > after_version,
+            _ => false,
+        };
         let landed: Vec<String> = self
             .by_key
             .iter()

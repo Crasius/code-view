@@ -365,21 +365,13 @@ impl CommentEdits {
 
 #[cfg(test)]
 mod tests {
-    use review_core::{ThreadStatus, UserIdentity};
+    use review_core::ThreadStatus;
 
-    use super::super::samples::{self, comment_at};
+    use super::super::samples::{self, comment_at, person};
     use super::*;
 
-    fn person(id: &str) -> UserIdentity {
-        samples::person(id, id)
-    }
-
     fn comment(id: &str, author: &str, body: &str) -> ThreadComment {
-        comment_at(id, &person(author), 0, body)
-    }
-
-    fn thread(comments: Vec<ThreadComment>) -> ReviewThread {
-        samples::thread("t1", ThreadStatus::Active, None, comments)
+        comment_at(id, &person(author, author), 0, body)
     }
 
     fn refused(message: &str, needs_token: bool) -> Result<Answer, Failure> {
@@ -420,7 +412,8 @@ mod tests {
     #[test]
     fn deleting_the_last_comment_hides_the_thread() {
         let mut edits = CommentEdits::default();
-        let two = thread(vec![comment("c1", "me", "a"), comment("c2", "me", "b")]);
+        let comments = vec![comment("c1", "me", "a"), comment("c2", "me", "b")];
+        let two = samples::thread("t1", ThreadStatus::Active, None, comments);
         edits.ask_delete("t1", "c2");
         edits.send_for_tests("t1", "c2", None);
         let done = edits.answer_for_tests("t1", "c2", Ok(Answer::Deleted), 1);
@@ -451,8 +444,10 @@ mod tests {
 
     #[test]
     fn only_own_comments_outside_notices_may_change() {
-        let (me, mine, theirs) = (person("me"), comment("c1", "me", "a"), comment("c2", "cy", "b"));
-        let user_thread = thread(vec![mine.clone(), theirs.clone()]);
+        let (me, mine, theirs) =
+            (person("me", "me"), comment("c1", "me", "a"), comment("c2", "cy", "b"));
+        let comments = vec![mine.clone(), theirs.clone()];
+        let user_thread = samples::thread("t1", ThreadStatus::Active, None, comments);
         assert!(may_change(&user_thread, &mine, Some(&me), true));
         assert!(!may_change(&user_thread, &theirs, Some(&me), true), "someone else's comment");
         assert!(!may_change(&user_thread, &mine, None, true), "before the platform said who I am");
