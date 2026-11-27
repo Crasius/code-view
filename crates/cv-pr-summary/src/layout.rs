@@ -216,61 +216,47 @@ impl CardIndex {
 
 #[cfg(test)]
 mod tests {
-    use review_core::FileCategory;
     use review_git::{ChangeKind, ChangedFile};
 
     use super::{CardIndex, Geometry, Shape, estimate};
-
-    fn file(kind: ChangeKind, counts: Option<(u32, u32)>) -> ChangedFile {
-        ChangedFile {
-            path: "src/a.rs".into(),
-            old_path: None,
-            kind,
-            old_oid: "1".repeat(40),
-            new_oid: "2".repeat(40),
-            additions: counts.map(|(added, _)| added),
-            deletions: counts.map(|(_, deleted)| deleted),
-            is_binary: false,
-            category: FileCategory::Code,
-            whitespace_only: false,
-        }
-    }
+    use crate::testing::file;
 
     #[test]
     fn estimates_whole_files_exactly_and_edits_by_their_hunks() {
         assert_eq!(
-            estimate(&file(ChangeKind::Added, Some((120, 0))), 3, false),
+            estimate(&file("src/a.rs", ChangeKind::Added, Some((120, 0))), 3, false),
             Shape::Rows { lines: 120, separators: 0 }
         );
         assert_eq!(
-            estimate(&file(ChangeKind::Deleted, Some((0, 7))), 3, true),
+            estimate(&file("src/a.rs", ChangeKind::Deleted, Some((0, 7))), 3, true),
             Shape::Rows { lines: 7, separators: 0 },
             "a whole file shows in one pane"
         );
         // 30 changed lines: three hunks of about ten, each with three lines above and below.
         assert_eq!(
-            estimate(&file(ChangeKind::Modified, Some((20, 10))), 3, false),
+            estimate(&file("src/a.rs", ChangeKind::Modified, Some((20, 10))), 3, false),
             Shape::Rows { lines: 30 + 18, separators: 2 }
         );
         assert_eq!(
-            estimate(&file(ChangeKind::Modified, Some((20, 10))), 3, true),
+            estimate(&file("src/a.rs", ChangeKind::Modified, Some((20, 10))), 3, true),
             Shape::Rows { lines: 20 + 18, separators: 2 },
             "deleted lines sit beside added ones"
         );
         assert_eq!(
-            estimate(&file(ChangeKind::Renamed, Some((0, 0))), 3, false),
+            estimate(&file("src/a.rs", ChangeKind::Renamed, Some((0, 0))), 3, false),
             Shape::Placeholder,
             "a pure rename"
         );
         assert_eq!(
-            estimate(&file(ChangeKind::Added, Some((30_000, 0))), 3, false),
+            estimate(&file("src/a.rs", ChangeKind::Added, Some((30_000, 0))), 3, false),
             Shape::Placeholder,
             "too large to show inline"
         );
-        let binary = ChangedFile { is_binary: true, ..file(ChangeKind::Modified, None) };
+        let binary =
+            ChangedFile { is_binary: true, ..file("src/a.rs", ChangeKind::Modified, None) };
         assert_eq!(estimate(&binary, 3, true), Shape::Placeholder);
         assert_eq!(
-            estimate(&file(ChangeKind::Modified, None), 3, false),
+            estimate(&file("src/a.rs", ChangeKind::Modified, None), 3, false),
             Shape::Rows { lines: 12, separators: 0 },
             "not counted yet"
         );
@@ -279,8 +265,10 @@ mod tests {
     #[test]
     fn an_image_keeps_its_card_height_when_the_counts_mark_it_binary() {
         let geometry = Geometry::new(20.0);
-        let uncounted =
-            ChangedFile { path: "web/dist/Logo.PNG".into(), ..file(ChangeKind::Modified, None) };
+        let uncounted = ChangedFile {
+            path: "web/dist/Logo.PNG".into(),
+            ..file("src/a.rs", ChangeKind::Modified, None)
+        };
         let counted = ChangedFile { is_binary: true, ..uncounted.clone() };
         for split in [false, true] {
             assert_eq!(
@@ -288,7 +276,10 @@ mod tests {
                 geometry.body(estimate(&counted, 3, split))
             );
         }
-        let svg = ChangedFile { path: "icons/logo.svg".into(), ..file(ChangeKind::Modified, None) };
+        let svg = ChangedFile {
+            path: "icons/logo.svg".into(),
+            ..file("src/a.rs", ChangeKind::Modified, None)
+        };
         assert_eq!(
             estimate(&svg, 3, false),
             Shape::Rows { lines: 12, separators: 0 },
