@@ -1,4 +1,4 @@
-use super::RunStatus;
+use super::{PullRequestState, RunStatus};
 
 /// What a reference points at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -36,6 +36,18 @@ pub enum LinkedState {
     Closed,
 }
 
+impl LinkedState {
+    /// The state and the app's word for a pull request that links to this one.
+    pub fn of_pull_request(state: PullRequestState, is_draft: bool) -> (LinkedState, &'static str) {
+        match state {
+            PullRequestState::Merged => (LinkedState::Merged, "Merged"),
+            PullRequestState::Closed => (LinkedState::Closed, "Abandoned"),
+            PullRequestState::Open if is_draft => (LinkedState::Draft, "Draft"),
+            PullRequestState::Open => (LinkedState::Open, "Active"),
+        }
+    }
+}
+
 /// The current title and state of a referenced item.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LinkedItem {
@@ -47,11 +59,35 @@ pub struct LinkedItem {
     pub repository_key: String,
     pub title: String,
     pub state: LinkedState,
-    /// The platform's own word for the state ("Active", "Resolved", "Closed").
+    /// The word for the state: the app's own for a pull request
+    /// ([`LinkedState::of_pull_request`]), the platform's for an issue or work item ("Resolved",
+    /// "Closed").
     pub state_label: String,
     /// Combined checks of a pull request's head commit, where the platform reports it cheaply.
     pub checks: Option<RunStatus>,
     /// Work item type ("Bug", "User Story").
     pub item_type: Option<String>,
     pub web_url: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LinkedState, PullRequestState};
+
+    #[test]
+    fn a_linked_pull_request_reads_in_the_apps_words() {
+        let rows = [
+            (PullRequestState::Merged, true, LinkedState::Merged, "Merged"),
+            (PullRequestState::Closed, true, LinkedState::Closed, "Abandoned"),
+            (PullRequestState::Open, true, LinkedState::Draft, "Draft"),
+            (PullRequestState::Open, false, LinkedState::Open, "Active"),
+        ];
+        for (state, is_draft, linked, word) in rows {
+            assert_eq!(
+                LinkedState::of_pull_request(state, is_draft),
+                (linked, word),
+                "{state:?}, draft {is_draft}"
+            );
+        }
+    }
 }

@@ -24,7 +24,7 @@ pub use pipeline::{
 pub use pull_request::{
     AutoComplete, DiffStat, LineCounts, MergeOptions, MergeStatus, MergeStrategy,
     PullRequestDetail, PullRequestQuery, PullRequestScope, PullRequestState, PullRequestSummary,
-    StateFilter,
+    SHORT_SHA_LEN, StateFilter, short_sha,
 };
 pub use repository::{GitRemote, RepositoryInfo};
 pub use review::{Label, ReviewVote, Reviewer, is_approved};

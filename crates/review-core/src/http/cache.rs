@@ -268,6 +268,7 @@ mod tests {
     use bytes::Bytes;
     use reqwest::header::HeaderValue;
     use reqwest::{Client, Url};
+    use serde_json::{Value, json};
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -352,5 +353,37 @@ mod tests {
         assert_eq!(&refreshed.bytes[..], b"merged", "the refresh sent its own request");
         let probed = probe.await.unwrap().unwrap();
         assert_eq!(&probed.bytes[..], b"open", "the probe keeps its own, older answer");
+    }
+
+    /// When the caller that started a shared request goes away before the answer (a screen
+    /// dropped or restarted its load), the callers waiting for it still get that answer, without a
+    /// second request. On the test's single thread one yield lets a spawned fetch run up to its
+    /// first wait, so the starter is in flight before the waiter joins and the waiter has joined
+    /// before the starter is aborted.
+    #[tokio::test]
+    async fn a_waiting_caller_gets_the_answer_when_the_starting_caller_goes_away() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pipelines"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!([{ "id": 1 }]))
+                    .set_delay(Duration::from_millis(300)),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = Client::new();
+        let url = format!("{}/pipelines", server.uri());
+        let starter = tokio::spawn(http::fetch(client.get(&url)));
+        tokio::task::yield_now().await;
+        let waiter = tokio::spawn(http::fetch(client.get(&url)));
+        tokio::task::yield_now().await;
+        starter.abort();
+        let fetched = waiter
+            .await
+            .expect("the waiting task ran")
+            .expect("an answer, not a stopped shared request");
+        assert_eq!(fetched.json::<Value>().expect("json"), json!([{ "id": 1 }]));
     }
 }
