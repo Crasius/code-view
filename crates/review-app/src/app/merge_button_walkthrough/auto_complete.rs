@@ -14,7 +14,7 @@ use review_core::{MergeStrategy, ProviderKind};
 
 use super::super::walkthrough::{has, opened_urls, press, wait_until};
 use super::{Calls, POLICIES, ReviewApp, button, open, start_on};
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir};
 
 /// (set, armed set, state line, cancel, armed cancel) as the platform words them.
 struct Words {
@@ -51,12 +51,14 @@ const GITLAB: Words = Words {
 
 #[test]
 fn merge_button_sets_and_cancels_auto_complete_on_azure_devops() {
-    round_trip("auto-ado", ProviderKind::AzureDevOps, &AZURE);
+    let scratch = ScratchDir::new("merge-button-auto-ado");
+    round_trip(&scratch, "auto-ado", ProviderKind::AzureDevOps, &AZURE);
 }
 
 #[test]
 fn merge_button_enables_and_disables_auto_merge_on_github() {
-    let (mut harness, _) = round_trip("auto-github", ProviderKind::GitHub, &GITHUB);
+    let scratch = ScratchDir::new("merge-button-auto-github");
+    let (mut harness, _) = round_trip(&scratch, "auto-github", ProviderKind::GitHub, &GITHUB);
     press(&mut harness, super::OPTIONS);
     assert!(
         harness.query_by_label("Delete feature/blocked after merging").is_none(),
@@ -67,14 +69,16 @@ fn merge_button_enables_and_disables_auto_merge_on_github() {
 
 #[test]
 fn merge_button_sets_and_cancels_auto_merge_on_gitlab() {
-    round_trip("auto-gitlab", ProviderKind::GitLab, &GITLAB);
+    let scratch = ScratchDir::new("merge-button-auto-gitlab");
+    round_trip(&scratch, "auto-gitlab", ProviderKind::GitLab, &GITLAB);
 }
 
 /// A platform that refuses auto-merge (a GitHub repository without it) leads to its settings.
 #[test]
 fn a_refused_auto_merge_offers_the_merge_settings() {
     let refusing = Calls { refuses_auto_complete: true, ..Calls::default() };
-    let (mut harness, _, calls) = start_on("auto-refused", ProviderKind::GitHub, refusing);
+    let scratch = ScratchDir::new("merge-button-auto-refused");
+    let (mut harness, calls) = start_on(&scratch, "auto-refused", ProviderKind::GitHub, refusing);
     open(&mut harness, "auto-refused", 3);
     wait_until(&mut harness, "auto-merge offered", |harness| button(harness, GITHUB.set));
     press(&mut harness, GITHUB.set);
@@ -91,11 +95,12 @@ fn a_refused_auto_merge_offers_the_merge_settings() {
 /// On `kind`: the mergeable pull request keeps the plain merge; the blocked one sets auto-complete
 /// with the preselected squash, shows who set it, and cancels it again.
 fn round_trip(
+    scratch: &ScratchDir,
     name: &str,
     kind: ProviderKind,
     words: &Words,
 ) -> (Harness<'static, ReviewApp>, Arc<Calls>) {
-    let (mut harness, _, calls) = start_on(name, kind, Calls::default());
+    let (mut harness, calls) = start_on(scratch, name, kind, Calls::default());
     open(&mut harness, name, 1);
     wait_until(&mut harness, "the mergeable pull request", |harness| {
         button(harness, squash_label(kind)) && has(harness, "Speed up login")

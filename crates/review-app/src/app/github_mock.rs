@@ -12,7 +12,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, LazyLock, Mutex, PoisonError};
 
-use cv_testkit::{Clicks, ScratchDir, git};
+use cv_testkit::{Clicks, ScratchDir, git, samples};
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -489,17 +489,14 @@ impl GitHubHost {
     }
 
     pub fn connection(&self, id: &str, name: &str) -> Connection {
+        // Any host but github.com is GitHub Enterprise Server: REST below /api/v3, GraphQL at /api/graphql.
+        let base_url =
+            self.relay.as_ref().map_or_else(|| self.server.uri(), |relay| relay.uri.clone());
         Connection {
-            id: id.to_owned(),
             name: name.to_owned(),
-            kind: ProviderKind::GitHub,
-            // Any host but github.com is GitHub Enterprise Server: REST below /api/v3, GraphQL at /api/graphql.
-            base_url: self
-                .relay
-                .as_ref()
-                .map_or_else(|| self.server.uri(), |relay| relay.uri.clone()),
             organizations: vec![self.owner.clone()],
             token: Some(TOKEN.to_owned()),
+            ..samples::connection(id, ProviderKind::GitHub, &base_url)
         }
     }
 

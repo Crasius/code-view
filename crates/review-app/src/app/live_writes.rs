@@ -137,8 +137,7 @@ fn released_paths(scratch: &ScratchDir, released: &Released) -> AppPaths {
         .unwrap_or_else(|| panic!("the owner saved no connection {}", released.connection_id))
         .clone();
     released.assert_connection(&entry);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"))
-        .with_token_vault(TokenVault::System);
+    let paths = scratch.app_paths().with_token_vault(TokenVault::System);
     std::fs::create_dir_all(paths.config_dir()).expect("the config folder");
     let file = json!({ "connections": [entry] });
     std::fs::write(paths.connections_file(), file.to_string()).expect("the connections file");

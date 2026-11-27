@@ -20,16 +20,16 @@ use review_core::{
     PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result, ReviewThread,
     ReviewVote, ThreadComment, ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, AppSettings, ConnectionStore, DiffLayout, PaneSizes, TreeSide};
+use review_store::{AppPaths, AppSettings, DiffLayout, PaneSizes, TreeSide};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
 use super::walkthrough::{
-    saved_settings, settle_background, shows_file_view, shows_folder_view, wait_until,
+    app_with, saved_paths, saved_settings, settle_background, shows_file_view, shows_folder_view,
+    wait_until,
 };
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_testkit::Clicks;
-use cv_testkit::{ScratchDir, git};
+use cv_testkit::{Clicks, ScratchDir, git, samples};
 use cv_widgets::skeleton;
 
 const CONNECTION_ID: &str = "local-layout";
@@ -59,9 +59,7 @@ fn layout_splitters_zoom_and_autoscroll_on_a_pull_request() {
         .unwrap()
         .get_or_insert_with(HashMap::new)
         .insert(CONNECTION_ID.to_owned(), fixture);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    save_connection(&paths, CONNECTION_ID);
-    let mut harness = harness(paths);
+    let mut harness = harness(saved_paths(&scratch, &[connection(CONNECTION_ID)]));
 
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: CONNECTION_ID.to_owned(),
@@ -272,9 +270,7 @@ fn folder_view_zooms_the_code_over_cards_and_the_app_elsewhere() {
     let scratch = ScratchDir::new("folder-zoom");
     let fixture = create_origin(&scratch.path().join("origin"));
     FIXTURES.lock().unwrap().get_or_insert_with(HashMap::new).insert(FOLDER_ID.to_owned(), fixture);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    save_connection(&paths, FOLDER_ID);
-    let mut harness = harness(paths);
+    let mut harness = harness(saved_paths(&scratch, &[connection(FOLDER_ID)]));
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: FOLDER_ID.to_owned(),
         repository_key: REPOSITORY.to_owned(),
@@ -328,9 +324,7 @@ fn switching_files_keeps_the_header_still_without_placeholders() {
     let scratch = ScratchDir::new("switch");
     let fixture = create_origin(&scratch.path().join("origin"));
     FIXTURES.lock().unwrap().get_or_insert_with(HashMap::new).insert(SWITCH_ID.to_owned(), fixture);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    save_connection(&paths, SWITCH_ID);
-    let mut harness = harness(paths);
+    let mut harness = harness(saved_paths(&scratch, &[connection(SWITCH_ID)]));
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: SWITCH_ID.to_owned(),
         repository_key: REPOSITORY.to_owned(),
@@ -442,7 +436,7 @@ fn rects(controls: &[(String, egui::Rect)]) -> Vec<egui::Rect> {
 
 fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
     let builder = Harness::builder().with_size([1440.0, 900.0]).with_step_dt(1.0 / 60.0);
-    super::startup::start(builder, |creation| ReviewApp::new(creation, paths, local_provider))
+    app_with(builder, paths, local_provider)
 }
 
 fn center(harness: &Harness<'_, ReviewApp>, label: &str) -> Pos2 {
@@ -570,18 +564,12 @@ fn create_origin(origin: &Path) -> Fixture {
     }
 }
 
-fn save_connection(paths: &AppPaths, id: &str) {
-    let mut store = ConnectionStore::open(paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: id.to_owned(),
-            name: "Local".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: ProviderKind::GitHub.default_base_url().to_owned(),
-            organizations: Vec::new(),
-            token: None,
-        })
-        .expect("store the connection");
+/// The anonymous GitHub connection `id`, whose provider serves the origin saved under `id`.
+fn connection(id: &str) -> Connection {
+    Connection {
+        name: "Local".to_owned(),
+        ..samples::connection(id, ProviderKind::GitHub, ProviderKind::GitHub.default_base_url())
+    }
 }
 
 #[expect(

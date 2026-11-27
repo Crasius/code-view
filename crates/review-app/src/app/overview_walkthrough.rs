@@ -9,17 +9,19 @@ use egui::accesskit::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{Connection, ProviderKind};
-use review_store::{AppPaths, AppSettings, ConnectionStore};
+use review_store::{AppPaths, AppSettings};
 use serde_json::{Value, json};
-use wiremock::{MockServer, Request, Respond, ResponseTemplate};
+use wiremock::{Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
-use super::walkthrough::{has, press, pump, saved_settings, wait_until_unsettled};
+use super::mock_host::MockHost;
+use super::walkthrough::{
+    app_with, has, press, pump, saved_paths, saved_settings, wait_until_unsettled,
+};
 use cv_lists::pull_request_list::{GROUP_BY_REPOSITORY, LIST_INTERVAL, SEARCH_TOOLTIP};
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const TOKEN: &str = "glpat-mock-only";
 const GROUP: &str = "team";
@@ -28,8 +30,9 @@ const LISTING: &str = "/api/v4/groups/team/merge_requests";
 
 #[test]
 fn overview_revisit_shows_known_rows_at_once_then_updates() {
-    let host = MockHost::start(1);
-    let mut harness = host.harness("revisit-list");
+    let host = GitLabGroup::start(1);
+    let scratch = ScratchDir::new("overview-revisit-list");
+    let mut harness = host.harness(&scratch, "revisit-list");
     wait_until_unsettled(&mut harness, "the first rows", |harness| has(harness, "Change 1"));
     assert_eq!(host.count(LISTING), 1, "one listing on the first visit");
     assert!(
@@ -79,8 +82,9 @@ fn overview_revisit_shows_known_rows_at_once_then_updates() {
 
 #[test]
 fn overview_pull_request_revisit_paints_the_known_detail_even_after_it_was_dropped() {
-    let host = MockHost::start(5);
-    let mut harness = host.harness("revisit-detail");
+    let host = GitLabGroup::start(5);
+    let scratch = ScratchDir::new("overview-revisit-detail");
+    let mut harness = host.harness(&scratch, "revisit-detail");
     wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 5"));
     open(&mut harness, 1);
     wait_until_unsettled(&mut harness, "the detail", |harness| {
@@ -118,10 +122,9 @@ fn overview_pull_request_revisit_paints_the_known_detail_even_after_it_was_dropp
 
 #[test]
 fn overview_collapsed_group_is_remembered_and_loads_nothing_until_expanded() {
-    let host = MockHost::start(2);
-    let paths = isolated_paths("collapse");
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store.upsert(host.connection("collapse", "Mock GitLab")).expect("store the connection");
+    let host = GitLabGroup::start(2);
+    let scratch = ScratchDir::new("overview-collapse");
+    let paths = saved_paths(&scratch, &[host.connection("collapse", "Mock GitLab")]);
     let mut harness = start_app(&paths);
     wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 2"));
 
@@ -165,10 +168,9 @@ fn overview_collapsed_group_is_remembered_and_loads_nothing_until_expanded() {
 /// section, the books tool in the page's header turns the grouping off, and both are saved at once.
 #[test]
 fn overview_groups_rows_by_repository_and_saves_the_choices() {
-    let host = MockHost::start(2);
-    let paths = isolated_paths("sections");
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store.upsert(host.connection("sections", "Mock GitLab")).expect("store the connection");
+    let host = GitLabGroup::start(2);
+    let scratch = ScratchDir::new("overview-sections");
+    let paths = saved_paths(&scratch, &[host.connection("sections", "Mock GitLab")]);
     let mut harness = start_app(&paths);
     wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 2"));
     let section = |state: &str| format!("{PROJECT}, 2 pull requests, {state}");
@@ -206,10 +208,9 @@ fn overview_groups_rows_by_repository_and_saves_the_choices() {
 /// sit in the title lines.
 #[test]
 fn overview_side_column_keeps_its_right_edge_with_and_without_scroll_bar() {
-    let host = MockHost::start(4);
-    let paths = isolated_paths("side-edge");
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store.upsert(host.connection("side-edge", "Mock GitLab")).expect("store the connection");
+    let host = GitLabGroup::start(4);
+    let scratch = ScratchDir::new("overview-side-edge");
+    let paths = saved_paths(&scratch, &[host.connection("side-edge", "Mock GitLab")]);
     let mut edges = Vec::new();
     for height in [1000.0, 520.0] {
         let mut harness = start_app_sized(&paths, height);
@@ -235,10 +236,9 @@ fn overview_side_column_keeps_its_right_edge_with_and_without_scroll_bar() {
 /// when it changed something.
 #[test]
 fn overview_label_editing_cancels_by_button_and_esc() {
-    let host = MockHost::start(4);
-    let paths = isolated_paths("label-cancel");
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store.upsert(host.connection("label-cancel", "Mock GitLab")).expect("store the connection");
+    let host = GitLabGroup::start(4);
+    let scratch = ScratchDir::new("overview-label-cancel");
+    let paths = saved_paths(&scratch, &[host.connection("label-cancel", "Mock GitLab")]);
     let mut harness = start_app(&paths);
     open_side_column(&mut harness, "label-cancel");
     let detail = format!("/api/v4/projects/{}/merge_requests/4", urlencoding::encode(PROJECT));
@@ -279,8 +279,9 @@ fn overview_label_editing_cancels_by_button_and_esc() {
 
 #[test]
 fn overview_files_button_opens_the_files_tab_and_not_the_row() {
-    let host = MockHost::start(3);
-    let mut harness = host.harness("files-button");
+    let host = GitLabGroup::start(3);
+    let scratch = ScratchDir::new("overview-files-button");
+    let mut harness = host.harness(&scratch, "files-button");
     wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 3"));
     let connection_id = harness.state().services.connections.all()[0].id.clone();
     let key = |number: u64| PullRequestKey {
@@ -383,10 +384,9 @@ fn assert_apart(rects: &[egui::Rect], width: f32) {
 /// to a second row. Nothing overlaps, and the list below stays put while the header's note changes.
 #[test]
 fn overview_header_is_one_row_at_wide_and_narrow_widths() {
-    let host = MockHost::start(4);
-    let paths = isolated_paths("header-row");
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store.upsert(host.connection("header-row", "Mock GitLab")).expect("store the connection");
+    let host = GitLabGroup::start(4);
+    let scratch = ScratchDir::new("overview-header-row");
+    let paths = saved_paths(&scratch, &[host.connection("header-row", "Mock GitLab")]);
     let mut harness = start_app(&paths);
     // Whether the row fits at 960 is the fonts' width; the bundled ones are the same everywhere.
     cv_testkit::use_bundled_fonts(&harness.ctx);
@@ -453,8 +453,9 @@ fn overview_header_is_one_row_at_wide_and_narrow_widths() {
 /// the header's search button opens the same search.
 #[test]
 fn overview_search_finds_pull_requests_by_label_and_author() {
-    let host = MockHost::start(4);
-    let mut harness = host.harness("search-label");
+    let host = GitLabGroup::start(4);
+    let scratch = ScratchDir::new("overview-search-label");
+    let mut harness = host.harness(&scratch, "search-label");
     wait_until_unsettled(&mut harness, "the rows", |harness| has(harness, "Change 4"));
 
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::K);
@@ -517,11 +518,9 @@ fn selected_tab(harness: &Harness<'_, ReviewApp>) -> String {
 }
 
 /// A GitLab group `team` with merge requests 1..=count in `team/app`, whose answers can change.
-struct MockHost {
-    server: MockServer,
+struct GitLabGroup {
+    host: MockHost,
     state: Arc<HostState>,
-    /// Runs the mock server; declared last so it drops after the server.
-    _runtime: tokio::runtime::Runtime,
 }
 
 #[derive(Default)]
@@ -532,40 +531,29 @@ struct HostState {
     delay_ms: AtomicUsize,
 }
 
-impl MockHost {
+impl GitLabGroup {
     fn start(count: usize) -> Self {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .expect("mock runtime");
-        let server = runtime.block_on(MockServer::start());
-        cv_testkit::fresh_origin(&server.uri());
         let state = Arc::new(HostState::default());
         state.count.store(count, Ordering::SeqCst);
-        let responder = Responder { state: state.clone(), base_url: server.uri() };
-        runtime.block_on(
-            wiremock::Mock::given(wiremock::matchers::any()).respond_with(responder).mount(&server),
-        );
-        Self { server, state, _runtime: runtime }
+        let host = MockHost::start(|base_url| Responder {
+            state: state.clone(),
+            base_url: base_url.to_owned(),
+        });
+        Self { host, state }
     }
 
     fn connection(&self, id: &str, name: &str) -> Connection {
         Connection {
-            id: id.to_owned(),
             name: name.to_owned(),
-            kind: ProviderKind::GitLab,
-            base_url: self.server.uri(),
             organizations: vec![GROUP.to_owned()],
             token: Some(TOKEN.to_owned()),
+            ..samples::connection(id, ProviderKind::GitLab, &self.host.uri())
         }
     }
 
-    fn harness(&self, name: &str) -> Harness<'static, ReviewApp> {
-        let paths = isolated_paths(name);
-        let mut store = ConnectionStore::open(&paths).expect("empty store");
-        store.upsert(self.connection(name, "Mock GitLab")).expect("store the connection");
-        start_app(&paths)
+    /// The app on `scratch` with one connection to the host, `id`.
+    fn harness(&self, scratch: &ScratchDir, id: &str) -> Harness<'static, ReviewApp> {
+        start_app(&saved_paths(scratch, &[self.connection(id, "Mock GitLab")]))
     }
 
     /// From now on the host lists `count` merge requests, titles edited, answering after `delay`.
@@ -659,25 +647,14 @@ impl Responder {
     }
 }
 
-fn isolated_paths(name: &str) -> AppPaths {
-    let root = std::env::temp_dir().join(format!("review-overview-{name}-{}", std::process::id()));
-    cv_testkit::remove_dir(&root);
-    AppPaths::new(root.join("config"), root.join("cache"))
-}
-
 fn start_app(paths: &AppPaths) -> Harness<'static, ReviewApp> {
     start_app_sized(paths, 900.0)
 }
 
 fn start_app_sized(paths: &AppPaths, height: f32) -> Harness<'static, ReviewApp> {
-    let paths = paths.clone();
     let builder =
         Harness::builder().with_size([1440.0, height]).with_step_dt(0.25).allow_missing_glyphs();
-    let mut harness = super::startup::start(builder, move |creation| {
-        ReviewApp::new(creation, paths, cv_providers::create_provider)
-    });
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
-    harness
+    app_with(builder, paths.clone(), cv_providers::create_provider)
 }
 
 fn open(harness: &mut Harness<'_, ReviewApp>, number: u64) {

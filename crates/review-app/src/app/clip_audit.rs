@@ -26,20 +26,19 @@ use review_core::{
     ReviewThread, ReviewVote, Reviewer, RunStatus, ThreadAnchor, ThreadComment, ThreadOrigin,
     ThreadStatus, Timestamp, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
+use review_store::AppPaths;
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::walkthrough::{
-    files_tab, has, pump, settle_background, shows_file_view, tab_rect, wait_until, wheel,
+    app_with, files_tab, has, pump, saved_paths, settle_background, shows_file_view, tab_rect,
+    wait_until, wheel,
 };
 use super::{ReviewApp, clip_check};
 use cv_base::platform::FOCUS_MODE_KEY;
 use cv_pr_diff::find::bar::last_bar as last_find_bar;
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
-use cv_testkit::{ScratchDir, git};
+use cv_testkit::{Clicks, ScratchDir, git, samples};
 
 const CONNECTION: &str = "clip-audit";
 /// The same host without a token: its stage cards offer to add one.
@@ -101,8 +100,7 @@ fn clip_audit_every_screen_keeps_its_text_and_controls_inside() {
     let scratch = ScratchDir::new("clip-audit");
     let fixture = create_origin(&scratch.path().join("origin"));
     *FIXTURE.lock().unwrap_or_else(PoisonError::into_inner) = Some(fixture);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    save_connections(&paths);
+    let paths = saved_paths(&scratch, &connections());
     let mut audit = Audit { harness: harness(paths), findings: Vec::new() };
 
     audit.walk_lists();
@@ -484,11 +482,8 @@ fn open(harness: &mut Harness<'_, ReviewApp>, connection_id: &str, repository_ke
 fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
     let builder =
         Harness::builder().with_size(BASE_SIZE).with_step_dt(1.0 / 60.0).allow_missing_glyphs();
-    let mut harness = super::startup::start(builder, |creation| {
-        ReviewApp::new(creation, paths, scripted_provider)
-    });
+    let mut harness = app_with(builder, paths, scripted_provider);
     clip_check::install(&harness.ctx);
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
     harness.state_mut().title_bar.integrate_for_test();
     harness
 }
@@ -604,8 +599,7 @@ fn generated_path(index: usize) -> String {
     )
 }
 
-fn save_connections(paths: &AppPaths) {
-    let mut store = ConnectionStore::open(paths).expect("empty store");
+fn connections() -> Vec<Connection> {
     let hosts = [
         (CONNECTION, "Contoso Fabrikam Industries Enterprise (dev.azure.com)", true),
         (ANONYMOUS, "Contoso Fabrikam Industries Enterprise without a token", false),
@@ -613,18 +607,16 @@ fn save_connections(paths: &AppPaths) {
         (BROKEN, "Northwind Broken Host With An Expired Certificate", true),
         (EMPTY, "Tailspin Toys Host Without Any Pull Requests", true),
     ];
-    for (id, name, has_token) in hosts {
-        store
-            .upsert(Connection {
-                id: id.to_owned(),
-                name: name.to_owned(),
-                kind: ProviderKind::AzureDevOps,
-                base_url: format!("https://dev.azure.com/{ORGANIZATION}"),
-                organizations: vec![ORGANIZATION.to_owned()],
-                token: has_token.then(|| "scripted".to_owned()),
-            })
-            .expect("store the connection");
-    }
+    let base_url = format!("https://dev.azure.com/{ORGANIZATION}");
+    hosts
+        .into_iter()
+        .map(|(id, name, has_token)| Connection {
+            name: name.to_owned(),
+            organizations: vec![ORGANIZATION.to_owned()],
+            token: has_token.then(|| "scripted".to_owned()),
+            ..samples::connection(id, ProviderKind::AzureDevOps, &base_url)
+        })
+        .collect()
 }
 
 fn scripted_provider(connection: Connection, _http: reqwest::Client) -> Arc<dyn Provider> {

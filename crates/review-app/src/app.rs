@@ -131,6 +131,8 @@ mod merge_button_walkthrough;
 #[cfg(test)]
 mod mini_chat_walkthrough;
 #[cfg(test)]
+mod mock_host;
+#[cfg(test)]
 mod model_chip_walkthrough;
 #[cfg(test)]
 mod motion_check;

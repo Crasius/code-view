@@ -13,7 +13,6 @@ use cv_shell::single_instance::queue_link;
 use cv_testkit::ScratchDir;
 use egui::Role;
 use egui_kittest::kittest::Queryable;
-use review_store::AppPaths;
 use serde_json::{Value, json};
 
 use super::github_mock::{GitHubHost, HIDDEN_NUMBER, READABLE_NUMBER, REPOSITORY};
@@ -29,7 +28,7 @@ fn open_on_github_keeps_that_pull_request_in_the_browser() {
     host.add_linked_pull_requests(Duration::ZERO);
     let connection = host.connection(CONNECTION_ID, "Acme");
     let mut harness = app(&scratch, std::slice::from_ref(&connection));
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
+    let paths = scratch.app_paths();
     let list = passes::file(&paths);
 
     // A link the token cannot read: its toast offers the page on GitHub.

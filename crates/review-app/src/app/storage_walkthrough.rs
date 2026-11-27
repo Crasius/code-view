@@ -4,27 +4,21 @@
 use egui::Role;
 use egui_kittest::kittest::Queryable;
 use review_core::{Connection, ProviderKind};
-use review_store::{ConnectionStore, stable_hash};
+use review_store::stable_hash;
 
-use super::setup_walkthrough::{harness, isolated_paths};
-use super::walkthrough::{press, wait_until};
+use super::setup_walkthrough::harness;
+use super::walkthrough::{press, saved_paths, wait_until};
 use cv_runtime::route::Route;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 #[test]
 fn storage_measures_clears_after_asking_and_forgets_removed_connections() {
-    let paths = isolated_paths("storage");
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: "gl-1".into(),
-            name: "Tabletop".into(),
-            kind: ProviderKind::GitLab,
-            base_url: "https://gitlab.com".into(),
-            organizations: Vec::new(),
-            token: None,
-        })
-        .expect("store the connection");
+    let scratch = ScratchDir::new("setup-storage");
+    let connection = Connection {
+        name: "Tabletop".into(),
+        ..samples::connection("gl-1", ProviderKind::GitLab, "https://gitlab.com")
+    };
+    let paths = saved_paths(&scratch, &[connection]);
     let log = paths.connection_logs_dir("gl-1").join("job.log");
     let viewed = paths.viewed_dir().join(stable_hash("gl-1")).join("pr.json");
     for (file, bytes) in [(&log, 64), (&viewed, 2)] {

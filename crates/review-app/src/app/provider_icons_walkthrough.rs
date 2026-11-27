@@ -16,16 +16,13 @@ use review_core::{
     PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result, ReviewThread,
     ReviewVote, RunStatus, ThreadComment, ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
 use super::navigation_walkthrough::{Fixture, create_origin};
-use super::walkthrough::{files_tab, has, opened_urls, wait_until};
+use super::walkthrough::{app_with, files_tab, has, opened_urls, saved_paths, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
-use cv_testkit::ScratchDir;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 /// A local repository GitHub's pull requests are fetched from, so its Files tab has a file.
 static ORIGIN: Mutex<Option<Fixture>> = Mutex::new(None);
@@ -60,31 +57,23 @@ const HOSTS: [(&str, &str, ProviderKind, &str, &str, &str); 3] = [
 
 #[test]
 fn provider_icons_name_the_platform_everywhere() {
-    let scratch = ScratchDir::new("provider-icons-origin");
+    let scratch = ScratchDir::new("provider-icons");
     *ORIGIN.lock().unwrap() = Some(create_origin(&scratch.path().join("origin")));
-    let paths = isolated_paths();
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    for (id, name, kind, base_url, _, _) in HOSTS {
-        store
-            .upsert(Connection {
-                id: id.to_owned(),
-                name: name.to_owned(),
-                kind,
-                base_url: base_url.to_owned(),
-                organizations: if kind == ProviderKind::AzureDevOps {
-                    vec!["contoso".to_owned()]
-                } else {
-                    Vec::new()
-                },
-                token: Some("scripted".to_owned()),
-            })
-            .expect("store the connection");
-    }
+    let connections: Vec<Connection> = HOSTS
+        .iter()
+        .map(|&(id, name, kind, base_url, _, _)| Connection {
+            name: name.to_owned(),
+            organizations: if kind == ProviderKind::AzureDevOps {
+                vec!["contoso".to_owned()]
+            } else {
+                Vec::new()
+            },
+            token: Some("scripted".to_owned()),
+            ..samples::connection(id, kind, base_url)
+        })
+        .collect();
     let builder = Harness::builder().with_size([1280.0, 1080.0]).with_step_dt(1.0 / 60.0);
-    let mut harness = super::startup::start(builder, move |creation| {
-        ReviewApp::new(creation, paths, scripted_provider)
-    });
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
+    let mut harness = app_with(builder, saved_paths(&scratch, &connections), scripted_provider);
 
     wait_until(&mut harness, "every card", |harness| {
         HOSTS.iter().all(|(_, _, kind, ..)| has(harness, &title(*kind, 1)))
@@ -227,12 +216,6 @@ fn platform_link(harness: &mut Harness<'_, ReviewApp>) {
 
 fn title(kind: ProviderKind, number: u64) -> String {
     format!("{} change {number}", kind.label())
-}
-
-fn isolated_paths() -> AppPaths {
-    let root = std::env::temp_dir().join(format!("review-provider-icons-{}", std::process::id()));
-    cv_testkit::remove_dir(&root);
-    AppPaths::new(root.join("config"), root.join("cache"))
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

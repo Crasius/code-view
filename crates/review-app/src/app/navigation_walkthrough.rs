@@ -20,15 +20,14 @@ use review_core::{
     PullRequestSummary, RepositoryInfo, Result, ReviewThread, ReviewVote, RunStatus, ThreadComment,
     ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
+use review_store::AppPaths;
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::walkthrough::{settle_background, wait_until};
+use super::walkthrough::{app_with, saved_paths, settle_background, wait_until};
 use cv_base::platform;
 use cv_runtime::route::{PullRequestKey, PullRequestTab, Route};
-use cv_testkit::Clicks;
-use cv_testkit::{ScratchDir, git};
+use cv_testkit::{Clicks, ScratchDir, git, samples};
 
 const CONNECTION_ID: &str = "local-navigation";
 const CONNECTION_NAME: &str = "Acme GitHub";
@@ -62,9 +61,7 @@ fn navigation_breadcrumbs_back_and_linked_items() {
         .unwrap()
         .get_or_insert_with(HashMap::new)
         .insert(CONNECTION_ID.to_owned(), fixture);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    save_connection(&paths);
-    let mut harness = harness(paths);
+    let mut harness = harness(saved_paths(&scratch, &[connection()]));
 
     // From outside (a link from another app): the trail is the pull request's structure.
     harness.state_mut().navigator.jump(Route::PullRequest(key(NUMBER)));
@@ -275,7 +272,7 @@ fn key(number: u64) -> PullRequestKey {
 
 fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
     let builder = Harness::builder().with_size([1440.0, 900.0]).with_step_dt(1.0 / 60.0);
-    super::startup::start(builder, |creation| ReviewApp::new(creation, paths, local_provider))
+    app_with(builder, paths, local_provider)
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {
@@ -307,18 +304,15 @@ pub(super) fn create_origin(origin: &Path) -> Fixture {
     }
 }
 
-fn save_connection(paths: &AppPaths) {
-    let mut store = ConnectionStore::open(paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: CONNECTION_ID.to_owned(),
-            name: CONNECTION_NAME.to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: ProviderKind::GitHub.default_base_url().to_owned(),
-            organizations: Vec::new(),
-            token: None,
-        })
-        .expect("store the connection");
+fn connection() -> Connection {
+    Connection {
+        name: CONNECTION_NAME.to_owned(),
+        ..samples::connection(
+            CONNECTION_ID,
+            ProviderKind::GitHub,
+            ProviderKind::GitHub.default_base_url(),
+        )
+    }
 }
 
 #[expect(

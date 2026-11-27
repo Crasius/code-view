@@ -32,7 +32,6 @@ use super::github_mock::{GitHubHost, open_pull_request};
 use super::tree_side_walkthrough::{long_file, open_long_file};
 use super::walkthrough::{app, tab_rect, wheel};
 use cv_runtime::route::Route;
-use cv_settings::onboarding::CliTools;
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
 
@@ -332,7 +331,6 @@ fn header_settings(name: &str) -> (Harness<'static, ReviewApp>, GitHubHost, Scra
     let scratch = ScratchDir::new(name);
     let host = GitHubHost::with_pull_request(scratch.path());
     let mut harness = app(&scratch, &[host.connection("gh", "Acme")]);
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
     harness.state_mut().navigator.go(Route::Settings);
     harness.run_steps(4);
     harness.click_at(harness.get_by_role_and_label(Role::Tab, "Appearance").rect());

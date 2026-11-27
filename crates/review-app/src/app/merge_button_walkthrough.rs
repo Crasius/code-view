@@ -24,14 +24,14 @@ use review_core::{
     ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestState, PullRequestSummary,
     RepositoryInfo, Result, ReviewThread, ReviewVote, ThreadComment, ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::walkthrough::{has, opened_urls, press, pump, saved_settings, set_focus, wait_until};
+use super::walkthrough::{
+    app_with, has, opened_urls, press, pump, saved_paths, saved_settings, set_focus, wait_until,
+};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const REPOSITORY: &str = "contoso/Web/site";
 const POLICIES: &str = "https://dev.azure.com/contoso/Web/_settings/repositories?_a=policiesMid";
@@ -56,7 +56,8 @@ static CALLS: LazyLock<Mutex<HashMap<String, Arc<Calls>>>> =
 
 #[test]
 fn merge_button_confirms_in_place_and_remembers_the_choice() {
-    let (mut harness, _, calls) = start("confirm");
+    let scratch = ScratchDir::new("merge-button-confirm");
+    let (mut harness, calls) = start(&scratch, "confirm");
     open(&mut harness, "confirm", 1);
     wait_until(&mut harness, "the preselected default", |harness| button(harness, "Squash merge"));
     assert!(
@@ -150,7 +151,8 @@ fn merge_button_confirms_in_place_and_remembers_the_choice() {
 
 #[test]
 fn merge_button_is_disabled_with_conflicts_and_warns_when_forced_past_policies() {
-    let (mut harness, _, calls) = start("states");
+    let scratch = ScratchDir::new("merge-button-states");
+    let (mut harness, calls) = start(&scratch, "states");
     open(&mut harness, "states", 2);
     wait_until(&mut harness, "the conflicted pull request", |harness| {
         harness.query_by_role_and_label(Role::Button, "Squash merge").is_some()
@@ -198,7 +200,8 @@ fn merge_button_is_disabled_with_conflicts_and_warns_when_forced_past_policies()
 
 #[test]
 fn merge_button_loads_no_policy_while_the_window_is_inactive() {
-    let (mut harness, _, calls) = start("inactive");
+    let scratch = ScratchDir::new("merge-button-inactive");
+    let (mut harness, calls) = start(&scratch, "inactive");
     wait_until(&mut harness, "the list", |harness| has(harness, "Speed up login"));
     set_focus(&mut harness, false);
     open(&mut harness, "inactive", 1);
@@ -213,41 +216,30 @@ fn merge_button_loads_no_policy_while_the_window_is_inactive() {
     assert_eq!(calls.policies.load(Ordering::SeqCst), 1, "one request once active");
 }
 
-/// The app with one Azure DevOps connection with id `name`, and what its provider is asked.
-fn start(name: &str) -> (Harness<'static, ReviewApp>, AppPaths, Arc<Calls>) {
-    start_on(name, ProviderKind::AzureDevOps, Calls::default())
+/// The app on `scratch` with one Azure DevOps connection with id `name`, and what its provider is
+/// asked.
+fn start(scratch: &ScratchDir, name: &str) -> (Harness<'static, ReviewApp>, Arc<Calls>) {
+    start_on(scratch, name, ProviderKind::AzureDevOps, Calls::default())
 }
 
 /// [`start`] with a connection of `kind` whose provider answers with `calls`.
 fn start_on(
+    scratch: &ScratchDir,
     name: &str,
     kind: ProviderKind,
     calls: Calls,
-) -> (Harness<'static, ReviewApp>, AppPaths, Arc<Calls>) {
+) -> (Harness<'static, ReviewApp>, Arc<Calls>) {
     let calls = Arc::new(calls);
     CALLS.lock().unwrap().insert(name.to_owned(), calls.clone());
-    let root =
-        std::env::temp_dir().join(format!("review-merge-button-{name}-{}", std::process::id()));
-    cv_testkit::remove_dir(&root);
-    let paths = AppPaths::new(root.join("config"), root.join("cache"));
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: name.to_owned(),
-            name: "Contoso".to_owned(),
-            kind,
-            base_url: "https://dev.azure.com/contoso".to_owned(),
-            organizations: vec!["contoso".to_owned()],
-            token: Some("scripted".to_owned()),
-        })
-        .expect("store the connection");
-    let app_paths = paths.clone();
+    let connection = Connection {
+        name: "Contoso".to_owned(),
+        organizations: vec!["contoso".to_owned()],
+        token: Some("scripted".to_owned()),
+        ..samples::connection(name, kind, "https://dev.azure.com/contoso")
+    };
     let builder = Harness::builder().with_size([1280.0, 860.0]).with_step_dt(1.0 / 30.0);
-    let mut harness = super::startup::start(builder, move |creation| {
-        ReviewApp::new(creation, app_paths, scripted_provider)
-    });
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
-    (harness, paths, calls)
+    let harness = app_with(builder, saved_paths(scratch, &[connection]), scripted_provider);
+    (harness, calls)
 }
 
 fn open(harness: &mut Harness<'_, ReviewApp>, connection_id: &str, number: u64) {

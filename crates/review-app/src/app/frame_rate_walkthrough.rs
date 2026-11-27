@@ -7,14 +7,13 @@ use egui::{Rect, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{Connection, ProviderKind};
-use review_store::{AppPaths, ConnectionStore, FrameRateLimit};
+use review_store::FrameRateLimit;
 
 use super::ReviewApp;
 use super::provider_icons_walkthrough::scripted_provider;
-use super::walkthrough::{saved_settings, wait_until};
+use super::walkthrough::{app_with, saved_paths, saved_settings, wait_until};
 use cv_runtime::route::Route;
-use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const ROW: &str = "Frame rate limit";
 /// The row below the control: it must not move when the choice changes.
@@ -22,24 +21,14 @@ const NEXT_ROW: &str = "Pane sizes";
 
 #[test]
 fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
-    let paths = isolated_paths();
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: "gh".to_owned(),
-            name: "Contoso GitHub".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: "https://github.com".to_owned(),
-            organizations: Vec::new(),
-            token: Some("scripted".to_owned()),
-        })
-        .expect("store the connection");
-    let app_paths = paths.clone();
+    let scratch = ScratchDir::new("frame-rate");
+    let connection = Connection {
+        name: "Contoso GitHub".to_owned(),
+        token: Some("scripted".to_owned()),
+        ..samples::connection("gh", ProviderKind::GitHub, "https://github.com")
+    };
     let builder = Harness::builder().with_size([1280.0, 1000.0]).with_step_dt(1.0 / 60.0);
-    let mut harness = super::startup::start(builder, move |creation| {
-        ReviewApp::new(creation, app_paths, scripted_provider)
-    });
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
+    let mut harness = app_with(builder, saved_paths(&scratch, &[connection]), scripted_provider);
     harness.state_mut().navigator.go(Route::Settings);
     settle(&mut harness);
     harness.click_at(harness.get_by_role_and_label(Role::Tab, "Appearance").rect());
@@ -89,8 +78,6 @@ fn frame_rate_limit_defaults_to_45_applies_live_and_is_saved() {
     harness.click_at(harness.get_by_role_and_label(Role::RadioButton, "45").rect());
     settle(&mut harness);
     assert_eq!(saved_settings(&harness).frame_rate, FrameRateLimit::DEFAULT);
-    drop(harness);
-    cv_testkit::remove_dir(paths.config_dir().parent().expect("scratch root"));
 }
 
 fn is_selected(harness: &Harness<'_, ReviewApp>, label: &str) -> bool {
@@ -106,12 +93,6 @@ fn rect_of(harness: &Harness<'_, ReviewApp>, label: &str) -> Rect {
 fn segments_rect(harness: &Harness<'_, ReviewApp>) -> Rect {
     rect_of(harness, "30")
         .union(harness.get_by_role_and_label(Role::RadioButton, "Match display").rect())
-}
-
-fn isolated_paths() -> AppPaths {
-    let root = std::env::temp_dir().join(format!("review-frame-rate-{}", std::process::id()));
-    cv_testkit::remove_dir(&root);
-    AppPaths::new(root.join("config"), root.join("cache"))
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

@@ -25,15 +25,15 @@ use review_core::{
     PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result, ReviewThread,
     ReviewVote, Reviewer, ThreadComment, ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::walkthrough::{has, press_button, pump, secondary_press, wait_until};
+use super::walkthrough::{
+    app_with, has, press_button, pump, saved_paths, secondary_press, wait_until,
+};
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::self_review;
-use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const REPOSITORY: &str = "contoso/site";
 const GRACE: &str = "grace";
@@ -54,7 +54,8 @@ static CALLS: LazyLock<Mutex<HashMap<String, Arc<Calls>>>> =
 
 #[test]
 fn self_review_adds_me_from_the_reviewers_card_once() {
-    let (mut harness, calls) = start("card", true);
+    let scratch = ScratchDir::new("self-review-card");
+    let (mut harness, calls) = start(&scratch, "card", true);
     // Whether field and button fit side by side is the fonts' width; the bundled ones are the
     // same everywhere.
     cv_testkit::use_bundled_fonts(&harness.ctx);
@@ -99,7 +100,8 @@ fn self_review_adds_me_from_the_reviewers_card_once() {
 
 #[test]
 fn self_review_from_a_list_row_marks_the_row_without_opening_it() {
-    let (mut harness, calls) = start("list", true);
+    let scratch = ScratchDir::new("self-review-list");
+    let (mut harness, calls) = start(&scratch, "list", true);
     wait_until(&mut harness, "the list", |harness| has(harness, "Fourth change"));
     secondary_press(&mut harness, "4 Fourth change");
     wait_until(&mut harness, "the menu entry", |harness| {
@@ -124,7 +126,8 @@ fn self_review_from_a_list_row_marks_the_row_without_opening_it() {
 
 #[test]
 fn self_review_is_off_with_its_reason_without_a_token() {
-    let (mut harness, calls) = start("read-only", false);
+    let scratch = ScratchDir::new("self-review-read-only");
+    let (mut harness, calls) = start(&scratch, "read-only", false);
     open(&mut harness, "read-only", 1);
     wait_until(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
     let node = harness.get_by_role_and_label(Role::Button, self_review::LABEL);
@@ -162,7 +165,8 @@ fn self_review_is_off_with_its_reason_without_a_token() {
 
 #[test]
 fn self_review_keeps_a_refused_request_retryable_with_its_reason() {
-    let (mut harness, calls) = start("refused", true);
+    let scratch = ScratchDir::new("self-review-refused");
+    let (mut harness, calls) = start(&scratch, "refused", true);
     calls.refuses_next.store(true, Ordering::SeqCst);
     open(&mut harness, "refused", 1);
     wait_until(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
@@ -188,7 +192,8 @@ fn self_review_keeps_a_refused_request_retryable_with_its_reason() {
 /// offers Retry, which sends the same add once more, and the pull request on GitHub.
 #[test]
 fn self_review_refused_row_request_retries_from_its_toast() {
-    let (mut harness, calls) = start("row-refused", true);
+    let scratch = ScratchDir::new("self-review-row-refused");
+    let (mut harness, calls) = start(&scratch, "row-refused", true);
     calls.refuses_next.store(true, Ordering::SeqCst);
     wait_until(&mut harness, "the list", |harness| has(harness, "Fourth change"));
     secondary_press(&mut harness, "4 Fourth change");
@@ -216,7 +221,8 @@ fn self_review_refused_row_request_retries_from_its_toast() {
 /// without moving anything below.
 #[test]
 fn self_review_holds_the_new_row_with_a_skeleton_of_its_size() {
-    let (mut harness, calls) = start("skeleton", true);
+    let scratch = ScratchDir::new("self-review-skeleton");
+    let (mut harness, calls) = start(&scratch, "skeleton", true);
     calls.holds_adds.store(true, Ordering::SeqCst);
     open(&mut harness, "skeleton", 1);
     wait_until(&mut harness, "the button", |harness| button(harness, self_review::LABEL));
@@ -268,30 +274,22 @@ fn assert_beside_the_add_field(harness: &Harness<'_, ReviewApp>) {
     assert!((12.0..=16.0).contains(&gap), "a generous gap between them, not {gap}");
 }
 
-/// The app with one GitHub connection with id `name`, with or without a token.
-fn start(name: &str, has_token: bool) -> (Harness<'static, ReviewApp>, Arc<Calls>) {
+/// The app on `scratch` with one GitHub connection with id `name`, with or without a token.
+fn start(
+    scratch: &ScratchDir,
+    name: &str,
+    has_token: bool,
+) -> (Harness<'static, ReviewApp>, Arc<Calls>) {
     let calls = Arc::new(Calls::default());
     CALLS.lock().unwrap().insert(name.to_owned(), calls.clone());
-    let root =
-        std::env::temp_dir().join(format!("review-self-review-{name}-{}", std::process::id()));
-    cv_testkit::remove_dir(&root);
-    let paths = AppPaths::new(root.join("config"), root.join("cache"));
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: name.to_owned(),
-            name: "Contoso".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: "https://github.com".to_owned(),
-            organizations: vec!["contoso".to_owned()],
-            token: has_token.then(|| "scripted".to_owned()),
-        })
-        .expect("store the connection");
+    let connection = Connection {
+        name: "Contoso".to_owned(),
+        organizations: vec!["contoso".to_owned()],
+        token: has_token.then(|| "scripted".to_owned()),
+        ..samples::connection(name, ProviderKind::GitHub, "https://github.com")
+    };
     let builder = Harness::builder().with_size([1280.0, 860.0]).with_step_dt(1.0 / 30.0);
-    let mut harness = super::startup::start(builder, move |creation| {
-        ReviewApp::new(creation, paths, scripted_provider)
-    });
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
+    let harness = app_with(builder, saved_paths(scratch, &[connection]), scripted_provider);
     (harness, calls)
 }
 

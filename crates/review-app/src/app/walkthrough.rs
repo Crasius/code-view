@@ -42,7 +42,7 @@ const IDLE_LIMIT: Duration = Duration::from_secs(60);
 
 /// `scratch`'s data folders with `connections` saved.
 pub(super) fn saved_paths(scratch: &ScratchDir, connections: &[Connection]) -> AppPaths {
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
+    let paths = scratch.app_paths();
     let mut store = ConnectionStore::open(&paths).expect("empty store");
     for connection in connections {
         store.upsert(connection.clone()).expect("store the connection");

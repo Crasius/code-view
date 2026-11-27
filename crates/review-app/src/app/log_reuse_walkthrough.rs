@@ -15,15 +15,14 @@ use review_core::{
     PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, RerunAction, Result,
     ReviewThread, ReviewVote, RunStatus, RunningLogs, ThreadComment, ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
+use review_store::AppPaths;
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::ReviewApp;
-use super::walkthrough::{has, wait_until};
+use super::walkthrough::{app_with, has, saved_paths, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const ID: &str = "log-reuse";
 const REPOSITORY: &str = "erika/billing";
@@ -38,7 +37,13 @@ static DOWNLOADS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 #[test]
 fn log_reuse_finished_logs_open_from_disk_and_a_cut_download_is_fetched_again() {
-    let paths = start();
+    let scratch = ScratchDir::new(ID);
+    let connection = Connection {
+        name: "example.com".to_owned(),
+        token: Some("glpat-walkthrough".to_owned()),
+        ..samples::connection(ID, ProviderKind::GitLab, "https://gitlab.example.com")
+    };
+    let paths = saved_paths(&scratch, &[connection]);
     let mut harness = open(&paths);
     open_run(&mut harness);
 
@@ -90,34 +95,11 @@ fn log_reuse_finished_logs_open_from_disk_and_a_cut_download_is_fetched_again() 
     );
 }
 
-/// A fresh data folder with the scripted connection.
-fn start() -> AppPaths {
-    let root = std::env::temp_dir().join(format!("review-{ID}-{}", std::process::id()));
-    cv_testkit::remove_dir(&root);
-    let paths = AppPaths::new(root.join("config"), root.join("cache"));
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: ID.to_owned(),
-            name: "example.com".to_owned(),
-            kind: ProviderKind::GitLab,
-            base_url: "https://gitlab.example.com".to_owned(),
-            organizations: Vec::new(),
-            token: Some("glpat-walkthrough".to_owned()),
-        })
-        .expect("store the connection");
-    paths
-}
-
 /// The app on `paths`, at the pull request.
 fn open(paths: &AppPaths) -> Harness<'static, ReviewApp> {
-    let app_paths = paths.clone();
     let builder =
         Harness::builder().with_size(SIZE).with_step_dt(1.0 / 60.0).allow_missing_glyphs();
-    let mut harness = super::startup::start(builder, move |creation| {
-        ReviewApp::new(creation, app_paths, scripted_provider)
-    });
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
+    let mut harness = app_with(builder, paths.clone(), scripted_provider);
     harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
         connection_id: ID.to_owned(),
         repository_key: REPOSITORY.to_owned(),

@@ -19,17 +19,17 @@ use review_core::{
     Result, ReviewThread, ReviewVote, Reviewer, RunStatus, RunningLogs, ThreadComment,
     ThreadStatus, Timestamp, UserIdentity,
 };
-use review_store::{AppPaths, CheckFilter, ConnectionStore};
+use review_store::{AppPaths, CheckFilter};
 use time::macros::datetime;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::ReviewApp;
 use super::walkthrough::{
-    has, opened_urls, saved_settings, settle_background, wait_for, wait_until, wheel,
+    app_with, has, opened_urls, saved_paths, saved_settings, settle_background, wait_for,
+    wait_until, wheel,
 };
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const REPOSITORY: &str = "fabrikam-logistics/fabrikam-logistics";
 const NUMBER: u64 = 17;
@@ -199,9 +199,7 @@ fn pipelines_overview_card_remembers_open_or_closed_across_restarts() {
     let is_listed = |harness: &Harness<'_, ReviewApp>| {
         harness.query_by_role_and_label(Role::Link, "Pipeline #2279, Succeeded").is_some()
     };
-    let app = App::start(ID, Scenario::Green, SIZE);
-    let paths = app.paths.clone();
-    let mut harness = app.harness;
+    let App { mut harness, scratch, .. } = App::start(ID, Scenario::Green, SIZE);
     wait_until(&mut harness, "the merge status", |harness| has(harness, "All pipelines succeeded"));
     assert!(!is_listed(&harness) && has(&harness, "Show pipelines"), "collapsed by default");
     let summary = harness.get_by_label("2 pipelines · 2 succeeded").rect();
@@ -218,7 +216,7 @@ fn pipelines_overview_card_remembers_open_or_closed_across_restarts() {
     );
     drop(harness);
 
-    let mut harness = App::reopen(ID, paths.clone(), SIZE).harness;
+    let mut harness = App::reopen(ID, &scratch, SIZE);
     wait_until(&mut harness, "the pipelines, open after the restart", is_listed);
     harness.click_at(harness.get_by_label("Hide pipelines").rect());
     wait_until(&mut harness, "the collapsed card", |harness| {
@@ -227,7 +225,7 @@ fn pipelines_overview_card_remembers_open_or_closed_across_restarts() {
     assert!(!saved_settings(&harness).pipelines.is_overview_expanded, "the closed card is saved");
     drop(harness);
 
-    let mut harness = App::reopen(ID, paths, SIZE).harness;
+    let mut harness = App::reopen(ID, &scratch, SIZE);
     wait_until(&mut harness, "the merge status", |harness| has(harness, "All pipelines succeeded"));
     settle_background(&mut harness);
     assert!(!is_listed(&harness), "closed after the restart");
@@ -693,8 +691,9 @@ fn collect_frames(harness: &mut Harness<'_, ReviewApp>, opened: &mut Vec<String>
 
 struct App {
     harness: Harness<'static, ReviewApp>,
-    paths: AppPaths,
     calls: Arc<Mutex<Calls>>,
+    /// The app's data folders; declared after the harness so it drops last.
+    scratch: ScratchDir,
 }
 
 impl App {
@@ -705,50 +704,31 @@ impl App {
             .unwrap_or_else(PoisonError::into_inner)
             .get_or_insert_with(HashMap::new)
             .insert(id.to_owned(), (scenario, calls.clone()));
-        let root = std::env::temp_dir().join(format!("review-{id}-{}", std::process::id()));
-        cv_testkit::remove_dir(&root);
-        let paths = AppPaths::new(root.join("config"), root.join("cache"));
-        let mut store = ConnectionStore::open(&paths).expect("empty store");
-        store
-            .upsert(Connection {
-                id: id.to_owned(),
-                name: "example.com".to_owned(),
-                kind: platform(scenario),
-                base_url: "https://gitlab.example.com".to_owned(),
-                organizations: Vec::new(),
-                token: Some("glpat-walkthrough".to_owned()),
-            })
-            .expect("store the connection");
-        Self::open(id, paths, size, calls)
+        let scratch = ScratchDir::new(id);
+        let connection = Connection {
+            name: "example.com".to_owned(),
+            token: Some("glpat-walkthrough".to_owned()),
+            ..samples::connection(id, platform(scenario), "https://gitlab.example.com")
+        };
+        let harness = Self::open(id, saved_paths(&scratch, &[connection]), size);
+        Self { harness, calls, scratch }
     }
 
-    /// The app again on the files an earlier [`App::start`] left, as after a restart.
-    fn reopen(id: &str, paths: AppPaths, size: [f32; 2]) -> Self {
-        let calls = SCENARIOS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .as_ref()
-            .and_then(|scenarios| scenarios.get(id))
-            .expect("started before")
-            .1
-            .clone();
-        Self::open(id, paths, size, calls)
+    /// The app again on the files an earlier [`App::start`] left in `scratch`, as after a restart.
+    fn reopen(id: &str, scratch: &ScratchDir, size: [f32; 2]) -> Harness<'static, ReviewApp> {
+        Self::open(id, scratch.app_paths(), size)
     }
 
-    fn open(id: &str, paths: AppPaths, size: [f32; 2], calls: Arc<Mutex<Calls>>) -> Self {
+    fn open(id: &str, paths: AppPaths, size: [f32; 2]) -> Harness<'static, ReviewApp> {
         let builder =
             Harness::builder().with_size(size).with_step_dt(1.0 / 60.0).allow_missing_glyphs();
-        let app_paths = paths.clone();
-        let mut harness = super::startup::start(builder, move |creation| {
-            ReviewApp::new(creation, app_paths, scripted_provider)
-        });
-        harness.state_mut().settings.cli_tools = Some(CliTools::default());
+        let mut harness = app_with(builder, paths, scripted_provider);
         harness.state_mut().navigator.go(Route::PullRequest(PullRequestKey {
             connection_id: id.to_owned(),
             repository_key: REPOSITORY.to_owned(),
             number: NUMBER,
         }));
-        Self { harness, paths, calls }
+        harness
     }
 }
 

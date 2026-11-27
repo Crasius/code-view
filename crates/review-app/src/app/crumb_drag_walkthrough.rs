@@ -7,11 +7,12 @@
 use egui::{CursorIcon, Event, Modifiers, PointerButton, Pos2, Role, ViewportCommand, ViewportId};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use review_store::AppPaths;
 
 use super::ReviewApp;
+use super::walkthrough::app_with;
 use cv_base::platform;
 use cv_runtime::route::Route;
+use cv_testkit::ScratchDir;
 
 const STEP: f32 = 1.0 / 60.0;
 /// The page the walkthrough starts on: its trail is the app's name (a link) and itself.
@@ -24,11 +25,9 @@ struct Gesture {
     grabbing_frames: usize,
 }
 
-fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
-    let mut harness = Harness::builder()
-        .with_size([1200.0, 480.0])
-        .with_step_dt(STEP)
-        .build_eframe(|creation| ReviewApp::new(creation, paths, cv_providers::create_provider));
+fn harness(scratch: &ScratchDir) -> Harness<'static, ReviewApp> {
+    let builder = Harness::builder().with_size([1200.0, 480.0]).with_step_dt(STEP);
+    let mut harness = app_with(builder, scratch.app_paths(), cv_providers::create_provider);
     harness.state_mut().navigator.go(Route::Repositories);
     settle(&mut harness);
     harness
@@ -99,9 +98,8 @@ fn current_crumb(harness: &Harness<'_, ReviewApp>) -> Pos2 {
 
 #[test]
 fn long_press_on_a_breadcrumb_moves_the_window_instead_of_navigating() {
-    let scratch = std::env::temp_dir().join(format!("review-crumb-drag-{}", std::process::id()));
-    cv_testkit::remove_dir(&scratch);
-    let mut harness = harness(AppPaths::new(scratch.join("config"), scratch.join("cache")));
+    let scratch = ScratchDir::new("crumb-drag");
+    let mut harness = harness(&scratch);
     let long = platform::LONG_PRESS.as_secs_f32();
 
     // A short click navigates and moves nothing.
@@ -138,7 +136,4 @@ fn long_press_on_a_breadcrumb_moves_the_window_instead_of_navigating() {
     let gesture = press(&mut harness, app, app, 0.05);
     assert_eq!(gesture.drags, 0);
     assert_eq!(harness.state().route, Route::MyPullRequests, "the next click navigates again");
-
-    drop(harness);
-    cv_testkit::remove_dir(&scratch);
 }

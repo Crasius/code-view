@@ -18,9 +18,9 @@ use review_store::{AppPaths, ConnectionStore, LINUX_HELP_URL, TokenVault, VaultP
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::walkthrough::{press, wait_until};
+use super::walkthrough::{press, saved_paths, wait_until};
 use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 /// Scripted tokens; they only ever reach the fake provider below.
 const LIMITED_TOKEN: &str = "glpat-walkthrough-fine-grained";
@@ -28,7 +28,8 @@ const COMPLETE_TOKEN: &str = "glpat-walkthrough-complete";
 
 #[test]
 fn setup_wizard_first_run_to_saved_connection() {
-    let paths = isolated_paths("first-run");
+    let scratch = ScratchDir::new("setup-first-run");
+    let paths = scratch.app_paths();
     let mut harness = harness(paths.clone());
 
     wait_until(&mut harness, "the welcome screen", |harness| {
@@ -87,7 +88,8 @@ fn setup_wizard_first_run_to_saved_connection() {
 /// with the cause, the file it tried, and "Try again"; nothing is a silent no-op.
 #[test]
 fn setup_save_failure_stays_on_the_step_with_its_cause() {
-    let paths = isolated_paths("save-failure");
+    let scratch = ScratchDir::new("setup-save-failure");
+    let paths = scratch.app_paths();
     let mut harness = harness(paths.clone());
     wait_until(&mut harness, "the welcome screen", |harness| {
         harness.query_by_label_contains("GitLab.com or self-managed").is_some()
@@ -143,7 +145,8 @@ fn setup_missing_keyring_offers_a_tokenless_save() {
         commands: vec!["gnome-keyring-daemon --start --components=secrets".to_owned()],
         help_url: LINUX_HELP_URL,
     }));
-    let paths = isolated_paths("missing-keyring").with_token_vault(TokenVault::Refusing(problem));
+    let scratch = ScratchDir::new("setup-missing-keyring");
+    let paths = scratch.app_paths().with_token_vault(TokenVault::Refusing(problem));
     let mut harness = harness(paths.clone());
     wait_until(&mut harness, "the welcome screen", |harness| {
         harness.query_by_label_contains("GitLab.com or self-managed").is_some()
@@ -197,7 +200,8 @@ fn setup_missing_keyring_offers_a_tokenless_save() {
 
 #[test]
 fn setup_token_pages_offer_cli_and_checklists() {
-    let mut harness = harness(isolated_paths("token-pages"));
+    let scratch = ScratchDir::new("setup-token-pages");
+    let mut harness = harness(scratch.app_paths());
 
     wait_until(&mut harness, "the welcome screen", |harness| {
         harness.query_by_label_contains("GitHub.com or GitHub").is_some()
@@ -235,19 +239,14 @@ fn setup_token_pages_offer_cli_and_checklists() {
 
 #[test]
 fn setup_fix_token_from_a_denied_request() {
-    let paths = isolated_paths("fix-token");
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: "gl-1".into(),
-            name: "Tabletop".into(),
-            kind: ProviderKind::GitLab,
-            base_url: "https://gitlab.com".into(),
-            organizations: vec!["ttrpg".into()],
-            token: Some(LIMITED_TOKEN.into()),
-        })
-        .expect("store the connection");
-    let mut harness = harness(paths);
+    let scratch = ScratchDir::new("setup-fix-token");
+    let connection = Connection {
+        name: "Tabletop".into(),
+        organizations: vec!["ttrpg".into()],
+        token: Some(LIMITED_TOKEN.into()),
+        ..samples::connection("gl-1", ProviderKind::GitLab, "https://gitlab.com")
+    };
+    let mut harness = harness(saved_paths(&scratch, &[connection]));
 
     wait_until(&mut harness, "the access banner", |harness| {
         harness.query_by_label_contains("Tabletop: The fine-grained token").is_some()
@@ -271,17 +270,11 @@ fn back() -> String {
 pub(super) fn harness(paths: AppPaths) -> Harness<'static, ReviewApp> {
     super::startup::start(Harness::builder().with_size([1280.0, 1000.0]), |creation| {
         let mut app = ReviewApp::new(creation, paths, fake_provider);
-        // The machine's own gh/az never run in tests; both options are shown as if installed.
-        // Set before the harness's first frame, which opens the setup with the tools it has.
-        app.settings.cli_tools = Some(CliTools { github: true, azure: true });
+        // Both sign-in tools as if installed, before the harness's first frame, which opens the
+        // setup with the tools it has.
+        app.settings.set_cli_tools(CliTools { github: true, azure: true });
         app
     })
-}
-
-pub(super) fn isolated_paths(name: &str) -> AppPaths {
-    let root = std::env::temp_dir().join(format!("review-setup-{name}-{}", std::process::id()));
-    cv_testkit::remove_dir(&root);
-    AppPaths::new(root.join("config"), root.join("cache"))
 }
 
 fn type_token(harness: &mut Harness<'_, ReviewApp>, token: &str) {

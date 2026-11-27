@@ -5,21 +5,18 @@
 
 use cv_base::theme::motion;
 use egui_kittest::Harness;
-use review_store::AppPaths;
 
-use super::ReviewApp;
+use super::walkthrough::app_with;
 use cv_testkit::ScratchDir;
 
 /// Whether the app built with `preset` (or nothing) set before it exists animates.
 fn is_reduced_in_app(name: &str, preset: Option<bool>) -> bool {
     let scratch = ScratchDir::new(name);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
     let mut builder = Harness::builder().with_size([960.0, 600.0]);
     if let Some(is_reduced) = preset {
         builder = builder.with_context_setup(move |ctx| motion::set_reduced(ctx, is_reduced));
     }
-    let harness = builder
-        .build_eframe(|creation| ReviewApp::new(creation, paths, cv_providers::create_provider));
+    let harness = app_with(builder, scratch.app_paths(), cv_providers::create_provider);
     motion::is_reduced(&harness.ctx)
 }
 

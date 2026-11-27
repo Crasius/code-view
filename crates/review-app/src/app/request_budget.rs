@@ -17,20 +17,20 @@ use egui_kittest::{Harness, HarnessBuilder};
 use review_core::{Connection, ProviderKind};
 use review_store::{AppPaths, AppSettings, ConnectionStore};
 use serde_json::{Value, json};
-use wiremock::{MockServer, Request, Respond, ResponseTemplate};
+use wiremock::{Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
+use super::mock_host::MockHost;
 use super::startup;
 use super::walkthrough::{
-    self, LIMIT, click_first, has, pump, set_focus, wait_idle, wait_until_unsettled, wheel,
+    self, LIMIT, click_first, has, pump, saved_paths, set_focus, wait_idle, wait_until_unsettled,
+    wheel,
 };
 use cv_lists::pull_request_list::LIST_INTERVAL;
 use cv_runtime::cache::page_cache::REVISIT_FRESH;
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_settings::onboarding::CliTools;
 use cv_shell::attention::{Attention, PAUSE};
-use cv_testkit::Clicks;
-use cv_testkit::git_in;
+use cv_testkit::{Clicks, ScratchDir, git_in, samples};
 
 const MOCK_TOKEN: &str = "glpat-mock-only";
 const PROJECT: &str = "group/app";
@@ -1215,14 +1215,14 @@ impl Recorder {
 }
 
 struct Fixture {
-    runtime: tokio::runtime::Runtime,
-    server: MockServer,
+    host: MockHost,
     recorder: Arc<Recorder>,
     paths: AppPaths,
     /// Unique per test: request counters and rate-limit notices are kept per connection id.
     connection_id: String,
     /// Real time the group listing takes to answer.
     listing_delay: Arc<Mutex<Duration>>,
+    _scratch: ScratchDir,
 }
 
 impl Fixture {
@@ -1241,46 +1241,29 @@ impl Fixture {
     }
 
     fn build(name: &str, file_count: usize, token: Option<&str>, older_pipelines: u64) -> Self {
-        let root =
-            std::env::temp_dir().join(format!("review-budget-{name}-{}", std::process::id()));
-        cv_testkit::remove_dir(&root);
-        std::fs::create_dir_all(&root).expect("fixture folder");
-        let (repository, base, head) = build_repository(&root.join("remote.git"), file_count);
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .expect("mock runtime");
-        let server = runtime.block_on(MockServer::start());
-        cv_testkit::fresh_origin(&server.uri());
+        let scratch = ScratchDir::new(&format!("budget-{name}"));
+        let (repository, base, head) =
+            build_repository(&scratch.path().join("remote.git"), file_count);
         let recorder = Arc::new(Recorder::default());
         let listing_delay = Arc::new(Mutex::new(Duration::ZERO));
-        let gitlab = MockGitLab {
+        let host = MockHost::start(|base_url| MockGitLab {
             recorder: recorder.clone(),
-            base_url: server.uri(),
+            base_url: base_url.to_owned(),
             clone_url: format!("file:///{}", repository.display().to_string().replace('\\', "/")),
             base,
             head,
             older_pipelines,
             listing_delay: listing_delay.clone(),
-        };
-        runtime.block_on(
-            wiremock::Mock::given(wiremock::matchers::any()).respond_with(gitlab).mount(&server),
-        );
-        let paths = AppPaths::new(root.join("config"), root.join("cache"));
+        });
         let connection_id = format!("budget-{name}");
-        let mut store = ConnectionStore::open(&paths).expect("empty store");
-        store
-            .upsert(Connection {
-                id: connection_id.clone(),
-                name: "Mock GitLab".to_owned(),
-                kind: ProviderKind::GitLab,
-                base_url: server.uri(),
-                organizations: vec!["group".to_owned()],
-                token: token.map(str::to_owned),
-            })
-            .expect("store the connection");
-        Self { runtime, server, recorder, paths, connection_id, listing_delay }
+        let connection = Connection {
+            name: "Mock GitLab".to_owned(),
+            organizations: vec!["group".to_owned()],
+            token: token.map(str::to_owned),
+            ..samples::connection(&connection_id, ProviderKind::GitLab, &host.uri())
+        };
+        let paths = saved_paths(&scratch, &[connection]);
+        Self { host, recorder, paths, connection_id, listing_delay, _scratch: scratch }
     }
 
     /// The app on the fixture. Its phases let simulated minutes pass without a pointer, which
@@ -1297,9 +1280,9 @@ impl Fixture {
     /// would land before the test sees the first frame.
     fn loading_harness(&self) -> Harness<'static, ReviewApp> {
         let paths = self.paths.clone();
-        let mut harness = with_cli_tools(startup::first_frames(harness_builder(), |creation| {
+        let mut harness = startup::first_frames(harness_builder(), |creation| {
             ReviewApp::new(creation, paths, cv_providers::create_provider)
-        }));
+        });
         harness.state_mut().attention = Attention::without_pauses();
         harness
     }
@@ -1310,12 +1293,14 @@ impl Fixture {
         let mut store = ConnectionStore::open(&self.paths).expect("the store");
         store
             .upsert(Connection {
-                id: format!("{}-{suffix}", self.connection_id),
                 name: format!("Mock GitLab {suffix}"),
-                kind: ProviderKind::GitLab,
-                base_url: self.server.uri(),
                 organizations: vec![format!("group-{suffix}")],
                 token: Some(MOCK_TOKEN.to_owned()),
+                ..samples::connection(
+                    &format!("{}-{suffix}", self.connection_id),
+                    ProviderKind::GitLab,
+                    &self.host.uri(),
+                )
             })
             .expect("store the connection");
     }
@@ -1340,7 +1325,7 @@ impl Fixture {
             .respond_with(limited)
             .up_to_n_times(1)
             .with_priority(1);
-        self.runtime.block_on(mock.mount(&self.server));
+        self.host.mount(mock);
     }
 
     /// [`Self::limit_once`] with the 429 arriving `delay` after the request.
@@ -1354,7 +1339,7 @@ impl Fixture {
             .respond_with(limited)
             .up_to_n_times(1)
             .with_priority(1);
-        self.runtime.block_on(mock.mount(&self.server));
+        self.host.mount(mock);
     }
 
     fn key(&self) -> PullRequestKey {
@@ -1390,7 +1375,7 @@ impl Fixture {
     }
 
     fn report(&self, phases: &[(&str, f64)]) -> String {
-        let mut report = format!("\n=== Request budget against {} ===\n", self.server.uri());
+        let mut report = format!("\n=== Request budget against {} ===\n", self.host.uri());
         for (phase, seconds) in phases {
             let count = self.recorder.count(phase);
             let per_minute = count as f64 / (seconds / 60.0);
@@ -1405,19 +1390,12 @@ impl Fixture {
 
 /// The app on `paths`, in a 1440 × 900 window, once its start settled.
 fn harness_for(paths: AppPaths) -> Harness<'static, ReviewApp> {
-    with_cli_tools(walkthrough::app_with(harness_builder(), paths, cv_providers::create_provider))
+    walkthrough::app_with(harness_builder(), paths, cv_providers::create_provider)
 }
 
 /// The app's harness with the window and step of [`harness_for`], before the renderer is picked.
 pub(super) fn harness_builder() -> HarnessBuilder<ReviewApp> {
     Harness::builder().with_size([1440.0, 900.0]).with_step_dt(STEP_SECONDS).allow_missing_glyphs()
-}
-
-pub(super) fn with_cli_tools(
-    mut harness: Harness<'static, ReviewApp>,
-) -> Harness<'static, ReviewApp> {
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
-    harness
 }
 
 const AZURE_ROWS: u64 = 40;
@@ -1427,11 +1405,11 @@ const AZURE_PULL_REQUESTS: &str = "/north/Web/_apis/git/repositories/site/pullre
 
 /// An Azure DevOps connection (organization `north`) against [`MockAzure`].
 struct AzureFixture {
-    _runtime: tokio::runtime::Runtime,
-    _server: MockServer,
+    _host: MockHost,
     recorder: Arc<Recorder>,
     paths: AppPaths,
     connection_id: String,
+    _scratch: ScratchDir,
 }
 
 impl AzureFixture {
@@ -1446,42 +1424,24 @@ impl AzureFixture {
     }
 
     fn build(name: &str, has_git: bool) -> Self {
-        let root =
-            std::env::temp_dir().join(format!("review-budget-{name}-{}", std::process::id()));
-        cv_testkit::remove_dir(&root);
-        std::fs::create_dir_all(&root).expect("fixture folder");
+        let scratch = ScratchDir::new(&format!("budget-{name}"));
         let git = has_git.then(|| {
-            let project_root = root.join("git");
+            let project_root = scratch.path().join("git");
             let (_, base, head) =
                 build_repository(&project_root.join("north/Web/_git/site"), AZURE_FILES);
             AzureGit { project_root, base, head }
         });
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .expect("mock runtime");
-        let server = runtime.block_on(MockServer::start());
-        cv_testkit::fresh_origin(&server.uri());
         let recorder = Arc::new(Recorder::default());
-        let azure = MockAzure { recorder: recorder.clone(), git };
-        runtime.block_on(
-            wiremock::Mock::given(wiremock::matchers::any()).respond_with(azure).mount(&server),
-        );
-        let paths = AppPaths::new(root.join("config"), root.join("cache"));
+        let host = MockHost::start(|_| MockAzure { recorder: recorder.clone(), git });
         let connection_id = format!("budget-{name}");
-        let mut store = ConnectionStore::open(&paths).expect("empty store");
-        store
-            .upsert(Connection {
-                id: connection_id.clone(),
-                name: "Mock Azure DevOps".to_owned(),
-                kind: ProviderKind::AzureDevOps,
-                base_url: server.uri(),
-                organizations: vec!["north".to_owned()],
-                token: Some("ado-mock-only".to_owned()),
-            })
-            .expect("store the connection");
-        Self { _runtime: runtime, _server: server, recorder, paths, connection_id }
+        let connection = Connection {
+            name: "Mock Azure DevOps".to_owned(),
+            organizations: vec!["north".to_owned()],
+            token: Some("ado-mock-only".to_owned()),
+            ..samples::connection(&connection_id, ProviderKind::AzureDevOps, &host.uri())
+        };
+        let paths = saved_paths(&scratch, &[connection]);
+        Self { _host: host, recorder, paths, connection_id, _scratch: scratch }
     }
 
     /// Stars `north/Web/site` before the app starts.

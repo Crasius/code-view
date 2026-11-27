@@ -7,14 +7,14 @@
 use egui::{Key, Rect, Role, pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use review_store::AppPaths;
 
 use super::ReviewApp;
+use super::walkthrough::app_with;
 use cv_base::platform;
 use cv_runtime::route::{Landing, PullRequestKey, Route};
 use cv_runtime::trail::Trail;
 use cv_shell::top_bar;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir};
 use cv_widgets::focus;
 
 /// No connection by this id is saved: the pull request page shows its error and leaves the trail
@@ -60,11 +60,10 @@ fn enter_pull_request(harness: &mut Harness<'_, ReviewApp>) {
     settle(harness);
 }
 
-fn harness(paths: AppPaths, width: f32) -> Harness<'static, ReviewApp> {
-    let mut harness = Harness::builder()
-        .with_size([width, 360.0])
-        .with_step_dt(1.0 / 60.0)
-        .build_eframe(|creation| ReviewApp::new(creation, paths, cv_providers::create_provider));
+/// The app on `scratch`, without a connection, at the pull request in a window `width` wide.
+fn harness(scratch: &ScratchDir, width: f32) -> Harness<'static, ReviewApp> {
+    let builder = Harness::builder().with_size([width, 360.0]).with_step_dt(1.0 / 60.0);
+    let mut harness = app_with(builder, scratch.app_paths(), cv_providers::create_provider);
     harness.state_mut().title_bar.integrate_for_test();
     enter_pull_request(&mut harness);
     let mut levels: Vec<(String, &'static str)> =
@@ -164,13 +163,9 @@ fn open_overflow(harness: &mut Harness<'_, ReviewApp>) {
 
 #[test]
 fn breadcrumbs_fold_into_an_overflow_list_and_stay_clear_of_the_caption() {
-    let scratch = std::env::temp_dir().join(format!("review-breadcrumbs-{}", std::process::id()));
-    cv_testkit::remove_dir(&scratch);
-
     for (width, tag) in [(1440.0, "1440"), (960.0, "960")] {
-        let paths =
-            AppPaths::new(scratch.join(tag).join("config"), scratch.join(tag).join("cache"));
-        let mut harness = harness(paths, width);
+        let scratch = ScratchDir::new(&format!("breadcrumbs-{tag}"));
+        let mut harness = harness(&scratch, width);
         let hidden = check_layout(&mut harness, width);
         assert!(
             hidden.contains(&CONNECTION.to_owned()) && hidden.contains(&REPOSITORY.to_owned()),
@@ -242,17 +237,13 @@ fn breadcrumbs_fold_into_an_overflow_list_and_stay_clear_of_the_caption() {
             harness.get_by_role_and_label(Role::Button, OVERFLOW).is_focused(),
             "{width}: Esc returns to \"…\""
         );
-        drop(harness);
     }
-    cv_testkit::remove_dir(&scratch);
 }
 
 #[test]
 fn the_files_trail_ends_at_the_pull_request_whose_crumb_leads_to_all_files() {
-    let scratch = std::env::temp_dir().join(format!("review-files-crumb-{}", std::process::id()));
-    cv_testkit::remove_dir(&scratch);
-    let paths = AppPaths::new(scratch.join("config"), scratch.join("cache"));
-    let mut harness = harness(paths, 1440.0);
+    let scratch = ScratchDir::new("files-crumb");
+    let mut harness = harness(&scratch, 1440.0);
     // A file is open: the Files tab names no folders, only the way back to all files.
     top_bar::publish_trail(
         &harness.ctx,
@@ -271,6 +262,4 @@ fn the_files_trail_ends_at_the_pull_request_whose_crumb_leads_to_all_files() {
     top_bar::publish_trail(&harness.ctx, &pull_request(), "", Vec::new());
     settle(&mut harness);
     assert!(harness.query_by_role_and_label(Role::Link, PULL_REQUEST).is_none());
-    drop(harness);
-    cv_testkit::remove_dir(&scratch);
 }

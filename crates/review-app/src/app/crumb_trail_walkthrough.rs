@@ -21,14 +21,12 @@ use review_core::{
     ProviderKind, PullRequestDetail, PullRequestQuery, PullRequestState, PullRequestSummary,
     RepositoryInfo, Result, ReviewThread, ReviewVote, ThreadComment, ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
 use tokio::io::AsyncWrite;
 
 use super::ReviewApp;
-use super::walkthrough::{has, settle_background, wait_until};
+use super::walkthrough::{app_with, has, saved_paths, settle_background, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_testkit::Clicks;
-use cv_testkit::ScratchDir;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const CONNECTION_ID: &str = "crumb-trail";
 const CONNECTION_NAME: &str = "Contoso";
@@ -230,22 +228,17 @@ fn is_on(harness: &Harness<'_, ReviewApp>, number: u64) -> bool {
 }
 
 fn start(scratch: &ScratchDir) -> Harness<'static, ReviewApp> {
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
-    let mut store = ConnectionStore::open(&paths).expect("empty store");
-    store
-        .upsert(Connection {
-            id: CONNECTION_ID.to_owned(),
-            name: CONNECTION_NAME.to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: ProviderKind::GitHub.default_base_url().to_owned(),
-            organizations: vec!["contoso".to_owned()],
-            token: None,
-        })
-        .expect("store the connection");
+    let connection = Connection {
+        name: CONNECTION_NAME.to_owned(),
+        organizations: vec!["contoso".to_owned()],
+        ..samples::connection(
+            CONNECTION_ID,
+            ProviderKind::GitHub,
+            ProviderKind::GitHub.default_base_url(),
+        )
+    };
     let builder = Harness::builder().with_size([1280.0, 860.0]).with_step_dt(1.0 / 30.0);
-    super::startup::start(builder, move |creation| {
-        ReviewApp::new(creation, paths, scripted_provider)
-    })
+    app_with(builder, saved_paths(scratch, &[connection]), scripted_provider)
 }
 
 fn settle(harness: &mut Harness<'_, ReviewApp>) {

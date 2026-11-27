@@ -18,7 +18,7 @@ use review_agent::{
     AgentEvent, AgentKind, FakeAgent, ModelChoice, ModelInfo, SessionConfig, StepKind, ToolStep,
     Usage,
 };
-use review_store::{AppPaths, AppSettings};
+use review_store::AppSettings;
 
 use super::ReviewApp;
 use super::github_mock::{FILE, GitHubHost, TITLE, open_diff, open_pull_request};
@@ -228,7 +228,7 @@ fn assistant_default_model_from_settings_starts_the_next_conversation() {
     press(&mut harness, "Sonnet");
     let expected = ModelChoice::Named("claude-sonnet".to_owned());
     assert_eq!(harness.state().services.settings.assistant.claude_model, expected);
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
+    let paths = scratch.app_paths();
     let saved = AppSettings::load(&paths.settings_file()).expect("settings file");
     assert_eq!(saved.assistant.claude_model, expected, "saved");
 

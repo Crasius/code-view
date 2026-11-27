@@ -7,16 +7,18 @@ use egui::accesskit::{Role, Toggled};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{Connection, ProviderKind};
-use review_store::{AppPaths, AppSettings, ConnectionStore};
+use review_store::{AppPaths, AppSettings};
 use serde_json::{Value, json};
-use wiremock::{MockServer, Request, Respond, ResponseTemplate};
+use wiremock::{Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
 use super::github_mock::GitHubHost;
-use super::walkthrough::{has, press, pump, saved_settings, secondary_press, wait_until_unsettled};
+use super::mock_host::MockHost;
+use super::walkthrough::{
+    app_with, has, press, pump, saved_paths, saved_settings, secondary_press, wait_until_unsettled,
+};
 use cv_runtime::route::Route;
-use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 const TOKEN: &str = "glpat-mock-only";
 const GROUP: &str = "team";
@@ -29,8 +31,8 @@ const LANE_TOOL: &str = "Show the Favorites lane";
 #[test]
 fn favorites_star_in_the_repository_browser_persists() {
     let gitlab = GitLabHost::start();
-    let paths = isolated_paths("star");
-    store(&paths, &[gitlab.connection("gitlab", "Team GitLab")]);
+    let scratch = ScratchDir::new("favorites-star");
+    let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab")]);
     let mut harness = start_app(&paths);
     go(&mut harness, Route::Repositories);
     wait_until_unsettled(&mut harness, "the repositories", |harness| {
@@ -85,9 +87,9 @@ fn favorites_star_in_the_repository_browser_persists() {
 fn favorites_card_mixes_two_platforms_newest_updated_first() {
     let gitlab = GitLabHost::start();
     let github = GitHubHost::start("acme", &github_rows());
-    let paths = isolated_paths("mixed");
-    store(
-        &paths,
+    let scratch = ScratchDir::new("favorites-mixed");
+    let paths = saved_paths(
+        &scratch,
         &[gitlab.connection("gitlab", "Team GitLab"), github.connection("github", "Acme GitHub")],
     );
     let mut settings = AppSettings::default();
@@ -155,9 +157,9 @@ fn favorites_card_mixes_two_platforms_newest_updated_first() {
 fn favorites_card_follows_the_role_filter() {
     let gitlab = GitLabHost::start();
     let github = GitHubHost::start("acme", &github_rows());
-    let paths = isolated_paths("role");
-    store(
-        &paths,
+    let scratch = ScratchDir::new("favorites-role");
+    let paths = saved_paths(
+        &scratch,
         &[gitlab.connection("gitlab", "Team GitLab"), github.connection("github", "Acme GitHub")],
     );
     let mut settings = AppSettings::default();
@@ -193,8 +195,8 @@ fn favorites_card_follows_the_role_filter() {
 #[test]
 fn favorites_card_emptied_by_a_filter_offers_to_clear_it() {
     let gitlab = GitLabHost::start();
-    let paths = isolated_paths("role-empty");
-    store(&paths, &[gitlab.connection("gitlab", "Team GitLab")]);
+    let scratch = ScratchDir::new("favorites-role-empty");
+    let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab")]);
     let mut settings = AppSettings::default();
     settings.favorites.toggle("gitlab", "team/app");
     settings.save(&paths.settings_file()).expect("save the favorite");
@@ -229,9 +231,9 @@ fn favorites_card_emptied_by_a_filter_offers_to_clear_it() {
 #[test]
 fn favorites_hidden_by_a_role_are_named_with_the_way_to_a_token() {
     let gitlab = GitLabHost::start();
-    let paths = isolated_paths("role-hidden");
+    let scratch = ScratchDir::new("favorites-role-hidden");
     let public = Connection { token: None, ..gitlab.connection("public", "Public GitLab") };
-    store(&paths, &[gitlab.connection("gitlab", "Team GitLab"), public]);
+    let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab"), public]);
     let mut settings = AppSettings::default();
     settings.favorites.toggle("gitlab", "team/app");
     settings.favorites.toggle("public", "team/api");
@@ -274,8 +276,8 @@ fn favorites_hidden_by_a_role_are_named_with_the_way_to_a_token() {
 #[test]
 fn favorites_empty_card_leads_to_the_repositories_and_rows_star_from_their_menu() {
     let gitlab = GitLabHost::start();
-    let paths = isolated_paths("empty");
-    store(&paths, &[gitlab.connection("gitlab", "Team GitLab")]);
+    let scratch = ScratchDir::new("favorites-empty");
+    let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab")]);
     let mut harness = start_app(&paths);
     wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Team change 1"));
     assert!(has(&harness, "Star a repository to see its pull requests here"));
@@ -304,8 +306,8 @@ fn favorites_empty_card_leads_to_the_repositories_and_rows_star_from_their_menu(
 #[test]
 fn favorites_lane_hidden_lifts_starred_rows_and_asks_nothing() {
     let gitlab = GitLabHost::start();
-    let paths = isolated_paths("lane");
-    store(&paths, &[gitlab.connection("gitlab", "Team GitLab")]);
+    let scratch = ScratchDir::new("favorites-lane");
+    let paths = saved_paths(&scratch, &[gitlab.connection("gitlab", "Team GitLab")]);
     let mut harness = start_app(&paths);
     wait_until_unsettled(&mut harness, "the overview", |harness| has(harness, "Team change 1"));
     assert!(has(&harness, "Favorites ("), "the lane is shown by default");
@@ -405,36 +407,26 @@ fn github_searches(github: &GitHubHost) -> Vec<String> {
 /// A GitLab group `team` with the projects `team/app` and `team/api`; the group lists one merge
 /// request of each project, newest first, `team/app` two others. Records every request's path and query.
 struct GitLabHost {
-    server: MockServer,
+    host: MockHost,
     hits: Arc<Mutex<Vec<(String, String)>>>,
-    _runtime: tokio::runtime::Runtime,
 }
 
 impl GitLabHost {
     fn start() -> Self {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .expect("mock runtime");
-        let server = runtime.block_on(MockServer::start());
-        cv_testkit::fresh_origin(&server.uri());
         let hits = Arc::new(Mutex::new(Vec::new()));
-        let responder = GitLabResponder { hits: hits.clone(), base_url: server.uri() };
-        runtime.block_on(
-            wiremock::Mock::given(wiremock::matchers::any()).respond_with(responder).mount(&server),
-        );
-        Self { server, hits, _runtime: runtime }
+        let host = MockHost::start(|base_url| GitLabResponder {
+            hits: hits.clone(),
+            base_url: base_url.to_owned(),
+        });
+        Self { host, hits }
     }
 
     fn connection(&self, id: &str, name: &str) -> Connection {
         Connection {
-            id: id.to_owned(),
             name: name.to_owned(),
-            kind: ProviderKind::GitLab,
-            base_url: self.server.uri(),
             organizations: vec![GROUP.to_owned()],
             token: Some(TOKEN.to_owned()),
+            ..samples::connection(id, ProviderKind::GitLab, &self.host.uri())
         }
     }
 
@@ -521,13 +513,6 @@ impl GitLabResponder {
     }
 }
 
-fn store(paths: &AppPaths, connections: &[Connection]) {
-    let mut store = ConnectionStore::open(paths).expect("empty store");
-    for connection in connections {
-        store.upsert(connection.clone()).expect("store the connection");
-    }
-}
-
 fn saved_favorites(harness: &Harness<'_, ReviewApp>) -> Vec<(String, String)> {
     saved_settings(harness)
         .favorites
@@ -550,21 +535,10 @@ fn first_top(harness: &Harness<'_, ReviewApp>, label: &str) -> f32 {
         .unwrap_or_else(|| panic!("no row labelled {label}"))
 }
 
-fn isolated_paths(name: &str) -> AppPaths {
-    let root = std::env::temp_dir().join(format!("review-favorites-{name}-{}", std::process::id()));
-    cv_testkit::remove_dir(&root);
-    AppPaths::new(root.join("config"), root.join("cache"))
-}
-
 fn start_app(paths: &AppPaths) -> Harness<'static, ReviewApp> {
-    let paths = paths.clone();
     let builder =
         Harness::builder().with_size([1440.0, 900.0]).with_step_dt(0.25).allow_missing_glyphs();
-    let mut harness = super::startup::start(builder, move |creation| {
-        ReviewApp::new(creation, paths, cv_providers::create_provider)
-    });
-    harness.state_mut().settings.cli_tools = Some(CliTools::default());
-    harness
+    app_with(builder, paths.clone(), cv_providers::create_provider)
 }
 
 fn go(harness: &mut Harness<'_, ReviewApp>, route: Route) {

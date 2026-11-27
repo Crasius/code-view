@@ -11,14 +11,14 @@ use egui_kittest::kittest::Queryable;
 use review_core::{Connection, ProviderKind};
 use serde_json::json;
 use wiremock::matchers::{body_string_contains, method, path};
-use wiremock::{Mock, MockServer, Request, ResponseTemplate};
+use wiremock::{Mock, Request, ResponseTemplate};
 
 use super::ReviewApp;
 use super::github_mock::{GitHubHost, NUMBER, OWNER, REPOSITORY, TITLE, search_row};
+use super::mock_host::MockHost;
 use super::walkthrough::{app, wait_idle, wait_until};
 use cv_runtime::route::{PullRequestKey, Route};
-use cv_testkit::Clicks;
-use cv_testkit::ScratchDir;
+use cv_testkit::{Clicks, ScratchDir, samples};
 
 /// Longer than any test runs: the detail never arrives while the header is checked.
 const DETAIL_DELAY: Duration = Duration::from_secs(120);
@@ -26,19 +26,12 @@ const DETAIL_DELAY: Duration = Duration::from_secs(120);
 /// A GitHub Enterprise stand-in whose "mine" search lists pull request [`NUMBER`], and whose detail
 /// answers only after [`DETAIL_DELAY`]. Everything else is a quick 404.
 struct SlowDetail {
-    runtime: tokio::runtime::Runtime,
-    server: MockServer,
+    host: MockHost,
 }
 
 impl SlowDetail {
     fn start() -> Self {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(1)
-            .enable_all()
-            .build()
-            .expect("mock runtime");
-        let server = runtime.block_on(MockServer::start());
-        cv_testkit::fresh_origin(&server.uri());
+        let host = MockHost::start(|_| ResponseTemplate::new(404));
         let ok = |body| ResponseTemplate::new(200).set_body_json(body);
         let search = json!({ "data": { "search": {
             "pageInfo": { "hasNextPage": false, "endCursor": null },
@@ -61,19 +54,17 @@ impl SlowDetail {
                 .respond_with(ok(json!([]))),
         ];
         for mock in mocks {
-            runtime.block_on(mock.mount(&server));
+            host.mount(mock);
         }
-        Self { runtime, server }
+        Self { host }
     }
 
     fn connection(&self) -> Connection {
         Connection {
-            id: "gh".to_owned(),
             name: "Acme".to_owned(),
-            kind: ProviderKind::GitHub,
-            base_url: self.server.uri(),
             organizations: vec![OWNER.to_owned()],
             token: Some("mock-only".to_owned()),
+            ..samples::connection("gh", ProviderKind::GitHub, &self.host.uri())
         }
     }
 
@@ -85,8 +76,7 @@ impl SlowDetail {
     /// The requests for the detail so far.
     fn detail_requests(&self) -> usize {
         let detail = format!("/api/v3/repos/{REPOSITORY}/pulls/{NUMBER}");
-        let requests = self.runtime.block_on(self.server.received_requests()).unwrap_or_default();
-        requests.iter().filter(|request| request.url.path() == detail).count()
+        self.host.requests().iter().filter(|request| request.url.path() == detail).count()
     }
 }
 

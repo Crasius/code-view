@@ -33,18 +33,18 @@ use egui_kittest::{Harness, TestRenderer};
 use review_agent::{AgentEvent, Usage};
 use review_agent::{AgentKind, ModelInfo};
 use review_core::{Connection, ProviderKind};
-use review_store::{AppPaths, ConnectionStore};
+use review_store::AppPaths;
 use serde_json::{Value, json};
 use wiremock::{MockServer, Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
 #[cfg(feature = "measurements")]
 use super::request_budget::scroll_list;
-use super::request_budget::{Text, diff_stats_summaries, harness_builder, user, with_cli_tools};
+use super::request_budget::{Text, diff_stats_summaries, harness_builder, user};
 use super::startup;
 #[cfg(feature = "measurements")]
 use super::walkthrough::click_first;
-use super::walkthrough::{self, has, pump, wait_idle, wait_until_unsettled};
+use super::walkthrough::{self, has, pump, saved_paths, wait_idle, wait_until_unsettled};
 use cv_base::platform::heap::live_bytes;
 use cv_runtime::route::{PullRequestKey, Route};
 use cv_services::agents::FakeCli;
@@ -52,8 +52,7 @@ use cv_services::agents::FakeCli;
 use cv_syntax::code_colors;
 #[cfg(any(windows, feature = "measurements"))]
 use cv_syntax::{grammar, highlight};
-use cv_testkit::Clicks;
-use cv_testkit::git_in;
+use cv_testkit::{Clicks, ScratchDir, git_in, samples};
 
 const PROJECT: &str = "group/app";
 const PROJECT_ID: u64 = 42;
@@ -317,10 +316,10 @@ fn owner_overview(
     fixture: &Fixture,
     is_on: &dyn Fn(&str) -> bool,
 ) -> (Harness<'static, ReviewApp>, Curve) {
-    let projects = fixture.root.join("RiderProjects");
+    let projects = fixture.scratch.path().join("RiderProjects");
     std::fs::create_dir_all(&projects).expect("projects folder");
     if is_on("settings") {
-        let folders = [fixture.root.clone(), projects.clone()];
+        let folders = [fixture.scratch.path().to_path_buf(), projects.clone()];
         owner_settings(&folders).save(&fixture.paths.settings_file()).expect("settings");
     }
     if is_on("record") {
@@ -404,7 +403,7 @@ const OWNER_SETTINGS: &str = r#"{
 /// an adopted checkout of merge request `iid` with an empty head (as "Open it" records one).
 fn adopted_checkout(fixture: &Fixture, projects: &Path, iid: u64) {
     let clone = projects.join("app");
-    let remote = fixture.root.join("remote.git");
+    let remote = fixture.scratch.path().join("remote.git");
     git_in(None, &["clone", "-q", &remote.display().to_string(), &clone.display().to_string()]);
     let mut stream = Vec::new();
     for index in 0..LOCAL_COMMITS {
@@ -790,9 +789,9 @@ struct Fixture {
     gitlab: MockGitLab,
     paths: AppPaths,
     connection_id: String,
-    root: PathBuf,
     /// The mock host's answer delay in milliseconds ([`MockGitLab::delay`]).
     delay: Arc<AtomicU64>,
+    scratch: ScratchDir,
 }
 
 impl Fixture {
@@ -807,11 +806,8 @@ impl Fixture {
     }
 
     fn build(name: &str, heavy: bool) -> Self {
-        let root =
-            std::env::temp_dir().join(format!("review-memory-{name}-{}", std::process::id()));
-        cv_testkit::remove_dir(&root);
-        std::fs::create_dir_all(&root).expect("fixture folder");
-        let repository = root.join("remote.git");
+        let scratch = ScratchDir::new(&format!("memory-{name}"));
+        let repository = scratch.path().join("remote.git");
         let (base, heads) = build_repository(&repository);
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -837,20 +833,15 @@ impl Fixture {
                 .respond_with(gitlab.clone())
                 .mount(&server),
         );
-        let paths = AppPaths::new(root.join("config"), root.join("cache"));
         let connection_id = format!("memory-{name}");
-        let mut store = ConnectionStore::open(&paths).expect("empty store");
-        store
-            .upsert(Connection {
-                id: connection_id.clone(),
-                name: "Mock GitLab".to_owned(),
-                kind: ProviderKind::GitLab,
-                base_url: server.uri(),
-                organizations: vec!["group".to_owned()],
-                token: Some("glpat-mock-only".to_owned()),
-            })
-            .expect("store the connection");
-        Self { runtime, server, gitlab, paths, connection_id, root, delay }
+        let connection = Connection {
+            name: "Mock GitLab".to_owned(),
+            organizations: vec!["group".to_owned()],
+            token: Some("glpat-mock-only".to_owned()),
+            ..samples::connection(&connection_id, ProviderKind::GitLab, &server.uri())
+        };
+        let paths = saved_paths(&scratch, &[connection]);
+        Self { runtime, server, gitlab, paths, connection_id, delay, scratch }
     }
 
     /// Mounts the mock afresh: wiremock keeps every request its mock matched (with the body that
@@ -874,9 +865,9 @@ impl Fixture {
     fn restarted(&self) -> Harness<'static, ReviewApp> {
         let builder = harness_builder().renderer(GpuTextures::default());
         let paths = self.paths.clone();
-        Self::prepared(with_cli_tools(startup::first_frames(builder, |creation| {
+        Self::prepared(startup::first_frames(builder, |creation| {
             ReviewApp::new(creation, paths, cv_providers::create_provider)
-        })))
+        }))
     }
 
     /// The app from `builder`, once its start settled.
@@ -886,7 +877,7 @@ impl Fixture {
     ) -> Harness<'static, ReviewApp> {
         let harness =
             walkthrough::app_with(builder, self.paths.clone(), cv_providers::create_provider);
-        Self::prepared(with_cli_tools(harness))
+        Self::prepared(harness)
     }
 
     /// `harness` with the first file opening and a signed-in coding agent.
@@ -910,12 +901,6 @@ impl Fixture {
             repository_key: PROJECT.to_owned(),
             number: iid,
         }
-    }
-}
-
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        cv_testkit::remove_dir(&self.root);
     }
 }
 

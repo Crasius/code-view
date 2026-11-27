@@ -30,7 +30,7 @@ fn files() -> Vec<ExtraFile> {
 }
 
 fn paths(scratch: &ScratchDir) -> AppPaths {
-    AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"))
+    scratch.app_paths()
 }
 
 fn tab(harness: &Harness<'_, ReviewApp>) -> Option<PullRequestTab> {

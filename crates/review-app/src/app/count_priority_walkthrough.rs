@@ -16,7 +16,7 @@ use std::time::Duration;
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use review_store::{AppPaths, FilesStart};
+use review_store::FilesStart;
 
 use super::ReviewApp;
 use super::github_mock::{
@@ -73,7 +73,7 @@ fn blob_ids(scratch: &ScratchDir, paths: &[&str]) -> Vec<String> {
 
 /// The app's mirror of the repository.
 fn mirror_dir(scratch: &ScratchDir) -> PathBuf {
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
+    let paths = scratch.app_paths();
     let mirrors = std::fs::read_dir(paths.mirrors_dir()).expect("the mirrors folder");
     mirrors.flatten().map(|entry| entry.path()).find(|path| path.is_dir()).expect("a mirror")
 }

@@ -11,7 +11,7 @@ use review_core::{
     PullRequestQuery, PullRequestState, PullRequestSummary, RepositoryInfo, Result, ReviewThread,
     ReviewVote, Reviewer, ThreadComment, ThreadStatus, UserIdentity,
 };
-use review_store::{AppPaths, ConnectionStore};
+use review_store::ConnectionStore;
 use tokio::io::AsyncWrite;
 
 use cv_lists::pull_request_list::PullRequestListPage;
@@ -105,7 +105,7 @@ impl World {
 
 /// Services over the scripted host, with its one connection stored and "me" known.
 fn scripted_services(dir: &ScratchDir, ctx: egui::Context) -> Services {
-    let paths = AppPaths::new(dir.path().join("config"), dir.path().join("cache"));
+    let paths = dir.app_paths();
     let mut store = ConnectionStore::open(&paths).expect("empty store");
     store
         .upsert(Connection {

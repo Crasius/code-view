@@ -18,14 +18,14 @@ use egui::accesskit::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use review_core::{Connection, ProviderKind};
-use review_store::{AppPaths, ConnectionStore};
+use review_store::AppPaths;
 use serde_json::{Value, json};
-use wiremock::{MockServer, Request, Respond, ResponseTemplate};
+use wiremock::{Request, Respond, ResponseTemplate};
 
 use super::ReviewApp;
-use super::walkthrough::{opened_urls, wait_idle, wait_until_unsettled};
-use cv_settings::onboarding::CliTools;
-use cv_testkit::Clicks;
+use super::mock_host::MockHost;
+use super::walkthrough::{app_with, opened_urls, saved_paths, wait_idle, wait_until_unsettled};
+use cv_testkit::{Clicks, ScratchDir, samples};
 use cv_widgets::numbers::number_prefix;
 
 const ROWS: u64 = 50;
@@ -427,60 +427,41 @@ impl Respond for Responder {
 }
 
 struct Host {
-    _runtime: tokio::runtime::Runtime,
-    _server: MockServer,
+    _server: MockHost,
     scene: Arc<Scene>,
     paths: AppPaths,
+    _scratch: ScratchDir,
 }
 
 impl Host {
     fn start(name: &str, kind: ProviderKind, script: Script) -> Self {
-        let root = std::env::temp_dir()
-            .join(format!("review-pr-list-status-{name}-{}", std::process::id()));
-        cv_testkit::remove_dir(&root);
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .expect("mock runtime");
-        let server = runtime.block_on(MockServer::start());
-        cv_testkit::fresh_origin(&server.uri());
-        let scene = Arc::new(Scene { base_url: server.uri(), ..Scene::default() });
-        let responder = Responder { scene: Arc::clone(&scene), script };
-        runtime.block_on(
-            wiremock::Mock::given(wiremock::matchers::any()).respond_with(responder).mount(&server),
-        );
-        let paths = AppPaths::new(root.join("config"), root.join("cache"));
+        let scratch = ScratchDir::new(&format!("pr-list-status-{name}"));
+        let mut scene = Arc::default();
+        let host = MockHost::start(|base_url| {
+            scene = Arc::new(Scene { base_url: base_url.to_owned(), ..Scene::default() });
+            Responder { scene: Arc::clone(&scene), script }
+        });
         let organization = match kind {
             ProviderKind::GitHub => "acme",
             ProviderKind::GitLab => "group",
             ProviderKind::AzureDevOps => "north",
         };
-        ConnectionStore::open(&paths)
-            .expect("empty store")
-            .upsert(Connection {
-                id: format!("status-{name}"),
-                name: format!("Mock {}", kind.label()),
-                kind,
-                base_url: server.uri(),
-                organizations: vec![organization.to_owned()],
-                token: Some("mock-only".to_owned()),
-            })
-            .expect("store the connection");
-        Self { _runtime: runtime, _server: server, scene, paths }
+        let connection = Connection {
+            name: format!("Mock {}", kind.label()),
+            organizations: vec![organization.to_owned()],
+            token: Some("mock-only".to_owned()),
+            ..samples::connection(&format!("status-{name}"), kind, &host.uri())
+        };
+        let paths = saved_paths(&scratch, &[connection]);
+        Self { _server: host, scene, paths, _scratch: scratch }
     }
 
     fn harness(&self, width: f32) -> Harness<'static, ReviewApp> {
-        let paths = self.paths.clone();
         let builder = Harness::builder()
             .with_size([width, 900.0])
             .with_step_dt(STEP_SECONDS)
             .allow_missing_glyphs();
-        let mut harness = super::startup::start(builder, move |creation| {
-            ReviewApp::new(creation, paths, cv_providers::create_provider)
-        });
-        harness.state_mut().settings.cli_tools = Some(CliTools::default());
-        harness
+        app_with(builder, self.paths.clone(), cv_providers::create_provider)
     }
 
     fn enter(&self, phase: &str) {
