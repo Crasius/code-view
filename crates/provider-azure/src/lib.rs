@@ -28,7 +28,7 @@
 //!   only). An earlier attempt's records, with their logs, come from that attempt's own timeline,
 //!   read when the user opens it.
 
-// RS-DONT-03: no FFI here; unsafe belongs in the platform/ modules of review-store and review-app.
+// RS-DONT-03: no FFI in this crate.
 #![forbid(unsafe_code)]
 
 mod client;

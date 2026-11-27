@@ -1,9 +1,9 @@
 //! Pull request statuses and the builds of the pull request's merge ref, their timelines and logs.
 
 use reqwest::Method;
-use review_core::{PipelineJob, PipelineRun, ProviderError, RerunAction, RerunKind, Result};
+use review_core::{PipelineJob, PipelineRun, ProviderError, RerunAction, RerunKind, Result, http};
 use serde_json::json;
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::io::AsyncWrite;
 
 use crate::client::{Client, RepoKey};
 use crate::dto::ValueList;
@@ -127,10 +127,5 @@ pub(crate) async fn download_log(
     let key = RepoKey::parse(repo)?;
     let url = client.project_api(key, &format!("build/builds/{build_id}/logs/{log}"));
     let request = client.request(Method::GET, &url).header(reqwest::header::ACCEPT, "text/plain");
-    let mut response = client.send(request).await?;
-    while let Some(chunk) = response.chunk().await? {
-        sink.write_all(&chunk).await?;
-    }
-    sink.flush().await?;
-    Ok(())
+    http::copy_body(client.send(request).await?, sink).await
 }

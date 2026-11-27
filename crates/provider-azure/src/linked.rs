@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 
 use reqwest::Method;
-use review_core::{ItemKind, ItemRef, LinkedItem, LinkedState, PullRequestState, Result};
+use review_core::{ItemKind, ItemRef, LinkedItem, LinkedState, Result};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -187,12 +187,8 @@ fn pull_request_item(
 ) -> LinkedItem {
     let summary = pull_request
         .to_summary(organization, |key, number| client.pull_request_web_url(key, number));
-    let (state, label) = match state_from_ado(&pull_request.status) {
-        PullRequestState::Merged => (LinkedState::Merged, "Merged"),
-        PullRequestState::Closed => (LinkedState::Closed, "Abandoned"),
-        PullRequestState::Open if pull_request.is_draft => (LinkedState::Draft, "Draft"),
-        PullRequestState::Open => (LinkedState::Open, "Active"),
-    };
+    let (state, label) =
+        LinkedState::of_pull_request(state_from_ado(&pull_request.status), pull_request.is_draft);
     LinkedItem {
         reference,
         kind: ItemKind::PullRequest,
