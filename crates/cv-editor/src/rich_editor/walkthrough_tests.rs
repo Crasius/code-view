@@ -180,6 +180,19 @@ fn a_refused_tab_leaves_undo_to_the_last_real_edit() {
     assert_eq!(harness.state().text, "- one", "the redo survives a refused Tab");
 }
 
+/// A refused Tab still ends the typing group, as a caret move does: the text typed after it
+/// undoes on its own.
+#[test]
+fn a_refused_tab_ends_the_typing_group() {
+    let mut harness = harness("", ProviderKind::GitHub);
+    type_text(&mut harness, "- one");
+    press(&mut harness, Modifiers::NONE, Key::Tab);
+    type_text(&mut harness, "two");
+    assert_eq!(harness.state().text, "- onetwo");
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert_eq!(harness.state().text, "- one", "Ctrl+Z undoes only the text typed after the Tab");
+}
+
 /// Tab takes the mention list's pick (as Enter does) in a paragraph too, where Tab otherwise moves
 /// the focus on: the text keeps the focus and the next words land after the mention.
 #[test]

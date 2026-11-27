@@ -201,18 +201,24 @@ fn insert_block(text: &mut String, selection: Selection, block: &str) -> Range<u
 }
 
 /// Puts a fence tagged `tag` around `body` on lines of its own in place of the selection.
-/// Returns the char range of `body` in the new text.
-fn fence(text: &mut String, selection: Selection, tag: &str, body: &str) -> Range<usize> {
+/// Returns the char ranges of the whole fenced block and of `body` in the new text.
+fn fence(
+    text: &mut String,
+    selection: Selection,
+    tag: &str,
+    body: &str,
+) -> (Range<usize>, Range<usize>) {
     let inserted = insert_block(text, selection, &format!("```{tag}\n{body}\n```"));
     let body_start = inserted.start + char_len("```") + char_len(tag) + 1;
-    body_start..body_start + char_len(body)
+    let body = body_start..body_start + char_len(body);
+    (inserted, body)
 }
 
 /// A fenced code block around the selection (or an empty line, with the caret on it).
 fn code_block(text: &mut String, selection: Selection) -> Selection {
     let Range { start, end } = byte_range(text, selection);
     let code = text[start..end].trim_end_matches('\n').to_owned();
-    let body = fence(text, selection, "", &code);
+    let (_, body) = fence(text, selection, "", &code);
     Selection { start: body.start, end: body.end }
 }
 
@@ -223,15 +229,14 @@ pub fn fenced_paste(
     code: &str,
     language: &str,
 ) -> Selection {
-    let body = fence(text, selection, language, code.trim_end_matches(['\n', '\r']));
-    let after = body.end + char_len("\n```") + 1;
-    Selection::caret(after.min(char_len(text)))
+    let (inserted, _) = fence(text, selection, language, code.trim_end_matches(['\n', '\r']));
+    Selection::caret((inserted.end + 1).min(char_len(text)))
 }
 
 /// A ```` ```suggestion ```` block holding `lines`, with the caret on its first line so the reviewer
 /// can start editing the proposed code right away.
 pub fn suggestion(text: &mut String, selection: Selection, lines: &str) -> Selection {
-    let body = fence(text, selection, "suggestion", lines.trim_end_matches(['\n', '\r']));
+    let (_, body) = fence(text, selection, "suggestion", lines.trim_end_matches(['\n', '\r']));
     Selection { start: body.start, end: body.end }
 }
 

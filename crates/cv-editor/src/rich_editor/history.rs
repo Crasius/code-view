@@ -43,7 +43,8 @@ pub struct History {
 }
 
 impl History {
-    /// Call before applying an edit to `doc`.
+    /// Records an edit: `doc` and `selection` are the state before it. Call it only when the edit
+    /// changed something; a refused command calls `break_group` instead.
     pub fn record(
         &mut self,
         doc: &Document,

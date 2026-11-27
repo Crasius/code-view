@@ -192,6 +192,8 @@ fn run_one(state: &mut State, context: &CommandContext<'_>, command: Command, ra
             if structure::toggle_task(&mut state.doc, index) {
                 state.history.record(&before.0, before.1, EditKind::Other, index, context.now);
                 state.changed();
+            } else {
+                state.history.break_group();
             }
         }
         Command::Undo => {
@@ -328,6 +330,8 @@ fn indent(state: &mut State, context: &CommandContext<'_>, outdent: bool) {
     if moved {
         state.history.record(&before.0, before.1, EditKind::Other, first, context.now);
         state.changed();
+    } else {
+        state.history.break_group();
     }
 }
 
@@ -346,6 +350,8 @@ fn toggle_mark(state: &mut State, context: &CommandContext<'_>, mark: Mark) {
         let block = state.selection.head.block;
         state.history.record(&before.0, before.1, EditKind::Other, block, context.now);
         state.changed();
+    } else {
+        state.history.break_group();
     }
 }
 
