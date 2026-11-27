@@ -5,14 +5,12 @@
 //! file sits in a scratch folder. `cargo test -p cv-settings browser_extension_walkthrough`
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use cv_runtime::route::Navigator;
 use cv_services::Services;
 use cv_shell::browser::registration::{KeyStore, MemoryKeys, Registry};
 use cv_shell::browser::{self, HOST_NAME};
-use cv_testkit::Clicks;
-use cv_testkit::ScratchDir;
+use cv_testkit::{Clicks, ScratchDir, poll_until};
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -23,7 +21,6 @@ use super::BrowserExtension;
 use crate::settings::SettingsPage;
 use crate::settings::category::Category;
 
-const TIMEOUT: Duration = Duration::from_secs(30);
 const CHROME_KEY: &str = r"Software\Google\Chrome\NativeMessagingHosts\de.crasius.codeview";
 const EDGE_KEY: &str = r"Software\Microsoft\Edge\NativeMessagingHosts\de.crasius.codeview";
 
@@ -71,23 +68,6 @@ fn has_button(harness: &Harness<'_, Shown>, label: &str) -> bool {
     harness.query_by_role_and_label(Role::Button, label).is_some()
 }
 
-fn wait_for(
-    harness: &mut Harness<'_, Shown>,
-    what: &str,
-    is_done: impl Fn(&Harness<'_, Shown>) -> bool,
-) {
-    let started = Instant::now();
-    loop {
-        harness.step();
-        if is_done(harness) {
-            harness.run_steps(3);
-            return;
-        }
-        assert!(started.elapsed() < TIMEOUT, "timed out waiting for {what}");
-        cv_testkit::let_threads_run(Duration::from_millis(10));
-    }
-}
-
 #[test]
 fn browser_extension_walkthrough_updates_unregisters_and_opens_the_folder() {
     let scratch = ScratchDir::new("settings-browser-extension");
@@ -102,15 +82,17 @@ fn browser_extension_walkthrough_updates_unregisters_and_opens_the_folder() {
     let mut harness = harness(paths.clone(), registry);
 
     assert!(has(&harness, "Browser extension"), "the row in Links");
-    wait_for(&mut harness, "the status", |harness| {
-        has(harness, "Registered for another copy of Code View")
+    poll_until("the status", || {
+        harness.step();
+        has(&harness, "Registered for another copy of Code View")
     });
     assert!(has_button(&harness, "Update") && has_button(&harness, "Unregister"));
     assert!(!has_button(&harness, "Register"));
 
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Update").rect());
-    wait_for(&mut harness, "the registration", |harness| {
-        has(harness, "Registered for Chrome and Edge")
+    poll_until("the registration", || {
+        harness.step();
+        has(&harness, "Registered for Chrome and Edge")
     });
     let exe = std::env::current_exe().expect("test binary");
     let text = std::fs::read_to_string(&manifest).expect("the manifest");
@@ -132,7 +114,10 @@ fn browser_extension_walkthrough_updates_unregisters_and_opens_the_folder() {
     assert!(has(&harness, "Load unpacked"), "the one-line instruction");
 
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Unregister").rect());
-    wait_for(&mut harness, "the unregistration", |harness| has(harness, "Not registered"));
+    poll_until("the unregistration", || {
+        harness.step();
+        has(&harness, "Not registered")
+    });
     assert!(has_button(&harness, "Register") && !has_button(&harness, "Unregister"));
     // The rows are as tall as their content: they once each took all the height left below them,
     // which pushed the buttons a screen apart.
@@ -153,7 +138,8 @@ fn browser_extension_walkthrough_updates_unregisters_and_opens_the_folder() {
 
     std::fs::remove_dir_all(&unpacked).expect("remove the unpacked extension");
     harness.click_at(harness.get_by_role_and_label(Role::Button, "Open extension folder").rect());
-    wait_for(&mut harness, "the folder", |harness| {
+    poll_until("the folder", || {
+        harness.step();
         cv_runtime::toasts::opened_folder(&harness.ctx).is_some()
     });
     assert_eq!(cv_runtime::toasts::opened_folder(&harness.ctx), Some(unpacked.clone()));
