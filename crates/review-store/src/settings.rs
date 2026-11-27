@@ -147,6 +147,11 @@ pub struct ThreadFilters {
     pub mine: bool,
 }
 
+impl ThreadFilters {
+    /// No filter: every thread is listed.
+    pub const ALL: Self = Self { active: false, resolved: false, unread: false, mine: false };
+}
+
 impl Default for ThreadFilters {
     fn default() -> Self {
         Self { active: true, resolved: false, unread: false, mine: false }

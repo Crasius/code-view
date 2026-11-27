@@ -29,6 +29,9 @@ pub struct ConnectionStore {
     file: PathBuf,
     vault: TokenVault,
     connections: Vec<Connection>,
+    /// Counts the changes saved since the store was made, so a view keyed on it notices an edit
+    /// that leaves the number of connections as it was.
+    revision: u64,
 }
 
 impl ConnectionStore {
@@ -44,11 +47,22 @@ impl ConnectionStore {
             .into_iter()
             .map(|stored| into_connection(stored, vault))
             .collect::<io::Result<Vec<_>>>()?;
-        Ok(Self { file, vault, connections })
+        Ok(Self { file, vault, connections, revision: 0 })
+    }
+
+    /// A store with no connections that saves to `file` once a connection is added. Making it
+    /// writes nothing, so a `file` that could not be read stays as it is until the user acts.
+    pub fn empty(file: PathBuf, vault: TokenVault) -> Self {
+        Self { file, vault, connections: Vec::new(), revision: 0 }
     }
 
     pub fn all(&self) -> &[Connection] {
         &self.connections
+    }
+
+    /// Starts at 0 and grows by one with every change the store saves.
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     pub fn find(&self, id: &str) -> Option<&Connection> {
@@ -63,13 +77,16 @@ impl ConnectionStore {
             Some(existing) => *existing = connection,
             None => self.connections.push(connection),
         }
-        self.save().inspect_err(|_| self.connections = before)
+        self.save().inspect_err(|_| self.connections = before)?;
+        self.revision += 1;
+        Ok(())
     }
 
     pub fn remove(&mut self, id: &str) -> io::Result<()> {
         let before = self.connections.clone();
         self.connections.retain(|connection| connection.id != id);
         self.save().inspect_err(|_| self.connections = before)?;
+        self.revision += 1;
         self.vault.forget(id)
     }
 
@@ -200,11 +217,48 @@ mod tests {
         let error = store.upsert(work("gh-1")).unwrap_err();
         assert_eq!(VaultProblem::of(&error), Some(problem));
         assert!(store.all().is_empty(), "the refused connection is not kept");
+        assert_eq!(store.revision(), 0, "a refused save is no change");
         assert_eq!(store.next_id(ProviderKind::GitHub), "gh-1");
 
         store.upsert(Connection { token: None, ..work("gh-1") }).unwrap();
         let reloaded = ConnectionStore::open(&paths).unwrap();
         assert_eq!(reloaded.all().len(), 1);
         assert_eq!(reloaded.find("gh-1").unwrap().token(), None);
+    }
+
+    #[test]
+    fn every_saved_change_raises_the_revision_and_a_read_does_not() {
+        let root = TestDir::new("revision");
+        let paths = AppPaths::new(root.path().join("config"), root.path().join("cache"));
+        let mut store = ConnectionStore::open(&paths).unwrap();
+        assert_eq!(store.revision(), 0);
+
+        store.upsert(work("gh-1")).unwrap();
+        assert_eq!(store.revision(), 1, "an added connection");
+        store.upsert(Connection { name: "Renamed".into(), ..work("gh-1") }).unwrap();
+        assert_eq!(store.all().len(), 1);
+        assert_eq!(store.revision(), 2, "an edit that keeps the count");
+
+        assert_eq!(store.find("gh-1").unwrap().name, "Renamed");
+        assert_eq!(store.next_id(ProviderKind::GitHub), "gh-2");
+        assert_eq!(store.revision(), 2, "reads change nothing");
+
+        store.remove("gh-1").unwrap();
+        assert_eq!(store.revision(), 3, "a removed connection");
+    }
+
+    #[test]
+    fn an_empty_store_leaves_the_file_until_a_connection_is_saved() {
+        let root = TestDir::new("empty-store");
+        let file = root.path().join("connections.json");
+        std::fs::write(&file, "not json").unwrap();
+
+        let mut store = ConnectionStore::empty(file.clone(), TokenVault::File);
+        assert_eq!(store.all(), []);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "not json", "making it writes nothing");
+
+        store.upsert(work("gh-1")).unwrap();
+        let reloaded = ConnectionStore::load(file, TokenVault::File).unwrap();
+        assert_eq!(reloaded.find("gh-1").unwrap().token(), Some("sample-secret"));
     }
 }

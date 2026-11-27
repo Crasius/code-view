@@ -26,6 +26,7 @@ pub use assistant::chats::{
     TurnKind, agent_checkouts_dir, chats_dir,
 };
 pub use assistant::settings::AssistantSettings;
+pub use atomic_file::write_bytes;
 pub use cold_cache::{BUDGET_BYTES as COLD_CACHE_BUDGET_BYTES, ColdCache};
 pub use connections::ConnectionStore;
 pub use log_file::LogFile;
