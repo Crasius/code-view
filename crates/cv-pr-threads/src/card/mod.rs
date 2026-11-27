@@ -193,6 +193,12 @@ fn paint_bar(ui: &Ui, card: Rect, color: Color32) {
     ui.painter().rect_filled(bar, CornerRadius { nw: radius, sw: radius, ne: 0, se: 0 }, color);
 }
 
+/// The thread on the pull request's page, once the page and the platform are known.
+fn thread_url(threads: &ThreadsUi, thread: &ReviewThread) -> Option<String> {
+    let page = threads.context.web_url.as_deref()?;
+    links::thread_url(threads.edits.provider()?, page, thread)
+}
+
 fn hairline(ui: &mut Ui, palette: &Palette) {
     let y = ui.cursor().top();
     ui.painter().hline(ui.max_rect().x_range(), y + 0.5, Stroke::new(1.0, palette.border));
@@ -217,11 +223,7 @@ fn header(
     event: &mut Option<ThreadEvent>,
 ) {
     let palette = theme::palette(ui.ctx());
-    let url = threads
-        .context
-        .web_url
-        .as_deref()
-        .and_then(|page| links::thread_url(threads.context.platform, page, thread));
+    let url = thread_url(threads, thread);
     section(ui, Margin { left: 14, right: 8, top: 7, bottom: 7 }, |ui| {
         ui.allocate_ui_with_layout(
             vec2(ui.available_width(), buttons::SUBTLE_HEIGHT),
@@ -467,11 +469,7 @@ fn outdated_note(ui: &mut Ui, thread: &ReviewThread, threads: &ThreadsUi) -> boo
     let palette = theme::palette(ui.ctx());
     let line =
         thread.anchor.as_ref().map_or_else(|| "its line".to_owned(), suggestion::lines_label);
-    let url = threads
-        .context
-        .web_url
-        .as_deref()
-        .and_then(|page| links::thread_url(threads.context.platform, page, thread));
+    let url = thread_url(threads, thread);
     let mut show_origin = false;
     section(ui, Margin::symmetric(14, 10), |ui| {
         ui.horizontal_wrapped(|ui| {

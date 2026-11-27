@@ -219,6 +219,12 @@ pub trait Provider: Send + Sync {
         CommentActions::NONE
     }
 
+    /// What to append to the pull request's page URL to reach `thread`: a fragment
+    /// (`#note_7`) or a query (`?discussionId=7`). `None` when the platform has no such link.
+    fn thread_page_suffix(&self, _thread: &ReviewThread) -> Option<String> {
+        None
+    }
+
     /// Replaces the body of comment `comment_id` in thread `thread_id`; returns the comment as the
     /// platform stored it. Needs a token. The default refuses.
     async fn edit_comment(

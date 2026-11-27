@@ -216,6 +216,10 @@ impl Provider for GitHubProvider {
         comment_edits::actions(thread)
     }
 
+    fn thread_page_suffix(&self, thread: &ReviewThread) -> Option<String> {
+        mapping::thread_id::page_suffix(thread)
+    }
+
     async fn edit_comment(
         &self,
         repo: &str,

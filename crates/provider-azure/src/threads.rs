@@ -111,6 +111,11 @@ pub(crate) fn comment_actions(thread: &ReviewThread) -> CommentActions {
     if thread.is_system { CommentActions::NONE } else { CommentActions::EDIT_AND_DELETE }
 }
 
+/// The pull request page's query that opens the thread; a thread without comments has none.
+pub(crate) fn page_suffix(thread: &ReviewThread) -> Option<String> {
+    thread.comments.first().map(|_| format!("?discussionId={}", thread.id))
+}
+
 pub(crate) async fn edit_comment(
     client: &Client,
     repo: &str,
@@ -159,4 +164,40 @@ fn parse_thread_id(thread_id: &str) -> Result<u64> {
     thread_id.parse().map_err(|_| {
         ProviderError::Local(format!("'{thread_id}' is not an Azure DevOps thread id."))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use review_core::{ReviewThread, ThreadComment, ThreadStatus, UserIdentity};
+
+    use super::page_suffix;
+
+    fn thread(id: &str, comment_ids: &[&str]) -> ReviewThread {
+        let comment = |comment_id: &&str| ThreadComment {
+            id: (*comment_id).to_owned(),
+            author: UserIdentity::default(),
+            body: String::new(),
+            created_at: time::OffsetDateTime::UNIX_EPOCH,
+            updated_at: None,
+        };
+        ReviewThread {
+            id: id.to_owned(),
+            status: ThreadStatus::Active,
+            anchor: None,
+            is_outdated: false,
+            origin: None,
+            is_system: false,
+            can_reply: true,
+            can_resolve: true,
+            comments: comment_ids.iter().map(comment).collect(),
+        }
+    }
+
+    #[test]
+    fn opens_the_thread_by_its_id() {
+        let cases = [("17", &["1"][..], Some("?discussionId=17")), ("17", &[][..], None)];
+        for (id, comment_ids, expected) in cases {
+            assert_eq!(page_suffix(&thread(id, comment_ids)).as_deref(), expected, "{id}");
+        }
+    }
 }
