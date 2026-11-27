@@ -10,7 +10,7 @@ This page is the maintainer's runbook. Building on your own machine is on the pl
 2. When that commit's pipeline is green, tag it and push the tag: `git tag vX.Y.Z <commit>`, `git push origin vX.Y.Z`.
 3. The tag's pipeline runs the checks and builds again, then job `creative-downloads` publishes. Its artifacts `publish.json` and `release-notes.md` show what went out.
 
-The tag must equal the version in `Cargo.toml`: every build job stops otherwise (`ci/build-release.sh`). Only a protected tag publishes; `v*` tags are protected, so only Maintainers can create one. The release notes are the commit subjects since the previous tag (`ci/release-notes.sh`).
+The tag must equal the version in `Cargo.toml`: every build job stops otherwise (`ci/build-release.sh`). Only a protected tag publishes; `v*` tags are protected, so only Maintainers can create one. The release notes are the commit subjects since the previous tag; the first tag of the public history has no list and says so (`ci/release-notes.sh`).
 
 ## Pipelines
 
@@ -116,7 +116,7 @@ The jobs run on the GitLab instance's shared runner, as pods of the Kubernetes e
 
 ## Secret scan
 
-Job `secret-scan` reads the full history with gitleaks. `.gitleaksignore` names the findings that are no secrets, each by commit, file, rule and line, so a new finding still fails the job. A finding stays in the history: a token-shaped test value that moves to another file is a new one, so test tokens stay shorter than a real token.
+Job `secret-scan` reads the full history with gitleaks. `.gitleaksignore` names the findings that are no secrets, each by commit, file, rule and line, so a new finding still fails the job. A finding stays in the history, and a commit that adds the line of a token-shaped test value again, moved within its file or to another, makes a new one; so test tokens stay shorter than a real token.
 
 ## Public mirror
 
