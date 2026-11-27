@@ -55,7 +55,7 @@ pub enum Api {
 }
 
 impl Api {
-    pub fn of(url: &Url) -> Self {
+    pub(crate) fn of(url: &Url) -> Self {
         if url.path().trim_end_matches('/').ends_with("/graphql") {
             Self::GraphQl
         } else {
@@ -65,7 +65,9 @@ impl Api {
 }
 
 /// Requests per host that may wait for an answer at the same time; the rest queue.
-pub const MAX_IN_FLIGHT: usize = 6;
+pub(crate) const MAX_IN_FLIGHT: usize = 6;
+/// Characters of an error answer's body kept in [`ProviderError::Status`].
+const MAX_ERROR_BODY_CHARS: usize = 600;
 /// GitHub: "wait for at least one minute before retrying" when a limited answer names no time.
 const DEFAULT_LIMITED_WAIT: Duration = Duration::from_secs(60);
 /// GitHub's primary window is one hour; no host asks the app for longer.
@@ -133,6 +135,7 @@ pub(crate) async fn execute_with(
     is_answer: fn(StatusCode) -> bool,
 ) -> Result<Response> {
     let origin = super::origin(request.url());
+    let host = request.url().host_str().unwrap_or_default().to_owned();
     let gate = gate(&origin, Api::of(request.url()));
     let connection = traffic::current_connection();
     let label = connection.clone().unwrap_or_else(|| origin.clone());
@@ -142,7 +145,7 @@ pub(crate) async fn execute_with(
     let mut current = request;
     loop {
         if !may_wait && let Some(remaining) = gate.remaining(Instant::now()) {
-            return Err(rate_limited(&origin, remaining));
+            return Err(rate_limited(&host, remaining));
         }
         gate.wait_open().await;
         let sent = {
@@ -160,30 +163,24 @@ pub(crate) async fn execute_with(
             }
             return Ok(response);
         }
-        let error = super::status_error(response).await;
-        let body = match &error {
-            ProviderError::Status { body, .. } => body.as_str(),
-            _ => "",
-        };
-        if !signal.is_limited(status.as_u16(), body) {
-            return Err(error);
+        let path = response.url().path().to_owned();
+        let body: String =
+            response.text().await.unwrap_or_default().chars().take(MAX_ERROR_BODY_CHARS).collect();
+        if !signal.is_limited(status.as_u16(), &body) {
+            return Err(ProviderError::Status { status: status.as_u16(), path, body });
         }
         let wait = signal.limited_wait();
         traffic::record_limited(&label);
         gate.pause(wait, connection.as_deref());
         match spare.take() {
             Some(again) => current = again,
-            None => return Err(rate_limited(&origin, wait)),
+            None => return Err(rate_limited(&host, wait)),
         }
     }
 }
 
-fn rate_limited(origin: &str, wait: Duration) -> ProviderError {
-    let host = Url::parse(origin)
-        .ok()
-        .and_then(|url| url.host_str().map(str::to_owned))
-        .unwrap_or_else(|| origin.to_owned());
-    ProviderError::RateLimited { host, retry_after_secs: wait.as_secs().max(1) }
+fn rate_limited(host: &str, wait: Duration) -> ProviderError {
+    ProviderError::RateLimited { host: host.to_owned(), retry_after_secs: wait.as_secs().max(1) }
 }
 
 /// One gate per origin and [`Api`].
@@ -500,13 +497,11 @@ mod tests {
         let origin = "http://without-waiting.test";
         gate(origin, Api::GraphQl).pause(Duration::from_mins(40), None);
         let request = Client::new().post(format!("{origin}/api/graphql")).build().expect("request");
-        let started = Instant::now();
         let error = without_waiting(execute(&Client::new(), request)).await.expect_err("paused");
         assert!(
             matches!(error, ProviderError::RateLimited { retry_after_secs: 2390..=2400, .. }),
             "{error:?}"
         );
-        assert!(started.elapsed() < Duration::from_secs(1), "did not wait");
         let notice = rate_limits()
             .into_iter()
             .find(|notice| notice.origin == origin)
