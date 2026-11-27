@@ -17,6 +17,8 @@ doctest = false
 # Test probes other crates' tests read (the Windows caption's hit-test regions, the long press,
 # every file hue). Enabled only from [dev-dependencies] and from the test-support features above.
 test-support = []
+# Only the frame pacing probe's wgpu mode (examples/frame_pacing.rs).
+wgpu = ["eframe/wgpu"]
 
 [dependencies]
 review-store.workspace = true
@@ -58,7 +60,4 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
-# The frame pacing probe (examples/frame_pacing.rs) compares glow with wgpu (DX12/Vulkan); the app
-# itself ships glow only.
-eframe = { workspace = true, features = ["wgpu"] }
 egui_kittest = { workspace = true, features = ["eframe"] }
