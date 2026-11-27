@@ -32,6 +32,8 @@ mod tab;
 #[cfg(test)]
 mod threads_shots;
 
+#[cfg(any(test, feature = "test-support"))]
+pub use self::tab::probe;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -72,11 +74,10 @@ use cv_services::Services;
 pub struct FilesTab {
     viewed: ViewedMarks,
     tree: FileTree,
-    /// The open file. It, the diffs, the view and the preview are `pub` for the page's walkthroughs.
-    pub selected_path: Option<String>,
-    pub diffs: FileDiffs,
-    pub view: DiffView,
-    pub preview: Preview,
+    selected_path: Option<String>,
+    diffs: FileDiffs,
+    view: DiffView,
+    preview: Preview,
     /// The file of the thread the user jumped to, opened once the files show.
     pending_reveal: Option<String>,
     download: Download,
@@ -730,7 +731,6 @@ impl FilesTab {
         self.diffs.load_ahead(env.session, env.services, files, open, &self.tree, &self.preview);
     }
 
-    /// The open file's index in `files`.
     fn selected_index(&self, files: &[ChangedFile]) -> Option<usize> {
         files.iter().position(|file| self.selected_path.as_ref() == Some(&file.path))
     }

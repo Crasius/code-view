@@ -26,6 +26,7 @@ use review_store::{DiffLayout, FilesStart, PullRequestStart};
 
 use crate::PullRequestPage;
 use crate::page_harness::PageApp;
+use cv_pr_files::probe;
 use cv_pr_session::actions::Refresh;
 use cv_pr_threads::samples;
 use cv_runtime::route::{PullRequestKey, PullRequestTab as Tab};
@@ -308,9 +309,10 @@ impl App {
             return false;
         };
         let files = &page.files;
-        let is_shown = match files.selected_path.as_deref() {
-            Some(path) if files.preview.shows_rendered(path) => !files.preview.is_loading(),
-            _ => files.diffs.coloring_is_done(),
+        let preview = probe::preview(files);
+        let is_shown = match probe::selected_path(files) {
+            Some(path) if preview.shows_rendered(path) => !preview.is_loading(),
+            _ => probe::coloring_is_done(files),
         };
         !session.detail.is_loading()
             && !session.threads.is_loading()
@@ -337,9 +339,9 @@ impl App {
             session.files_fast.is_loading(),
             session.files_detailed.is_loading(),
             session.commits.is_loading(),
-            page.files.diffs.coloring_is_done(),
+            probe::coloring_is_done(&page.files),
             self.shows_diff(),
-            page.files.selected_path,
+            probe::selected_path(&page.files),
             page.live.describe(),
         )
     }
@@ -414,10 +416,10 @@ impl App {
     fn place(&self) -> Place {
         let files = &self.page().files;
         Place {
-            selected: files.selected_path.clone(),
+            selected: probe::selected_path(files).map(str::to_owned),
             top_line: focus_mode::top_line(&self.kit.harness.ctx, Surface::Files),
-            view: files.view.kept_place(),
-            diff: files.diffs.ready().map_or(0, |diff| Arc::as_ptr(diff) as usize),
+            view: probe::kept_place(files),
+            diff: probe::ready_diff(files).map_or(0, |diff| Arc::as_ptr(diff) as usize),
             diff_rect: self.kit.harness.get_by_label_contains(&format!("Diff of {BIG}")).rect(),
             header_hidden: self.page().header_reveal.drawn_hidden(),
             tree: self.first_tree_row(),
@@ -429,9 +431,9 @@ impl App {
         let session = page.session.as_ref().expect("the pull request opened");
         let guide = session.files().and_then(|files| files.iter().find(|file| file.path == GUIDE));
         (
-            page.files.selected_path.clone(),
-            guide.and_then(|file| page.files.preview.shown(file)),
-            page.files.preview.top_line(),
+            probe::selected_path(&page.files).map(str::to_owned),
+            guide.and_then(|file| probe::preview(&page.files).shown(file)),
+            probe::preview(&page.files).top_line(),
             page.header_reveal.drawn_hidden(),
             self.first_tree_row(),
         )
@@ -530,7 +532,10 @@ impl App {
         let page = self.page();
         let session = page.session.as_ref().expect("the pull request opened");
         assert!(session.files().is_some(), "{what}: the file list went away");
-        assert!(page.files.diffs.ready().is_some(), "{what}: the open file's diff is loading");
+        assert!(
+            probe::ready_diff(&page.files).is_some(),
+            "{what}: the open file's diff is loading"
+        );
         assert!(self.shows_diff(), "{what}: the diff of {BIG} is not on screen");
         assert_eq!(&self.place(), place, "{what} moved the Files tab");
     }
