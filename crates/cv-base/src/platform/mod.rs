@@ -9,9 +9,9 @@
 //!   user's terminal running a command, for the assistant's CLIs), [`open_shell`] and
 //!   [`TERMINALS`] (a terminal in a checkout's folder), [`EXAMPLE_CLONE`] (a clone's folder for
 //!   examples).
-//! - Text: [`font_sources`] (the system's UI, code, emoji and symbol fonts) and
-//!   [`register_chrome_fonts`] (fonts the window chrome draws with).
-//! - Motion: [`prefers_reduced_motion`].
+//! - Text, for cv-base's theme only: [`font_sources`] (the system's UI, code, emoji and symbol
+//!   fonts) and [`register_chrome_fonts`] (fonts the window chrome draws with).
+//! - Motion, for cv-base's theme only: [`prefers_reduced_motion`].
 //! - The window: [`integrate_title_bar`] and [`Caption`] (the app's bar as the window's title bar),
 //!   [`PlacedWindow`] (restoring the window's placement), [`FrameHold`] (the frame rate limit's
 //!   wait), [`monitor_refresh_hz`], [`is_window_active`] (whether refreshes and animations run).
