@@ -21,7 +21,7 @@ impl StorageUsage {
     }
 }
 
-pub fn measure(paths: &AppPaths) -> StorageUsage {
+pub(crate) fn measure(paths: &AppPaths) -> StorageUsage {
     let mut usage = StorageUsage::default();
     let Ok(children) = std::fs::read_dir(paths.cache_dir()) else {
         return usage;
@@ -48,7 +48,7 @@ pub fn measure(paths: &AppPaths) -> StorageUsage {
 }
 
 /// Bytes of all files under `path`, not following links.
-pub fn tree_size(path: &Path) -> u64 {
+pub(crate) fn tree_size(path: &Path) -> u64 {
     let Ok(metadata) = std::fs::symlink_metadata(path) else {
         return 0;
     };

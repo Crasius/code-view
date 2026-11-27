@@ -466,13 +466,4 @@ mod tests {
         started.expect("ran").expect("answer");
         waited.expect("ran").expect("answer");
     }
-
-    /// A finished write moves the number a walkthrough reads to tell whether its sharing held;
-    /// writes of other tests only move it further.
-    #[test]
-    fn a_finished_write_moves_the_write_epoch() {
-        let before = super::write_epoch();
-        drop(Cache::shared().write());
-        assert!(super::write_epoch() > before);
-    }
 }

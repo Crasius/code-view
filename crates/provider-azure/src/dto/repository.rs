@@ -31,12 +31,12 @@ pub(crate) struct Repository {
 }
 
 impl Repository {
-    pub fn key(&self, organization: &str) -> String {
+    pub(crate) fn key(&self, organization: &str) -> String {
         RepoKey::format(organization, &self.project.name, &self.name)
     }
 
     /// `fallback_web_url` is used when the API omits `webUrl` (older Server versions).
-    pub fn to_info(&self, organization: &str, fallback_web_url: String) -> RepositoryInfo {
+    pub(crate) fn to_info(&self, organization: &str, fallback_web_url: String) -> RepositoryInfo {
         RepositoryInfo {
             key: self.key(organization),
             name: self.name.clone(),

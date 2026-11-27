@@ -150,7 +150,7 @@ impl CheckoutSettings {
     }
 
     /// Drops the per-repository entries of connections that no longer exist.
-    pub fn retain_connections(&mut self, is_known: impl Fn(&str) -> bool) {
+    pub(crate) fn retain_connections(&mut self, is_known: impl Fn(&str) -> bool) {
         let keeps = |key: &String| key.split_once('|').is_some_and(|(id, _)| is_known(id));
         self.pinned_clones.retain(|key, _| keeps(key));
         self.remembered.retain(|key, _| keeps(key));

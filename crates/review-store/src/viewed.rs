@@ -91,12 +91,6 @@ impl ViewedFiles {
         self.stored.files.get(path).is_some_and(|stored| stored == blob_id)
     }
 
-    /// Marks or unmarks `path` and saves; the file is written from the marks in place, without a
-    /// copy of them per click.
-    pub fn set_viewed(&mut self, path: &str, blob_id: &str, is_viewed: bool) -> io::Result<()> {
-        self.set_viewed_many([(path, blob_id)], is_viewed)
-    }
-
     /// Marks or unmarks every (path, blob id) of `files` and saves once, for a whole folder.
     pub fn set_viewed_many<'a>(
         &mut self,
@@ -126,9 +120,9 @@ mod tests {
         let paths = folder.paths();
         let dir = &paths.viewed_dir();
         let mut viewed = ViewedFiles::load(&paths, "gh-1", "gh-1|cli/cli|12").unwrap();
-        viewed.set_viewed("src/a.rs", "blob1", true).unwrap();
-        viewed.set_viewed("src/b.rs", "blob7", true).unwrap();
-        viewed.set_viewed("src/b.rs", "blob7", false).unwrap();
+        viewed.set_viewed_many([("src/a.rs", "blob1")], true).unwrap();
+        viewed.set_viewed_many([("src/b.rs", "blob7")], true).unwrap();
+        viewed.set_viewed_many([("src/b.rs", "blob7")], false).unwrap();
 
         let reloaded = ViewedFiles::load(&paths, "gh-1", "gh-1|cli/cli|12").unwrap();
         assert!(reloaded.is_viewed("src/a.rs", "blob1"));
@@ -165,7 +159,7 @@ mod tests {
         let dir = &paths.viewed_dir();
         let mut viewed = ViewedFiles::load(&paths, "gh-1", "gh-1|cli/cli|5").unwrap();
         assert_eq!(viewed.last_place(), None, "never left anywhere");
-        viewed.set_viewed("src/a.rs", "blob1", true).unwrap();
+        viewed.set_viewed_many([("src/a.rs", "blob1")], true).unwrap();
         let place = LastPlace { tab: PullRequestTab::Files, file: Some("src/b.rs".into()) };
         viewed.set_last_place(place.clone()).unwrap();
         let reloaded = ViewedFiles::load(&paths, "gh-1", "gh-1|cli/cli|5").unwrap();

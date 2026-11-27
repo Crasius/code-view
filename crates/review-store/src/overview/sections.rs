@@ -63,7 +63,7 @@ impl RepositorySections {
     }
 
     /// Drops the closed sections of connections that no longer exist.
-    pub fn retain_connections(&mut self, is_known: impl Fn(&str) -> bool) {
+    pub(crate) fn retain_connections(&mut self, is_known: impl Fn(&str) -> bool) {
         self.collapsed.retain(|key| is_known(&key.connection_id));
     }
 }

@@ -8,22 +8,15 @@ use serde_json::json;
 use wiremock::matchers::{body_partial_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use crate::support::{self, TOKEN};
+use crate::support::{self, REPO, TOKEN};
 
-const REPO: &str = "group/sub/project";
 const MR: &str = "/api/v4/projects/group%2Fsub%2Fproject/merge_requests/7";
 
 #[tokio::test]
 async fn set_auto_merge_sends_the_merge_with_both_auto_merge_names() {
     let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/api/v4/projects/group%2Fsub%2Fproject"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "path_with_namespace": REPO, "name": "project", "web_url": "https://gitlab.example.com/group/sub/project",
-            "http_url_to_repo": "https://gitlab.example.com/group/sub/project.git", "merge_method": "merge", "squash_option": "default_off"
-        })))
-        .mount(&server)
-        .await;
+    let settings = json!({ "merge_method": "merge", "squash_option": "default_off" });
+    support::mount_project(&server, support::project(settings)).await;
     Mock::given(method("PUT"))
         .and(path(format!("{MR}/merge")))
         .and(header("PRIVATE-TOKEN", TOKEN))

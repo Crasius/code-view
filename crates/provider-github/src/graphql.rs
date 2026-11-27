@@ -68,7 +68,7 @@ pub(crate) struct Connection<T> {
 }
 
 impl<T> Connection<T> {
-    pub fn into_nodes(self) -> (PageInfo, Vec<T>) {
+    pub(crate) fn into_nodes(self) -> (PageInfo, Vec<T>) {
         (self.page_info, self.nodes.into_iter().flatten().collect())
     }
 }

@@ -101,9 +101,7 @@ impl GitMirror {
 
         let is_initialized = self.git_dir.join("HEAD").exists();
         if !is_initialized {
-            let init_args: [&std::ffi::OsStr; 3] =
-                ["init".as_ref(), "--bare".as_ref(), "--quiet".as_ref()];
-            GitCommand::new(&self.git_dir, None).run(init_args).await?;
+            GitCommand::new(&self.git_dir, None).run(["init", "--bare", "--quiet"]).await?;
         }
         // The lock's owner before us may have written them all.
         for (name, value) in self.missing_settings(&settings).await {
@@ -566,7 +564,9 @@ fn mirror_dir(cache_root: &Path, clone_url: &str) -> PathBuf {
     cache_root.join(format!("{stem}-{hash:016x}.git"))
 }
 
-/// The repository a clone URL names: without scheme, user, trailing slash and `.git`.
+/// The part of a clone URL a mirror's folder is named after: without scheme, user, trailing slash
+/// and `.git`. Byte-stable on purpose, since it names existing folders; comparing a user's remotes
+/// is [`crate::checkout::remotes::repository_id`].
 fn repository_of(clone_url: &str) -> &str {
     let without_scheme = clone_url.split_once("://").map_or(clone_url, |(_, rest)| rest);
     let without_user = without_scheme.split_once('@').map_or(without_scheme, |(_, rest)| rest);
@@ -587,75 +587,4 @@ fn mirror_dir_name(clone_url: &str) -> String {
 
 #[cfg(test)]
 #[path = "mirror_tests.rs"]
-mod roundtrip;
-
-#[cfg(test)]
-mod tests {
-    use review_core::GitRemote;
-
-    use super::{GitMirror, config_value, mirror_dir_name};
-
-    /// Two pages, or a page and a second app, open the same new mirror at once: every open
-    /// succeeds, git initializes the repository once and the others reuse it.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn concurrent_opens_of_a_new_mirror_initialize_it_once() {
-        let cache =
-            std::env::temp_dir().join(format!("review-git-concurrent-open-{}", std::process::id()));
-        let _stale_folder_may_be_missing = std::fs::remove_dir_all(&cache);
-        let remote = GitRemote {
-            clone_url: "https://127.0.0.1:9/acme/widgets.git".to_owned(),
-            authorization_header: None,
-        };
-        let opens: Vec<_> = (0..8)
-            .map(|_| {
-                let (cache, remote) = (cache.clone(), remote.clone());
-                tokio::spawn(async move { GitMirror::open(&cache, &remote).await })
-            })
-            .collect();
-        let mut git_dirs = Vec::new();
-        for open in opens {
-            let mirror = open.await.expect("the open ran").expect("every open succeeds");
-            git_dirs.push(mirror.git_dir().to_path_buf());
-        }
-
-        let git_dir = &git_dirs[0];
-        assert!(git_dirs.iter().all(|dir| dir == git_dir));
-        let config = std::fs::read_to_string(git_dir.join("config")).expect("config");
-        assert_eq!(config_value(&config, "remote.origin.url"), Some(remote.clone_url.as_str()));
-        assert_eq!(config_value(&config, "remote.origin.partialclonefilter"), Some("blob:none"));
-        // Best effort: a folder left in the temp directory harms nothing.
-        let _cleanup_is_best_effort = std::fs::remove_dir_all(&cache);
-    }
-
-    #[test]
-    fn config_values_read_as_git_writes_them() {
-        let config = "[core]\n\trepositoryformatversion = 1\n\tbare = true\n\
-            [extensions]\n\tpartialClone = origin\n\
-            [remote \"origin\"]\n\turl = https://example.com/a.git\n\turl = https://example.com/b.git\n\
-            [remote \"upstream\"]\n\tpromisor = true\n\
-            [remote \"quoted\"]\n\turl = \"https://example.com/c d\"\n";
-        assert_eq!(config_value(config, "core.repositoryformatversion"), Some("1"));
-        assert_eq!(config_value(config, "extensions.partialclone"), Some("origin"), "any case");
-        assert_eq!(
-            config_value(config, "remote.origin.url"),
-            Some("https://example.com/b.git"),
-            "the last value wins"
-        );
-        assert_eq!(config_value(config, "remote.origin.promisor"), None, "another remote's");
-        assert_eq!(
-            config_value(config, "remote.quoted.url"),
-            None,
-            "quoted values are written again"
-        );
-        assert_eq!(config_value("", "core.bare"), None);
-    }
-
-    #[test]
-    fn mirror_dir_name_is_filesystem_safe() {
-        assert_eq!(
-            mirror_dir_name("https://user@dev.azure.com/org/My Project/_git/repo"),
-            "dev.azure.com_org_My_Project__git_repo.git"
-        );
-        assert_eq!(mirror_dir_name("https://github.com/cli/cli.git"), "github.com_cli_cli.git");
-    }
-}
+mod tests;

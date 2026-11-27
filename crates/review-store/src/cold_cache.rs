@@ -135,16 +135,9 @@ impl ColdCache {
     }
 
     /// Bytes on disk.
-    pub fn size(&self) -> u64 {
+    #[cfg(test)]
+    fn size(&self) -> u64 {
         self.files().iter().map(|file| file.bytes).sum()
-    }
-
-    /// Deletes everything.
-    pub fn clear(&self) -> io::Result<()> {
-        match std::fs::remove_dir_all(&self.root) {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
-            _ => Ok(()),
-        }
     }
 
     /// A file name that stays the same across builds; a collision only costs a miss, since the
@@ -266,7 +259,5 @@ mod tests {
         assert_eq!(cold.read("page", 1, "b"), None, "the least recently used went");
         assert!(cold.read("page", 1, "a").is_some() && cold.read("colors", 1, "c").is_some());
         assert!(cold.size() <= 3_000, "{}", cold.size());
-        cold.clear().unwrap();
-        assert_eq!(cold.size(), 0);
     }
 }

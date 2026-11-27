@@ -13,7 +13,8 @@ pub(crate) fn row_status(
     rollup: Option<StatusCheckRollupDto>,
     review_decision: Option<&str>,
 ) -> RowStatus {
-    let reported = rollup.as_ref().map(|rollup| rollup_state(&rollup.state));
+    let reported =
+        rollup.as_ref().map(|rollup| run_status::from_rollup_state(&rollup.state).into());
     let contexts = rollup.and_then(|rollup| rollup.contexts);
     let total = contexts.as_ref().map_or(0, |contexts| contexts.total_count);
     let mut checks: Vec<Check> = contexts
@@ -41,16 +42,6 @@ fn check(context: ContextDto) -> Option<Check> {
             Some(Check::new(context, run.into()).required(is_required).with_detail(description))
         }
         ContextDto::Other => None,
-    }
-}
-
-/// `StatusCheckRollup.state`: ERROR, EXPECTED, FAILURE, PENDING, SUCCESS.
-fn rollup_state(state: &str) -> CheckState {
-    match state {
-        "SUCCESS" => CheckState::Passed,
-        "FAILURE" | "ERROR" => CheckState::Failed,
-        "PENDING" | "EXPECTED" => CheckState::Pending,
-        _ => CheckState::Neutral,
     }
 }
 

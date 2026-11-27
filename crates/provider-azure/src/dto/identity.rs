@@ -27,7 +27,7 @@ pub(crate) struct IdentityRef {
 }
 
 impl IdentityRef {
-    pub fn to_user(&self) -> UserIdentity {
+    pub(crate) fn to_user(&self) -> UserIdentity {
         let avatar = self
             .links
             .as_ref()
@@ -55,7 +55,7 @@ pub(crate) struct ReviewerRef {
 }
 
 impl ReviewerRef {
-    pub fn to_reviewer(&self) -> Reviewer {
+    pub(crate) fn to_reviewer(&self) -> Reviewer {
         Reviewer {
             identity: self.identity.to_user(),
             vote: vote_from_ado(self.vote),
@@ -101,7 +101,7 @@ pub(crate) struct Identity {
 }
 
 impl Identity {
-    pub fn to_user(&self) -> UserIdentity {
+    pub(crate) fn to_user(&self) -> UserIdentity {
         let property = |name: &str| {
             self.properties.get(name).and_then(PropertyValue::as_text).map(str::to_owned)
         };

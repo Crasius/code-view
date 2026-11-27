@@ -94,7 +94,7 @@ fn grown(size: usize) -> usize {
 }
 
 /// Receives the file list after each counted chunk ([`count`]).
-pub type CountSink<'a> = dyn Fn(&[ChangedFile]) + Send + Sync + 'a;
+pub(crate) type CountSink<'a> = dyn Fn(&[ChangedFile]) + Send + Sync + 'a;
 
 /// Counts the comparison of `base` and `head` as the module doc says, publishing to `publish`;
 /// the files `wanted` names count first.

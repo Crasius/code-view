@@ -4,11 +4,11 @@
 // RS-DONT-03: no FFI in this crate.
 #![forbid(unsafe_code)]
 
-pub mod assistant;
-pub mod connection;
-pub mod error;
+pub(crate) mod assistant;
+pub(crate) mod connection;
+pub(crate) mod error;
 pub mod http;
-pub mod model;
+pub(crate) mod model;
 pub mod provider;
 pub mod setup;
 
@@ -21,4 +21,4 @@ pub use error::{ProviderError, Result};
 // The model is the crate's surface: re-exported whole, like a prelude (RS-READ-08 exempts it).
 pub use model::*;
 pub use provider::{Capabilities, Provider};
-pub use setup::{AccessProblem, AccessReport, Feature, ProblemAction, ScopeCandidate, TokenGuide};
+pub use setup::{AccessProblem, AccessReport, ProblemAction, ScopeCandidate, TokenGuide};

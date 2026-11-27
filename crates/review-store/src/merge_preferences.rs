@@ -98,7 +98,7 @@ impl MergePreferences {
     }
 
     /// Drops what belongs to connections that no longer exist.
-    pub fn retain_connections(&mut self, is_known: impl Fn(&str) -> bool) {
+    pub(crate) fn retain_connections(&mut self, is_known: impl Fn(&str) -> bool) {
         self.repository_favourites.retain(|id, _| is_known(id));
         self.last_used.retain(|id, _| is_known(id));
         self.delete_source_branch.retain(|id, _| is_known(id));

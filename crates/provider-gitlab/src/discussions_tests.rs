@@ -259,3 +259,11 @@ fn links_the_first_note() {
         assert_eq!(page_suffix(&discussion(note_ids)).as_deref(), expected, "{note_ids:?}");
     }
 }
+
+#[test]
+fn system_notes_offer_no_edit_or_delete() {
+    let mut thread = discussion(&[]);
+    assert_eq!(comment_actions(&thread), CommentActions::EDIT_AND_DELETE);
+    thread.is_system = true;
+    assert_eq!(comment_actions(&thread), CommentActions::NONE);
+}

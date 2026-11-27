@@ -24,7 +24,7 @@ pub struct FoundClone {
 /// `ssh://git@github.com/acme/app` and `https://user@github.com/acme/app.git` are alike, and so
 /// are Azure DevOps' SSH (`ssh.dev.azure.com:v3/org/project/repo`) and HTTPS URLs
 /// (`dev.azure.com/org/project/_git/repo`). `None` for something that names no repository.
-pub fn repository_id(url: &str) -> Option<String> {
+pub(crate) fn repository_id(url: &str) -> Option<String> {
     let url = url.trim();
     let (authority, path) = if let Some((_, rest)) = url.split_once("://") {
         rest.split_once('/')?
@@ -52,7 +52,7 @@ pub fn repository_id(url: &str) -> Option<String> {
 }
 
 /// True when both URLs name the same repository ([`repository_id`]).
-pub fn same_repository(first: &str, second: &str) -> bool {
+pub(crate) fn same_repository(first: &str, second: &str) -> bool {
     match (repository_id(first), repository_id(second)) {
         (Some(first), Some(second)) => first.eq_ignore_ascii_case(&second),
         _ => false,
@@ -60,7 +60,7 @@ pub fn same_repository(first: &str, second: &str) -> bool {
 }
 
 /// `url` without user name and password, for a remote that must never carry credentials.
-pub fn without_credentials(url: &str) -> String {
+pub(crate) fn without_credentials(url: &str) -> String {
     let Some((scheme, rest)) = url.split_once("://") else {
         return url.to_owned();
     };
@@ -70,7 +70,7 @@ pub fn without_credentials(url: &str) -> String {
 }
 
 /// The remotes of a git config file: `(name, url)` in the file's order.
-pub fn remotes_in(config: &str) -> Vec<(String, String)> {
+pub(crate) fn remotes_in(config: &str) -> Vec<(String, String)> {
     let mut remotes = Vec::new();
     let mut section: Option<String> = None;
     for line in config.lines().map(str::trim) {

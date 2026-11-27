@@ -192,5 +192,5 @@ async fn reruns_need_a_token() {
     let result =
         provider.rerun(REPO, NUMBER, "run:11", &RerunAction::new(RerunKind::Job, "501")).await;
     assert!(matches!(result, Err(ProviderError::Unsupported(_))), "{result:?}");
-    assert!(server.received_requests().await.unwrap_or_default().is_empty());
+    assert!(server.received_requests().await.expect("recorded").is_empty());
 }

@@ -20,7 +20,7 @@ pub(crate) enum ThreadId<'a> {
 }
 
 impl<'a> ThreadId<'a> {
-    pub fn parse(id: &'a str) -> Option<Self> {
+    pub(crate) fn parse(id: &'a str) -> Option<Self> {
         let numeric =
             |prefix: &str| id.strip_prefix(prefix).and_then(|rest| rest.parse::<u64>().ok());
         if let Some(comment_id) = numeric(REVIEW_COMMENT_PREFIX) {
@@ -36,7 +36,7 @@ impl<'a> ThreadId<'a> {
         is_node_id.then_some(ThreadId::ReviewThread(id))
     }
 
-    pub fn encode(self) -> String {
+    pub(crate) fn encode(self) -> String {
         match self {
             ThreadId::ReviewThread(node_id) => node_id.to_owned(),
             ThreadId::ReviewComment(id) => format!("{REVIEW_COMMENT_PREFIX}{id}"),

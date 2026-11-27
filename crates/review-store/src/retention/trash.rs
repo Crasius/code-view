@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::platform;
 
 #[derive(Clone)]
-pub struct Trash {
+pub(crate) struct Trash {
     dir: PathBuf,
     is_purging: Arc<AtomicBool>,
 }
@@ -19,13 +19,13 @@ pub struct Trash {
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 impl Trash {
-    pub fn new(dir: PathBuf) -> Self {
+    pub(crate) fn new(dir: PathBuf) -> Self {
         Self { dir, is_purging: Arc::new(AtomicBool::new(false)) }
     }
 
     /// Renames `target` into the trash under a unique name. Fails, leaving `target` in place,
     /// when something holds it open (Windows refuses the rename then).
-    pub fn move_in(&self, target: &Path) -> io::Result<()> {
+    pub(crate) fn move_in(&self, target: &Path) -> io::Result<()> {
         std::fs::create_dir_all(&self.dir)?;
         let name = target
             .file_name()
@@ -36,12 +36,12 @@ impl Trash {
         std::fs::rename(target, self.dir.join(format!("{stamp}-{sequence}-{name}")))
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         std::fs::read_dir(&self.dir).map_or(true, |mut entries| entries.next().is_none())
     }
 
     /// Starts the deleting thread unless it runs already. It ends once the trash is empty.
-    pub fn purge_in_background(&self) {
+    pub(crate) fn purge_in_background(&self) {
         if self.is_empty() || self.is_purging.swap(true, Ordering::AcqRel) {
             return;
         }
@@ -66,7 +66,7 @@ impl Trash {
     }
 
     /// Deletes everything in the trash now. Fails on the first item it cannot delete.
-    pub fn purge(&self) -> io::Result<()> {
+    pub(crate) fn purge(&self) -> io::Result<()> {
         let entries = match std::fs::read_dir(&self.dir) {
             Ok(entries) => entries,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -82,7 +82,7 @@ impl Trash {
 /// Removes a file or a directory tree without following links. Git marks pack files read-only
 /// (Windows refuses to delete those), so a refused delete clears the attribute and tries again.
 /// Whatever is already gone counts as removed.
-pub fn remove_tree(path: &Path) -> io::Result<()> {
+pub(crate) fn remove_tree(path: &Path) -> io::Result<()> {
     ignore_missing(remove_existing(path))
 }
 

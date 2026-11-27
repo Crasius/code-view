@@ -1,4 +1,5 @@
-//! End-to-end: a local "remote" repository served over file://, mirrored blob-less, then diffed.
+//! End-to-end tests over a local origin served by file://, and the mirror's config and
+//! folder-name helpers.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -6,6 +7,7 @@ use std::time::{Duration, SystemTime};
 
 use review_core::{FileCategory, GitRemote, ProviderError};
 
+use super::{config_value, mirror_dir_name};
 use crate::test_repo::{Scratch, file_remote, git, numbered_lines, write};
 use crate::{
     ChangeKind, ChangedFile, DiffOptions, EdgeChange, FULL_FILE_CONTEXT, FileDiff, GitEvent,
@@ -528,4 +530,61 @@ async fn clone_urls_that_sanitize_alike_get_their_own_mirrors() {
     assert_eq!(reopened.git_dir(), first.git_dir(), "the first repository keeps its folder");
     let entry = second.file_entry(&flat_head, "README.md").await.unwrap().expect("in the tree");
     assert_eq!(String::from_utf8(second.blob(&entry.oid).await.unwrap()).unwrap(), "flat\n");
+}
+
+/// Two pages, or a page and a second app, open the same new mirror at once: every open succeeds
+/// on the same git dir, which carries the partial-clone settings.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_opens_of_a_new_mirror_share_one_repository() {
+    let scratch = Scratch::new("concurrent-open");
+    let cache = scratch.0.join("cache");
+    let remote = GitRemote {
+        clone_url: "https://127.0.0.1:9/acme/widgets.git".to_owned(),
+        authorization_header: None,
+    };
+    let opens: Vec<_> = (0..8)
+        .map(|_| {
+            let (cache, remote) = (cache.clone(), remote.clone());
+            tokio::spawn(async move { GitMirror::open(&cache, &remote).await })
+        })
+        .collect();
+    let mut git_dirs = Vec::new();
+    for open in opens {
+        let mirror = open.await.expect("the open ran").expect("every open succeeds");
+        git_dirs.push(mirror.git_dir().to_path_buf());
+    }
+
+    let git_dir = &git_dirs[0];
+    assert!(git_dirs.iter().all(|dir| dir == git_dir));
+    let config = std::fs::read_to_string(git_dir.join("config")).expect("config");
+    assert_eq!(config_value(&config, "remote.origin.url"), Some(remote.clone_url.as_str()));
+    assert_eq!(config_value(&config, "remote.origin.partialclonefilter"), Some("blob:none"));
+}
+
+#[test]
+fn config_values_read_as_git_writes_them() {
+    let config = "[core]\n\trepositoryformatversion = 1\n\tbare = true\n\
+        [extensions]\n\tpartialClone = origin\n\
+        [remote \"origin\"]\n\turl = https://example.com/a.git\n\turl = https://example.com/b.git\n\
+        [remote \"upstream\"]\n\tpromisor = true\n\
+        [remote \"quoted\"]\n\turl = \"https://example.com/c d\"\n";
+    assert_eq!(config_value(config, "core.repositoryformatversion"), Some("1"));
+    assert_eq!(config_value(config, "extensions.partialclone"), Some("origin"), "any case");
+    assert_eq!(
+        config_value(config, "remote.origin.url"),
+        Some("https://example.com/b.git"),
+        "the last value wins"
+    );
+    assert_eq!(config_value(config, "remote.origin.promisor"), None, "another remote's");
+    assert_eq!(config_value(config, "remote.quoted.url"), None, "quoted values are written again");
+    assert_eq!(config_value("", "core.bare"), None);
+}
+
+#[test]
+fn mirror_dir_name_is_filesystem_safe() {
+    assert_eq!(
+        mirror_dir_name("https://user@dev.azure.com/org/My Project/_git/repo"),
+        "dev.azure.com_org_My_Project__git_repo.git"
+    );
+    assert_eq!(mirror_dir_name("https://github.com/cli/cli.git"), "github.com_cli_cli.git");
 }

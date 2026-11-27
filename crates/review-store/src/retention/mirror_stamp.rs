@@ -16,7 +16,7 @@ use crate::atomic_file;
 const STAMP_FILE: &str = "review-app-usage.json";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MirrorStamp {
+pub(crate) struct MirrorStamp {
     /// Seconds since the Unix epoch.
     last_used: u64,
     connections: BTreeSet<String>,
@@ -33,28 +33,28 @@ pub struct MirrorUse<'a> {
 }
 
 impl MirrorStamp {
-    pub fn last_used(&self) -> SystemTime {
+    pub(crate) fn last_used(&self) -> SystemTime {
         UNIX_EPOCH + Duration::from_secs(self.last_used)
     }
 
-    pub fn connections(&self) -> &BTreeSet<String> {
+    pub(crate) fn connections(&self) -> &BTreeSet<String> {
         &self.connections
     }
 
     /// Drops connections that no longer exist, with their pull requests; true when any was dropped.
-    pub fn retain_connections(&mut self, is_known: impl Fn(&str) -> bool) -> bool {
+    pub(crate) fn retain_connections(&mut self, is_known: impl Fn(&str) -> bool) -> bool {
         let before = self.connections.len();
         self.connections.retain(|id| is_known(id));
         self.pull_requests.retain(|key, _| key.split('|').next().is_some_and(&is_known));
         self.connections.len() != before
     }
 
-    pub fn has_pull_request(&self, key: &str) -> bool {
+    pub(crate) fn has_pull_request(&self, key: &str) -> bool {
         self.pull_requests.contains_key(key)
     }
 
     /// Forgets `key` and returns the refs only it used (refs another pull request shares stay).
-    pub fn take_pull_request(&mut self, key: &str) -> Vec<String> {
+    pub(crate) fn take_pull_request(&mut self, key: &str) -> Vec<String> {
         let Some(refs) = self.pull_requests.remove(key) else {
             return Vec::new();
         };
@@ -63,7 +63,7 @@ impl MirrorStamp {
             .collect()
     }
 
-    pub fn has_pull_requests(&self) -> bool {
+    pub(crate) fn has_pull_requests(&self) -> bool {
         !self.pull_requests.is_empty()
     }
 }
@@ -73,11 +73,11 @@ fn stamp_path(git_dir: &Path) -> PathBuf {
 }
 
 /// The stamp of a mirror; `None` for mirrors made before stamps existed or with a damaged stamp.
-pub fn read(git_dir: &Path) -> Option<MirrorStamp> {
+pub(crate) fn read(git_dir: &Path) -> Option<MirrorStamp> {
     atomic_file::read_json(&stamp_path(git_dir)).ok().flatten()
 }
 
-pub fn write(git_dir: &Path, stamp: &MirrorStamp) -> io::Result<()> {
+pub(crate) fn write(git_dir: &Path, stamp: &MirrorStamp) -> io::Result<()> {
     atomic_file::write_json(&stamp_path(git_dir), stamp)
 }
 

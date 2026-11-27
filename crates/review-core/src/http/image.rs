@@ -320,8 +320,8 @@ mod tests {
         assert!(error.to_string().contains("private-user-images.githubusercontent.com/1/2-a.png"));
     }
 
-    /// The cause a failed request now carries never spells the address again, so the redaction
-    /// of reqwest's text leaves the signature out of the whole message.
+    /// A failed request's cause never repeats the address, so redacting reqwest's own text keeps
+    /// the signature out of the whole message.
     #[tokio::test]
     async fn the_cause_of_a_failed_request_leaves_the_query_out() {
         let port = crate::error::closed_port();

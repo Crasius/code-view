@@ -24,6 +24,7 @@ use serde_json::json;
 use crate::client::ApiClient;
 use crate::graphql::{Nodes, SchemaGaps};
 use crate::merge_requests::reviews::add_approvers;
+use crate::pipeline_mapping::run_status;
 
 /// Merge requests one query names at most; the reviewers and stages of each stay small.
 const ROWS_PER_QUERY: usize = 50;
@@ -140,14 +141,18 @@ fn row_status(node: MergeRequestNode, web_root: &str) -> RowStatus {
             let detail = format!("{} of {required} {noun}", required - left);
             Check::new("Approvals", state).required(Some(true)).with_detail(Some(detail))
         });
+    // GitLab writes the pipeline's status in upper case, a stage's in lower.
     if let Some(pipeline) = node.head_pipeline {
         let stages: Vec<StageNode> =
             pipeline.stages.map(|stages| stages.into_items().collect()).unwrap_or_default();
         if stages.is_empty() {
-            checks.push(Check::new("Pipeline", status_state(&pipeline.status)));
+            let state = CheckState::from(run_status(&pipeline.status.to_ascii_lowercase(), false));
+            checks.push(Check::new("Pipeline", state));
         }
         checks.extend(stages.into_iter().map(|stage| {
-            let state = stage.status.as_deref().map_or(CheckState::Neutral, status_state);
+            let state = stage.status.as_deref().map_or(CheckState::Neutral, |status| {
+                CheckState::from(run_status(&status.to_ascii_lowercase(), false))
+            });
             Check::new(stage.name, state)
         }));
     }
@@ -158,24 +163,6 @@ fn row_status(node: MergeRequestNode, web_root: &str) -> RowStatus {
         reported: None,
         reviewers: Some(reviewers),
         required_approvals,
-    }
-}
-
-/// Pipeline and stage statuses; GitLab writes the pipeline's in upper case, a stage's in lower.
-fn status_state(status: &str) -> CheckState {
-    match status.to_ascii_lowercase().as_str() {
-        "success" | "passed" => CheckState::Passed,
-        "failed" => CheckState::Failed,
-        "created"
-        | "pending"
-        | "running"
-        | "preparing"
-        | "scheduled"
-        | "canceling"
-        | "waiting_for_resource"
-        | "waiting_for_callback" => CheckState::Pending,
-        // skipped, canceled, manual: finished or waiting for nobody in particular.
-        _ => CheckState::Neutral,
     }
 }
 

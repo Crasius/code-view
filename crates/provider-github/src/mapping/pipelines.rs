@@ -26,7 +26,7 @@ pub(crate) enum RunId {
 }
 
 impl RunId {
-    pub fn parse(id: &str) -> Option<Self> {
+    pub(crate) fn parse(id: &str) -> Option<Self> {
         if let Some(run_id) = id.strip_prefix(WORKFLOW_RUN_PREFIX) {
             return run_id.parse().ok().map(RunId::Workflow);
         }

@@ -13,7 +13,7 @@ use review_core::setup::{
 };
 use review_core::{Connection, ProviderError, Result, http};
 
-use crate::client::GitHubClient;
+use crate::client::{self, GitHubClient};
 use crate::dto::repository::RepositoryDto;
 use crate::dto::user::UserDto;
 use crate::mapping::identity;
@@ -21,7 +21,6 @@ use crate::owners;
 use crate::repo_key::RepoKey;
 use crate::sso::{self, Blocked};
 
-const PUBLIC_WEB_ROOT: &str = "https://github.com";
 const CLASSIC_SCOPES: &str = "repo,read:org";
 const FINE_GRAINED_PERMISSIONS: &str =
     "pull_requests=write&contents=write&issues=write&actions=read&statuses=read";
@@ -30,7 +29,7 @@ const FINE_GRAINED_EXPIRY_DAYS: u32 = 90;
 /// Where to create a token on this host, and with which settings.
 pub fn token_guide(base_url: &str, owner: Option<&str>) -> TokenGuide {
     let base = base_url.trim_end_matches('/');
-    let is_public = base.eq_ignore_ascii_case(PUBLIC_WEB_ROOT);
+    let is_public = client::is_public_web_root(base);
     TokenGuide {
         recommended: classic_recipe(base),
         alternative: Some(fine_grained_recipe(base, owner, is_public)),
@@ -578,6 +577,12 @@ mod tests {
             "&pull_requests=write&contents=write&issues=write&actions=read&statuses=read"
         ));
         assert!(alternative.create_url.ends_with("&target_name=acme"));
+        assert!(
+            token_guide("https://www.github.com", None)
+                .alternative
+                .expect("fine-grained")
+                .is_prefilled
+        );
         let enterprise = token_guide("https://git.example.com", None);
         assert!(
             enterprise

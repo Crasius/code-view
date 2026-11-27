@@ -1,11 +1,17 @@
-//! The provider every test module builds: a GitLab connection to the mock host on the app's own
-//! HTTP client, so the tests send the user agent, compression and timeouts the app sends.
+//! The provider and the project answer every test module builds: a GitLab connection to the mock
+//! host on the app's own HTTP client, so the tests send the user agent, compression and timeouts
+//! the app sends.
 
 use provider_gitlab::GitLabProvider;
 use review_core::{Connection, ProviderKind, http};
-use wiremock::MockServer;
+use serde_json::{Value, json};
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 pub const TOKEN: &str = "test-token";
+pub const REPO: &str = "group/sub/project";
+/// `GET /projects/:id` of [`REPO`].
+pub const PROJECT: &str = "/api/v4/projects/group%2Fsub%2Fproject";
 
 /// The connection `mock` to `server`, without groups.
 pub fn connection(server: &MockServer, token: Option<&str>) -> Connection {
@@ -29,4 +35,26 @@ pub fn provider_on(connection: Connection) -> GitLabProvider {
 
 pub fn provider(server: &MockServer, token: Option<&str>) -> GitLabProvider {
     provider_on(connection(server, token))
+}
+
+/// The project [`REPO`] with the merge settings of `settings` on top.
+pub fn project(settings: Value) -> Value {
+    let mut body = json!({
+        "id": 42, "path_with_namespace": REPO, "name": "project", "web_url": "https://gitlab.example.com/group/sub/project",
+        "default_branch": "main", "http_url_to_repo": "https://gitlab.example.com/group/sub/project.git",
+    });
+    let (Value::Object(fields), Value::Object(settings)) = (&mut body, settings) else {
+        unreachable!("the body and the settings are JSON objects");
+    };
+    fields.extend(settings);
+    body
+}
+
+/// [`PROJECT`] answers `body`; merges read it first.
+pub async fn mount_project(server: &MockServer, body: Value) {
+    Mock::given(method("GET"))
+        .and(path(PROJECT))
+        .respond_with(ResponseTemplate::new(200).set_body_json(body))
+        .mount(server)
+        .await;
 }

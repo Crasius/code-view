@@ -26,7 +26,7 @@ use super::{
 use crate::flat_layout::{FlatLayout, pull_request_file};
 use crate::{AppPaths, COLD_CACHE_BUDGET_BYTES, ColdCache, atomic_file, stable_hash};
 
-pub struct Sweeper {
+pub(crate) struct Sweeper {
     paths: AppPaths,
     trash: Trash,
     leases: Leases,
@@ -36,7 +36,7 @@ pub struct Sweeper {
 
 /// The limits per category; the app uses [`CacheLimits::APP`].
 #[derive(Debug, Clone, Copy)]
-pub struct CacheLimits {
+pub(crate) struct CacheLimits {
     pub logs: Limits,
     pub mirrors: Limits,
     pub viewed: Limits,
@@ -45,7 +45,7 @@ pub struct CacheLimits {
 }
 
 impl CacheLimits {
-    pub const APP: Self = Self {
+    pub(crate) const APP: Self = Self {
         logs: LOG_LIMITS,
         mirrors: MIRROR_LIMITS,
         viewed: VIEWED_LIMITS,
@@ -56,13 +56,13 @@ impl CacheLimits {
 
 /// A pull request by connection and key (`connection|repository|number`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FinishedPullRequest {
+pub(crate) struct FinishedPullRequest {
     pub connection_id: String,
     pub key: String,
 }
 
 impl Sweeper {
-    pub fn new(
+    pub(crate) fn new(
         paths: AppPaths,
         leases: Leases,
         guard: Arc<dyn MirrorGuard>,
@@ -72,12 +72,12 @@ impl Sweeper {
         Self { paths, trash, leases, guard, limits }
     }
 
-    pub fn trash(&self) -> &Trash {
+    pub(crate) fn trash(&self) -> &Trash {
         &self.trash
     }
 
     /// The scheduled pass: data of removed connections, then the age and size limits.
-    pub fn sweep(&self, now: SystemTime) -> Outcome {
+    pub(crate) fn sweep(&self, now: SystemTime) -> Outcome {
         let mut outcome = self.forget_removed();
         outcome.add(policy::apply(
             files::scan(&self.paths.logs_dir()),
@@ -118,7 +118,7 @@ impl Sweeper {
     /// Deletes logs, viewed state, thread read marks and drafts, images and mirrors of connections
     /// that are no longer configured.
     /// Does nothing while the connection list cannot be read: unsure means keep.
-    pub fn forget_removed_connections(&self) -> Outcome {
+    pub(crate) fn forget_removed_connections(&self) -> Outcome {
         let outcome = self.forget_removed();
         self.finish();
         outcome
@@ -173,7 +173,7 @@ impl Sweeper {
 
     /// Settings → Storage → Clear cache: every mirror, log and image not in use. Viewed marks,
     /// thread read marks and drafts stay; they are the reviewer's work, not a download.
-    pub fn clear(&self) -> Outcome {
+    pub(crate) fn clear(&self) -> Outcome {
         let mut retire_file = |entry: &Entry| self.retire_file(entry);
         let mut outcome = policy::retire_all(files::scan(&self.paths.logs_dir()), &mut retire_file);
         outcome.add(policy::retire_all(files::scan(&self.paths.images_dir()), &mut retire_file));
@@ -188,7 +188,7 @@ impl Sweeper {
 
     /// Deletes what `pull_request` left (see the module doc). False when something is still in use
     /// and needs another try.
-    pub fn forget_pull_request(&self, pull_request: &FinishedPullRequest) -> bool {
+    pub(crate) fn forget_pull_request(&self, pull_request: &FinishedPullRequest) -> bool {
         let mut is_done = self.forget_logs(pull_request);
         let (connection_id, key) = (&pull_request.connection_id, &pull_request.key);
         let viewed_dir = self.paths.viewed_dir();

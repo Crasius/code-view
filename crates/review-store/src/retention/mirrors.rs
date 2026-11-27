@@ -28,14 +28,14 @@ impl MirrorGuard for NothingInUse {
     }
 }
 
-pub struct ScannedMirror {
+pub(crate) struct ScannedMirror {
     pub entry: Entry,
     pub stamp: Option<MirrorStamp>,
 }
 
-/// Every mirror with its size and last use. Mirrors from before stamps existed use the time git
-/// last changed their folder (each open rewrites the config there).
-pub fn scan(mirrors_dir: &Path) -> Vec<ScannedMirror> {
+/// Every mirror with its size and last use. A mirror without a stamp uses the time its folder last
+/// changed: a fetch or a config write, not an open.
+pub(crate) fn scan(mirrors_dir: &Path) -> Vec<ScannedMirror> {
     let Ok(children) = std::fs::read_dir(mirrors_dir) else {
         return Vec::new();
     };
@@ -70,7 +70,7 @@ pub(super) fn stamped(mirrors_dir: &Path) -> Vec<(PathBuf, MirrorStamp)> {
 }
 
 /// Moves the mirror into the trash unless the app or a git process uses it.
-pub fn retire(guard: &dyn MirrorGuard, trash: &Trash, git_dir: &Path) -> bool {
+pub(crate) fn retire(guard: &dyn MirrorGuard, trash: &Trash, git_dir: &Path) -> bool {
     guard.retire_if_idle(git_dir, &mut || !has_git_locks(git_dir) && trash.move_in(git_dir).is_ok())
 }
 

@@ -4,7 +4,6 @@
 // RS-DONT-04: parses git's output.
 #![warn(clippy::string_slice, clippy::indexing_slicing)]
 
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use review_core::{ProviderError, Result};
@@ -40,7 +39,7 @@ impl TreeState {
 
 /// One working tree of a clone, the clone's own among them.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Worktree {
+pub(crate) struct Worktree {
     pub path: PathBuf,
     /// The branch checked out there; `None` when detached.
     pub branch: Option<String>,
@@ -51,7 +50,7 @@ impl LocalRepo {
         Self { dir: dir.into() }
     }
 
-    pub fn dir(&self) -> &Path {
+    pub(crate) fn dir(&self) -> &Path {
         &self.dir
     }
 
@@ -60,7 +59,7 @@ impl LocalRepo {
     }
 
     /// The branch checked out here and the changed files.
-    pub async fn state(&self) -> Result<TreeState> {
+    pub(crate) async fn state(&self) -> Result<TreeState> {
         let output = self.git().run(["status", "--porcelain=v1", "--branch"]).await?;
         Ok(parse_status(&String::from_utf8_lossy(&output)))
     }
@@ -69,7 +68,7 @@ impl LocalRepo {
     /// links resolved (macOS' `/var` is `/private/var`, a user's `~/dev` may link to another
     /// disk), so this folder's own tree comes back in the spelling this `LocalRepo` was given:
     /// callers compare it with that path by [`same_folder`].
-    pub async fn worktrees(&self) -> Result<Vec<Worktree>> {
+    pub(crate) async fn worktrees(&self) -> Result<Vec<Worktree>> {
         let output = self.git().run(["worktree", "list", "--porcelain"]).await?;
         let mut trees = parse_worktrees(&String::from_utf8_lossy(&output));
         let resolved = tokio::fs::canonicalize(&self.dir).await.ok();
@@ -89,7 +88,7 @@ impl LocalRepo {
     }
 
     /// The working tree `branch` is checked out in, if any.
-    pub async fn checked_out_at(&self, branch: &str) -> Result<Option<PathBuf>> {
+    pub(crate) async fn checked_out_at(&self, branch: &str) -> Result<Option<PathBuf>> {
         let worktrees = self.worktrees().await?;
         Ok(worktrees
             .into_iter()
@@ -99,7 +98,7 @@ impl LocalRepo {
 
     /// The commit `name` (a ref or a commit id) points to, or `None` when there is none. A git
     /// failure, such as a folder that is no repository, is an error.
-    pub async fn resolve(&self, name: &str) -> Result<Option<String>> {
+    pub(crate) async fn resolve(&self, name: &str) -> Result<Option<String>> {
         let spec = format!("{name}^{{commit}}");
         let found =
             self.git().run_or_none(["rev-parse", "--verify", "--quiet", spec.as_str()]).await?;
@@ -113,7 +112,7 @@ impl LocalRepo {
 
     /// True when the clone has `refs/remotes/<remote>/<branch>`: the branch lives in the
     /// repository that remote points to.
-    pub async fn has_remote_branch(&self, remote: &str, branch: &str) -> Result<bool> {
+    pub(crate) async fn has_remote_branch(&self, remote: &str, branch: &str) -> Result<bool> {
         Ok(self.resolve(&format!("refs/remotes/{remote}/{branch}")).await?.is_some())
     }
 
@@ -125,7 +124,7 @@ impl LocalRepo {
     }
 
     /// True when `ancestor` is `descendant` or one of its ancestors.
-    pub async fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool> {
+    pub(crate) async fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool> {
         Ok(self.count(ancestor, descendant).await? == 0)
     }
 
@@ -135,11 +134,10 @@ impl LocalRepo {
     }
 
     /// `4be19a0  wip: try shorter ttl` for each commit of `tip` that `base` lacks, newest first.
-    pub async fn commits_missing_from(&self, tip: &str, base: &str) -> Result<Vec<String>> {
+    pub(crate) async fn commits_missing_from(&self, tip: &str, base: &str) -> Result<Vec<String>> {
         let range = format!("{base}..{tip}");
-        let args: [&OsStr; 4] =
-            ["log".as_ref(), "--no-color".as_ref(), "--format=%h  %s".as_ref(), range.as_ref()];
-        let output = self.git().run(args).await?;
+        let output =
+            self.git().run(["log", "--no-color", "--format=%h  %s", range.as_str()]).await?;
         Ok(String::from_utf8_lossy(&output).lines().map(str::to_owned).collect())
     }
 }
