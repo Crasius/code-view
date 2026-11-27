@@ -5,7 +5,6 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use egui::Key;
 use egui_kittest::Harness;
@@ -17,9 +16,11 @@ use super::{DiffSource, FolderSummary, SummaryEvent, SummaryInputs};
 use cv_base::theme;
 use cv_pr_rendered::preview::Loaded;
 use cv_pr_threads::ThreadsUi;
+use cv_runtime::background::Background;
 use cv_runtime::load::Load;
 use cv_shell::zoom::Zoom;
 use cv_syntax::color_worker::observe_repaints;
+use cv_testkit::WAIT_LIMIT;
 use cv_widgets::{focus, surfaces};
 
 pub(super) fn file(path: &str, kind: ChangeKind, counts: Option<(u32, u32)>) -> ChangedFile {
@@ -136,6 +137,8 @@ pub(super) struct FakeSource {
     pub rendered: Vec<String>,
     /// The Markdown versions a rendered card loads, forty sections every third edited unless set.
     pub versions: Option<(String, String)>,
+    /// Set: every diff load starts on this runtime and never finishes.
+    pub hangs_on: Option<Background>,
     cache: HashMap<String, Arc<FileDiff>>,
 }
 
@@ -146,6 +149,9 @@ impl DiffSource for FakeSource {
 
     fn start(&mut self, file: &ChangedFile) -> Option<Load<Arc<FileDiff>>> {
         self.started.push(file.path.clone());
+        if let Some(background) = &self.hangs_on {
+            return Some(Load::Loading(background.spawn(std::future::pending())));
+        }
         let diff = if file.is_binary {
             FileDiff::parse_unified(b"Binary files a/x and b/x differ\n")
         } else {
@@ -323,44 +329,57 @@ pub(super) fn shop_files() -> Vec<ChangedFile> {
 }
 
 /// Frames until every loaded card on screen has its syntax colors (the coloring runs on its own
-/// thread), one frame per wake-up of the loads and the coloring, for at most 30 seconds.
+/// thread), one frame per wake-up of the loads and the coloring. Panics naming the cards still
+/// unloaded when no wake-up comes within [`WAIT_LIMIT`] or 400 frames do not settle the summary.
 pub(super) fn settle(harness: &mut Harness<'_, Scene>) {
     let wakes = observe_repaints(&harness.ctx);
-    let deadline = Instant::now() + Duration::from_secs(30);
     for _ in 0..400 {
         harness.run_steps(1);
-        let scene = harness.state();
-        let summary = &scene.summary;
-        let unloaded = summary
-            .loads
-            .wanted()
-            .iter()
-            .filter(|&&card| {
-                let file = &scene.files[summary.slots[card].file];
-                // A rendered card loads its versions, not its lines.
-                if scene.preview && cv_pr_rendered::preview::is_markdown(&file.path) {
-                    summary.rendered.needs_load(&file.path)
-                } else {
-                    super::diffs::needs_load(summary, file)
-                }
-            })
-            .count();
-        if unloaded + summary.loads.running() == 0 && !summary.bodies.is_coloring() {
-            break;
+        let summary = &harness.state().summary;
+        let unloaded = unloaded(harness.state());
+        if unloaded.is_empty() && summary.loads.running() == 0 && !summary.bodies.is_coloring() {
+            harness.run_steps(2);
+            return;
         }
         // The fake source's loads are ready at once and finish on the next frame, which nothing
         // asks for.
         if summary.loads.running() > 0 {
             continue;
         }
-        let Some(left) = deadline.checked_duration_since(Instant::now()) else {
-            break;
-        };
-        if wakes.recv_timeout(left).is_err() {
-            break;
-        }
+        assert!(
+            wakes.recv_timeout(WAIT_LIMIT).is_ok(),
+            "no load or coloring woke the summary within {} s; still unloaded: {unloaded:?}",
+            WAIT_LIMIT.as_secs()
+        );
     }
-    harness.run_steps(2);
+    let scene = harness.state();
+    panic!(
+        "400 frames did not settle the summary: unloaded {:?}, {} loads running, coloring {}",
+        unloaded(scene),
+        scene.summary.loads.running(),
+        scene.summary.bodies.is_coloring()
+    );
+}
+
+/// The paths of the wanted cards whose diff (or, for a rendered card, whose versions) is not
+/// loaded yet.
+fn unloaded(scene: &Scene) -> Vec<&str> {
+    let summary = &scene.summary;
+    summary
+        .loads
+        .wanted()
+        .iter()
+        .map(|&card| &scene.files[summary.slots[card].file])
+        .filter(|file| {
+            // A rendered card loads its versions, not its lines.
+            if scene.preview && cv_pr_rendered::preview::is_markdown(&file.path) {
+                summary.rendered.needs_load(&file.path)
+            } else {
+                super::diffs::needs_load(summary, file)
+            }
+        })
+        .map(|file| file.path.as_str())
+        .collect()
 }
 
 pub(super) fn card_of(scene: &Scene, path: &str) -> usize {

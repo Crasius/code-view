@@ -16,6 +16,7 @@ use super::SummaryEvent;
 use super::bodies::MAX_BODIES;
 use super::loads::{MAX_RUNNING, MAX_WANTED};
 use super::testing::{Scene, card_of, file, harness, key, settle, shop_files, ten_thousand_files};
+use cv_runtime::background::Background;
 use cv_testkit::frame_bench::{Bench, PATTERNS, SCALES};
 
 #[test]
@@ -85,6 +86,17 @@ fn folder_summary_walkthrough() {
         harness.state().source.started.iter().any(|path| path == "data/fixtures.json"),
         "Show here loads it"
     );
+}
+
+/// The wait of every walkthrough here fails in place, with what is still loading, instead of
+/// giving up silently and leaving a later assertion to fail.
+#[test]
+#[should_panic(expected = "400 frames did not settle the summary")]
+fn settle_fails_when_a_load_never_finishes() {
+    let mut scene = Scene::new(shop_files(), ThemePreference::Light);
+    scene.source.hangs_on = Some(Background::new(egui::Context::default()));
+    let mut harness = harness(scene, [1180.0, 860.0]);
+    settle(&mut harness);
 }
 
 #[test]
