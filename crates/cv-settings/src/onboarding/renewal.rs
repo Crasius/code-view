@@ -121,7 +121,6 @@ fn apply(services: &mut Services, connection_id: &str, result: Result<String, St
 #[cfg(test)]
 mod tests {
     use review_core::{Connection, ProviderKind};
-    use review_store::AppPaths;
 
     use super::apply;
     use cv_services::Services;
@@ -130,9 +129,8 @@ mod tests {
     const SIGN_IN: &str = "eyJhead.payload.signature";
 
     fn services_with(dir: &ScratchDir, token: &str) -> Services {
-        let paths = AppPaths::new(dir.path().join("config"), dir.path().join("cache"));
         let mut services =
-            Services::new(egui::Context::default(), paths, cv_providers::create_provider);
+            Services::new(egui::Context::default(), dir.app_paths(), cv_providers::create_provider);
         let connection = Connection {
             id: "ado".into(),
             name: "Contoso".into(),

@@ -238,16 +238,16 @@ impl Wizard {
         ui.vertical_centered(|ui| {
             ui.set_max_width(CONTENT_WIDTH);
             ui.vertical(|ui| {
-                ui.add_space(8.0);
+                ui.add_space(theme::style::SPACE_S);
                 if self.header(ui) {
                     outcome = WizardOutcome::Cancelled;
                 }
-                ui.add_space(16.0);
+                ui.add_space(theme::style::SPACE_L);
                 let labels = self.step_labels();
                 if let Some(index) = parts::stepper(ui, &labels, self.step.index()) {
                     self.step = Step::ALL[index];
                 }
-                ui.add_space(16.0);
+                ui.add_space(theme::style::SPACE_L);
                 parts::sheet(ui, |ui| {
                     let saved = match self.step {
                         Step::Platform => {
@@ -682,9 +682,9 @@ fn failed_callout(
 
 /// Back on the left, the step's actions on the right.
 fn footer(ui: &mut Ui, back: Option<&mut bool>, add_actions: impl FnOnce(&mut Ui)) {
-    ui.add_space(20.0);
+    ui.add_space(theme::style::SPACE_XL);
     parts::divider(ui);
-    ui.add_space(12.0);
+    ui.add_space(theme::style::SPACE_M);
     ui.horizontal(|ui| {
         if let Some(back) = back
             && buttons::secondary_icon(ui, icons::ARROW_LEFT, "Back").clicked()
@@ -697,12 +697,10 @@ fn footer(ui: &mut Ui, back: Option<&mut bool>, add_actions: impl FnOnce(&mut Ui
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
-
     use review_core::{AccessReport, ProviderKind, UserIdentity};
 
     use super::{Check, CliTools, Step, Wizard};
-    use cv_runtime::background::Background;
+    use cv_runtime::background::Task;
 
     /// The wizard at the sign-in step with `typed` in the token field, while the token `checked`
     /// was checked and found working.
@@ -710,16 +708,14 @@ mod tests {
         let mut wizard = Wizard::for_cloud(ProviderKind::GitHub, None, CliTools::default());
         assert_eq!(wizard.step, Step::Token);
         wizard.token_input = typed.to_owned();
-        let background = Background::new(egui::Context::default());
         let report = AccessReport::unverified(UserIdentity::default(), "Token");
-        let task = background.spawn(async move { Ok(report) });
+        let task = Task::ready(Ok(report));
         wizard.check = Check::Running { token: checked.to_owned(), task };
-        let started = Instant::now();
-        while matches!(wizard.check, Check::Running { .. }) {
-            assert!(started.elapsed() < Duration::from_secs(30), "the check finishes");
-            cv_testkit::let_threads_run(Duration::from_millis(5));
-            wizard.poll();
-        }
+        wizard.poll();
+        assert!(
+            !matches!(wizard.check, Check::Running { .. }),
+            "a finished check is taken at once"
+        );
         wizard
     }
 

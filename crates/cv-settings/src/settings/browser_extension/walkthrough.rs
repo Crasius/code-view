@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use cv_runtime::route::Navigator;
 use cv_services::Services;
+use cv_shell::browser;
 use cv_shell::browser::registration::{KeyStore, MemoryKeys, Registry};
-use cv_shell::browser::{self, HOST_NAME};
 use cv_testkit::{Clicks, ScratchDir, poll_until};
 use egui::Role;
 use egui_kittest::Harness;
@@ -71,9 +71,9 @@ fn has_button(harness: &Harness<'_, Shown>, label: &str) -> bool {
 #[test]
 fn browser_extension_walkthrough_updates_unregisters_and_opens_the_folder() {
     let scratch = ScratchDir::new("settings-browser-extension");
-    let paths = AppPaths::new(scratch.path().join("config"), scratch.path().join("cache"));
+    let paths = scratch.app_paths();
     let keys = Arc::new(MemoryKeys::default());
-    let manifest = paths.browser_dir().join(format!("{HOST_NAME}.json"));
+    let manifest = browser::host_manifest(&paths);
     let registry = Registry::Keys { manifest: manifest.clone(), keys: keys.clone() };
     // Registered earlier by a copy of Code View that has moved since.
     registry
