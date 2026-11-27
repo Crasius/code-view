@@ -4,12 +4,14 @@
 //! reads where it is on screen. Rows shown inside another view's scrolling (a card of the folder
 //! summary) leave clamping a scroll target to that view.
 
+use egui::{Rect, Ui};
 use review_core::DiffSide;
 
 use super::frame::{Sight, Viewport};
 use super::navigation::{self, Direction};
 use super::offsets::{HeightKey, RowOffsets};
 use super::rows::DiffRows;
+use crate::diff_overview::{self, Overview};
 use crate::line_anchor::LineAnchor;
 use cv_code::diff_rows::{Row, RowKind};
 
@@ -44,6 +46,26 @@ impl Place {
     /// one before was scrolled to.
     pub fn opening() -> Self {
         Self { scroll_to: Some(0.0), ..Self::default() }
+    }
+
+    /// The overview strip at `strip` for rows at `offsets`, with the room past the end when
+    /// `past_end` is on: a scroll picked on it goes there. Returns what its menu switched
+    /// "Scroll past the end" to.
+    pub fn follow_strip(
+        &mut self,
+        ui: &Ui,
+        strip: Rect,
+        overview: &Overview,
+        offsets: &[f32],
+        past_end: bool,
+    ) -> Option<bool> {
+        let id = ui.scope_id().with("overview");
+        let pick = diff_overview::show(ui, strip, id, overview, offsets, self.viewport.0, past_end);
+        if let Some(offset) = pick.scroll_to {
+            self.scroll_to = Some(offset);
+            ui.ctx().request_repaint();
+        }
+        pick.past_end
     }
 
     /// The top of the view, from the top of the first row.

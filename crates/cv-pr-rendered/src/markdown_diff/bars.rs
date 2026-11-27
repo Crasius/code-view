@@ -294,7 +294,7 @@ pub(super) fn show_banner(ui: &mut Ui, rect: Rect, palette: &Palette) -> Option<
             buttons::secondary_icon(ui, icons::FILE_TEXT, "Show text diff").clicked()
         })
         .inner;
-    clicked.then_some(RenderedEvent::ShowSource { side: DiffSide::New, lines: 1..2 })
+    clicked.then_some(RenderedEvent::ShowSource { side: DiffSide::New, line: 1 })
 }
 
 /// Neither version renders anything: say so and offer the text diff.
@@ -309,5 +309,5 @@ pub(super) fn show_empty(ui: &mut Ui, palette: &Palette) -> Option<RenderedEvent
         detail,
         &actions,
     )
-    .map(|_| RenderedEvent::ShowSource { side: DiffSide::New, lines: 1..2 })
+    .map(|_| RenderedEvent::ShowSource { side: DiffSide::New, line: 1 })
 }

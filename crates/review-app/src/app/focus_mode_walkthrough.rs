@@ -17,6 +17,7 @@ use super::ReviewApp;
 use super::github_mock::{ExtraFile, FILE, GitHubHost, ReplacedHead, open_pull_request};
 use super::walkthrough::{self, wait_until};
 use cv_base::platform::{self, hit_test, shortcut};
+use cv_pr_rendered::file_header::NEXT_CHANGE_HINT;
 use cv_shell::focus_mode::{self, ENTER_HINT, EXIT_HINT, Surface, strip};
 use cv_testkit::Clicks;
 use cv_testkit::ScratchDir;
@@ -194,10 +195,7 @@ fn focus_mode_gives_the_diff_the_window_and_keeps_its_place() {
     let change = change_in_focus(&harness);
     assert!(change > 10, "the counter names the change in focus: {change}");
     let position = format!("{change} of 75");
-    assert_stable(
-        &mut harness,
-        &[EXIT_HINT, "Next change (N or F7)", MARK_VIEWED, "Close", &position],
-    );
+    assert_stable(&mut harness, &[EXIT_HINT, NEXT_CHANGE_HINT, MARK_VIEWED, "Close", &position]);
 
     // The diff's keys keep working.
     harness.key_press(Key::N);
@@ -421,7 +419,7 @@ fn focus_mode_folds_the_original_versions_banner_into_its_strip() {
     harness.run_steps(3);
     assert!(harness.query_by_label_contains(&banner).is_none(), "Esc left the original version");
     assert_eq!(chrome_visible(&harness), [false; 4], "and stayed in focus mode");
-    assert!(walkthrough::shows(&harness, "Next change (N or F7)"), "the file's own strip is back");
+    assert!(walkthrough::shows(&harness, NEXT_CHANGE_HINT), "the file's own strip is back");
 
     // Back to latest in the strip does the same.
     open_origin(&mut harness, &banner);

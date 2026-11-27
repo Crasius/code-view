@@ -11,6 +11,14 @@ pub enum Direction {
     Previous,
 }
 
+/// Where the header's counter is among a diff's changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChangePosition {
+    /// The change in focus, 0-based; `None` before one is stepped to or once it left the view.
+    pub current: Option<usize>,
+    pub total: usize,
+}
+
 /// Where navigation puts a change: a quarter down the view, so the context above stays visible.
 const FOCUS_FRACTION: f32 = 0.25;
 

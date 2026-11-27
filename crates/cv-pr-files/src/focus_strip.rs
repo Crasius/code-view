@@ -19,7 +19,7 @@ use review_store::{DiffLayout, TreeSide};
 use super::origin_view::{self, Face};
 use cv_base::platform::shortcut;
 use cv_base::theme::{self, icons, style};
-use cv_pr_diff::diff_view::Direction;
+use cv_pr_diff::diff_view::{ChangePosition, Direction};
 use cv_pr_rendered::file_header::{self, HeaderAction};
 use cv_services::Services;
 use cv_shell::focus_mode::strip;
@@ -37,8 +37,8 @@ pub struct StripInputs<'a> {
     pub file: Option<&'a ChangedFile>,
     pub folder: &'a str,
     pub is_viewed: bool,
-    /// (1-based change in focus or 0, number of changes) of the diff on screen; `None` without one.
-    pub changes: Option<(usize, usize)>,
+    /// Where the change in focus is among the changes of the diff on screen; `None` without one.
+    pub changes: Option<ChangePosition>,
     /// The diff on screen is a rendered Markdown diff: whitespace does not apply.
     pub is_rendered: bool,
     pub whole_file: Option<DiffSide>,
@@ -156,10 +156,10 @@ fn viewed_toggle(ui: &mut Ui, inputs: &StripInputs<'_>) -> bool {
 }
 
 /// Next and previous change, usable while the diff on screen has changes.
-fn change_arrows(ui: &mut Ui, changes: Option<(usize, usize)>) -> Option<Direction> {
-    let has_changes = changes.is_some_and(|(_, total)| total > 0);
+fn change_arrows(ui: &mut Ui, changes: Option<ChangePosition>) -> Option<Direction> {
+    let has_changes = changes.is_some_and(|changes| changes.total > 0);
     ui.add_enabled_ui(has_changes, |ui| {
-        let next = strip::button(ui, icons::ARROW_DOWN, "Next change (N or F7)").clicked();
+        let next = strip::button(ui, icons::ARROW_DOWN, file_header::NEXT_CHANGE_HINT).clicked();
         let previous =
             strip::button(ui, icons::ARROW_UP, file_header::PREVIOUS_CHANGE_HINT).clicked();
         if previous { Some(Direction::Previous) } else { next.then_some(Direction::Next) }

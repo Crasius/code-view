@@ -1,7 +1,7 @@
 //! The strip right of the diff: where changes, comments, the find bar's hits and the selection's
 //! other occurrences are, and which part is on screen.
 //! Clicking or dragging it scrolls there; its context menu switches "Scroll past the end"
-//! ([`past_end`]), whose room the strip leaves out.
+//! ([`past_end`]), whose room the strip leaves out, and hands the switch to the caller to save.
 
 pub mod past_end;
 #[cfg(test)]
@@ -91,9 +91,18 @@ pub fn build(diff: &FileDiff, rows: &[Row], layout: Layout) -> Overview {
     overview
 }
 
-/// Paints the strip and returns the scroll offset the user picked on it: clicked or dragged to
-/// (within the rows), or wheeled to with the pointer over the strip (into the room past the end
-/// too). Its context menu switches that room.
+/// What the user did on the strip this frame.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct StripPick {
+    /// The scroll offset picked: clicked or dragged to (within the rows), or wheeled to with the
+    /// pointer over the strip (into the room past the end too).
+    pub scroll_to: Option<f32>,
+    /// "Scroll past the end" was switched in the strip's menu, to this; the caller saves it.
+    pub past_end: Option<bool>,
+}
+
+/// Paints the strip for rows with the room past the end when `past_end` is on, and returns what
+/// the user picked on it. Its context menu switches that room.
 pub fn show(
     ui: &Ui,
     strip: Rect,
@@ -101,17 +110,18 @@ pub fn show(
     overview: &Overview,
     offsets: &[f32],
     viewport: Rect,
-) -> Option<f32> {
+    past_end: bool,
+) -> StripPick {
     let palette = theme::palette(ui.ctx());
     let painter = ui.painter().with_clip_rect(strip);
     painter.rect_filled(strip, 0, palette.surface_subtle);
     painter.vline(strip.left(), strip.y_range(), Stroke::new(1.0, palette.border));
     let response =
         ui.interact(strip, id, Sense::click_and_drag()).on_hover_cursor(CursorIcon::PointingHand);
-    past_end_menu(&response);
+    let switch = past_end_menu(&response, past_end);
     let total = offsets.last().copied().unwrap_or(0.0);
     if total <= 0.0 {
-        return None;
+        return StripPick { scroll_to: None, past_end: switch };
     }
     let scale = strip.height() / total.max(viewport.height());
     let y_of = |row: u32| strip.top() + offsets[row as usize] * scale;
@@ -127,7 +137,7 @@ pub fn show(
     let current = overview.current_find.filter(is_placed).map(y_of);
     find_paint::paint_ticks(&painter, inner, finds, current, &palette, overview.is_focus);
 
-    let ends = Ends::of(offsets, viewport.height(), ui.ctx());
+    let ends = Ends::of(offsets, viewport.height(), past_end);
     let is_scrollable = ends.end > 0.0;
     if is_scrollable {
         let view =
@@ -144,17 +154,21 @@ pub fn show(
     }
 
     let wheel = ui.input(|input| input.smooth_scroll_delta.y);
-    if ui.rect_contains_pointer(strip) && wheel != 0.0 {
-        return Some((viewport.top() - wheel).clamp(0.0, ends.max));
-    }
-    // The secondary button opens the menu and leaves the view where it is.
-    let is_primary = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
-    let pointer = response.interact_pointer_pos().filter(|_| {
-        is_scrollable
-            && ((response.is_pointer_button_down_on() && is_primary) || response.clicked())
-    })?;
-    let target = (pointer.y - strip.top()) / scale - viewport.height() / 2.0;
-    Some(target.clamp(0.0, ends.end))
+    let scroll_to = if ui.rect_contains_pointer(strip) && wheel != 0.0 {
+        Some((viewport.top() - wheel).clamp(0.0, ends.max))
+    } else {
+        // The secondary button opens the menu and leaves the view where it is.
+        let is_primary = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
+        let pointer = response.interact_pointer_pos().filter(|_| {
+            is_scrollable
+                && ((response.is_pointer_button_down_on() && is_primary) || response.clicked())
+        });
+        pointer.map(|pointer| {
+            let target = (pointer.y - strip.top()) / scale - viewport.height() / 2.0;
+            target.clamp(0.0, ends.end)
+        })
+    };
+    StripPick { scroll_to, past_end: switch }
 }
 
 /// The view box's span on a strip spanning `track`, for the part `view` (row coordinates) of rows
@@ -166,16 +180,19 @@ fn view_box(track: Rangef, total: f32, view: Rect) -> Rangef {
     Rangef::new(track.min + top * scale, track.min + (top + view.height()) * scale)
 }
 
-/// The strip's context menu: "Scroll past the end", on or off.
-fn past_end_menu(response: &egui::Response) {
+/// The strip's context menu: "Scroll past the end", now `is_on` or off. Returns the setting the
+/// user switched it to.
+fn past_end_menu(response: &egui::Response, mut is_on: bool) -> Option<bool> {
+    let mut switched = None;
     response.context_menu(|ui| {
-        let mut is_on = past_end::is_on(ui.ctx());
         let item = ui.checkbox(&mut is_on, PAST_END_LABEL);
         if item.on_hover_text("Scroll on until the last line is at the top of the view").clicked() {
-            past_end::switch(ui.ctx(), is_on);
+            switched = Some(is_on);
             ui.close();
+            ui.ctx().request_repaint();
         }
     });
+    switched
 }
 
 /// Where tests find the view box the strip painted last.

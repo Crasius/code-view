@@ -136,6 +136,7 @@ fn show(ui: &mut egui::Ui, state: &mut Opening) {
         line_spans: state.colors.spans(&state.key),
         show_threads: true,
         find: FindInputs::default(),
+        past_end: true,
     };
     state.view.show(ui, &inputs, &mut state.split, &mut state.threads_ui);
 }

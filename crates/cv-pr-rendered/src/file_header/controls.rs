@@ -9,11 +9,12 @@ use review_git::ChangedFile;
 use review_store::{AppSettings, DiffLayout};
 
 use super::{
-    CHIP_HEIGHT, CHIP_PADDING, CONTEXT_CHOICES, Fit, HeaderAction, HeaderInputs, LABELLED_LAYOUTS,
-    LAYOUT_SEGMENTS, MARK_VIEWED_HINT, PREVIEW_LABEL, PREVIOUS_CHANGE_HINT,
-    RENDERED_COLUMNS_WIDTH_HINT, RENDERED_CONTEXT_CHOICES, RENDERED_WHITESPACE_HINT, ROW_HEIGHT,
-    SEPARATOR_WIDTH, TOGGLE_ICON_GAP, UNMARK_VIEWED_HINT, Widths, comments_hint, paint_tabular,
-    position_text, selected_context, tabular_width, viewed_label,
+    CHIP_HEIGHT, CHIP_PADDING, CONTEXT_CHOICES, ChangePosition, Fit, HeaderAction, HeaderInputs,
+    LABELLED_LAYOUTS, LAYOUT_SEGMENTS, MARK_VIEWED_HINT, NEXT_CHANGE_HINT, PREVIEW_LABEL,
+    PREVIOUS_CHANGE_HINT, RENDERED_COLUMNS_WIDTH_HINT, RENDERED_CONTEXT_CHOICES,
+    RENDERED_WHITESPACE_HINT, ROW_HEIGHT, SEPARATOR_WIDTH, TOGGLE_ICON_GAP, UNMARK_VIEWED_HINT,
+    Widths, comments_hint, paint_tabular, position_text, selected_context, tabular_width,
+    viewed_label,
 };
 use crate::preview::{self, Preview};
 use cv_base::platform::shortcut;
@@ -206,12 +207,10 @@ fn comments_switch(ui: &mut Ui, has_diff: bool, width: f32, settings: &mut AppSe
 }
 
 /// Next and previous change, usable while the diff on screen has changes.
-fn change_arrows(ui: &mut Ui, changes: Option<(usize, usize)>) -> Option<Direction> {
-    let has_changes = changes.is_some_and(|(_, total)| total > 0);
+fn change_arrows(ui: &mut Ui, changes: Option<ChangePosition>) -> Option<Direction> {
+    let has_changes = changes.is_some_and(|changes| changes.total > 0);
     let next = ui
-        .add_enabled_ui(has_changes, |ui| {
-            buttons::icon(ui, icons::ARROW_DOWN, "Next change (N or F7)")
-        })
+        .add_enabled_ui(has_changes, |ui| buttons::icon(ui, icons::ARROW_DOWN, NEXT_CHANGE_HINT))
         .inner;
     let previous = ui
         .add_enabled_ui(has_changes, |ui| buttons::icon(ui, icons::ARROW_UP, PREVIOUS_CHANGE_HINT))
@@ -224,7 +223,7 @@ fn change_arrows(ui: &mut Ui, changes: Option<(usize, usize)>) -> Option<Directi
 }
 
 /// "2 of 7": the change in focus, right-aligned in a slot `width` wide or as wide as the text.
-fn position_counter(ui: &mut Ui, changes: Option<(usize, usize)>, width: f32) {
+fn position_counter(ui: &mut Ui, changes: Option<ChangePosition>, width: f32) {
     let palette = theme::palette(ui.ctx());
     let text = changes.map(position_text).unwrap_or_default();
     let font = FontId::proportional(style::SMALL_SIZE);

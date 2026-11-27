@@ -46,7 +46,7 @@ use cv_markdown::RenderOptions;
 use cv_media::image_state::image_generation;
 use cv_pr_diff::diff_overview::{self, Overview, past_end::Ends};
 use cv_pr_diff::diff_view::cards::{self, CardHeights, DEFAULT_CARD_HEIGHT};
-use cv_pr_diff::diff_view::{Direction, OVERVIEW_WIDTH, navigation};
+use cv_pr_diff::diff_view::{ChangePosition, Direction, OVERVIEW_WIDTH, navigation};
 use cv_pr_threads::{ThreadsUi, markers};
 use cv_widgets::splitter::{Splitter, share_range};
 use egui::{Id, Rangef, Rect, Ui, UiBuilder, vec2};
@@ -176,11 +176,11 @@ pub struct MarkdownDiff {
 }
 
 impl MarkdownDiff {
-    /// (1-based change in focus or 0, number of changes) for the header; `None` until the texts
+    /// Where the change in focus is among the changes, for the header; `None` until the texts
     /// with `key` are laid out.
-    pub fn change_position(&self, key: u64) -> Option<(usize, usize)> {
+    pub fn change_position(&self, key: u64) -> Option<ChangePosition> {
         self.model.as_ref().filter(|model| model.key == key && self.rows_key.is_some())?;
-        Some((self.current.map_or(0, |index| index + 1), self.hunks.len()))
+        Some(ChangePosition { current: self.current, total: self.hunks.len() })
     }
 
     pub fn go_to_change(&mut self, direction: Direction) {
@@ -251,7 +251,7 @@ impl MarkdownDiff {
         self.reading_room = reading_room(lanes.first) / inputs.scale;
 
         self.layout(ui, &model, &lanes, options, content.height(), id);
-        self.keyboard(ui, content.height());
+        self.keyboard(ui, content.height(), inputs.past_end);
         self.go_to_find(ui, &bar, &model);
         // The rows read the hits while they paint, which needs the diff itself.
         let find = std::mem::take(&mut self.find);
@@ -269,13 +269,11 @@ impl MarkdownDiff {
             show_threads: inputs.show_threads,
             find: &find,
         };
-        let mut event = self.show_scrolled(ui, content, &frame, threads_ui);
-        if let Some(chrome_event) = self.show_chrome(ui, &areas, &frame, split, width) {
-            event = Some(chrome_event);
-        }
+        let scrolled = self.show_scrolled(ui, content, &frame, threads_ui, inputs.past_end);
+        let chrome = self.show_chrome(ui, &areas, &frame, split, width, inputs.past_end);
         self.find = find;
         self.find.show_widget(ui);
-        event
+        chrome.or(scrolled)
     }
 
     /// Places the find bar's hits among the rows and goes to the one it stepped to.
@@ -294,16 +292,18 @@ impl MarkdownDiff {
         }
     }
 
-    /// The rows in their scroll area at `content`: the ones in view paint (with `template`, put
-    /// where the scroll area places the rows), and the view's place is kept for the next frame.
+    /// The rows in their scroll area at `content`, with the room past the end when `past_end` is
+    /// on: the ones in view paint (with `template`, put where the scroll area places the rows),
+    /// and the view's place is kept for the next frame.
     fn show_scrolled(
         &mut self,
         ui: &mut Ui,
         content: Rect,
         template: &Frame<'_>,
         threads_ui: &mut ThreadsUi,
+        past_end: bool,
     ) -> Option<RenderedEvent> {
-        let total = Ends::of(self.heights.tops(), content.height(), ui.ctx()).height;
+        let total = Ends::of(self.heights.tops(), content.height(), past_end).height;
         let mut scroll = egui::ScrollArea::vertical()
             .id_salt("markdown_diff_scroll")
             .auto_shrink(false)
@@ -330,7 +330,7 @@ impl MarkdownDiff {
 
     /// What frames the rows in `areas`: the header and the banner, the reading column's edges,
     /// side by side the divider over the header and the boundary between Before and After (at the
-    /// old side's `split` share), and the overview strip.
+    /// old side's `split` share), and the overview strip (`past_end`: with room past the end).
     fn show_chrome(
         &mut self,
         ui: &mut Ui,
@@ -338,6 +338,7 @@ impl MarkdownDiff {
         frame: &Frame<'_>,
         split: &mut f32,
         width: &mut RenderedWidth,
+        past_end: bool,
     ) -> Option<RenderedEvent> {
         let palette = theme::palette(ui.ctx());
         let (full, content) = (areas.full, areas.content);
@@ -377,19 +378,14 @@ impl MarkdownDiff {
         } else {
             self.is_resizing = edge.dragged;
         }
-        let strip_target = diff_overview::show(
-            ui,
-            areas.strip,
-            frame.id.with("overview"),
-            &self.overview,
-            self.heights.tops(),
-            self.viewport.0,
-        );
-        if let Some(offset) = strip_target {
+        let id = frame.id.with("overview");
+        let (overview, tops, view) = (&self.overview, self.heights.tops(), self.viewport.0);
+        let pick = diff_overview::show(ui, areas.strip, id, overview, tops, view, past_end);
+        if let Some(offset) = pick.scroll_to {
             self.scroll_to = Some(offset);
             ui.ctx().request_repaint();
         }
-        event
+        pick.past_end.map(RenderedEvent::SwitchPastEnd).or(event)
     }
 
     /// The text filled the pane last frame: Full width was chosen, or the reading column was as
@@ -788,7 +784,7 @@ impl MarkdownDiff {
 
     /// ↑/↓ scroll a little, Page Up/Down a screen, Home/End to the ends, N/P (F7) step through
     /// the changes; only while no field or button has the keyboard (N/P also over a button).
-    fn keyboard(&mut self, ui: &Ui, view_height: f32) {
+    fn keyboard(&mut self, ui: &Ui, view_height: f32, past_end: bool) {
         if let Some(direction) = navigation::navigation_keys(ui) {
             self.go_to_change(direction);
         }
@@ -796,7 +792,7 @@ impl MarkdownDiff {
             return;
         };
         let page = (view_height - ARROW_STEP).max(ARROW_STEP);
-        let ends = Ends::of(self.heights.tops(), view_height, ui.ctx());
+        let ends = Ends::of(self.heights.tops(), view_height, past_end);
         self.scroll_to = Some(keys::target(key, self.view_top(), ARROW_STEP, page, ends));
         ui.ctx().request_repaint();
     }

@@ -464,6 +464,7 @@ mod tests {
             line_spans: None,
             show_threads: true,
             find: FindInputs::default(),
+            past_end: true,
         };
         let key = rows.key_for(&inputs, None);
         rows.rebuild(&inputs, key);

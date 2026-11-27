@@ -27,6 +27,7 @@ use super::model::{Look, Mode, Row};
 use super::rows::{begin_frame, build};
 use super::{MarkdownDiff, MarkdownModel, ROW_PAD, RenderedEvent, RenderedImages, RenderedInputs};
 use cv_base::theme::{self, Palette};
+use cv_pr_diff::diff_view::ChangePosition;
 use cv_pr_threads::{ThreadsUi, samples};
 use cv_testkit::frame_bench::{self, Bench, Report, SCALES};
 
@@ -91,6 +92,8 @@ struct Doc {
     threads: Vec<ReviewThread>,
     /// "Show comments in the diff".
     show_threads: bool,
+    /// "Scroll past the end", which the strip's menu switches.
+    past_end: bool,
 }
 
 impl Doc {
@@ -118,6 +121,7 @@ impl Doc {
             can_comment: self.can_comment,
             threads,
             show_threads: self.show_threads,
+            past_end: self.past_end,
         }
     }
 }
@@ -147,6 +151,7 @@ impl Scene {
                 images: RenderedImages::default(),
                 threads: Vec::new(),
                 show_threads: true,
+                past_end: true,
             },
             model: None,
             view: MarkdownDiff::default(),
@@ -171,6 +176,9 @@ fn show(ui: &mut egui::Ui, scene: &mut Scene) {
     if let Some(event) =
         scene.view.show(ui, &inputs, &mut scene.split, &mut scene.width, &mut scene.threads_ui)
     {
+        if let RenderedEvent::SwitchPastEnd(is_on) = event {
+            scene.doc.past_end = is_on;
+        }
         scene.events.push(event);
     }
 }
@@ -577,20 +585,21 @@ fn n_and_p_step_through_the_changes() {
         harness(Scene::new(&old, &new, DiffLayout::SideBySide, FULL_FILE_CONTEXT), [900.0, 400.0]);
     harness.run();
     let key = harness.state().doc.key();
-    assert_eq!(harness.state().view.change_position(key), Some((0, 3)));
+    let at = |current| Some(ChangePosition { current, total: 3 });
+    assert_eq!(harness.state().view.change_position(key), at(None));
     let area = Rect::from_min_size(Pos2::ZERO, vec2(900.0, 400.0));
-    for (expected, block) in (1..=3).zip([LONG_ADDED, REMOVED, EDITED_NEW]) {
+    for (index, block) in (0..3).zip([LONG_ADDED, REMOVED, EDITED_NEW]) {
         harness.key_press(Key::N);
         harness.run();
-        assert_eq!(harness.state().view.change_position(key), Some((expected, 3)));
+        assert_eq!(harness.state().view.change_position(key), at(Some(index)));
         assert!(
             harness.query_all_by_label(block).any(|node| area.contains(node.rect().center())),
-            "change {expected}, {block:?}, is in view"
+            "change {index}, {block:?}, is in view"
         );
     }
     harness.key_press(Key::P);
     harness.run();
-    assert_eq!(harness.state().view.change_position(key), Some((2, 3)));
+    assert_eq!(harness.state().view.change_position(key), at(Some(1)));
 }
 
 #[test]

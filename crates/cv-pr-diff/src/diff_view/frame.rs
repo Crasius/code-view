@@ -25,7 +25,7 @@ use cv_widgets::surfaces;
 
 #[expect(
     clippy::struct_excessive_bools,
-    reason = "four independent settings of the file view (wrap, may comment, comments outside hunks, show comments), no state machine"
+    reason = "independent settings of the file view (wrap, may comment, comments outside hunks, show comments, scroll past the end), no state machine"
 )]
 pub struct DiffInputs<'a> {
     pub diff: &'a Arc<FileDiff>,
@@ -47,6 +47,9 @@ pub struct DiffInputs<'a> {
     pub show_threads: bool,
     /// Whether the selection's occurrences are marked (the app's setting).
     pub find: FindInputs,
+    /// "Scroll past the end": the rows hold room below the last one (see
+    /// [`past_end`](crate::diff_overview::past_end)).
+    pub past_end: bool,
 }
 
 impl DiffInputs<'_> {

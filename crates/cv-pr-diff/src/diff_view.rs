@@ -40,7 +40,7 @@ use self::code_rows::menu::{self, MenuChoice, MenuItems};
 use self::code_rows::{CodeRows, RowAction};
 pub use self::frame::{DiffInputs, Embedded, EmbeddedOutput, keep_below};
 use self::frame::{Frame, RowLayout, Screen, Sight, syntax_mix};
-pub use self::navigation::Direction;
+pub use self::navigation::{ChangePosition, Direction};
 use self::offsets::RowOffsets;
 use self::panes::{Sideways, find_panes, left_pane_width, pane_rects};
 use self::place::Place;
@@ -50,7 +50,7 @@ use self::requests::Requests;
 use self::rows::{Change, DiffRows, KeepPlace};
 use self::selecting::{Code, Drag, KeysView, Selecting};
 use crate::detached_threads::{self, Detached, DetachedEvent};
-use crate::diff_overview::{self, past_end::Ends};
+use crate::diff_overview::past_end::Ends;
 use crate::diff_status::{self, StatusAction};
 use crate::find::bar::Panes;
 use crate::find::text::{TextFind, TextRows};
@@ -86,6 +86,8 @@ pub enum DiffEvent {
     SwitchLayout(Layout),
     /// The user finished moving the boundary between the old and new side.
     SplitResized,
+    /// The user switched "Scroll past the end" in the overview strip's menu, to this.
+    SwitchPastEnd(bool),
 }
 
 #[derive(Default)]
@@ -154,9 +156,9 @@ impl DiffView {
         self.place.top_line(&self.built, &self.offsets)
     }
 
-    /// (1-based index of the change in focus or 0, number of changes) for the header.
-    pub fn change_position(&self) -> (usize, usize) {
-        (self.place.current_change.map_or(0, |index| index + 1), self.built.changes.len())
+    /// Where the change in focus is among the changes, for the header.
+    pub fn change_position(&self) -> ChangePosition {
+        ChangePosition { current: self.place.current_change, total: self.built.changes.len() }
     }
 
     pub fn go_to_change(&mut self, direction: Direction) {
@@ -284,21 +286,17 @@ impl DiffView {
         let drag = panes::split_handle(ui, inputs.layout, content, content.y_range(), split);
         self.is_resizing = drag.is_dragged;
         let resized = drag.committed.then_some(DiffEvent::SplitResized);
-        if let Some(offset) = diff_overview::show(
+        let switch = self.place.follow_strip(
             ui,
             screen.strip,
-            ui.scope_id().with("overview"),
             &self.built.overview,
             self.offsets.as_slice(),
-            self.place.viewport.0,
-        ) {
-            self.place.scroll_to = Some(offset);
-            ui.ctx().request_repaint();
-        }
+            inputs.past_end,
+        );
         match diff_status::show(ui, content, inputs.contents) {
             Some(StatusAction::ColorAnyway) => Some(DiffEvent::ColorAnyway),
             Some(StatusAction::Retry) => Some(DiffEvent::RetryContents),
-            None => resized,
+            None => switch.map(DiffEvent::SwitchPastEnd).or(resized),
         }
     }
 
@@ -343,7 +341,7 @@ impl DiffView {
             .layout
             .wrap_columns
             .map(|columns| columns.map(|columns| columns as f32 * metrics.char_width + 0.5));
-        let height = Ends::of(self.offsets.as_slice(), screen.content.height(), ui.ctx()).height;
+        let ends = Ends::of(self.offsets.as_slice(), screen.content.height(), inputs.past_end);
         let mut scroll = egui::ScrollArea::vertical()
             .id_salt("diff_scroll")
             .auto_shrink(false)
@@ -358,7 +356,7 @@ impl DiffView {
         let output = ui
             .scope_builder(UiBuilder::new().max_rect(screen.content), |ui| {
                 scroll.show_viewport(ui, |ui, viewport| {
-                    ui.set_min_height(height);
+                    ui.set_min_height(ends.height);
                     let frame = Frame {
                         origin: ui.max_rect().min,
                         width: screen.content.width(),

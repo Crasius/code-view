@@ -230,7 +230,7 @@ fn lines_button(
     let event = if frame.can_comment {
         RenderedEvent::Comment { side: cell.side, lines }
     } else {
-        RenderedEvent::ShowSource { side: cell.side, lines }
+        RenderedEvent::ShowSource { side: cell.side, line: lines.start }
     };
     response.clicked().then_some(event)
 }
