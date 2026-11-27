@@ -3,30 +3,18 @@
 //! request answers `304 Not Modified`, which costs no rate limit. `.expect(n)` is verified when
 //! the server drops.
 
-use provider_github::GitHubProvider;
-use review_core::{Connection, Provider, ProviderKind, http};
+use review_core::{Provider, http};
 use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+use crate::support::{TOKEN, fixture, provider};
+
 const PULL: &str = "/api/v3/repos/contoso/app/pulls/1234";
 const REVIEWS: &str = "/api/v3/repos/contoso/app/pulls/1234/reviews";
 
-fn provider(server: &MockServer, token: Option<&str>) -> GitHubProvider {
-    let connection = Connection {
-        id: "live".to_owned(),
-        name: "Mock GitHub Enterprise".to_owned(),
-        kind: ProviderKind::GitHub,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: token.map(str::to_owned),
-    };
-    GitHubProvider::new(connection, reqwest::Client::new())
-}
-
 fn pull(head: &str, updated_at: &str) -> Value {
-    let mut pull: Value = serde_json::from_str(include_str!("../fixtures/pull_request.json"))
-        .expect("pull request fixture");
+    let mut pull = fixture("pull_request");
     pull["head"]["sha"] = json!(head);
     pull["updated_at"] = json!(updated_at);
     pull
@@ -76,7 +64,7 @@ async fn an_unchanged_pull_request_is_a_free_304() {
         .expect(0)
         .mount(&server)
         .await;
-    let provider = provider(&server, Some("test-token"));
+    let provider = provider(&server, Some(TOKEN));
 
     let first = http::for_connection("github-live", provider.revision("contoso/app", 1234))
         .await

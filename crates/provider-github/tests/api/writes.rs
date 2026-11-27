@@ -1,61 +1,21 @@
 //! Write paths against a mock GitHub Enterprise host. Every matcher follows the documented
 //! REST v3 (2022-11-28) and GraphQL contracts; `.expect(n)` is verified when the server drops.
 
-use provider_github::GitHubProvider;
 use review_core::{
-    Connection, DiffSide, LineRange, MergeOptions, MergeStrategy, NewThread, Provider,
-    ProviderError, ProviderKind, ReviewVote, ThreadAnchor, ThreadStatus,
+    DiffSide, LineRange, MergeOptions, MergeStrategy, NewThread, Provider, ProviderError,
+    ReviewVote, ThreadAnchor, ThreadStatus,
 };
 use serde_json::{Value, json};
-use wiremock::matchers::{
-    body_json, body_partial_json, body_string_contains, header, method, path,
-};
-use wiremock::{Mock, MockBuilder, MockServer, ResponseTemplate};
+use wiremock::matchers::{body_json, body_partial_json, body_string_contains};
+use wiremock::{MockServer, ResponseTemplate};
 
-const REPO: &str = "contoso/app";
+use crate::support::{self, REPO, fixture, graphql, ok_json, rest};
+
 const NUMBER: u64 = 7;
 const HEAD_SHA: &str = "head111";
 /// The head the user reviewed, older than the fixture's: the merge must guard with this one.
 const REVIEWED_SHA: &str = "reviewed000";
 const PULL_NODE_ID: &str = "PR_kwDOAbc";
-
-fn pull_fixture() -> Value {
-    serde_json::from_str(include_str!("../fixtures/pull_request.json"))
-        .expect("pull request fixture")
-}
-
-async fn setup() -> (MockServer, GitHubProvider) {
-    let server = MockServer::start().await;
-    let connection = Connection {
-        id: "mock".to_owned(),
-        name: "Mock GitHub Enterprise".to_owned(),
-        kind: ProviderKind::GitHub,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: Some("test-token".to_owned()),
-    };
-    let provider = GitHubProvider::new(connection, reqwest::Client::new());
-    (server, provider)
-}
-
-/// REST call below `/api/v3/repos/contoso/app` with GitHub's required headers.
-fn rest(verb: &str, repo_path: &str) -> MockBuilder {
-    Mock::given(method(verb))
-        .and(path(format!("/api/v3/repos/{REPO}{repo_path}")))
-        .and(header("authorization", "Bearer test-token"))
-        .and(header("accept", "application/vnd.github+json"))
-        .and(header("x-github-api-version", "2022-11-28"))
-}
-
-fn graphql() -> MockBuilder {
-    Mock::given(method("POST"))
-        .and(path("/api/graphql"))
-        .and(header("authorization", "Bearer test-token"))
-}
-
-fn ok_json(body: Value) -> ResponseTemplate {
-    ResponseTemplate::new(200).set_body_json(body)
-}
 
 async fn mount_pull(server: &MockServer, pull: Value) {
     rest("GET", &format!("/pulls/{NUMBER}")).respond_with(ok_json(pull)).mount(server).await;
@@ -84,7 +44,7 @@ fn graphql_comment(database_id: u64) -> Value {
 
 #[tokio::test]
 async fn set_vote_posts_review_events() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     rest("POST", &format!("/pulls/{NUMBER}/reviews"))
         .and(body_json(json!({ "event": "APPROVE" })))
         .respond_with(ok_json(json!({ "id": 1 })))
@@ -109,7 +69,7 @@ async fn set_vote_posts_review_events() {
 /// "Unprocessable Entity".
 #[tokio::test]
 async fn a_refused_vote_names_githubs_reason() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     rest("POST", &format!("/pulls/{NUMBER}/reviews"))
         .respond_with(ResponseTemplate::new(422).set_body_json(json!({
             "message": "Unprocessable Entity",
@@ -128,7 +88,7 @@ async fn a_refused_vote_names_githubs_reason() {
 
 #[tokio::test]
 async fn unsupported_votes_send_nothing() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     let reset = provider.set_vote(REPO, NUMBER, ReviewVote::None, None).await;
     assert!(matches!(reset, Err(ProviderError::Unsupported(_))), "{reset:?}");
     let without_body = provider.set_vote(REPO, NUMBER, ReviewVote::ChangesRequested, None).await;
@@ -138,7 +98,7 @@ async fn unsupported_votes_send_nothing() {
 
 #[tokio::test]
 async fn create_thread_general_comment_uses_issue_comments() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     rest("POST", &format!("/issues/{NUMBER}/comments"))
         .and(body_json(json!({ "body": "Looks good" })))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
@@ -158,8 +118,8 @@ async fn create_thread_general_comment_uses_issue_comments() {
 
 #[tokio::test]
 async fn create_thread_on_new_line_comments_right_and_resolves_graphql_thread() {
-    let (server, provider) = setup().await;
-    mount_pull(&server, pull_fixture()).await;
+    let (server, provider) = support::start().await;
+    mount_pull(&server, fixture("pull_request")).await;
     rest("POST", &format!("/pulls/{NUMBER}/comments"))
         .and(body_json(json!({
             "body": "note", "commit_id": HEAD_SHA, "path": "src/main.rs", "line": 12, "side": "RIGHT"
@@ -199,8 +159,8 @@ async fn create_thread_on_new_line_comments_right_and_resolves_graphql_thread() 
 
 #[tokio::test]
 async fn create_thread_on_old_line_comments_left_and_falls_back_to_rest_id() {
-    let (server, provider) = setup().await;
-    mount_pull(&server, pull_fixture()).await;
+    let (server, provider) = support::start().await;
+    mount_pull(&server, fixture("pull_request")).await;
     rest("POST", &format!("/pulls/{NUMBER}/comments"))
         .and(body_json(json!({
             "body": "note", "commit_id": HEAD_SHA, "path": "src/main.rs", "line": 4, "side": "LEFT"
@@ -232,8 +192,8 @@ async fn create_thread_on_old_line_comments_left_and_falls_back_to_rest_id() {
 /// (docs.github.com, "Create a review comment for a pull request").
 #[tokio::test]
 async fn create_thread_on_a_line_range_sends_start_and_end() {
-    let (server, provider) = setup().await;
-    mount_pull(&server, pull_fixture()).await;
+    let (server, provider) = support::start().await;
+    mount_pull(&server, fixture("pull_request")).await;
     rest("POST", &format!("/pulls/{NUMBER}/comments"))
         .and(body_json(json!({
             "body": "range", "commit_id": HEAD_SHA, "path": "src/main.rs",
@@ -283,7 +243,7 @@ async fn create_thread_on_a_line_range_sends_start_and_end() {
 
 #[tokio::test]
 async fn reply_uses_graphql_for_threads_and_rest_for_review_comments() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     graphql()
         .and(body_string_contains("addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $thread, body: $body })"))
         .and(body_partial_json(json!({ "variables": { "thread": "PRRT_x", "body": "Thanks" } })))
@@ -311,7 +271,7 @@ async fn reply_uses_graphql_for_threads_and_rest_for_review_comments() {
 
 #[tokio::test]
 async fn set_thread_status_resolves_and_unresolves() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     graphql()
         .and(body_string_contains("{ resolveReviewThread(input: { threadId: $id })"))
         .and(body_partial_json(json!({ "variables": { "id": "PRRT_x" } })))
@@ -343,7 +303,7 @@ async fn set_thread_status_resolves_and_unresolves() {
 
 #[tokio::test]
 async fn set_labels_replaces_issue_labels() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     rest("PUT", &format!("/issues/{NUMBER}/labels"))
         .and(body_json(json!({ "labels": ["bug", "ui"] })))
         .respond_with(ok_json(json!([])))
@@ -357,16 +317,16 @@ async fn set_labels_replaces_issue_labels() {
 
 #[tokio::test]
 async fn add_reviewer_requests_users_and_teams() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     rest("POST", &format!("/pulls/{NUMBER}/requested_reviewers"))
         .and(body_json(json!({ "reviewers": ["octocat"] })))
-        .respond_with(ResponseTemplate::new(201).set_body_json(pull_fixture()))
+        .respond_with(ResponseTemplate::new(201).set_body_json(fixture("pull_request")))
         .expect(1)
         .mount(&server)
         .await;
     rest("POST", &format!("/pulls/{NUMBER}/requested_reviewers"))
         .and(body_json(json!({ "team_reviewers": ["core"] })))
-        .respond_with(ResponseTemplate::new(201).set_body_json(pull_fixture()))
+        .respond_with(ResponseTemplate::new(201).set_body_json(fixture("pull_request")))
         .expect(1)
         .mount(&server)
         .await;
@@ -377,7 +337,7 @@ async fn add_reviewer_requests_users_and_teams() {
 
 #[tokio::test]
 async fn a_refused_review_request_names_the_rules_and_keeps_githubs_words() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     rest("POST", &format!("/pulls/{NUMBER}/requested_reviewers"))
         .respond_with(ResponseTemplate::new(422).set_body_json(json!({
             "message": "Reviews may only be requested from collaborators."
@@ -397,7 +357,7 @@ async fn a_refused_review_request_names_the_rules_and_keeps_githubs_words() {
 
 #[tokio::test]
 async fn remove_reviewer_deletes_pending_requests() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     rest("GET", &format!("/pulls/{NUMBER}/requested_reviewers"))
         .respond_with(ok_json(json!({
             "users": [{ "id": 3, "login": "cy" }],
@@ -408,13 +368,13 @@ async fn remove_reviewer_deletes_pending_requests() {
         .await;
     rest("DELETE", &format!("/pulls/{NUMBER}/requested_reviewers"))
         .and(body_json(json!({ "reviewers": ["cy"] })))
-        .respond_with(ok_json(pull_fixture()))
+        .respond_with(ok_json(fixture("pull_request")))
         .expect(1)
         .mount(&server)
         .await;
     rest("DELETE", &format!("/pulls/{NUMBER}/requested_reviewers"))
         .and(body_json(json!({ "reviewers": [], "team_reviewers": ["maintainers"] })))
-        .respond_with(ok_json(pull_fixture()))
+        .respond_with(ok_json(fixture("pull_request")))
         .expect(1)
         .mount(&server)
         .await;
@@ -425,8 +385,8 @@ async fn remove_reviewer_deletes_pending_requests() {
 
 #[tokio::test]
 async fn merge_with_merge_commit_and_branch_deletion() {
-    let (server, provider) = setup().await;
-    mount_pull(&server, pull_fixture()).await;
+    let (server, provider) = support::start().await;
+    mount_pull(&server, fixture("pull_request")).await;
     rest("PUT", &format!("/pulls/{NUMBER}/merge"))
         .and(body_json(
             json!({ "merge_method": "merge", "sha": REVIEWED_SHA, "commit_title": "Merge it" }),
@@ -452,7 +412,7 @@ async fn merge_with_merge_commit_and_branch_deletion() {
 
 #[tokio::test]
 async fn merge_refuses_semi_linear_without_a_request() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     let options = MergeOptions {
         strategy: MergeStrategy::SemiLinear,
         delete_source_branch: true,
@@ -468,8 +428,8 @@ async fn merge_refuses_semi_linear_without_a_request() {
 /// the head-moved error, and the branch stays.
 #[tokio::test]
 async fn merge_refused_for_a_moved_head_reports_new_commits() {
-    let (server, provider) = setup().await;
-    mount_pull(&server, pull_fixture()).await;
+    let (server, provider) = support::start().await;
+    mount_pull(&server, fixture("pull_request")).await;
     rest("PUT", &format!("/pulls/{NUMBER}/merge"))
         .and(body_json(json!({ "merge_method": "squash", "sha": REVIEWED_SHA })))
         .respond_with(ResponseTemplate::new(409).set_body_json(
@@ -498,9 +458,9 @@ async fn merge_refused_for_a_moved_head_reports_new_commits() {
 /// GitHub's own refusal stays.
 #[tokio::test]
 async fn merge_refused_as_not_mergeable_after_a_push_reports_new_commits() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     rest("GET", &format!("/pulls/{NUMBER}"))
-        .respond_with(ok_json(pull_fixture()))
+        .respond_with(ok_json(fixture("pull_request")))
         .expect(2)
         .mount(&server)
         .await;
@@ -530,8 +490,8 @@ async fn merge_refused_as_not_mergeable_after_a_push_reports_new_commits() {
 /// so the delete that finds no branch is no failure. A branch still there that cannot be deleted is.
 #[tokio::test]
 async fn merge_succeeds_when_github_already_deleted_the_branch() {
-    let (server, provider) = setup().await;
-    mount_pull(&server, pull_fixture()).await;
+    let (server, provider) = support::start().await;
+    mount_pull(&server, fixture("pull_request")).await;
     rest("PUT", &format!("/pulls/{NUMBER}/merge"))
         .respond_with(ok_json(json!({ "sha": "merged", "merged": true })))
         .expect(2)
@@ -572,16 +532,16 @@ async fn merge_succeeds_when_github_already_deleted_the_branch() {
 
 #[tokio::test]
 async fn close_and_reopen_patch_state() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     rest("PATCH", &format!("/pulls/{NUMBER}"))
         .and(body_json(json!({ "state": "closed" })))
-        .respond_with(ok_json(pull_fixture()))
+        .respond_with(ok_json(fixture("pull_request")))
         .expect(1)
         .mount(&server)
         .await;
     rest("PATCH", &format!("/pulls/{NUMBER}"))
         .and(body_json(json!({ "state": "open" })))
-        .respond_with(ok_json(pull_fixture()))
+        .respond_with(ok_json(fixture("pull_request")))
         .expect(1)
         .mount(&server)
         .await;
@@ -592,10 +552,10 @@ async fn close_and_reopen_patch_state() {
 
 #[tokio::test]
 async fn update_title_description_patches_title_and_body() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     rest("PATCH", &format!("/pulls/{NUMBER}"))
         .and(body_json(json!({ "title": "New title", "body": "New body" })))
-        .respond_with(ok_json(pull_fixture()))
+        .respond_with(ok_json(fixture("pull_request")))
         .expect(1)
         .mount(&server)
         .await;
@@ -605,8 +565,8 @@ async fn update_title_description_patches_title_and_body() {
 
 #[tokio::test]
 async fn set_draft_false_marks_ready_for_review() {
-    let (server, provider) = setup().await;
-    mount_pull(&server, pull_fixture()).await;
+    let (server, provider) = support::start().await;
+    mount_pull(&server, fixture("pull_request")).await;
     graphql()
         .and(body_string_contains("markPullRequestReadyForReview(input: { pullRequestId: $id })"))
         .and(body_partial_json(json!({ "variables": { "id": PULL_NODE_ID } })))
@@ -620,8 +580,8 @@ async fn set_draft_false_marks_ready_for_review() {
 
 #[tokio::test]
 async fn set_draft_true_converts_to_draft() {
-    let (server, provider) = setup().await;
-    let mut pull = pull_fixture();
+    let (server, provider) = support::start().await;
+    let mut pull = fixture("pull_request");
     pull["draft"] = Value::Bool(false);
     mount_pull(&server, pull).await;
     graphql()
@@ -637,8 +597,8 @@ async fn set_draft_true_converts_to_draft() {
 
 #[tokio::test]
 async fn set_draft_to_current_state_sends_no_mutation() {
-    let (server, provider) = setup().await;
-    mount_pull(&server, pull_fixture()).await;
+    let (server, provider) = support::start().await;
+    mount_pull(&server, fixture("pull_request")).await;
     graphql().respond_with(ok_json(json!({ "data": {} }))).expect(0).mount(&server).await;
 
     provider.set_draft(REPO, NUMBER, true).await.expect("already draft");
@@ -646,7 +606,7 @@ async fn set_draft_to_current_state_sends_no_mutation() {
 
 #[tokio::test]
 async fn graphql_errors_surface_as_status_errors() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     graphql()
         .respond_with(ok_json(json!({ "data": null, "errors": [{ "type": "FORBIDDEN", "message": "Resource not accessible" }] })))
         .expect(1)

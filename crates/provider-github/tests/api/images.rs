@@ -3,26 +3,15 @@
 //! signs, and that address goes out without the token; an address GitHub does not sign is
 //! private; without a token the address as written loads anonymously.
 
-use provider_github::GitHubProvider;
+use review_core::Provider;
 use review_core::http::image::{Body, Validators};
-use review_core::{Connection, Provider, ProviderKind};
 use wiremock::matchers::{body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
+use crate::support::{TOKEN, provider};
+
 const ASSET: &str = "/user-attachments/assets/e7d69315-2274-4873-a343-7c087c9f8543";
 const PNG: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
-
-fn provider(server: &MockServer, token: Option<&str>) -> GitHubProvider {
-    let connection = Connection {
-        id: "images".to_owned(),
-        name: "Mock GitHub Enterprise".to_owned(),
-        kind: ProviderKind::GitHub,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: token.map(str::to_owned),
-    };
-    GitHubProvider::new(connection, reqwest::Client::new())
-}
 
 fn image() -> ResponseTemplate {
     ResponseTemplate::new(200)
@@ -42,7 +31,7 @@ fn rendered(src: &str) -> ResponseTemplate {
 fn render_request() -> wiremock::MockBuilder {
     Mock::given(method("POST"))
         .and(path("/api/v3/markdown"))
-        .and(header("authorization", "Bearer test-token"))
+        .and(header("authorization", format!("Bearer {TOKEN}").as_str()))
         .and(body_string_contains(r#""mode":"gfm""#))
         .and(body_string_contains(r#""context":"o/r""#))
         .and(body_string_contains(ASSET))
@@ -63,7 +52,7 @@ async fn attachments_load_through_the_signed_address_without_the_token() {
         .mount(&storage)
         .await;
 
-    let body = provider(&github, Some("test-token"))
+    let body = provider(&github, Some(TOKEN))
         .fetch_image("o/r", &format!("{}{ASSET}", github.uri()), 1024, &Validators::NONE)
         .await
         .unwrap();
@@ -93,7 +82,7 @@ async fn an_attachment_github_does_not_sign_is_private() {
         .mount(&github)
         .await;
 
-    let body = provider(&github, Some("test-token"))
+    let body = provider(&github, Some(TOKEN))
         .fetch_image("o/r", &canonical, 1024, &Validators::NONE)
         .await
         .unwrap();

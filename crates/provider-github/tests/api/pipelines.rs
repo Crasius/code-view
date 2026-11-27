@@ -1,28 +1,14 @@
 //! Pipeline reads against a mock GitHub Enterprise host.
 
-use provider_github::GitHubProvider;
-use review_core::{Connection, Provider, ProviderError, ProviderKind, RerunAction, RerunKind};
+use review_core::{Provider, ProviderError, RerunAction, RerunKind};
 use serde_json::{Value, json};
-use wiremock::matchers::{header, method, path, query_param};
+use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const REPO: &str = "contoso/app";
+use crate::support::{self, REPO, fixture, ok_json, provider, rest};
+
 const NUMBER: u64 = 7;
 const HEAD_SHA: &str = "head111";
-
-async fn setup() -> (MockServer, GitHubProvider) {
-    let server = MockServer::start().await;
-    let connection = Connection {
-        id: "mock".to_owned(),
-        name: "Mock GitHub Enterprise".to_owned(),
-        kind: ProviderKind::GitHub,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: Some("test-token".to_owned()),
-    };
-    let provider = GitHubProvider::new(connection, reqwest::Client::new());
-    (server, provider)
-}
 
 async fn mount_get(server: &MockServer, repo_path: &str, response: ResponseTemplate) {
     Mock::given(method("GET"))
@@ -32,16 +18,10 @@ async fn mount_get(server: &MockServer, repo_path: &str, response: ResponseTempl
         .await;
 }
 
-fn ok_json(body: Value) -> ResponseTemplate {
-    ResponseTemplate::new(200).set_body_json(body)
-}
-
 #[tokio::test]
 async fn forbidden_check_runs_still_show_runs_and_statuses() {
-    let (server, provider) = setup().await;
-    let pull: Value = serde_json::from_str(include_str!("../fixtures/pull_request.json"))
-        .expect("pull request fixture");
-    mount_get(&server, &format!("/pulls/{NUMBER}"), ok_json(pull)).await;
+    let (server, provider) = support::start().await;
+    mount_get(&server, &format!("/pulls/{NUMBER}"), ok_json(fixture("pull_request"))).await;
     mount_get(&server, "/actions/runs", ok_json(json!({ "workflow_runs": [] }))).await;
     // Fine-grained personal access tokens get 403 from the checks API.
     let forbidden = ResponseTemplate::new(403)
@@ -81,7 +61,7 @@ async fn mount_jobs(server: &MockServer) {
 /// Runs - Get gives the workflow path and commit; Repository contents - Get the file (base64).
 #[tokio::test]
 async fn job_graph_follows_the_workflow_files_needs() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     mount_jobs(&server).await;
     let run = json!({ "id": 11, "html_url": "https://github.com/contoso/app/actions/runs/11",
                       "path": ".github/workflows/ci.yml", "head_sha": HEAD_SHA });
@@ -116,10 +96,8 @@ async fn job_graph_follows_the_workflow_files_needs() {
 /// again on it supersedes its earlier run.
 #[tokio::test]
 async fn listed_runs_read_their_workflow_file_without_another_run_request() {
-    let (server, provider) = setup().await;
-    let pull: Value = serde_json::from_str(include_str!("../fixtures/pull_request.json"))
-        .expect("pull request fixture");
-    mount_get(&server, &format!("/pulls/{NUMBER}"), ok_json(pull)).await;
+    let (server, provider) = support::start().await;
+    mount_get(&server, &format!("/pulls/{NUMBER}"), ok_json(fixture("pull_request"))).await;
     let listed = |id: u64| {
         json!({ "id": id, "workflow_id": 5, "name": "CI", "status": "completed", "conclusion": "success", "event": "pull_request",
                 "html_url": format!("https://github.com/contoso/app/actions/runs/{id}"), "path": ".github/workflows/ci.yml", "head_sha": HEAD_SHA })
@@ -163,7 +141,7 @@ async fn listed_runs_read_their_workflow_file_without_another_run_request() {
 
 #[tokio::test]
 async fn job_graph_falls_back_to_timing_without_the_workflow_file() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     mount_jobs(&server).await;
     mount_get(&server, "/actions/runs/11", ResponseTemplate::new(403)).await;
     let stages =
@@ -178,13 +156,11 @@ async fn job_graph_falls_back_to_timing_without_the_workflow_file() {
 /// Re-run endpoints: POST, no body required, 201 Created.
 #[tokio::test]
 async fn reruns_a_job_failed_jobs_and_a_whole_run() {
-    let (server, provider) = setup().await;
+    let (server, provider) = support::start().await;
     for route in
         ["/actions/jobs/501/rerun", "/actions/runs/11/rerun-failed-jobs", "/actions/runs/11/rerun"]
     {
-        Mock::given(method("POST"))
-            .and(path(format!("/api/v3/repos/{REPO}{route}")))
-            .and(header("authorization", "Bearer test-token"))
+        rest("POST", route)
             .respond_with(ResponseTemplate::new(201).set_body_json(json!({})))
             .expect(1)
             .mount(&server)
@@ -212,15 +188,7 @@ async fn reruns_a_job_failed_jobs_and_a_whole_run() {
 #[tokio::test]
 async fn reruns_need_a_token() {
     let server = MockServer::start().await;
-    let connection = Connection {
-        id: "mock".to_owned(),
-        name: "anonymous".to_owned(),
-        kind: ProviderKind::GitHub,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: None,
-    };
-    let provider = GitHubProvider::new(connection, reqwest::Client::new());
+    let provider = provider(&server, None);
     let result =
         provider.rerun(REPO, NUMBER, "run:11", &RerunAction::new(RerunKind::Job, "501")).await;
     assert!(matches!(result, Err(ProviderError::Unsupported(_))), "{result:?}");

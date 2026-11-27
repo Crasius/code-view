@@ -4,23 +4,12 @@
 
 use std::time::{Duration, Instant};
 
-use provider_github::GitHubProvider;
-use review_core::{Connection, Provider, ProviderError, ProviderKind};
+use review_core::{Provider, ProviderError};
 use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn provider(server: &MockServer) -> GitHubProvider {
-    let connection = Connection {
-        id: "github-rate".to_owned(),
-        name: "mock".to_owned(),
-        kind: ProviderKind::GitHub,
-        base_url: server.uri(),
-        organizations: Vec::new(),
-        token: Some("test-token".to_owned()),
-    };
-    GitHubProvider::new(connection, reqwest::Client::new())
-}
+use crate::support::{TOKEN, ok_json, provider};
 
 fn user() -> serde_json::Value {
     json!({ "id": 1, "login": "ada", "name": "Ada", "avatar_url": null })
@@ -29,7 +18,7 @@ fn user() -> serde_json::Value {
 async fn mount_user(server: &MockServer) {
     Mock::given(method("GET"))
         .and(path("/api/v3/user"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(user()))
+        .respond_with(ok_json(user()))
         .mount(server)
         .await;
 }
@@ -51,7 +40,8 @@ async fn secondary_limit_403_waits_for_retry_after() {
     mount_user(&server).await;
 
     let started = Instant::now();
-    let user = provider(&server).current_user().await.expect("retried after the pause");
+    let user =
+        provider(&server, Some(TOKEN)).current_user().await.expect("retried after the pause");
     assert_eq!(user.login.as_deref(), Some("ada"));
     assert!(started.elapsed() >= Duration::from_millis(900));
     assert_eq!(server.received_requests().await.expect("recorded").len(), 2);
@@ -68,7 +58,7 @@ async fn plain_permission_403_is_not_a_rate_limit() {
         .mount(&server)
         .await;
 
-    let error = provider(&server).current_user().await.expect_err("denied");
+    let error = provider(&server, Some(TOKEN)).current_user().await.expect_err("denied");
     assert_eq!(error.status(), Some(403));
     assert!(!matches!(error, ProviderError::RateLimited { .. }));
     assert_eq!(server.received_requests().await.expect("recorded").len(), 1, "no retry");

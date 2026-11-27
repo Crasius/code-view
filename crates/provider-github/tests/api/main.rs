@@ -9,4 +9,5 @@ mod merge_policy;
 mod overview;
 mod pipelines;
 mod rate_limits;
+mod support;
 mod writes;

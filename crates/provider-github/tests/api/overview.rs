@@ -4,23 +4,19 @@
 
 use provider_github::GitHubProvider;
 use review_core::{
-    CheckState, Connection, DiffStat, Provider, ProviderError, ProviderKind, PullRequestQuery,
-    PullRequestScope, RunStatus, StateFilter,
+    CheckState, DiffStat, Provider, ProviderError, PullRequestQuery, PullRequestScope, RunStatus,
+    StateFilter,
 };
 use serde_json::{Value, json};
 use wiremock::matchers::{body_string_contains, header, method, path, query_param};
 use wiremock::{Mock, MockBuilder, MockServer, ResponseTemplate};
 
+use crate::support::{self, TOKEN, fixture, ok_json};
+
 fn provider(server: &MockServer, organizations: &[&str], token: Option<&str>) -> GitHubProvider {
-    let connection = Connection {
-        id: "overview".to_owned(),
-        name: "Mock GitHub Enterprise".to_owned(),
-        kind: ProviderKind::GitHub,
-        base_url: server.uri(),
-        organizations: organizations.iter().map(|owner| (*owner).to_owned()).collect(),
-        token: token.map(str::to_owned),
-    };
-    GitHubProvider::new(connection, reqwest::Client::new())
+    let mut connection = support::connection(server, token);
+    connection.organizations = organizations.iter().map(|owner| (*owner).to_owned()).collect();
+    support::provider_for(connection)
 }
 
 fn query(scope: PullRequestScope) -> PullRequestQuery {
@@ -31,7 +27,7 @@ fn query(scope: PullRequestScope) -> PullRequestQuery {
 const CLI_TOKEN: &str = "gho_cli-token";
 
 fn graphql(search: &str) -> MockBuilder {
-    graphql_as("test-token", search)
+    graphql_as(TOKEN, search)
 }
 
 fn graphql_as(token: &str, search: &str) -> MockBuilder {
@@ -62,7 +58,7 @@ fn draft(mut node: Value, author: &str) -> Value {
 }
 
 fn results(nodes: &[Value]) -> ResponseTemplate {
-    ResponseTemplate::new(200).set_body_json(json!({
+    ok_json(json!({
         "data": { "search": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": nodes } }
     }))
 }
@@ -71,7 +67,7 @@ fn results(nodes: &[Value]) -> ResponseTemplate {
 async fn mount_reach(server: &MockServer, organizations: ResponseTemplate) {
     Mock::given(method("GET"))
         .and(path("/api/v3/user"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "id": 1, "login": "mona" })))
+        .respond_with(ok_json(json!({ "id": 1, "login": "mona" })))
         .expect(1)
         .mount(server)
         .await;
@@ -108,7 +104,7 @@ async fn everything_in_the_organizations_is_one_search() {
         .expect(2)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["contoso"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some(TOKEN));
 
     let rows =
         provider.list_pull_requests(&query(PullRequestScope::Visible)).await.expect("overview");
@@ -139,7 +135,7 @@ async fn the_search_brings_line_and_file_counts() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["contoso"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some(TOKEN));
 
     let rows =
         provider.list_pull_requests(&query(PullRequestScope::Visible)).await.expect("overview");
@@ -225,9 +221,7 @@ async fn organizations_behind_sso_surface_an_authorize_action() {
     .await;
     Mock::given(method("GET"))
         .and(path("/api/v3/organizations/4242"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(json!({ "login": "secure-corp", "id": 4242 })),
-        )
+        .respond_with(ok_json(json!({ "login": "secure-corp", "id": 4242 })))
         .expect(1)
         .mount(&server)
         .await;
@@ -271,7 +265,7 @@ async fn created_by_me_and_assigned_to_me_use_their_qualifiers() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["contoso"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some(TOKEN));
 
     let mine = provider
         .list_pull_requests(&query(PullRequestScope::CreatedByMe))
@@ -300,7 +294,7 @@ async fn the_users_part_of_one_repository_is_one_search_for_it() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["contoso"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some(TOKEN));
 
     for (role, number) in
         [(PullRequestScope::CreatedByMe, 5), (PullRequestScope::ReviewRequested, 6)]
@@ -339,7 +333,7 @@ async fn a_timed_out_search_page_is_asked_again_at_half_its_size() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["contoso"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some(TOKEN));
     let query = PullRequestQuery::in_repository(
         "contoso/app".to_owned(),
         PullRequestScope::CreatedByMe,
@@ -373,25 +367,24 @@ async fn a_rest_listing_asks_for_checks_an_earlier_search_listed() {
         .expect(1)
         .mount(&server)
         .await;
-    let rest_row: Value =
-        serde_json::from_str(include_str!("../fixtures/pull_request.json")).expect("fixture");
+    let rest_row = fixture("pull_request");
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/contoso/app/pulls"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([rest_row])))
+        .respond_with(ok_json(json!([rest_row])))
         .expect(1)
         .mount(&server)
         .await;
     Mock::given(method("POST"))
         .and(path("/api/graphql"))
         .and(body_string_contains("pr1234: pullRequest(number: 1234)"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "data": { "repository": {
+        .respond_with(ok_json(json!({ "data": { "repository": {
             "pr1234": { "number": 1234, "reviewDecision": null,
                 "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "SUCCESS" } } }] } }
         } } })))
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["contoso"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some(TOKEN));
 
     provider.list_pull_requests(&query(PullRequestScope::Visible)).await.expect("search");
     let repository = PullRequestQuery::in_repository(
@@ -435,7 +428,7 @@ async fn a_busy_repository_leaves_the_others_their_share() {
         .collect();
     graphql(r#""q":"is:pr is:open repo:acme/busy repo:acme/quiet sort:updated-desc""#)
         .and(body_string_contains(r#""first":4"#))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "data": { "search": {
+        .respond_with(ok_json(json!({ "data": { "search": {
             "pageInfo": { "hasNextPage": true, "endCursor": "c4" }, "nodes": busy
         } } })))
         .expect(1)
@@ -447,7 +440,7 @@ async fn a_busy_repository_leaves_the_others_their_share() {
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["acme"], Some("test-token"));
+    let provider = provider(&server, &["acme"], Some(TOKEN));
     let repositories = ["acme/busy".to_owned(), "acme/quiet".to_owned()];
 
     let rows = provider
@@ -482,14 +475,14 @@ async fn a_missing_pull_request_in_the_status_batch_is_left_out() {
         "pr8": null
     } });
     status_query()
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "data": data, "errors": [{
+        .respond_with(ok_json(json!({ "data": data, "errors": [{
             "type": "NOT_FOUND", "path": ["repository", "pr8"],
             "message": "Could not resolve to a PullRequest with the number of 8."
         }] })))
         .expect(1)
         .mount(&server)
         .await;
-    let provider = provider(&server, &["contoso"], Some("test-token"));
+    let provider = provider(&server, &["contoso"], Some(TOKEN));
 
     let statuses = provider.row_statuses("contoso/app", &[7, 8]).await.expect("the found one");
     assert_eq!(
@@ -499,7 +492,7 @@ async fn a_missing_pull_request_in_the_status_batch_is_left_out() {
 
     server.reset().await;
     status_query()
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "data": data, "errors": [{
+        .respond_with(ok_json(json!({ "data": data, "errors": [{
             "type": "FORBIDDEN", "message": "Resource not accessible by integration"
         }] })))
         .expect(1)
