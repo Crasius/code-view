@@ -487,6 +487,8 @@ mod tests {
             });
         harness.run();
         harness.hover_at(harness.get_by_role_and_label(Role::Link, KEY).rect().center());
+        // Each kittest step moves its clock by its default `step_dt` of 0.25 s, so four steps pass
+        // egui's default tooltip delay of 0.5 s with room to spare.
         harness.run_steps(4);
         harness
     }

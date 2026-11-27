@@ -9,8 +9,9 @@ use super::{CHIP_HEIGHT, Group, Header, ListAction, ROW_PADDING, chip_width, pai
 
 /// The Favorites card's menu entry; the overview's star tool and Settings bring the lane back.
 const HIDE_LANE: &str = "Hide the Favorites lane";
-/// A header's caret glyph, and from its left to the mark after it.
+/// The size of a header's caret glyph.
 const CARET_SIZE: f32 = 14.0;
+/// From the caret's left edge to the mark after it.
 const CARET_TO_MARK: f32 = 24.0;
 /// From a header's mark to its title.
 pub(super) const MARK_TO_TITLE: f32 = 26.0;

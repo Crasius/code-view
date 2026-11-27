@@ -86,11 +86,10 @@ const FILES_INSET: f32 = 12.0;
 /// Room between the Files button and the checks column; a hairline divider sits in its middle,
 /// so a click aimed at the row never lands on the button by accident.
 const FILES_GAP: f32 = 24.0;
-/// The chips (a card header's and a section header's row count, a row's labels) share one set of
-/// sizes; each caller places its chip itself. Their height and the room left and right of their
-/// text together. Their radius is [`style::RADIUS_CHIP`], which egui clamps to half this height,
-/// so the ends are round.
+/// A chip's height, shared by a card header's and a section header's row count and a row's labels;
+/// egui clamps [`style::RADIUS_CHIP`] to half of it, so the ends are round.
 const CHIP_HEIGHT: f32 = 18.0;
+/// The room left and right of a chip's text, together.
 const CHIP_PADDING_X: f32 = 14.0;
 
 /// The width of a chip around `galley`; never narrower than high, so one digit sits in a circle.
