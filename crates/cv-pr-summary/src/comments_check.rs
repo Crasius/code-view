@@ -11,7 +11,7 @@ use review_git::{ChangeKind, ChangedFile};
 use review_store::ThemePreference;
 
 use super::bodies::{CardBody, MAX_BODIES};
-use super::shots::{Scene, card_of, file, harness, settle};
+use super::testing::{Scene, card_of, file, harness, settle};
 use super::{MARGIN, SummaryEvent};
 use cv_code::line_source::Pane;
 use cv_pr_diff::diff_view::DiffView;

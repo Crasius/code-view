@@ -14,7 +14,7 @@ use review_store::{DiffLayout, ThemePreference};
 
 use super::bodies::MAX_BODIES;
 use super::loads::{MAX_RUNNING, MAX_WANTED};
-use super::shots::{Scene, card_of, file, harness, settle};
+use super::testing::{Scene, card_of, file, harness, settle};
 use super::{MARGIN, SummaryEvent};
 use cv_code::line_source::Pane;
 use cv_pr_diff::diff_view::DiffView;

@@ -9,7 +9,7 @@ use review_git::{ChangeKind, ChangedFile};
 use review_store::ThemePreference;
 
 use super::SummaryEvent;
-use super::shots::{Scene, card_of, file, harness, markdown_versions, settle};
+use super::testing::{Scene, card_of, file, harness, markdown_versions, settle};
 use cv_pr_rendered::markdown_diff::embedded;
 
 const README: &str = "docs/README.md";

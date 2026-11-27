@@ -57,9 +57,9 @@ mod rendered;
 #[cfg(test)]
 mod rendered_check;
 #[cfg(test)]
-mod shots;
-#[cfg(test)]
 mod split_check;
+#[cfg(test)]
+mod testing;
 #[cfg(test)]
 mod zoom_check;
 

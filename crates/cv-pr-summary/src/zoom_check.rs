@@ -9,7 +9,7 @@ use review_git::{ChangeKind, ChangedFile};
 use review_store::{AppSettings, ThemePreference};
 
 use super::MARGIN;
-use super::shots::{Scene, card_of, file, harness, settle};
+use super::testing::{Scene, card_of, file, harness, settle};
 use cv_code::line_source::Pane;
 
 const PATH: &str = "src/app/cart.rs";
