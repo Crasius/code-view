@@ -47,16 +47,6 @@ pub enum NewReviewer {
 }
 
 impl LifecycleAction {
-    pub fn run(
-        self,
-        session: &PullRequestSession,
-        services: &Services,
-        actions: &mut ActionRunner,
-    ) {
-        // A write that did not start (another one runs) is visible as the busy header.
-        self.start(session, services, actions);
-    }
-
     /// The write's name in "<name> failed: <reason>".
     pub fn name(&self) -> &'static str {
         match self {

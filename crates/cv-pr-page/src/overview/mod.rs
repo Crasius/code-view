@@ -268,7 +268,8 @@ impl OverviewTab {
                     vote: ReviewVote::Approved,
                     comment: None,
                 };
-                approve.run(session, services, actions);
+                // A write that did not start (another one runs) is visible as the busy header.
+                approve.start(session, services, actions);
             }
             Some(MergeStatusAction::OpenOnPlatform) => {
                 if let Some(detail) = session.detail.ready() {

@@ -181,7 +181,8 @@ pub fn run(
         ReviewStep::Approve => {
             if let VoteOffer::Approve { is_enabled: true } = vote_offer(env) {
                 let approve = LifecycleAction::Vote { vote: ReviewVote::Approved, comment: None };
-                approve.run(env.session, env.services, env.actions);
+                // A write that did not start (another one runs) is visible as the busy header.
+                approve.start(env.session, env.services, env.actions);
             }
         }
         ReviewStep::Overview => tab.stepping.wants_overview = true,
