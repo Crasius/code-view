@@ -57,8 +57,10 @@ docker run --rm --cpus 6 -v "$PWD:/src:ro" -v codeview-linux-target:/target   -v
   cargo test -j 6 --workspace --no-fail-fast'
 ```
 
-The two volumes keep the build and the crates between runs; the empty `RUSTC_WRAPPER` turns off
-the Windows sccache that `.cargo/config.toml` names. No test reaches for a GPU, a display, a
+The recipe runs the tests with `cargo test`, which the image has; CI runs them with
+cargo-nextest through `sh ci/run-tests.sh 'all()'` after `sh ci/install-build-deps.sh
+cargo-nextest` (`docs/release.md`, Tests). The two volumes keep the build and the crates between
+runs; the empty `RUSTC_WRAPPER` turns off the Windows sccache that `.cargo/config.toml` names. No test reaches for a GPU, a display, a
 keyring or the network. What depends on the machine is kept out of the tests:
 
 - **Fonts.** The app takes the desktop's fonts; tests that assert what fits beside what in a row

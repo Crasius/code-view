@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds every test of the workspace and runs those a nextest filterset selects, the one
 # implementation of the test run for both CIs (ci/test.sh) and the developer's gate
-# (`sh scripts/check.sh test`, which puts the pinned cargo-nextest first on PATH).
+# (`sh scripts/check.sh test`); `sh ci/run-tests.sh 'all()'` runs every test of the workspace.
 # Usage: run-tests.sh [--profile <nextest profile>] [--stamp <upload seconds>] <filterset>
 #   --profile  the nextest profile (.config/nextest.toml); CI passes `ci`
 #   --stamp    once the build passed, records it for the build cache with the seconds it took and
@@ -34,10 +34,13 @@ if [ "$filter" = "none()" ]; then
     echo "test: no test reads the changed files"
     exit 0
 fi
-command -v cargo-nextest > /dev/null || {
-    echo "test: cargo-nextest is not installed; install it with sh ci/install-build-deps.sh cargo-nextest" >&2
+# The pinned cargo-nextest first on PATH: on a runner the one there, on a development machine the
+# copy in the shared tools folder (ci/install-build-deps.sh), so a direct call works as well.
+nextest="$(sh ci/install-build-deps.sh --path cargo-nextest)" || {
+    echo "test: $nextest; install it with sh ci/install-build-deps.sh cargo-nextest" >&2
     exit 1
 }
+PATH="${nextest%/*}:$PATH"
 start="$(date +%s)"
 cargo test --locked --workspace --no-run
 [ -z "$stamp" ] || sh ci/target-stamp.sh save "$(($(date +%s) - start))" "$stamp"

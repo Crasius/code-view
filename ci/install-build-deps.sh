@@ -9,9 +9,10 @@
 #                                                 the reason on stdout when there is none
 #   sh ci/install-build-deps.sh --version <tool>  the pinned version
 #
-# With CI set (a runner) the tools go to $BUILD_DEPS/usr/bin, which the jobs put on PATH: the runner
-# drops every capability, so nothing can be installed system-wide (docs/release.md, Runner), and
-# --path names the tool on PATH. Without CI (a development machine) each tool goes to its own
+# With CI or BUILD_DEPS set (a runner, or one of its jobs run by hand) the tools go to
+# $BUILD_DEPS/usr/bin, which the jobs put on PATH: the runner drops every capability, so nothing
+# can be installed system-wide (docs/release.md, Runner), and --path names the tool on PATH.
+# Without either (a development machine) each tool goes to its own
 # folder <tools>/<tool>-<version>/bin, shared by every checkout and worktree and never ~/.cargo/bin,
 # so a tool installed there by hand stays as it is. <tools> is $CODE_VIEW_TOOLS, else the user's
 # cache folder: %LOCALAPPDATA%\code-view\tools (Windows), ~/Library/Caches/code-view/tools (macOS),
@@ -37,6 +38,8 @@ case "$os" in
     macos) triple="$arch-apple-darwin"; exe="" ;;
     *) triple="$arch-unknown-linux-musl"; exe="" ;;
 esac
+# A runner, or one of its jobs reproduced by hand with BUILD_DEPS set (docs/release.md).
+runner="${CI:-}${BUILD_DEPS:-}"
 
 # pin <tool>: sets version, and url, sha (empty when the project publishes no archive for this
 # host), member (the executable's path in the archive) and strip (its leading folders).
@@ -127,9 +130,9 @@ fetch() {
     file="$(mktemp -d)/${1##*/}"
     curl --fail --silent --show-error --location --proto '=https' --output "$file" "$1"
     if command -v sha256sum > /dev/null; then
-        echo "$2  $file" | sha256sum -c - >&2
+        echo "$2  $file" | sha256sum -c - >&2 || { rm -rf "${file%/*}"; exit 1; }
     else
-        echo "$2  $file" | shasum -a 256 -c - >&2
+        echo "$2  $file" | shasum -a 256 -c - >&2 || { rm -rf "${file%/*}"; exit 1; }
     fi
     printf '%s\n' "$file"
 }
@@ -158,7 +161,7 @@ case "${1:-}" in
         [ "$#" -eq 2 ] || { echo "usage: install-build-deps.sh --path <tool>" >&2; exit 2; }
         tool="$2"
         pin "$tool"
-        if [ -n "${CI:-}" ]; then
+        if [ -n "$runner" ]; then
             command -v "$tool" || { echo "$tool is not installed"; exit 1; }
             exit 0
         fi
@@ -186,7 +189,7 @@ case "${1:-}" in
         ;;
 esac
 
-if [ -n "${CI:-}" ]; then
+if [ -n "$runner" ]; then
     root="${BUILD_DEPS:?Name the folder to unpack into.}"
     mkdir -p "$root/usr/bin"
     for tool in "$@"; do
