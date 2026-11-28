@@ -99,7 +99,7 @@ pub fn card_drawn(ui: &Ui, assistant: &mut Assistant, card: egui::Rect) {
 }
 
 /// The card's name in the accessibility tree.
-pub const CARD_LABEL: &str = "Assistant card";
+pub(crate) const CARD_LABEL: &str = "Assistant card";
 
 /// The flat splitter between the card's conversation and its composer: dragged down, the
 /// conversation grows and the composer moves down with it, past the column's visible room up to

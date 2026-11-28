@@ -10,6 +10,10 @@
 mod app_mark;
 mod caption;
 mod caption_buttons;
+#[cfg_attr(
+    not(any(test, feature = "test-support")),
+    expect(unreachable_pub, reason = "pub for the test-support re-export in platform/mod.rs")
+)]
 pub mod hit_test;
 mod placement;
 mod startup;

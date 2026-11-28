@@ -68,7 +68,7 @@ pub use system::{
 };
 pub(crate) use system::{font_sources, prefers_reduced_motion, register_chrome_fonts};
 #[cfg(any(test, feature = "test-support"))]
-pub use window_drag::LONG_PRESS;
+pub const LONG_PRESS: std::time::Duration = window_drag::LONG_PRESS;
 pub(crate) use window_drag::is_drag_area as is_window_drag_area;
 pub use window_drag::long_press_moves_window;
 /// The Windows title bar's state for the tests of the integrated bar.

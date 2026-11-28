@@ -67,6 +67,10 @@ impl PostKind {
 }
 
 /// What the platform sent back for a post.
+#[cfg_attr(
+    not(any(test, feature = "test-support")),
+    expect(unreachable_pub, reason = "pub for the test-support re-export in lib.rs")
+)]
 pub enum Delivery {
     /// The new thread as the platform stored it.
     Created(ReviewThread),

@@ -21,6 +21,8 @@ publish = false
 # RS-DONT-03: unsafe only in platform/ modules, each with #![expect(unsafe_code, reason)].
 # The crates without platform FFI forbid it in their crate root.
 unsafe_code = "warn"
+# Rule rust, Lints: pub only for what the crate root exports.
+unreachable_pub = "warn"
 
 [workspace.lints.clippy]
 # RS-LINT-02: the default groups stay as they are; pedantic joins as a group.

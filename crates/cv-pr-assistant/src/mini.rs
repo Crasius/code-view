@@ -34,9 +34,23 @@ use super::citations::{self, CitedLines};
 use super::{Action, Assistant, actions, turns};
 
 #[cfg(any(test, feature = "test-support"))]
-pub use self::card::{
-    ANSWERING, CARD_LABEL, FOLLOW_UP, NEXT, OPEN, OPEN_AT_HEAD, PREVIOUS, SHRINK, SKIP_NEXT,
-};
+pub const ANSWERING: &str = card::ANSWERING;
+#[cfg(any(test, feature = "test-support"))]
+pub const CARD_LABEL: &str = card::CARD_LABEL;
+#[cfg(any(test, feature = "test-support"))]
+pub const FOLLOW_UP: &str = card::FOLLOW_UP;
+#[cfg(any(test, feature = "test-support"))]
+pub const NEXT: &str = card::NEXT;
+#[cfg(any(test, feature = "test-support"))]
+pub const OPEN: &str = card::OPEN;
+#[cfg(any(test, feature = "test-support"))]
+pub const OPEN_AT_HEAD: &str = card::OPEN_AT_HEAD;
+#[cfg(any(test, feature = "test-support"))]
+pub const PREVIOUS: &str = card::PREVIOUS;
+#[cfg(any(test, feature = "test-support"))]
+pub const SHRINK: &str = card::SHRINK;
+#[cfg(any(test, feature = "test-support"))]
+pub const SKIP_NEXT: &str = card::SKIP_NEXT;
 
 /// Opacity while the card covers the cited lines and the pointer is elsewhere (the design's).
 const COVERING_OPACITY: f32 = 0.35;

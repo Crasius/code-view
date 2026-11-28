@@ -20,18 +20,18 @@ use super::super::citations::CitedLines;
 use super::answer::{self, Pieces};
 
 /// The card's name in the accessibility tree.
-pub const CARD_LABEL: &str = "Assistant mini chat";
-pub const SHRINK: &str = "Shrink to a pill";
+pub(crate) const CARD_LABEL: &str = "Assistant mini chat";
+pub(crate) const SHRINK: &str = "Shrink to a pill";
 pub(crate) const FULL: &str = "Back to the full conversation";
 pub(crate) const CLOSE: &str = "Close";
-pub const OPEN: &str = "Open the answer";
-pub const PREVIOUS: &str = "Previous reference (Alt+,)";
-pub const NEXT: &str = "Next reference (Alt+.)";
-pub const OPEN_AT_HEAD: &str = "Open it at the head commit";
-pub const SKIP_NEXT: &str = "Skip to the next reference";
+pub(crate) const OPEN: &str = "Open the answer";
+pub(crate) const PREVIOUS: &str = "Previous reference (Alt+,)";
+pub(crate) const NEXT: &str = "Next reference (Alt+.)";
+pub(crate) const OPEN_AT_HEAD: &str = "Open it at the head commit";
+pub(crate) const SKIP_NEXT: &str = "Skip to the next reference";
 pub(crate) const SKIP_PREVIOUS: &str = "Skip to the previous reference";
-pub const FOLLOW_UP: &str = "Ask a follow-up";
-pub const ANSWERING: &str = "Answering…";
+pub(crate) const FOLLOW_UP: &str = "Ask a follow-up";
+pub(crate) const ANSWERING: &str = "Answering…";
 
 /// The side of a square icon button slot.
 const SLOT: f32 = 32.0;

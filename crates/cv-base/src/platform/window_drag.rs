@@ -19,7 +19,7 @@ use egui::{Rect, Sense, Ui};
 /// How long a press on a bar widget rests, without moving past egui's click distance, before it
 /// moves the window instead of clicking the widget. Below egui's `max_click_duration` (0.8 s), so a
 /// press released just before it is still a click.
-pub const LONG_PRESS: Duration = Duration::from_millis(350);
+pub(crate) const LONG_PRESS: Duration = Duration::from_millis(350);
 
 /// The bar's pointer sense, from before its widgets were laid out until they are known.
 #[cfg(any(target_os = "macos", test))]

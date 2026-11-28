@@ -64,9 +64,9 @@ use self::transcript::saver::Saver;
 
 pub(crate) use self::title::TitleLine;
 pub use self::title::card_action;
-#[cfg(any(test, feature = "test-support"))]
-pub use self::view::CARD_LABEL;
 pub use self::view::{TITLE, card, card_drawn, panel};
+#[cfg(any(test, feature = "test-support"))]
+pub const CARD_LABEL: &str = view::CARD_LABEL;
 
 /// Why the conversation cannot go on, each with its own fix in the card.
 #[derive(Debug, Clone, PartialEq, Eq)]

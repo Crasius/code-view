@@ -9,4 +9,4 @@
 746 crates/cv-pr-files/src/lib.rs
 837 crates/cv-pr-summary/src/lib.rs
 704 crates/cv-pr-pipelines/src/lib.rs
-821 crates/cv-markdown/src/render.rs
+820 crates/cv-markdown/src/render.rs
