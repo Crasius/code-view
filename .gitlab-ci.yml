@@ -41,7 +41,7 @@ stages: [test, build, release]
 
 include:
   - project: northbyte/creative-downloads/cli
-    ref: cc77c4c4294ca35cb154cb4e0886b6f9331a3eb9 # v0.3.0
+    ref: v0.6.0
     file: templates/cdl.gitlab-ci.yml
   # The images, the defaults, .rust and the check jobs.
   - local: ci/checks.yml

@@ -967,7 +967,7 @@ checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
 name = "cv-base"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "eframe",
  "egui",
@@ -984,7 +984,7 @@ dependencies = [
 
 [[package]]
 name = "cv-code"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-runtime",
@@ -1000,7 +1000,7 @@ dependencies = [
 
 [[package]]
 name = "cv-editor"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-markdown",
@@ -1016,7 +1016,7 @@ dependencies = [
 
 [[package]]
 name = "cv-lists"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-pr-session",
@@ -1034,7 +1034,7 @@ dependencies = [
 
 [[package]]
 name = "cv-markdown"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-media",
@@ -1053,7 +1053,7 @@ dependencies = [
 
 [[package]]
 name = "cv-media"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "arboard",
  "cv-base",
@@ -1073,7 +1073,7 @@ dependencies = [
 
 [[package]]
 name = "cv-pr-assistant"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-markdown",
@@ -1094,7 +1094,7 @@ dependencies = [
 
 [[package]]
 name = "cv-pr-diff"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-code",
@@ -1118,7 +1118,7 @@ dependencies = [
 
 [[package]]
 name = "cv-pr-files"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-code",
@@ -1146,7 +1146,7 @@ dependencies = [
 
 [[package]]
 name = "cv-pr-page"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "cv-base",
@@ -1174,7 +1174,7 @@ dependencies = [
 
 [[package]]
 name = "cv-pr-pipelines"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-pr-session",
@@ -1193,7 +1193,7 @@ dependencies = [
 
 [[package]]
 name = "cv-pr-rendered"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-code",
@@ -1220,7 +1220,7 @@ dependencies = [
 
 [[package]]
 name = "cv-pr-session"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-markdown",
@@ -1241,7 +1241,7 @@ dependencies = [
 
 [[package]]
 name = "cv-pr-summary"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-code",
@@ -1264,7 +1264,7 @@ dependencies = [
 
 [[package]]
 name = "cv-pr-threads"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-code",
@@ -1288,7 +1288,7 @@ dependencies = [
 
 [[package]]
 name = "cv-pr-tree"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-testkit",
@@ -1302,7 +1302,7 @@ dependencies = [
 
 [[package]]
 name = "cv-providers"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "provider-azure",
  "provider-github",
@@ -1313,7 +1313,7 @@ dependencies = [
 
 [[package]]
 name = "cv-runtime"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-testkit",
@@ -1330,7 +1330,7 @@ dependencies = [
 
 [[package]]
 name = "cv-services"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "cv-base",
@@ -1354,7 +1354,7 @@ dependencies = [
 
 [[package]]
 name = "cv-settings"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-code",
@@ -1382,7 +1382,7 @@ dependencies = [
 
 [[package]]
 name = "cv-shell"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "arboard",
  "cv-base",
@@ -1406,7 +1406,7 @@ dependencies = [
 
 [[package]]
 name = "cv-syntax"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "cv-runtime",
@@ -1418,7 +1418,7 @@ dependencies = [
 
 [[package]]
 name = "cv-testkit"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "cv-base",
@@ -1433,7 +1433,7 @@ dependencies = [
 
 [[package]]
 name = "cv-widgets"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cv-base",
  "egui",
@@ -3926,7 +3926,7 @@ checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
 
 [[package]]
 name = "provider-azure"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -3943,7 +3943,7 @@ dependencies = [
 
 [[package]]
 name = "provider-github"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -3960,7 +3960,7 @@ dependencies = [
 
 [[package]]
 name = "provider-gitlab"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -4210,7 +4210,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "repo-lint"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "serde_json",
 ]
@@ -4276,7 +4276,7 @@ dependencies = [
 
 [[package]]
 name = "review-agent"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "review-core",
  "serde_json",
@@ -4287,7 +4287,7 @@ dependencies = [
 
 [[package]]
 name = "review-app"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "cv-base",
@@ -4330,7 +4330,7 @@ dependencies = [
 
 [[package]]
 name = "review-core"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "bytes",
@@ -4345,7 +4345,7 @@ dependencies = [
 
 [[package]]
 name = "review-git"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "review-core",
  "tokio",
@@ -4353,7 +4353,7 @@ dependencies = [
 
 [[package]]
 name = "review-grammars"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "serde_json",
  "syntect",
@@ -4362,7 +4362,7 @@ dependencies = [
 
 [[package]]
 name = "review-store"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "base64 0.23.1",
  "review-core",
