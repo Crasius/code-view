@@ -21,7 +21,7 @@ publish = false
 # RS-DONT-03: unsafe only in platform/ modules, each with #![expect(unsafe_code, reason)].
 # The crates without platform FFI forbid it in their crate root.
 unsafe_code = "warn"
-# Rule rust, Lints: pub only for what the crate root exports.
+# Rule rust, Lints: pub only for what is reachable from the crate root.
 unreachable_pub = "warn"
 
 [workspace.lints.clippy]
