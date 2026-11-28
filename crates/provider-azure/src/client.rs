@@ -39,7 +39,7 @@ impl<'a> RepoKey<'a> {
         Ok(RepoKey { organization, project, repository })
     }
 
-    pub fn format(organization: &str, project: &str, repository: &str) -> String {
+    pub(crate) fn format(organization: &str, project: &str, repository: &str) -> String {
         format!("{organization}/{project}/{repository}")
     }
 }

@@ -34,7 +34,7 @@ impl Pauses {
 
     /// The connection's requests of `api` waiting.
     #[cfg(test)]
-    pub fn of_test(connection_id: &str, api: Api) -> Self {
+    pub(super) fn of_test(connection_id: &str, api: Api) -> Self {
         Self(BTreeSet::from([(connection_id.to_owned(), api)]))
     }
 }

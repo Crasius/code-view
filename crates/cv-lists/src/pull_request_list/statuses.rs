@@ -342,19 +342,19 @@ impl RowStatuses {
 
     /// `row`'s answer as if it had arrived.
     #[cfg(test)]
-    pub fn answered_for_test(&mut self, row: &StatusRow, status: RowStatus) {
+    pub(super) fn answered_for_test(&mut self, row: &StatusRow, status: RowStatus) {
         self.insert_for_test(row, Phase::Done, Some(status));
     }
 
     /// `row`'s request as if it had just left.
     #[cfg(test)]
-    pub fn running_for_test(&mut self, row: &StatusRow) {
+    pub(super) fn running_for_test(&mut self, row: &StatusRow) {
         self.insert_for_test(row, Phase::Running, None);
     }
 
     /// `row`'s request as if it had failed with `message`.
     #[cfg(test)]
-    pub fn failed_for_test(&mut self, row: &StatusRow, message: &str) {
+    pub(super) fn failed_for_test(&mut self, row: &StatusRow, message: &str) {
         self.insert_for_test(row, Phase::Failed(message.to_owned()), None);
     }
 

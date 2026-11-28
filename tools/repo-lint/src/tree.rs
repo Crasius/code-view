@@ -8,7 +8,7 @@ use crate::items::{Items, Token, items, tokens};
 use crate::lexer::{Scanned, scan};
 
 /// One lexed Rust file.
-pub struct Source {
+pub(crate) struct Source {
     pub text: String,
     pub scanned: Scanned,
     pub tokens: Vec<Token>,
@@ -16,7 +16,7 @@ pub struct Source {
 }
 
 impl Source {
-    pub fn parse(text: String) -> Source {
+    pub(crate) fn parse(text: String) -> Source {
         let scanned = scan(&text);
         let tokens = tokens(&scanned);
         let lines: Vec<&str> = text.lines().collect();
@@ -25,7 +25,7 @@ impl Source {
     }
 
     /// Lines of shipped code: all lines minus those of `#[cfg(test)]` items.
-    pub fn shipped_lines(&self) -> usize {
+    pub(crate) fn shipped_lines(&self) -> usize {
         if self.items.file_is_test {
             return 0;
         }
@@ -42,7 +42,7 @@ impl Source {
     }
 
     /// True when the 1-based `line` belongs to a `#[cfg(test)]` item.
-    pub fn is_test_line(&self, line: usize) -> bool {
+    pub(crate) fn is_test_line(&self, line: usize) -> bool {
         self.items.file_is_test
             || self.items.test_ranges.iter().any(|&(start, end)| (start..=end).contains(&line))
     }
@@ -50,7 +50,7 @@ impl Source {
 
 /// Every module file reached from `roots`, with whether it is test-only code.
 /// `decls_of` returns the module declarations of a file (`None` when it does not exist).
-pub fn classify<'a>(
+pub(crate) fn classify<'a>(
     roots: impl IntoIterator<Item = (String, bool)>,
     mut decls_of: impl FnMut(&str) -> Option<&'a Items>,
     exists: impl Fn(&str) -> bool,
@@ -83,7 +83,7 @@ pub fn classify<'a>(
 
 /// Resolves `mod name;` declared in `parent`. Crate roots and `mod.rs` files own their directory;
 /// any other `dir/stem.rs` owns `dir/stem/`. A `#[path]` is relative to the parent's directory.
-pub fn child_path(
+pub(crate) fn child_path(
     parent: &str,
     parent_is_root: bool,
     name: &str,
@@ -106,7 +106,7 @@ fn join(dir: &str, rest: &str) -> String {
 }
 
 /// Resolves `.` and `..` components of a forward-slash path.
-pub fn normalize(path: &str) -> String {
+pub(crate) fn normalize(path: &str) -> String {
     let mut parts: Vec<&str> = Vec::new();
     for part in path.split('/') {
         match part {

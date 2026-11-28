@@ -21,9 +21,9 @@ use egui::{
 };
 use review_core::PullRequestSummary;
 
-pub const BOX_HEIGHT: f32 = 28.0;
-pub const MAX_WIDTH: f32 = 480.0;
-pub const MIN_WIDTH: f32 = 200.0;
+pub(super) const BOX_HEIGHT: f32 = 28.0;
+pub(super) const MAX_WIDTH: f32 = 480.0;
+pub(super) const MIN_WIDTH: f32 = 200.0;
 /// Rows the results show at most before they scroll; fewer where the window ends sooner.
 const MAX_VISIBLE_RESULTS: usize = 12;
 const ROW_HEIGHT: f32 = 32.0;
@@ -52,7 +52,7 @@ const FOCUS_COMMAND: &str = "Toggle focus mode";
 
 /// What picking a result asks the app to do.
 #[derive(Debug, Clone, PartialEq)]
-pub enum JumpAction {
+pub(crate) enum JumpAction {
     /// A pull request. `listed` is its loaded list row, which the page's header paints until the
     /// detail is in; none for a number typed in a repository whose row no list loaded.
     Open { key: PullRequestKey, listed: Option<Box<PullRequestSummary>> },
@@ -65,7 +65,7 @@ pub enum JumpAction {
 }
 
 #[derive(Default)]
-pub struct JumpBox {
+pub(super) struct JumpBox {
     query: String,
     /// The highlighted result.
     selected: usize,
@@ -88,19 +88,19 @@ struct Entry {
 }
 
 impl JumpBox {
-    pub fn id() -> Id {
+    pub(super) fn id() -> Id {
         Id::unique("title_bar_jump")
     }
 
     /// The open results, for the title bar's hit test (they start inside the caption).
-    pub fn popup_rect(&self) -> Option<Rect> {
+    pub(super) fn popup_rect(&self) -> Option<Rect> {
         self.popup_rect
     }
 
     /// Takes Ctrl+K and [`intents::open_search`] requests, and Esc; true while the box is open
     /// (has focus), so the bar can make room for it even where it is left out at rest. Runs every
     /// frame.
-    pub fn take_open_request(&mut self, ctx: &egui::Context) -> bool {
+    pub(super) fn take_open_request(&mut self, ctx: &egui::Context) -> bool {
         let id = Self::id();
         // Esc closes the box and drops its text. egui takes focus away on Esc before any widget
         // runs, so a box that had focus last frame counts as open here.
@@ -124,7 +124,7 @@ impl JumpBox {
 
     /// Paints the box into `rect` and its results below while it has focus. Call
     /// [`Self::take_open_request`] first in the frame.
-    pub fn show(
+    pub(super) fn show(
         &mut self,
         ui: &mut Ui,
         rect: Rect,

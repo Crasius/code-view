@@ -12,7 +12,6 @@ mod table;
 pub(super) mod typeset;
 
 use std::ops::Range;
-use std::sync::Arc;
 
 use cv_base::theme::{self, Palette, icons, style as tokens};
 use cv_syntax::code_colors;
@@ -31,7 +30,7 @@ use self::typeset::{Fill, Laid, Look, Typesetter, spoken_text};
 use super::images::{self, Anchor, ImageBase};
 use super::mermaid;
 use super::parse::{Block, Inline, Item, Run};
-use super::{InApp, LinkResolver, ResolvedLink, link_hint, request_in_app};
+use super::{InApp, PublishedLinks, ResolvedLink, link_hint, request_in_app};
 
 /// Heading sizes h1..h6: title, Azure DevOps' h2 (17 px), section, body, body, small.
 pub const HEADING_SIZES: [f32; 6] = [
@@ -78,7 +77,7 @@ pub(crate) struct Renderer {
     /// Multiplies every size: type, spacing, markers and frames.
     scale: f32,
     /// What the screen knows about link targets; `None` opens URLs in the browser.
-    links: Option<Arc<dyn LinkResolver>>,
+    links: PublishedLinks,
     /// Words to fill, layer by layer, and how far into the block's plain text the layout got.
     marks: Vec<Marks>,
     cursor: usize,
@@ -95,7 +94,7 @@ pub(crate) struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(palette: Palette, id: Id, scale: f32, links: Option<Arc<dyn LinkResolver>>) -> Self {
+    pub(crate) fn new(palette: Palette, id: Id, scale: f32, links: PublishedLinks) -> Self {
         Self {
             palette,
             id,

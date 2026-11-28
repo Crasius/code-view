@@ -207,7 +207,7 @@ fn system_clipboard() -> Option<std::sync::Arc<dyn ClipboardSource>> {
 /// Pull request pages kept alive for instant back/forward; older ones are dropped to free memory.
 const OPEN_PULL_REQUESTS: usize = 3;
 
-pub struct ReviewApp {
+pub(crate) struct ReviewApp {
     route: Route,
     /// The way to the route as the breadcrumbs show it; it ends on the route.
     trail: Trail,
@@ -248,7 +248,7 @@ pub struct ReviewApp {
 impl ReviewApp {
     /// `factory` builds the provider of each connection: the hosts' providers in `main`, a
     /// closure over a scripted one in a walkthrough.
-    pub fn new(
+    pub(crate) fn new(
         creation: &eframe::CreationContext<'_>,
         paths: AppPaths,
         factory: impl Fn(Connection, reqwest::Client) -> Arc<dyn Provider> + Send + Sync + 'static,

@@ -4,7 +4,7 @@
 //! escaped and raw strings (`r#"..."#`, `br"..."`), and char literals versus lifetimes.
 
 /// One source file, split into code and comments.
-pub struct Scanned {
+pub(crate) struct Scanned {
     /// Each line with comments removed and literal contents replaced by spaces; the quotes stay.
     pub code: Vec<String>,
     /// Comment text (without the `//` or `/*`) with its 1-based line. A block comment yields one
@@ -56,7 +56,7 @@ impl Lexer {
 }
 
 /// Splits `text` into code and comments.
-pub fn scan(text: &str) -> Scanned {
+pub(crate) fn scan(text: &str) -> Scanned {
     let chars: Vec<char> = text.chars().collect();
     let mut lexer = Lexer { code: vec![String::new()], comments: Vec::new(), comment: None };
     let mut state = State::Code;
@@ -218,7 +218,7 @@ fn is_char_literal(chars: &[char], i: usize) -> bool {
     }
 }
 
-pub fn is_ident_char(c: char) -> bool {
+pub(crate) fn is_ident_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 

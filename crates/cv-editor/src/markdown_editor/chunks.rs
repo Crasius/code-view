@@ -98,7 +98,7 @@ impl Chunks {
 
     /// The galley of the whole text. Chunks without a galley for `key` are laid out with
     /// `layout(chunk text, chunk model)`; `whole` is the job the joined galley reports.
-    pub fn galley(
+    pub(super) fn galley(
         &mut self,
         key: u64,
         pixels_per_point: f32,

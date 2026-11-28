@@ -9,18 +9,18 @@ use std::collections::BTreeMap;
 use crate::finding::{Finding, Rule};
 
 /// The allowlist, relative to the repository root.
-pub const ALLOWLIST: &str = "tools/repo-lint/file-lengths.allow";
+pub(crate) const ALLOWLIST: &str = "tools/repo-lint/file-lengths.allow";
 /// Above this, `--lengths` lists a file for a split by topic (review, no finding).
-pub const SPLIT_BY_TOPIC: usize = 400;
+pub(crate) const SPLIT_BY_TOPIC: usize = 400;
 /// Above this, a file needs an allowlist entry and may not grow past it.
-pub const NO_GROWTH: usize = 700;
+pub(crate) const NO_GROWTH: usize = 700;
 
 /// Allowlist entries: path to its line cap.
-pub type Allowlist = BTreeMap<String, usize>;
+pub(crate) type Allowlist = BTreeMap<String, usize>;
 
 /// Parses `<lines> <path>` lines; a line that starts with `#` is a comment, and an entry carries
 /// none, so `shrink` can rewrite entries without losing text. Returns the bad lines as errors.
-pub fn parse_allowlist(text: &str) -> Result<Allowlist, String> {
+pub(crate) fn parse_allowlist(text: &str) -> Result<Allowlist, String> {
     let mut entries = Allowlist::new();
     for (index, raw) in text.lines().enumerate() {
         let line = without_comment(raw);
@@ -53,7 +53,7 @@ fn parse_entry(line: &str) -> Option<(usize, &str)> {
 }
 
 /// The finding for one file of `lines` shipped lines with its allowlist entry, if any.
-pub fn check(path: &str, lines: usize, entry: Option<usize>) -> Option<Finding> {
+pub(crate) fn check(path: &str, lines: usize, entry: Option<usize>) -> Option<Finding> {
     let split = "split it by topic into sibling modules";
     match entry {
         None if lines > NO_GROWTH => Some(Finding::file(
@@ -91,7 +91,7 @@ pub fn check(path: &str, lines: usize, entry: Option<usize>) -> Option<Finding> 
 /// Entries that are new or higher than at the base revision: the allowlist only shrinks. A file
 /// that git reports as renamed since the base (`renamed_from`: new path to old path) keeps the
 /// entry of its old path, so a move is no new entry, while a raise on the way still is.
-pub fn check_growth(
+pub(crate) fn check_growth(
     current: &Allowlist,
     base: &Allowlist,
     renamed_from: &BTreeMap<String, String>,
@@ -118,7 +118,7 @@ pub fn check_growth(
 
 /// Rewrites the allowlist with every entry lowered to its file's current length and entries of
 /// files within 700 lines (or gone) dropped. It never adds or raises an entry.
-pub fn shrink(text: &str, lengths: &BTreeMap<String, usize>) -> String {
+pub(crate) fn shrink(text: &str, lengths: &BTreeMap<String, usize>) -> String {
     let mut out: Vec<String> = Vec::new();
     for raw in text.lines() {
         let Some((cap, path)) = parse_entry(without_comment(raw)) else {

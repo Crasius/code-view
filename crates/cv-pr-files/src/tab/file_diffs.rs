@@ -73,7 +73,7 @@ impl FileDiffs {
     }
 
     /// Takes in what finished loading since the last frame.
-    pub fn poll(&mut self) {
+    pub(crate) fn poll(&mut self) {
         if self.diff.poll()
             && let (Some(key), Load::Ready(diff)) = (&self.diff_key, &self.diff)
         {
@@ -124,7 +124,7 @@ impl FileDiffs {
     }
 
     /// Compiles the grammars of all languages in `files` in the background, `first`'s first.
-    pub fn warm_up(&mut self, files: &Arc<Vec<ChangedFile>>, first: Option<String>) {
+    pub(crate) fn warm_up(&mut self, files: &Arc<Vec<ChangedFile>>, first: Option<String>) {
         self.warmed_files = Some(files.clone());
         self.patch_colors.warm_up(files, first);
     }

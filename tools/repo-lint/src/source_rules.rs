@@ -30,7 +30,7 @@ fn is_app_source(path: &str) -> bool {
 }
 
 /// Checks one file; `file_is_test` says the whole file is test-only code (module tree).
-pub fn check_source(path: &str, source: &Source, file_is_test: bool) -> Vec<Finding> {
+pub(crate) fn check_source(path: &str, source: &Source, file_is_test: bool) -> Vec<Finding> {
     let mut findings = Vec::new();
     role_suffixes(path, source, &mut findings);
     vague_modules(path, source, &mut findings);
@@ -115,7 +115,7 @@ fn vague_modules(path: &str, source: &Source, findings: &mut Vec<Finding>) {
     }
 }
 
-pub fn is_platform_path(path: &str) -> bool {
+pub(crate) fn is_platform_path(path: &str) -> bool {
     path.split('/').any(|part| part == "platform" || part == "platform.rs")
 }
 
@@ -166,7 +166,7 @@ fn todo_comments(path: &str, source: &Source, findings: &mut Vec<Finding>) {
 
 /// `TODO` or `FIXME` that opens the comment or is followed by `:` or `(`. A prose mention
 /// ("no TODO is left") is not a marker.
-pub fn todo_marker(comment: &str) -> Option<&'static str> {
+pub(crate) fn todo_marker(comment: &str) -> Option<&'static str> {
     let text =
         comment.trim_start_matches(|c: char| c == '/' || c == '!' || c == '*' || c.is_whitespace());
     ["TODO", "FIXME"].into_iter().find(|marker| {
@@ -195,7 +195,7 @@ fn block_on(path: &str, source: &Source, findings: &mut Vec<Finding>) {
 
 /// An expectation comment: the rules it waives, its reason, and the line it covers.
 #[derive(Debug, PartialEq, Eq)]
-pub struct Expectation {
+pub(crate) struct Expectation {
     pub line: usize,
     pub rules: Vec<String>,
     pub reason: String,
@@ -203,7 +203,7 @@ pub struct Expectation {
 
 /// Parses `repo-lint: expect(RL001, RL007) reason` from a comment's text.
 /// The comment must start with the marker; doc comments and prose that mention it do not count.
-pub fn parse_expectation(line: usize, comment: &str) -> Option<Expectation> {
+pub(crate) fn parse_expectation(line: usize, comment: &str) -> Option<Expectation> {
     let rest = comment.trim_start().strip_prefix(EXPECT_MARKER)?;
     let (ids, reason) = rest.split_once(')')?;
     let rules = ids.split(',').map(|id| id.trim().to_owned()).filter(|id| !id.is_empty()).collect();

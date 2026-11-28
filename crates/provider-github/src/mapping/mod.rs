@@ -18,7 +18,7 @@ pub(crate) mod workflow;
 pub(crate) mod fixtures {
     use serde::de::DeserializeOwned;
 
-    pub fn parse<T: DeserializeOwned>(json: &str) -> T {
+    pub(crate) fn parse<T: DeserializeOwned>(json: &str) -> T {
         serde_json::from_str(json).unwrap_or_else(|error| panic!("fixture does not parse: {error}"))
     }
 }

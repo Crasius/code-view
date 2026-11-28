@@ -211,7 +211,7 @@ pub(super) struct Scene {
 }
 
 impl Scene {
-    pub fn new(files: Vec<ChangedFile>, theme: ThemePreference) -> Self {
+    pub(crate) fn new(files: Vec<ChangedFile>, theme: ThemePreference) -> Self {
         let mut scene = Self {
             summary: FolderSummary::default(),
             files: Arc::new(files),
@@ -239,7 +239,7 @@ impl Scene {
     }
 
     /// The files below `folder` in list order (the lists here are in tree order already).
-    pub fn open(&mut self, folder: &str) {
+    pub(crate) fn open(&mut self, folder: &str) {
         self.folder = folder.to_owned();
         self.order = (0..self.files.len())
             .filter(|&index| {
@@ -249,7 +249,7 @@ impl Scene {
         self.order_version += 1;
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn show(&mut self, ui: &mut egui::Ui) {
         let threads: Vec<&ReviewThread> = self.threads.iter().collect();
         let inputs = SummaryInputs {
             files: &self.files,

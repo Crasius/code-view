@@ -8,13 +8,13 @@ use serde_json::{Value, json};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-pub const TOKEN: &str = "test-token";
-pub const REPO: &str = "group/sub/project";
+pub(crate) const TOKEN: &str = "test-token";
+pub(crate) const REPO: &str = "group/sub/project";
 /// `GET /projects/:id` of [`REPO`].
-pub const PROJECT: &str = "/api/v4/projects/group%2Fsub%2Fproject";
+pub(crate) const PROJECT: &str = "/api/v4/projects/group%2Fsub%2Fproject";
 
 /// The connection `mock` to `server`, without groups.
-pub fn connection(server: &MockServer, token: Option<&str>) -> Connection {
+pub(crate) fn connection(server: &MockServer, token: Option<&str>) -> Connection {
     Connection {
         id: "mock".to_owned(),
         name: "mock".to_owned(),
@@ -28,17 +28,17 @@ pub fn connection(server: &MockServer, token: Option<&str>) -> Connection {
 /// The provider on `connection`. The rate-limit pauses of `review_core::http` last for the whole
 /// test process and wiremock hands a finished test's port out again, so the host's pauses end
 /// first.
-pub fn provider_on(connection: Connection) -> GitLabProvider {
+pub(crate) fn provider_on(connection: Connection) -> GitLabProvider {
     http::resume(connection.base_url());
     GitLabProvider::new(connection, http::build_client())
 }
 
-pub fn provider(server: &MockServer, token: Option<&str>) -> GitLabProvider {
+pub(crate) fn provider(server: &MockServer, token: Option<&str>) -> GitLabProvider {
     provider_on(connection(server, token))
 }
 
 /// The project [`REPO`] with the merge settings of `settings` on top.
-pub fn project(settings: Value) -> Value {
+pub(crate) fn project(settings: Value) -> Value {
     let mut body = json!({
         "id": 42, "path_with_namespace": REPO, "name": "project", "web_url": "https://gitlab.example.com/group/sub/project",
         "default_branch": "main", "http_url_to_repo": "https://gitlab.example.com/group/sub/project.git",
@@ -51,7 +51,7 @@ pub fn project(settings: Value) -> Value {
 }
 
 /// [`PROJECT`] answers `body`; merges read it first.
-pub async fn mount_project(server: &MockServer, body: Value) {
+pub(crate) async fn mount_project(server: &MockServer, body: Value) {
     Mock::given(method("GET"))
         .and(path(PROJECT))
         .respond_with(ResponseTemplate::new(200).set_body_json(body))

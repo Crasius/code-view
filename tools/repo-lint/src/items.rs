@@ -6,14 +6,14 @@ use crate::lexer::{Scanned, is_ident_char};
 
 /// One token: an identifier or keyword, or a single punctuation char, with its 1-based line.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Token {
+pub(crate) struct Token {
     pub text: String,
     pub line: usize,
 }
 
 /// A `mod name;` declaration with its `#[path = "..."]` value, if any.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModDecl {
+pub(crate) struct ModDecl {
     pub name: String,
     pub path: Option<String>,
     pub is_test: bool,
@@ -22,7 +22,7 @@ pub struct ModDecl {
 
 /// What the module-tree walk and the line count need from one file.
 #[derive(Debug, Default)]
-pub struct Items {
+pub(crate) struct Items {
     /// The whole file is test code (`#![cfg(test)]` at the top).
     pub file_is_test: bool,
     /// Out-of-line modules declared at the top level of the file.
@@ -33,7 +33,7 @@ pub struct Items {
     pub test_ranges: Vec<(usize, usize)>,
 }
 
-pub fn tokens(scanned: &Scanned) -> Vec<Token> {
+pub(crate) fn tokens(scanned: &Scanned) -> Vec<Token> {
     let mut out = Vec::new();
     for (index, line) in scanned.code.iter().enumerate() {
         let mut word = String::new();
@@ -58,7 +58,7 @@ pub fn tokens(scanned: &Scanned) -> Vec<Token> {
 
 /// Reads the items of one file. `source_lines` is the raw text, needed for `#[path = "..."]`
 /// values, whose string contents the lexer blanks.
-pub fn items(tokens: &[Token], source_lines: &[&str]) -> Items {
+pub(crate) fn items(tokens: &[Token], source_lines: &[&str]) -> Items {
     let mut items = Items::default();
     let mut depth = 0usize;
     let mut pending = Pending::default();
@@ -119,7 +119,7 @@ impl Pending {
     }
 }
 
-pub struct Attribute {
+pub(crate) struct Attribute {
     /// `#![...]`: applies to the enclosing item or file.
     pub inner: bool,
     /// `cfg(...)` that holds only in test builds.
@@ -132,13 +132,13 @@ pub struct Attribute {
 
 /// The feature that exports a crate's test helpers to the tests of the crates above it (rule
 /// `testing`). The shipped build never turns it on, so code under it counts as test code.
-pub const TEST_FEATURE: &str = "test-support";
+pub(crate) const TEST_FEATURE: &str = "test-support";
 
 /// Reads the attribute starting at `start`; returns it and the index after its `]`. None when
 /// the token there opens no attribute: an attribute is `#[` or `#![`, while the `#` of a raw
 /// identifier (`r#type`) is followed by the name. `source_lines` is the raw text, for the string
 /// values of a cfg predicate (`feature = "..."`), whose contents the lexer blanks.
-pub fn attribute(
+pub(crate) fn attribute(
     tokens: &[Token],
     start: usize,
     source_lines: &[&str],
@@ -239,7 +239,7 @@ fn quoted_values(line: &str) -> Vec<&str> {
 /// True when a cfg predicate holds only in test builds: `(test)`, `(all(test, windows))`, and
 /// the test feature, alone or with `test` (`(any(test, feature = "test-support"))`), also
 /// nested in `all(...)`. The predicate is the tokens after `cfg`, string values as one token.
-pub fn cfg_is_test(predicate: &[&str]) -> bool {
+pub(crate) fn cfg_is_test(predicate: &[&str]) -> bool {
     let ["(", list @ ..] = predicate else { return false };
     list_entries(list).first().is_some_and(|entry| only_in_tests(entry))
 }

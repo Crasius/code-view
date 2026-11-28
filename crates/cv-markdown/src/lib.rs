@@ -373,6 +373,9 @@ pub trait LinkResolver: Send + Sync {
     fn resolve(&self, target: &str) -> Option<ResolvedLink>;
 }
 
+/// The resolver a screen published for this frame, if any; `None` opens URLs in the browser.
+pub(crate) type PublishedLinks = Option<Arc<dyn LinkResolver>>;
+
 const LINKS_ID: &str = "review.markdown.links";
 const IN_APP_ID: &str = "review.markdown.open_in_app";
 
@@ -383,7 +386,7 @@ pub fn publish_links(ctx: &egui::Context, links: Arc<dyn LinkResolver>) {
 }
 
 /// The resolver published this frame, for a view that adds its own targets around it.
-pub fn current_links(ctx: &egui::Context) -> Option<Arc<dyn LinkResolver>> {
+pub fn current_links(ctx: &egui::Context) -> PublishedLinks {
     let pass = ctx.cumulative_pass_nr();
     ctx.data(|data| data.get_temp::<(u64, Arc<dyn LinkResolver>)>(egui::Id::unique(LINKS_ID)))
         .filter(|(published, _)| *published == pass)

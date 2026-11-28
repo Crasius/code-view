@@ -200,7 +200,7 @@ impl CardIndex {
         self.offsets.get(card).copied().unwrap_or_else(|| self.total())
     }
 
-    pub fn bottom(&self, card: usize) -> f32 {
+    pub(crate) fn bottom(&self, card: usize) -> f32 {
         self.top(card + 1)
     }
 

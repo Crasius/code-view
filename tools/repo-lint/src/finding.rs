@@ -4,7 +4,7 @@
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Rule {
+pub(crate) enum Rule {
     FileLength,
     LengthAllowlist,
     RoleSuffix,
@@ -24,7 +24,7 @@ pub enum Rule {
 }
 
 impl Rule {
-    pub const ALL: [Rule; 16] = [
+    pub(crate) const ALL: [Rule; 16] = [
         Rule::FileLength,
         Rule::LengthAllowlist,
         Rule::RoleSuffix,
@@ -43,7 +43,7 @@ impl Rule {
         Rule::MotionInstall,
     ];
 
-    pub fn id(self) -> &'static str {
+    pub(crate) fn id(self) -> &'static str {
         match self {
             Rule::FileLength => "RL001",
             Rule::LengthAllowlist => "RL002",
@@ -64,7 +64,7 @@ impl Rule {
         }
     }
 
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Rule::FileLength => "file-length",
             Rule::LengthAllowlist => "length-allowlist",
@@ -87,7 +87,7 @@ impl Rule {
 
     /// Rules that a `// repo-lint: expect(RLxxx) <reason>` comment may waive at one line.
     /// The others have their own registry (allowlist, `.folder-budget`, the direction table).
-    pub fn is_waivable(self) -> bool {
+    pub(crate) fn is_waivable(self) -> bool {
         matches!(
             self,
             Rule::RoleSuffix
@@ -99,14 +99,14 @@ impl Rule {
         )
     }
 
-    pub fn from_id(id: &str) -> Option<Rule> {
+    pub(crate) fn from_id(id: &str) -> Option<Rule> {
         Rule::ALL.into_iter().find(|rule| rule.id() == id)
     }
 }
 
 /// One finding: where and what, with the fix in the message.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Finding {
+pub(crate) struct Finding {
     pub path: String,
     pub line: Option<usize>,
     pub rule: Rule,
@@ -114,11 +114,11 @@ pub struct Finding {
 }
 
 impl Finding {
-    pub fn file(rule: Rule, path: &str, message: String) -> Finding {
+    pub(crate) fn file(rule: Rule, path: &str, message: String) -> Finding {
         Finding { path: path.to_owned(), line: None, rule, message }
     }
 
-    pub fn at(rule: Rule, path: &str, line: usize, message: String) -> Finding {
+    pub(crate) fn at(rule: Rule, path: &str, line: usize, message: String) -> Finding {
         Finding { path: path.to_owned(), line: Some(line), rule, message }
     }
 }

@@ -110,7 +110,7 @@ impl AccessCheck {
 
     /// A read of `key` asked for at input time `asked_at` that answers `detail`.
     #[cfg(test)]
-    pub fn answering_for_test(
+    pub(crate) fn answering_for_test(
         services: &Services,
         key: PullRequestKey,
         asked_at: f64,

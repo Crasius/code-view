@@ -19,7 +19,7 @@ use egui::{Rect, Sense, Ui};
 /// How long a press on a bar widget rests, without moving past egui's click distance, before it
 /// moves the window instead of clicking the widget. Below egui's `max_click_duration` (0.8 s), so a
 /// press released just before it is still a click.
-pub const LONG_PRESS: Duration = Duration::from_millis(350);
+pub(crate) const LONG_PRESS: Duration = Duration::from_millis(350);
 
 /// The bar's pointer sense, from before its widgets were laid out until they are known.
 #[cfg(any(target_os = "macos", test))]
@@ -31,7 +31,7 @@ pub(crate) struct DragArea {
 impl DragArea {
     /// Senses the pointer on `bar`. Call before laying out the bar's widgets, so they take clicks
     /// over their own rects.
-    pub fn sense(ui: &Ui, bar: Rect) -> Self {
+    pub(super) fn sense(ui: &Ui, bar: Rect) -> Self {
         // Not focusable: the bar is no control that Tab should stop at.
         let response =
             ui.interact(bar, ui.scope_id().with("window_drag"), Sense::CLICK | Sense::DRAG);

@@ -43,7 +43,7 @@ fn parse(line: &str) -> Value {
 }
 
 /// `claude -p --input-format stream-json ...`.
-pub fn claude(args: &[String]) {
+pub(crate) fn claude(args: &[String]) {
     record(&json!({"args": args}));
     if let Some(brief) = args.iter().position(|arg| arg == "--append-system-prompt-file") {
         let file = args.get(brief + 1).expect("a brief file follows the flag");
@@ -91,7 +91,7 @@ pub fn claude(args: &[String]) {
 }
 
 /// `codex app-server`.
-pub fn codex(args: &[String]) {
+pub(crate) fn codex(args: &[String]) {
     record(&json!({"args": args}));
     let mut lines = std::io::stdin().lock().lines();
     while let Some(line) = lines.next() {

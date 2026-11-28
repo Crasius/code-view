@@ -10,11 +10,11 @@ use review_store::checkouts::TerminalChoice;
 
 use super::FontSources;
 pub(crate) use super::portable::register_chrome_fonts;
-use super::portable::spawn_reaped;
 pub use super::portable::{
-    Caption, DialogOwner, FrameHold, PlacedWindow, ask_save_path, dialog_owner, downloads_dir,
-    hide_console, hide_std_console, integrate_title_bar, monitor_refresh_hz, open_folder,
+    Caption, FrameHold, PlacedWindow, ask_save_path, dialog_owner, downloads_dir, hide_console,
+    hide_std_console, integrate_title_bar, monitor_refresh_hz, open_folder,
 };
+use super::portable::{DialogOwner, spawn_reaped};
 
 pub const AZURE_CLI: &str = "az";
 pub const HAS_SAVE_DIALOG: bool = false;

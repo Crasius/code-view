@@ -17,7 +17,7 @@ use egui::accesskit::{Node, Role};
 use egui::{Context, FullOutput};
 
 /// Adds the check to `ctx`; each later frame's tree is checked.
-pub fn install(ctx: &Context) {
+pub(super) fn install(ctx: &Context) {
     ctx.add_plugin(A11yCheck);
 }
 

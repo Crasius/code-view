@@ -69,7 +69,7 @@ pub(crate) mod test_repo {
     use std::process::Command;
 
     /// A bare repository with one commit and `refs` pointing at it, like a mirror after a fetch.
-    pub fn bare_with_refs(git_dir: &Path, refs: &[&str]) {
+    pub(crate) fn bare_with_refs(git_dir: &Path, refs: &[&str]) {
         std::fs::create_dir_all(git_dir).unwrap();
         run(git_dir, &["init", "--bare", "--quiet"]);
         let tree = run(git_dir, &["hash-object", "-t", "tree", "-w", "--stdin"]);

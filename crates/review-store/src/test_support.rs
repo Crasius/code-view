@@ -13,10 +13,10 @@ use crate::{AppPaths, LINUX_HELP_URL, VaultProblem};
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
 /// A temporary folder for one test, removed when the test ends.
-pub struct TestDir(PathBuf);
+pub(crate) struct TestDir(PathBuf);
 
 impl TestDir {
-    pub fn new(name: &str) -> Self {
+    pub(crate) fn new(name: &str) -> Self {
         let unique = NEXT.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir()
             .join(format!("review-store-{name}-{}-{unique}", std::process::id()));
@@ -25,12 +25,12 @@ impl TestDir {
         Self(path)
     }
 
-    pub fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.0
     }
 
     /// The app's config and cache folders inside this folder.
-    pub fn paths(&self) -> AppPaths {
+    pub(crate) fn paths(&self) -> AppPaths {
         AppPaths::new(self.0.join("config"), self.0.join("cache"))
     }
 }
@@ -44,7 +44,7 @@ impl Drop for TestDir {
 }
 
 /// Writes the connection list with `ids`, as Settings saves it.
-pub fn write_connections(paths: &AppPaths, ids: &[&str]) {
+pub(crate) fn write_connections(paths: &AppPaths, ids: &[&str]) {
     let list: Vec<String> = ids
         .iter()
         .map(|id| {
@@ -58,7 +58,7 @@ pub fn write_connections(paths: &AppPaths, ids: &[&str]) {
 }
 
 /// Writes `bytes` to `path`, creating its folders, and returns the path.
-pub fn write_file(path: &Path, bytes: &[u8]) -> PathBuf {
+pub(crate) fn write_file(path: &Path, bytes: &[u8]) -> PathBuf {
     std::fs::create_dir_all(path.parent().expect("a file in a folder"))
         .expect("create the folders");
     std::fs::write(path, bytes).expect("write the file");
@@ -75,7 +75,7 @@ const WAIT_LIMIT: Duration = Duration::from_secs(180);
     reason = "waits for a background thread that reports to nobody; returns as soon as the \
               condition holds"
 )]
-pub fn wait_until(what: &str, condition: impl Fn() -> bool) {
+pub(crate) fn wait_until(what: &str, condition: impl Fn() -> bool) {
     let deadline = Instant::now() + WAIT_LIMIT;
     while !condition() {
         assert!(Instant::now() < deadline, "{what} did not happen within {WAIT_LIMIT:?}");
@@ -84,7 +84,7 @@ pub fn wait_until(what: &str, condition: impl Fn() -> bool) {
 }
 
 /// What a Linux session without a keyring answers, for [`crate::TokenVault::Refusing`].
-pub fn no_keyring() -> &'static VaultProblem {
+pub(crate) fn no_keyring() -> &'static VaultProblem {
     static PROBLEM: LazyLock<VaultProblem> = LazyLock::new(|| VaultProblem {
         title: "No keyring".to_owned(),
         fix: "Start one.".to_owned(),

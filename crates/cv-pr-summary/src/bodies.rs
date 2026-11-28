@@ -141,7 +141,7 @@ pub(crate) struct BodyCache {
 
 impl BodyCache {
     #[cfg(test)]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.entries.len()
     }
 
@@ -161,7 +161,7 @@ impl BodyCache {
     }
 
     #[cfg(test)]
-    pub fn get(&self, path: &str) -> Option<&CardBody> {
+    pub(crate) fn get(&self, path: &str) -> Option<&CardBody> {
         self.entries.get(path)
     }
 
@@ -232,7 +232,7 @@ impl BodyCache {
 
     /// A body waits for its colors.
     #[cfg(test)]
-    pub fn is_coloring(&self) -> bool {
+    pub(crate) fn is_coloring(&self) -> bool {
         self.entries.values().any(|body| body.coloring.is_some())
     }
 

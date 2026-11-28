@@ -7,17 +7,17 @@ use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockBuilder, MockServer, ResponseTemplate};
 
-pub const COLLECTION: &str = "coll";
-pub const REPO: &str = "coll/My Project/web";
-pub const PR: u64 = 7;
-pub const TOKEN: &str = "dummy-pat";
+pub(crate) const COLLECTION: &str = "coll";
+pub(crate) const REPO: &str = "coll/My Project/web";
+pub(crate) const PR: u64 = 7;
+pub(crate) const TOKEN: &str = "dummy-pat";
 /// `base64(":dummy-pat")`.
-pub const AUTHORIZATION: &str = "Basic OmR1bW15LXBhdA==";
+pub(crate) const AUTHORIZATION: &str = "Basic OmR1bW15LXBhdA==";
 
 /// The provider on `server`, the base URL of an Azure DevOps Server with `organizations` as its
 /// collections. The tests share one process, and wiremock hands a finished test's port out again:
 /// a rate-limit pause an earlier test left on this origin is ended first.
-pub fn provider(
+pub(crate) fn provider(
     server: &MockServer,
     organizations: &[&str],
     token: Option<&str>,
@@ -38,7 +38,7 @@ pub fn provider(
 }
 
 /// Method + exact path + `api-version=7.1` + PAT header.
-pub fn api(verb: &str, url_path: &str) -> MockBuilder {
+pub(crate) fn api(verb: &str, url_path: &str) -> MockBuilder {
     Mock::given(method(verb))
         .and(path(url_path))
         .and(query_param("api-version", "7.1"))
@@ -46,16 +46,16 @@ pub fn api(verb: &str, url_path: &str) -> MockBuilder {
 }
 
 /// The path of the pull request [`PR`] of [`REPO`], followed by `suffix`.
-pub fn pr_path(suffix: &str) -> String {
+pub(crate) fn pr_path(suffix: &str) -> String {
     format!("/{COLLECTION}/My%20Project/_apis/git/repositories/web/pullrequests/{PR}{suffix}")
 }
 
-pub fn ok(body: Value) -> ResponseTemplate {
+pub(crate) fn ok(body: Value) -> ResponseTemplate {
     ResponseTemplate::new(200).set_body_json(body)
 }
 
 /// The pull request [`PR`] of [`REPO`] from `feature` into `main`, with the fields of `extra` on top.
-pub fn pull_request(extra: &Value) -> Value {
+pub(crate) fn pull_request(extra: &Value) -> Value {
     let mut value = json!({
         "pullRequestId": PR, "status": "active",
         "repository": { "name": "web", "project": { "name": "My Project" } },
@@ -70,7 +70,7 @@ pub fn pull_request(extra: &Value) -> Value {
 
 /// `Refs - List` of the source branch (`refs/heads/feature`) answers `tip`; with `times`, exactly
 /// that many times.
-pub async fn mount_source_tip(server: &MockServer, tip: &str, times: Option<u64>) {
+pub(crate) async fn mount_source_tip(server: &MockServer, tip: &str, times: Option<u64>) {
     let mock = api("GET", &format!("/{COLLECTION}/My%20Project/_apis/git/repositories/web/refs"))
         .and(query_param("filter", "heads/feature"))
         .respond_with(ok(json!({ "count": 2, "value": [
