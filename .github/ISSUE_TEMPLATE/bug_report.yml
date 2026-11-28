@@ -11,8 +11,8 @@ body:
     id: version
     attributes:
       label: Code View version
-      description: The release you downloaded, or the commit you built.
-      placeholder: 0.1.2
+      description: 'The number of the release you downloaded, as its release notes name it, or the commit you built. The app does not show it in its window; Windows shows it in the properties of `CodeView.exe` (Details, Product version), macOS in Get Info of `Code View.app`.'
+      placeholder: The release number, or the commit you built
     validations:
       required: true
   - type: dropdown
@@ -61,6 +61,6 @@ body:
   - type: textarea
     id: log
     attributes:
-      label: Log lines
-      description: 'The relevant lines of a log file in the logs folder of Code View''s cache folder (Windows: `%LOCALAPPDATA%\ReviewApp\logs`, macOS: `~/Library/Caches/ReviewApp/logs`, Linux: `$XDG_CACHE_HOME/ReviewApp/logs`, by default `~/.cache/ReviewApp/logs`), with any private names removed.'
+      label: Error text
+      description: 'The text of the error, if the app showed one: open Details under the error and click Copy details, or click Copy message on a notice. For a memory problem, the lines of `memory.log` from the time it grew (Windows: `%LOCALAPPDATA%\ReviewApp\logs`, macOS: `~/Library/Caches/ReviewApp/logs`, Linux: `$XDG_CACHE_HOME/ReviewApp/logs`, by default `~/.cache/ReviewApp/logs`); it holds numbers only. Remove any private names from the error text.'
       render: text

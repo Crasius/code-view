@@ -4,6 +4,21 @@
 #   1. Untracked, not-ignored junk files outside tmp/ and runtime/ (screenshots, logs, merge leftovers).
 #      Why: they get swept into a commit or hide in the tree. Keep captures in tmp/.
 #   2. Tracked files with secret-like names. Why: a committed secret stays in history.
+#   3. What a push would publish: the commits on HEAD that are not on origin/main.
+#      - A message that names a user folder (C:\Users\<name>, C:/Users/<name>, /c/Users/<name>,
+#        /Users/<name>, /home/<name>) whose name is no placeholder. Placeholders: a name that
+#        starts with < $ % { * ~ or ., and you, me, user, username, name, runner, public,
+#        default, shared (any case). Messages only: tracked files hold invented paths
+#        (/home/ada/...) on purpose, a message never needs one.
+#      - A message or an added line that holds this machine's user folder name or login name,
+#        as a whole word in any case. The names come from USERPROFILE, HOME, USERNAME, USER and
+#        LOGNAME at run time; names shorter than four characters and generic ones (user, admin,
+#        root, runner, ...) are skipped. The finding never prints the name.
+#      Local only: with CI set, or without origin/main, it does nothing and prints nothing. Why: a
+#      pushed message cannot change without a history rewrite, and a contributor's pull request
+#      must not fail on its messages. Why it exists: three unpushed messages quoted a log path
+#      with the user folder, and 438 commits had to be rewritten before a push (rule git-flow).
+#      Two processes (git log and awk), however long the range.
 # repo-lint runs on its own, as the step repo-lint of scripts/check.sh.
 # POSIX sh; works from any directory inside the repository.
 
@@ -45,6 +60,95 @@ done)
 if [ -n "$secrets" ]; then
   printf '%s\n' "$secrets"
   found=1
+fi
+
+# Check 3. The names are folded to one list here without starting a process; awk filters them.
+if [ -z "${CI:-}" ]; then
+  profile=${USERPROFILE:-}
+  profile=${profile##*\\}
+  profile=${profile##*/}
+  home=${HOME:-}
+  home=${home%/}
+  home=${home##*/}
+  own_names="$profile
+$home
+${USERNAME:-}
+${USER:-}
+${LOGNAME:-}"
+  # git log -p shows no diff for a merge, so a merge contributes its message alone; the merged
+  # commits are in the range themselves. Without origin/main git prints nothing (stderr dropped).
+  published=$(git -c core.quotepath=off log -p -U0 --no-color --no-ext-diff --no-renames \
+    --format='%x01%h%n%B%n%x02' refs/remotes/origin/main..HEAD -- 2>/dev/null |
+    OWN_NAMES=$own_names LC_ALL=C awk '
+      BEGIN {
+        n = split(ENVIRON["OWN_NAMES"], raw, "\n")
+        generic = " user users admin administrator root runner default public guest owner home build test vscode ubuntu "
+        for (i = 1; i <= n; i++) {
+          w = tolower(raw[i])
+          if (length(w) < 4 || index(generic, " " w " ") > 0 || (w in seen)) continue
+          seen[w] = 1
+          names[++nn] = w
+        }
+        placeholder = " you me user username name runner public default shared "
+        todo = "Reword the commit before it is merged: a sole writer whose HEAD is that commit may amend it with the shell comment # history-rewrite-ok: <reason> (rule git-flow, Always); otherwise stop and tell the owner."
+      }
+      function word(c) { return c ~ /[a-z0-9_]/ }
+      function own_name(line,    l, i, p, from, at, w) {
+        l = tolower(line)
+        for (i = 1; i <= nn; i++) {
+          w = names[i]
+          from = 1
+          while ((p = index(substr(l, from), w)) > 0) {
+            at = from + p - 1
+            if (!word(substr(l, at - 1, 1)) && !word(substr(l, at + length(w), 1))) return 1
+            from = at + 1
+          }
+        }
+        return 0
+      }
+      # The first user folder path with a real-looking name, as "<prefix><name>" masked; "" for none.
+      function user_folder(line,    l, from, at, rest, before, prefix, name) {
+        l = tolower(line)
+        from = 1
+        while (match(substr(l, from), /[a-z]:[\\\/]+users[\\\/]+|\/[a-z]\/users\/|\/users\/|\/home\//)) {
+          at = from + RSTART - 1
+          prefix = substr(line, at, RLENGTH)
+          from = at + RLENGTH
+          before = substr(l, at - 1, 1)
+          if (at > 1 && before ~ /[a-z0-9_.\/-]/) continue
+          rest = substr(line, from)
+          if (match(rest, /^[^\\\/ \t"'"'"'`)>,;:]+/) == 0) continue
+          name = substr(rest, 1, RLENGTH)
+          sub(/\.+$/, "", name)
+          if (name == "" || name ~ /^[<$%{*~.]/ || index(placeholder, " " tolower(name) " ") > 0) continue
+          return prefix "<name>"
+        }
+        return ""
+      }
+      function report(place, what) {
+        key = hash SUBSEP place SUBSEP what
+        if (key in done) return
+        done[key] = 1
+        printf "repo-check: commit %s, %s: %s. %s\n", hash, place, what, todo
+      }
+      /^\001/ { hash = substr($0, 2); inmsg = 1; next }
+      inmsg && /^\002/ { inmsg = 0; next }
+      inmsg {
+        folder = user_folder($0)
+        if (folder != "") report("message", "names the user folder of a machine (" folder ")")
+        if (own_name($0)) report("message", "holds the user folder or login name of this machine")
+        next
+      }
+      /^\+\+\+ / { file = substr($0, 5); sub(/^b\//, "", file); next }
+      /^@@ / { split($3, h, ","); lineno = substr(h[1], 2) + 0; next }
+      /^\+/ {
+        if (own_name(substr($0, 2))) report(file ":" lineno, "adds a line with the user folder or login name of this machine")
+        lineno++
+      }')
+  if [ -n "$published" ]; then
+    printf '%s\n' "$published"
+    found=1
+  fi
 fi
 
 exit "$found"
