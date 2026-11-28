@@ -121,7 +121,7 @@ impl Motions {
     }
 
     /// Another reference was picked: its fill fades in.
-    pub fn fill(&mut self) {
+    pub(super) fn fill(&mut self) {
         self.fill = Clock::Due;
     }
 

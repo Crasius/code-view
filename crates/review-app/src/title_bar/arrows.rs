@@ -17,7 +17,7 @@ fn width() -> f32 {
 }
 
 /// Both arrows from `left`, vertically centered in `bar`; returns the rect they cover.
-pub fn show(
+pub(super) fn show(
     ui: &mut Ui,
     bar: Rect,
     left: f32,

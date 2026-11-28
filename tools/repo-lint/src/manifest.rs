@@ -99,7 +99,7 @@ fn is_ui_owner(name: &str) -> bool {
     name == "review-app" || name.starts_with("cv-")
 }
 
-pub fn check_crates(crates: &[Crate]) -> Vec<Finding> {
+pub(crate) fn check_crates(crates: &[Crate]) -> Vec<Finding> {
     let members: Vec<&str> = crates.iter().map(|c| c.name.as_str()).collect();
     let mut findings = Vec::new();
     for krate in crates {
@@ -152,7 +152,7 @@ pub fn check_crates(crates: &[Crate]) -> Vec<Finding> {
 }
 
 /// Profile tables and dependencies that bypass `[workspace.dependencies]` in a member manifest.
-pub fn check_member_manifest(path: &str, text: &str) -> Vec<Finding> {
+pub(crate) fn check_member_manifest(path: &str, text: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
     for (index, line) in text.lines().enumerate() {
         if line.trim_start().starts_with("[profile") {
@@ -214,7 +214,7 @@ fn test_feature_lines(text: &str) -> Vec<usize> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Dependency {
+pub(crate) struct Dependency {
     pub name: String,
     pub line: usize,
     /// Declared with `workspace = true`.
@@ -224,7 +224,7 @@ pub struct Dependency {
 /// The dependencies of a member manifest, from every `[*dependencies]` table (normal, dev, build,
 /// per target) and every `[dependencies.<name>]` table. Not a TOML parser: it follows the layout
 /// Cargo manifests use (one key per line, values that may span lines).
-pub fn dependencies(text: &str) -> Vec<Dependency> {
+pub(crate) fn dependencies(text: &str) -> Vec<Dependency> {
     let mut out: Vec<Dependency> = Vec::new();
     let mut in_table = false;
     let mut in_dotted = false;

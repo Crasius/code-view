@@ -62,7 +62,7 @@ pub(crate) struct BrowserExtension {
 impl BrowserExtension {
     /// A row that reads and writes `registry` (tests: a scratch folder and keys in memory).
     #[cfg(test)]
-    pub fn with_registry(registry: Registry) -> Self {
+    pub(super) fn with_registry(registry: Registry) -> Self {
         Self { registry: Some(Ok(Arc::new(registry))), ..Self::default() }
     }
 

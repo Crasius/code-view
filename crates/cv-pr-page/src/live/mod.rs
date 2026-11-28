@@ -102,7 +102,7 @@ struct Notice {
 impl LiveUpdates {
     /// Where the probe stands, for a walkthrough's failure message.
     #[cfg(test)]
-    pub fn describe(&self) -> String {
+    pub(crate) fn describe(&self) -> String {
         format!(
             "probe loading {} ({:?}), staging {} ({:?}), pending {}, held {}, failures {}",
             self.probe.is_loading(),

@@ -158,7 +158,7 @@ impl LayoutCache {
 
     /// How many block layouts are cached.
     #[cfg(test)]
-    pub fn cached(&self) -> usize {
+    pub(super) fn cached(&self) -> usize {
         self.entries.len()
     }
 

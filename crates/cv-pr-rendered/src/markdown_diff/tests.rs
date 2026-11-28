@@ -34,13 +34,13 @@ use cv_testkit::frame_bench::{self, Bench, Report, SCALES};
 
 /// What the last frame painted, for tests that look at the geometry.
 #[derive(Debug, Default, Clone)]
-pub struct Probe {
+pub(super) struct Probe {
     pub cells: Vec<ProbeCell>,
 }
 
 /// One lane of a row: a block (`unit`) or the hatched gap where its side has none.
 #[derive(Debug, Clone, Copy)]
-pub struct ProbeCell {
+pub(super) struct ProbeCell {
     pub row: usize,
     pub side: DiffSide,
     pub unit: Option<usize>,

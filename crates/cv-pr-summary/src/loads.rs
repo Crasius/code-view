@@ -151,7 +151,7 @@ impl Loads {
 
     /// Loads on their way.
     #[cfg(test)]
-    pub fn running(&self) -> usize {
+    pub(crate) fn running(&self) -> usize {
         self.running.len()
     }
 

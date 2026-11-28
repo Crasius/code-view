@@ -175,7 +175,7 @@ impl TextFind {
     }
 
     #[cfg(test)]
-    pub fn occurrence_rows(&self) -> Option<&[Option<u32>]> {
+    pub(crate) fn occurrence_rows(&self) -> Option<&[Option<u32>]> {
         self.occurrences.hits().map(|_| self.occurrence_rows.as_slice())
     }
 

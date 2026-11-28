@@ -26,23 +26,23 @@ use wiremock::{Mock, MockBuilder, MockServer, Request, Respond, ResponseTemplate
 use super::ReviewApp;
 use super::walkthrough::{files_tab, open_in_tree, shows_file_view, wait_for_diff, wait_until};
 
-pub const TOKEN: &str = "test-token";
+pub(super) const TOKEN: &str = "test-token";
 /// `Basic base64("x-access-token:test-token")`, how the provider hands the token to git.
 const GIT_AUTHORIZATION: &str = "Basic eC1hY2Nlc3MtdG9rZW46dGVzdC10b2tlbg==";
-pub const OWNER: &str = "acme";
-pub const REPOSITORY: &str = "acme/widgets";
-pub const NUMBER: u64 = 7;
-pub const TITLE: &str = "Rename the greeting";
-pub const FILE: &str = "src/lib.rs";
+pub(super) const OWNER: &str = "acme";
+pub(super) const REPOSITORY: &str = "acme/widgets";
+pub(super) const NUMBER: u64 = 7;
+pub(super) const TITLE: &str = "Rename the greeting";
+pub(super) const FILE: &str = "src/lib.rs";
 /// GraphQL node id of the review thread that already exists on line 3.
-pub const THREAD_ID: &str = "PRRT_existing";
-pub const THREAD_TEXT: &str = "Should this stay public?";
+pub(super) const THREAD_ID: &str = "PRRT_existing";
+pub(super) const THREAD_TEXT: &str = "Should this stay public?";
 /// The current thread's line and text after [`GitHubHost::force_push_outdating_the_thread`].
-pub const CURRENT_LINE: u32 = 20;
-pub const CURRENT_TEXT: &str = "Is this line still needed?";
+pub(super) const CURRENT_LINE: u32 = 20;
+pub(super) const CURRENT_TEXT: &str = "Is this line still needed?";
 
 /// Opens the pull request from its row in "My pull requests" and waits for its tabs.
-pub fn open_pull_request(harness: &mut Harness<'_, ReviewApp>) {
+pub(super) fn open_pull_request(harness: &mut Harness<'_, ReviewApp>) {
     click_pull_request_row(harness);
     wait_until(harness, "the pull request", |harness| {
         harness.query_by_role_and_label(Role::Tab, "Overview").is_some()
@@ -50,14 +50,14 @@ pub fn open_pull_request(harness: &mut Harness<'_, ReviewApp>) {
 }
 
 /// Clicks the pull request's row in "My pull requests" once it shows.
-pub fn click_pull_request_row(harness: &mut Harness<'_, ReviewApp>) {
+pub(super) fn click_pull_request_row(harness: &mut Harness<'_, ReviewApp>) {
     let row = format!("{NUMBER} {TITLE}");
     wait_until(harness, "the pull request row", |harness| harness.query_by_label(&row).is_some());
     harness.click_at(harness.get_by_label(&row).rect());
 }
 
 /// Opens [`FILE`] in the Files tab once the mirror fetched it; returns the diff's area.
-pub fn open_diff(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
+pub(super) fn open_diff(harness: &mut Harness<'_, ReviewApp>) -> egui::Rect {
     files_tab(harness);
     open_in_tree(harness, FILE);
     // The existing thread's card sits under line 3 once the diff rows are built.
@@ -110,7 +110,7 @@ const HEAD_TEXT: &str = "pub fn greeting() -> &'static str {\n    \"Hello, world
 /// wiremock's servers run on their own threads; this runtime only mounts mocks and reads requests.
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| Runtime::new().expect("tokio runtime"));
 
-pub struct GitHubHost {
+pub(super) struct GitHubHost {
     server: MockServer,
     owner: String,
     /// Head commit of pull request [`NUMBER`], when the host has it.
@@ -125,7 +125,7 @@ pub struct GitHubHost {
 
 impl GitHubHost {
     /// A host whose "mine" search lists `rows` (see [`search_row`]) for the organization `owner`.
-    pub fn start(owner: &str, rows: &[Value]) -> Self {
+    pub(super) fn start(owner: &str, rows: &[Value]) -> Self {
         let server = RUNTIME.block_on(MockServer::start());
         cv_testkit::fresh_origin(&server.uri());
         let host = Self {
@@ -147,12 +147,12 @@ impl GitHubHost {
 
     /// A host with pull request [`NUMBER`] in [`REPOSITORY`]: its detail, one review thread, an empty
     /// pipeline, a label catalog, the repository over git, and successful answers to every write.
-    pub fn with_pull_request(scratch: &Path) -> Self {
+    pub(super) fn with_pull_request(scratch: &Path) -> Self {
         Self::with_pull_request_files(scratch, &[])
     }
 
     /// [`Self::with_pull_request`] whose pull request also changes `files`, next to [`FILE`].
-    pub fn with_pull_request_files(scratch: &Path, files: &[ExtraFile]) -> Self {
+    pub(super) fn with_pull_request_files(scratch: &Path, files: &[ExtraFile]) -> Self {
         let mut host = Self::start(OWNER, &[search_row(NUMBER, TITLE, REPOSITORY)]);
         let origin = Origin::create(scratch, files);
         host.mount_pull_request(&origin);
@@ -172,7 +172,7 @@ impl GitHubHost {
     /// waits until the returned hold lets it through, opens or is dropped, as on a slow host; every
     /// other request, the few blobs of one file among them, is answered at once. The connections made
     /// after this reach the server through a [`Relay`], so call it before [`Self::connection`].
-    pub fn hold_batch_downloads(&mut self) -> HeldDownloads {
+    pub(super) fn hold_batch_downloads(&mut self) -> HeldDownloads {
         let gate = Arc::new(Gate::default());
         self.relay = Some(Relay::start(*self.server.address(), Arc::clone(&gate)));
         HeldDownloads(gate)
@@ -180,7 +180,7 @@ impl GitHubHost {
 
     /// Someone replies on the existing thread: the pull request's `updated_at` moves and the
     /// thread gains the comment. Live updates pick it up with their next probe.
-    pub fn publish_reply(&self, author: &str, body: &str) {
+    pub(super) fn publish_reply(&self, author: &str, body: &str) {
         const REPLIED_AT: &str = "2026-10-01T11:00:00Z";
         let origin = self.origin.as_ref().expect("a host with a pull request");
         self.answer_pull(ok(pull_json(
@@ -200,7 +200,7 @@ impl GitHubHost {
 
     /// Besides the thread on line 3, the pull request has one current thread by cy on each of
     /// `threads`, on its head lines (before the page opens).
-    pub fn add_threads(&self, threads: &[MockThread]) {
+    pub(super) fn add_threads(&self, threads: &[MockThread]) {
         let mut nodes = existing_thread_nodes();
         for (index, thread) in threads.iter().enumerate() {
             let id = 801 + index as u64;
@@ -224,7 +224,7 @@ impl GitHubHost {
     /// [`Self::sign_in_as_me`]) per entry of `comments` (before the page opens). Editing one
     /// (`PATCH /pulls/comments/{id}`) or deleting it (`DELETE`) changes what the threads answer
     /// from then on, as on GitHub: a thread whose last comment is deleted is gone.
-    pub fn add_own_comments(&self, comments: &[OwnComment]) {
+    pub(super) fn add_own_comments(&self, comments: &[OwnComment]) {
         let nodes = comments
             .iter()
             .map(|own| {
@@ -247,14 +247,14 @@ impl GitHubHost {
     }
 
     /// The next edit of a review comment is refused with 500; the ones after it go through.
-    pub fn refuse_next_comment_edit(&self) {
+    pub(super) fn refuse_next_comment_edit(&self) {
         let refused =
             ResponseTemplate::new(500).set_body_json(json!({ "message": "Server Error" }));
         self.mount(comment_api("PATCH").respond_with(refused).up_to_n_times(1).with_priority(1));
     }
 
     /// The pull request's description becomes `body` (before the page opens).
-    pub fn describe(&self, body: &str) {
+    pub(super) fn describe(&self, body: &str) {
         let origin = self.origin.as_ref().expect("a host with a pull request");
         let mut pull = pull_json(&self.server.uri(), &origin.base, self.head_sha(), TIMESTAMP);
         pull["body"] = json!(body);
@@ -262,14 +262,14 @@ impl GitHubHost {
     }
 
     /// `GET /user` names the token's user: "me" (id 9), the author of the search rows.
-    pub fn sign_in_as_me(&self) {
+    pub(super) fn sign_in_as_me(&self) {
         self.mount(
             api("GET", "/user").respond_with(ok(json!({ "id": 9, "login": "me", "name": "Me" }))),
         );
     }
 
     /// `GET /user` names the token's user: "mona" (id 1), the author of pull request [`NUMBER`].
-    pub fn sign_in_as_author(&self) {
+    pub(super) fn sign_in_as_author(&self) {
         self.mount(
             api("GET", "/user")
                 .respond_with(ok(json!({ "id": 1, "login": "mona", "name": "Mona" }))),
@@ -277,7 +277,7 @@ impl GitHubHost {
     }
 
     /// "me" reviewed the pull request with `state` (`APPROVED`, `CHANGES_REQUESTED`).
-    pub fn my_review(&self, state: &str) {
+    pub(super) fn my_review(&self, state: &str) {
         let review = json!({ "id": 31, "user": { "id": 9, "login": "me" }, "state": state, "body": "", "submitted_at": TIMESTAMP });
         let priority = self.take_priority();
         self.mount(
@@ -288,7 +288,7 @@ impl GitHubHost {
     }
 
     /// Merging is refused with 403, as for a token without write access.
-    pub fn refuse_merge(&self) {
+    pub(super) fn refuse_merge(&self) {
         self.mount(
             repository_api("PUT", &format!("/pulls/{NUMBER}/merge")).respond_with(
                 ResponseTemplate::new(403)
@@ -298,14 +298,14 @@ impl GitHubHost {
     }
 
     /// `GET /pulls/7` fails with 500 from now on, until [`Self::restore_pull_request`].
-    pub fn fail_pull_request(&self) {
+    pub(super) fn fail_pull_request(&self) {
         self.answer_pull(
             ResponseTemplate::new(500).set_body_json(json!({ "message": "Server Error" })),
         );
     }
 
     /// `GET /pulls/7` answers again, after [`Self::fail_pull_request`].
-    pub fn restore_pull_request(&self) {
+    pub(super) fn restore_pull_request(&self) {
         let origin = self.origin.as_ref().expect("a host with a pull request");
         self.answer_pull(ok(pull_json(
             &self.server.uri(),
@@ -317,7 +317,7 @@ impl GitHubHost {
 
     /// `GET /pulls/7` reads after `delay` (before the page opens), with no reviews: a slow host.
     /// Both answers outrank those a host with a pull request mounted.
-    pub fn delay_detail(&self, delay: std::time::Duration) {
+    pub(super) fn delay_detail(&self, delay: std::time::Duration) {
         let priority = self.take_priority();
         self.mount(
             repository_api("GET", &format!("/pulls/{NUMBER}"))
@@ -333,7 +333,7 @@ impl GitHubHost {
 
     /// `POST /markdown` with `token` renders an image as GitHub does, its `<img>` pointing at
     /// `source`: the signed address of an attachment the token reaches, else the address as written.
-    pub fn render_images_as(&self, token: &str, source: &str) {
+    pub(super) fn render_images_as(&self, token: &str, source: &str) {
         let html = format!(
             r#"<p dir="auto"><a target="_blank" rel="noopener noreferrer" href="{source}"><img src="{source}" style="max-width: 100%;"></a></p>"#
         );
@@ -349,7 +349,7 @@ impl GitHubHost {
 
     /// The author pushes a commit that puts `lines` on top of [`FILE`]: the origin gets it on
     /// `refs/pull/7/head` and the pull request names the new head. Returns the new head.
-    pub fn push_lines_on_top(&mut self, lines: &str) -> String {
+    pub(super) fn push_lines_on_top(&mut self, lines: &str) -> String {
         let origin = self.origin.as_ref().expect("a host with a pull request");
         let file = origin.work.join(FILE);
         let text = std::fs::read_to_string(&file).expect("head file");
@@ -369,7 +369,7 @@ impl GitHubHost {
     /// line 1); a current thread by mona sits on [`CURRENT_LINE`] of the new head. With
     /// [`ReplacedHead::Collected`] the host collects the replaced commit as garbage, as GitHub may
     /// after a force push. Returns the replaced head.
-    pub fn force_push_outdating_the_thread(
+    pub(super) fn force_push_outdating_the_thread(
         &mut self,
         text: &str,
         replaced_head: ReplacedHead,
@@ -415,7 +415,7 @@ impl GitHubHost {
     }
 
     /// Merging succeeds.
-    pub fn accept_merge(&self) {
+    pub(super) fn accept_merge(&self) {
         self.mount(
             repository_api("PUT", &format!("/pulls/{NUMBER}/merge"))
                 .respond_with(ok(json!({ "merged": true, "sha": self.head_sha() }))),
@@ -423,7 +423,7 @@ impl GitHubHost {
     }
 
     /// The pull request is merged on the host: `GET /pulls/7` answers it merged from now on.
-    pub fn answer_merged(&self) {
+    pub(super) fn answer_merged(&self) {
         let origin = self.origin.as_ref().expect("a host with a pull request");
         let merged_at = "2026-10-02T12:00:00Z";
         let mut pull = pull_json(&self.server.uri(), &origin.base, self.head_sha(), merged_at);
@@ -469,7 +469,7 @@ impl GitHubHost {
     /// too, and starting a rerun is refused (403), as for a token without the permission. Used by
     /// the focus mode walkthrough, which runs with the Windows title bar.
     #[cfg(windows)]
-    pub fn add_workflow_job(&self, job: &str, log: &str) {
+    pub(super) fn add_workflow_job(&self, job: &str, log: &str) {
         let (run_id, job_id, earlier_id) = (900, 901, 899);
         let uri = self.server.uri();
         let run = json!({
@@ -520,7 +520,7 @@ impl GitHubHost {
         priority
     }
 
-    pub fn connection(&self, id: &str, name: &str) -> Connection {
+    pub(super) fn connection(&self, id: &str, name: &str) -> Connection {
         // Any host but github.com is GitHub Enterprise Server: REST below /api/v3, GraphQL at /api/graphql.
         let base_url =
             self.relay.as_ref().map_or_else(|| self.server.uri(), |relay| relay.uri.clone());
@@ -532,27 +532,27 @@ impl GitHubHost {
         }
     }
 
-    pub fn head_sha(&self) -> &str {
+    pub(super) fn head_sha(&self) -> &str {
         self.head_sha.as_deref().expect("a host with a pull request")
     }
 
-    pub fn requests(&self) -> Vec<Request> {
+    pub(super) fn requests(&self) -> Vec<Request> {
         RUNTIME.block_on(self.server.received_requests()).expect("request recording is on")
     }
 
     /// The first request matching `verb` and `request_path` (below the server root).
-    pub fn find(&self, verb: &str, request_path: &str) -> Option<Request> {
+    pub(super) fn find(&self, verb: &str, request_path: &str) -> Option<Request> {
         self.matching(verb, request_path).next()
     }
 
     /// The requests matching `verb` and `request_path` (below the server root) so far.
-    pub fn count(&self, verb: &str, request_path: &str) -> usize {
+    pub(super) fn count(&self, verb: &str, request_path: &str) -> usize {
         self.matching(verb, request_path).count()
     }
 
     /// The API writes received so far, as [`review_core::http::is_write`] tells them. git's
     /// fetches post too, but outside `review_core::http`.
-    pub fn writes(&self) -> usize {
+    pub(super) fn writes(&self) -> usize {
         self.requests()
             .iter()
             .filter(|request| request.url.path().starts_with("/api/"))
@@ -561,7 +561,7 @@ impl GitHubHost {
     }
 
     /// The JSON bodies of the requests matching `verb` and `request_path`, in order.
-    pub fn bodies(&self, verb: &str, request_path: &str) -> Vec<Value> {
+    pub(super) fn bodies(&self, verb: &str, request_path: &str) -> Vec<Value> {
         self.matching(verb, request_path)
             .map(|request| request.body_json().expect("a JSON body"))
             .collect()
@@ -575,7 +575,7 @@ impl GitHubHost {
     }
 
     /// The first GraphQL request whose document contains `needle`, decoded.
-    pub fn find_graphql(&self, needle: &str) -> Option<Value> {
+    pub(super) fn find_graphql(&self, needle: &str) -> Option<Value> {
         self.requests()
             .into_iter()
             .filter(|request| {
@@ -643,7 +643,7 @@ impl GitHubHost {
     /// [`READABLE_NUMBER`] reads like [`NUMBER`]; [`HIDDEN_NUMBER`] gets 404 and
     /// [`FORBIDDEN_NUMBER`] 403, as GitHub answers a token that cannot see or read a private
     /// repository; [`FAILING_NUMBER`] gets 500, and [`SLOW_NUMBER`] reads after `slow_by`.
-    pub fn add_linked_pull_requests(&self, slow_by: std::time::Duration) {
+    pub(super) fn add_linked_pull_requests(&self, slow_by: std::time::Duration) {
         let origin = self.origin.as_ref().expect("a host with a pull request");
         let readable = |number: u64| {
             let mut pull = pull_json(&self.server.uri(), &origin.base, self.head_sha(), TIMESTAMP);
@@ -716,7 +716,7 @@ fn comment(id: u64, body: &str, login: &str, author_id: u64) -> Value {
 }
 
 /// The REST path of pull request `number` of [`REPOSITORY`], below the server root.
-pub fn pull_path(number: u64) -> String {
+pub(super) fn pull_path(number: u64) -> String {
     format!("/api/v3/repos/{REPOSITORY}/pulls/{number}")
 }
 
@@ -728,7 +728,7 @@ fn thread_page(nodes: &Value) -> Value {
 }
 
 /// One row of the GraphQL "mine" search.
-pub fn search_row(number: u64, title: &str, repository: &str) -> Value {
+pub(super) fn search_row(number: u64, title: &str, repository: &str) -> Value {
     let name = repository.rsplit('/').next().unwrap_or(repository);
     json!({
         "number": number, "title": title, "url": format!("https://example.invalid/{repository}/pull/{number}"),
@@ -818,21 +818,21 @@ impl Respond for SmartGit {
 /// The large fetches' answers held by [`GitHubHost::hold_batch_downloads`]. They go out a given
 /// number at a time ([`Self::let_through`]), or all once this opens or is dropped, so a failing
 /// test never leaves a fetch hanging.
-pub struct HeldDownloads(Arc<Gate>);
+pub(super) struct HeldDownloads(Arc<Gate>);
 
 impl HeldDownloads {
     /// Lets the next `fetches` held answers (waiting or still to come) go out.
-    pub fn let_through(&self, fetches: usize) {
+    pub(super) fn let_through(&self, fetches: usize) {
         self.0.pass(fetches);
     }
 
     /// Lets every held answer go out, now and from now on.
-    pub fn open(&self) {
+    pub(super) fn open(&self) {
         self.0.open();
     }
 
     /// The answers held right now: large fetches the server answered and the gate keeps.
-    pub fn waiting(&self) -> usize {
+    pub(super) fn waiting(&self) -> usize {
         self.0.state.lock().unwrap_or_else(PoisonError::into_inner).waiting
     }
 }
@@ -1006,7 +1006,7 @@ fn cgi_response(output: &[u8]) -> ResponseTemplate {
 
 /// A file the pull request changes besides [`FILE`]: its bytes in the base and in the head.
 #[derive(Clone, PartialEq)]
-pub struct ExtraFile {
+pub(super) struct ExtraFile {
     pub path: &'static str,
     pub base: Vec<u8>,
     pub head: Vec<u8>,
@@ -1014,7 +1014,7 @@ pub struct ExtraFile {
 
 /// What the host keeps of the head [`GitHubHost::force_push_outdating_the_thread`] replaces.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ReplacedHead {
+pub(super) enum ReplacedHead {
     /// Still fetchable by its id.
     Kept,
     /// Collected as garbage.
@@ -1023,7 +1023,7 @@ pub enum ReplacedHead {
 
 /// A review thread by "me" for [`GitHubHost::add_own_comments`]: its node id, its one comment's
 /// database id, its head line in [`FILE`] and its text.
-pub struct OwnComment {
+pub(super) struct OwnComment {
     pub thread_id: &'static str,
     pub comment_id: u64,
     pub line: u32,
@@ -1105,7 +1105,7 @@ impl Respond for OwnDelete {
 }
 
 /// A review thread for [`GitHubHost::add_threads`]: its node id, file, head lines and text.
-pub struct MockThread {
+pub(super) struct MockThread {
     pub id: &'static str,
     pub path: &'static str,
     pub lines: std::ops::RangeInclusive<u32>,
@@ -1259,8 +1259,8 @@ fn read_tree(
 }
 
 /// Pull requests of [`REPOSITORY`] besides [`NUMBER`], for [`GitHubHost::add_linked_pull_requests`].
-pub const READABLE_NUMBER: u64 = 8;
-pub const HIDDEN_NUMBER: u64 = 9;
-pub const FORBIDDEN_NUMBER: u64 = 10;
-pub const FAILING_NUMBER: u64 = 11;
-pub const SLOW_NUMBER: u64 = 12;
+pub(super) const READABLE_NUMBER: u64 = 8;
+pub(super) const HIDDEN_NUMBER: u64 = 9;
+pub(super) const FORBIDDEN_NUMBER: u64 = 10;
+pub(super) const FAILING_NUMBER: u64 = 11;
+pub(super) const SLOW_NUMBER: u64 = 12;

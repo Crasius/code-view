@@ -31,7 +31,7 @@ pub(crate) struct DragArea {
 impl DragArea {
     /// Senses the pointer on `bar`. Call before laying out the bar's widgets, so they take clicks
     /// over their own rects.
-    pub fn sense(ui: &Ui, bar: Rect) -> Self {
+    pub(super) fn sense(ui: &Ui, bar: Rect) -> Self {
         // Not focusable: the bar is no control that Tab should stop at.
         let response =
             ui.interact(bar, ui.scope_id().with("window_drag"), Sense::CLICK | Sense::DRAG);

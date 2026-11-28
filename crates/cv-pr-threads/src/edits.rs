@@ -332,7 +332,7 @@ fn may_change(
 #[cfg(test)]
 impl CommentEdits {
     /// A save or deletion on its way, without a platform behind it.
-    pub fn send_for_tests(&mut self, thread_id: &str, comment_id: &str, body: Option<&str>) {
+    pub(crate) fn send_for_tests(&mut self, thread_id: &str, comment_id: &str, body: Option<&str>) {
         let change = match body {
             Some(text) => Change::Saving { text: text.to_owned(), load: Load::Idle },
             None => Change::Deleting { load: Load::Idle },

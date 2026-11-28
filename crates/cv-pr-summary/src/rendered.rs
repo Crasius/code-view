@@ -144,7 +144,7 @@ impl RenderedCards {
     }
 
     #[cfg(test)]
-    pub fn get(&self, path: &str) -> Option<&RenderedCard> {
+    pub(crate) fn get(&self, path: &str) -> Option<&RenderedCard> {
         self.cards.get(path)
     }
 }

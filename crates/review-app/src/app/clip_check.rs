@@ -103,7 +103,7 @@ const EXPAND_OUTLINE: egui::Color32 = egui::Color32::LIGHT_BLUE;
 const EXPAND_LINE: egui::Color32 = egui::Color32::from_rgb(200, 0, 0);
 
 /// Captures the shapes of every layer at the end of each pass while [`inspect`] asks for them.
-pub fn install(ctx: &Context) {
+pub(super) fn install(ctx: &Context) {
     ctx.add_plugin(ClipCapture::default());
 }
 
@@ -306,7 +306,7 @@ fn is_text_input(role: Role) -> bool {
 }
 
 /// Every layout problem of the frame painted next, one line each.
-pub fn inspect(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
+pub(super) fn inspect(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
     let captured = frame(harness);
     let inputs: Vec<Rect> =
         nodes(harness, is_text_input).into_iter().map(|control| control.rect).collect();
@@ -489,7 +489,7 @@ const TOOLTIP_DELAYS: f64 = 2.0;
 /// Texts cut with "…" whose full wording does not appear in a tooltip on hover: hovers each one
 /// for [`TOOLTIP_DELAYS`] of simulated time, and lets its tooltip close before the next. Returns
 /// one line per text.
-pub fn untold_elisions(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
+pub(super) fn untold_elisions(harness: &mut Harness<'_, ReviewApp>) -> Vec<String> {
     let captured = frame(harness);
     // An open popup takes the pointer; its own texts are checked once it is the page.
     if captured.texts.iter().any(|text| is_popup(text.layer)) {

@@ -23,7 +23,7 @@ use cv_runtime::trail::Trail;
 use cv_services::Services;
 use cv_shell::breadcrumbs;
 
-pub use self::jump::JumpAction;
+pub(crate) use self::jump::JumpAction;
 use self::jump::JumpBox;
 
 /// The integrated title bar; the caption buttons span its full height.
@@ -36,13 +36,13 @@ const TRAIL_MIN_WIDTH: f32 = 240.0;
 
 /// The page shown with the way to it, and the ways from it: the history the arrows step through,
 /// and the navigator the arrows and the trail ask.
-pub struct Navigation<'a> {
+pub(crate) struct Navigation<'a> {
     pub trail: &'a Trail,
     pub history: &'a History,
     pub navigator: &'a mut Navigator,
 }
 
-pub struct TitleBar {
+pub(crate) struct TitleBar {
     is_integrated: bool,
     crumbs: breadcrumbs::Breadcrumbs,
     jump: JumpBox,
@@ -51,7 +51,7 @@ pub struct TitleBar {
 }
 
 impl TitleBar {
-    pub fn new(creation: &eframe::CreationContext<'_>) -> Self {
+    pub(crate) fn new(creation: &eframe::CreationContext<'_>) -> Self {
         Self {
             is_integrated: platform::integrate_title_bar(creation),
             crumbs: breadcrumbs::Breadcrumbs::default(),
@@ -61,24 +61,24 @@ impl TitleBar {
     }
 
     /// True when this bar is the window's title bar (and so spans the full width above the rail).
-    pub fn is_integrated(&self) -> bool {
+    pub(crate) fn is_integrated(&self) -> bool {
         self.is_integrated
     }
 
     /// The breadcrumbs as last shown.
     #[cfg(test)]
-    pub fn crumbs(&self) -> &breadcrumbs::Breadcrumbs {
+    pub(crate) fn crumbs(&self) -> &breadcrumbs::Breadcrumbs {
         &self.crumbs
     }
 
     /// Draws the bar as the title bar, as on a real window, without a window behind it.
     #[cfg(test)]
-    pub fn integrate_for_test(&mut self) {
+    pub(crate) fn integrate_for_test(&mut self) {
         self.is_integrated = true;
     }
 
     /// Shows the bar; returns what a pick in the search results asks for.
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut Ui,
         navigation: Navigation<'_>,

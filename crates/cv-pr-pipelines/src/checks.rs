@@ -344,7 +344,7 @@ pub(crate) mod fixtures {
     use review_core::{PipelineJob, PipelineRun, RunStatus};
 
     /// A run of the head commit.
-    pub fn run(name: &str, status: RunStatus, has_jobs: bool) -> PipelineRun {
+    pub(crate) fn run(name: &str, status: RunStatus, has_jobs: bool) -> PipelineRun {
         PipelineRun {
             id: name.to_owned(),
             name: name.to_owned(),
@@ -355,7 +355,7 @@ pub(crate) mod fixtures {
         }
     }
 
-    pub fn job(name: &str, status: RunStatus) -> PipelineJob {
+    pub(crate) fn job(name: &str, status: RunStatus) -> PipelineJob {
         PipelineJob { id: name.to_owned(), name: name.to_owned(), status, ..PipelineJob::default() }
     }
 }

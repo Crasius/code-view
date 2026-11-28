@@ -200,7 +200,7 @@ impl Pan {
     }
 
     /// The part of the canvas on screen, in canvas coordinates.
-    pub fn viewport(&self) -> Rect {
+    pub(crate) fn viewport(&self) -> Rect {
         Rect::from_min_size((self.offset / self.zoom).to_pos2(), self.rect.size() / self.zoom)
     }
 

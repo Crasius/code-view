@@ -11,7 +11,7 @@ use serde_json::Value;
 
 /// A failure to read the repository; the tool exits with 2.
 #[derive(Debug)]
-pub struct RepoError(pub String);
+pub(crate) struct RepoError(pub String);
 
 impl From<std::io::Error> for RepoError {
     fn from(error: std::io::Error) -> RepoError {
@@ -20,7 +20,7 @@ impl From<std::io::Error> for RepoError {
 }
 
 /// One workspace member from `cargo metadata`.
-pub struct Crate {
+pub(crate) struct Crate {
     pub name: String,
     /// Repo-relative directory, forward slashes.
     pub dir: String,
@@ -30,7 +30,7 @@ pub struct Crate {
     pub roots: Vec<(String, bool)>,
 }
 
-pub struct Repo {
+pub(crate) struct Repo {
     pub root: PathBuf,
     /// Repo-relative paths of every `.rs` file, forward slashes, sorted.
     pub rust_files: Vec<String>,
@@ -40,7 +40,7 @@ pub struct Repo {
 }
 
 impl Repo {
-    pub fn open() -> Result<Repo, RepoError> {
+    pub(crate) fn open() -> Result<Repo, RepoError> {
         let top = run("git", &["rev-parse", "--show-toplevel"], None)?;
         let root = PathBuf::from(top.trim());
         let listing = run(
@@ -72,19 +72,19 @@ impl Repo {
         Ok(Repo { root, rust_files, budget_folders, crates })
     }
 
-    pub fn read(&self, path: &str) -> Result<String, RepoError> {
+    pub(crate) fn read(&self, path: &str) -> Result<String, RepoError> {
         std::fs::read_to_string(self.root.join(path))
             .map_err(|error| RepoError(format!("{path}: {error}")))
     }
 
     /// The working-tree file, or `None` when it does not exist.
-    pub fn read_optional(&self, path: &str) -> Option<String> {
+    pub(crate) fn read_optional(&self, path: &str) -> Option<String> {
         std::fs::read_to_string(self.root.join(path)).ok()
     }
 
     /// Fails unless `revision` names a commit, so a mistyped or unfetched base is an error and
     /// not a base without an allowlist.
-    pub fn verify_revision(&self, revision: &str) -> Result<(), RepoError> {
+    pub(crate) fn verify_revision(&self, revision: &str) -> Result<(), RepoError> {
         let commit = format!("{revision}^{{commit}}");
         run("git", &["rev-parse", "--verify", "--quiet", &commit], Some(&self.root))
             .map(drop)
@@ -92,14 +92,14 @@ impl Repo {
     }
 
     /// The file at `revision`, or `None` when it does not exist there.
-    pub fn read_at(&self, revision: &str, path: &str) -> Option<String> {
+    pub(crate) fn read_at(&self, revision: &str, path: &str) -> Option<String> {
         run("git", &["show", &format!("{revision}:{path}")], Some(&self.root)).ok()
     }
 
     /// The files among `paths` that git sees as renamed between `revision` and the working tree
     /// (`git diff -M`), new path to old path. Limiting the diff to `paths` keeps the similarity
     /// search to those files; both the old and the new path must be among them.
-    pub fn renames_since(
+    pub(crate) fn renames_since(
         &self,
         revision: &str,
         paths: &[&str],
@@ -154,12 +154,12 @@ fn is_vendored(path: &str) -> bool {
     path.split('/').rev().skip(1).any(|folder| folder == "vendor")
 }
 
-pub fn slashed(path: &Path) -> String {
+pub(crate) fn slashed(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
 /// Turns an absolute path from cargo into a repo-relative one with forward slashes.
-pub fn relative(path: &str, root: &str) -> Option<String> {
+pub(crate) fn relative(path: &str, root: &str) -> Option<String> {
     let path = path.replace('\\', "/");
     let root = root.trim_end_matches('/');
     let head = path.get(..root.len())?;
@@ -168,7 +168,7 @@ pub fn relative(path: &str, root: &str) -> Option<String> {
         .then(|| rest.trim_start_matches('/').to_owned())
 }
 
-pub fn parse_metadata(json: &str, root: &str) -> Result<Vec<Crate>, RepoError> {
+pub(crate) fn parse_metadata(json: &str, root: &str) -> Result<Vec<Crate>, RepoError> {
     let value: Value = serde_json::from_str(json)
         .map_err(|error| RepoError(format!("cargo metadata: bad JSON: {error}")))?;
     let packages = value["packages"]

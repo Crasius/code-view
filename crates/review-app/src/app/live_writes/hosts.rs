@@ -20,7 +20,7 @@ use review_store::AppPaths;
 use serde_json::Value;
 
 /// The file in the owner's config folder that names the released repositories.
-pub const TARGETS_FILE: &str = "live-writes.json";
+pub(super) const TARGETS_FILE: &str = "live-writes.json";
 /// The shape of [`TARGETS_FILE`]. `repository` is the app's repository key; Azure DevOps takes the
 /// organization, the project and the repository from it for `az`.
 const TARGETS_FORMAT: &str = r#"{
@@ -36,14 +36,14 @@ const TARGETS_FORMAT: &str = r#"{
 /// Every branch the walkthroughs create starts with this; cleanup deletes only those.
 const BRANCH_PREFIX: &str = "codeview-live/";
 /// The file the topic branch adds, which the walkthrough comments on.
-pub const FILE: &str = "codeview-live.txt";
+pub(super) const FILE: &str = "codeview-live.txt";
 const FILE_TEXT: &str =
     "# Code View live write test\n\nFirst line to comment on.\nSecond line.\nThird line.\n";
 const CI_WAIT: Duration = Duration::from_secs(600);
 
 /// A repository the owner released for live writes, with the saved connection that reaches it,
 /// as [`TARGETS_FILE`] names it.
-pub struct Released {
+pub(super) struct Released {
     pub connection_id: String,
     pub kind: ProviderKind,
     /// The host of the clone URL, which the connection's base URL must share.
@@ -58,7 +58,7 @@ pub struct Released {
 impl Released {
     /// The released repository of `kind` from [`TARGETS_FILE`]; fails the walkthrough with the
     /// file's path and [`TARGETS_FORMAT`] when the file, the entry or a field is missing.
-    pub fn load(kind: ProviderKind) -> Self {
+    pub(super) fn load(kind: ProviderKind) -> Self {
         let file = AppPaths::from_environment().config_dir().join(TARGETS_FILE);
         let section = match kind {
             ProviderKind::AzureDevOps => "azure",
@@ -99,7 +99,7 @@ impl Released {
     }
 
     /// Refuses a saved connection that is not the released one: another kind or another host.
-    pub fn assert_connection(&self, stored: &Value) {
+    pub(super) fn assert_connection(&self, stored: &Value) {
         assert_eq!(stored["id"].as_str(), Some(self.connection_id.as_str()));
         let kind: ProviderKind =
             serde_json::from_value(stored["kind"].clone()).expect("the connection's kind");
@@ -120,7 +120,7 @@ impl Released {
         );
     }
 
-    pub fn has_pipeline(&self) -> bool {
+    pub(super) fn has_pipeline(&self) -> bool {
         self.ci_file.is_some()
     }
 
@@ -181,7 +181,7 @@ fn missing(file: &Path, what: &str) -> ! {
 
 /// Whether the platform still has the test pull request open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum State {
+pub(super) enum State {
     Open,
     Merged,
     Closed,
@@ -189,7 +189,7 @@ pub enum State {
 
 /// The run's pull request from its topic branch into its base branch, both new. Dropping it
 /// closes the pull request if it is still open and deletes both branches.
-pub struct TestPullRequest<'r> {
+pub(super) struct TestPullRequest<'r> {
     released: &'r Released,
     checkout: PathBuf,
     base: String,
@@ -200,7 +200,7 @@ pub struct TestPullRequest<'r> {
 impl<'r> TestPullRequest<'r> {
     /// Branches off the default branch twice, adds [`FILE`] (and the failing pipeline) on the
     /// topic branch and opens the pull request.
-    pub fn open(released: &'r Released, scratch: &Path) -> Self {
+    pub(super) fn open(released: &'r Released, scratch: &Path) -> Self {
         let checkout = scratch.join("checkout");
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH).expect("clock").as_secs();
         let base = format!("{BRANCH_PREFIX}{stamp}-base");
@@ -234,14 +234,14 @@ impl<'r> TestPullRequest<'r> {
     }
 
     /// Pushes one more commit to the topic branch, as a colleague would while the review is open.
-    pub fn push_commit(&self) {
+    pub(super) fn push_commit(&self) {
         self.write(FILE, &format!("{FILE_TEXT}A line pushed after the review loaded.\n"));
         self.git(&["commit", "-am", "Push a commit after the review loaded"]);
         self.git(&["push", "origin", &self.topic]);
     }
 
     /// Waits until the first pipeline of the pull request failed, so the app offers its rerun.
-    pub fn wait_for_failed_pipeline(&self) {
+    pub(super) fn wait_for_failed_pipeline(&self) {
         let started = Instant::now();
         loop {
             let status = self.pipeline_status();
@@ -254,7 +254,7 @@ impl<'r> TestPullRequest<'r> {
         }
     }
 
-    pub fn state(&self) -> State {
+    pub(super) fn state(&self) -> State {
         must(self.try_state())
     }
 
@@ -298,7 +298,7 @@ impl<'r> TestPullRequest<'r> {
     }
 
     /// Waits until the platform reports `state`; Azure DevOps completes a merge asynchronously.
-    pub fn wait_for_state(&self, state: State) {
+    pub(super) fn wait_for_state(&self, state: State) {
         let started = Instant::now();
         while self.state() != state {
             assert!(started.elapsed() < Duration::from_secs(120), "never became {state:?}");

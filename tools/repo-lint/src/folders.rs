@@ -7,12 +7,12 @@ use std::collections::BTreeMap;
 
 use crate::finding::{Finding, Rule};
 
-pub const BUDGET: usize = 12;
-pub const BUDGET_FILE: &str = ".folder-budget";
+pub(crate) const BUDGET: usize = 12;
+pub(crate) const BUDGET_FILE: &str = ".folder-budget";
 
 /// Shipped module files per folder under a `src/` tree. `files` maps a repo-relative path to
 /// whether it is test-only code.
-pub fn shipped_per_folder(files: &BTreeMap<String, bool>) -> BTreeMap<String, usize> {
+pub(crate) fn shipped_per_folder(files: &BTreeMap<String, bool>) -> BTreeMap<String, usize> {
     let mut folders: BTreeMap<String, usize> = BTreeMap::new();
     for (path, &is_test) in files {
         let Some((dir, file)) = path.rsplit_once('/') else { continue };
@@ -26,7 +26,7 @@ pub fn shipped_per_folder(files: &BTreeMap<String, bool>) -> BTreeMap<String, us
 }
 
 /// The finding for one folder, given its count and the first line of its budget file, if any.
-pub fn check(dir: &str, shipped: usize, budget_reason: Option<&str>) -> Option<Finding> {
+pub(crate) fn check(dir: &str, shipped: usize, budget_reason: Option<&str>) -> Option<Finding> {
     let budget_path = format!("{dir}/{BUDGET_FILE}");
     match budget_reason {
         None if shipped > BUDGET => Some(Finding::file(

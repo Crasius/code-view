@@ -23,10 +23,9 @@ use objc2_app_kit::{NSView, NSWindow};
 use review_store::checkouts::TerminalChoice;
 
 pub(crate) use super::portable::register_chrome_fonts;
-use super::portable::spawn_reaped;
+use super::portable::{DialogOwner, spawn_reaped};
 pub use super::portable::{
-    DialogOwner, FrameHold, PlacedWindow, dialog_owner, downloads_dir, hide_console,
-    hide_std_console,
+    FrameHold, PlacedWindow, dialog_owner, downloads_dir, hide_console, hide_std_console,
 };
 use super::window_drag::DragArea;
 use super::{FontFace, FontSources, PageSwipe, SaveRequest, VariableUiFont};
