@@ -45,7 +45,7 @@ Your one and only task is this brief. Chat messages you may see are addressed to
 
 - <`sh scripts/check.sh test --base <base branch>` (the tests the change affects), clippy, the walkthrough that proves the change; each with the expected result; "none" for a shared, edit-only lane>
 - The gate, once at the end: `cd <worktree path> && sh scripts/check.sh --base <base branch>` exits 0 (`sh scripts/check.sh --list` prints its commands). A step it prints as SKIPPED is NOT-VERIFIED in the report. Never `cargo fmt` the whole workspace (rule `rust`, Format).
-- Rust lanes, before each commit and before the report: `cd <worktree path> && sh scripts/check.sh --changed --base <base branch>` exits 0 (rustfmt and clippy on the changed files, what the Stop hook runs). The Stop hook does not run for lanes (rule `lanes`). No full `cargo test --workspace` (rule `lanes`).
+- Rust lanes, before each commit and before the report: `cd <worktree path> && sh scripts/check.sh --changed --base <base branch>` exits 0 (rustfmt and clippy on the changed files, what the Stop hook runs). The Stop hook does not run for lanes (rule `lanes`). No full test run of the workspace (rule `lanes`).
 - Never end your turn to wait for a background job. Your turn ends only with the report.
 
 ## Report format

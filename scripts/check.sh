@@ -2,8 +2,9 @@
 # check.sh: the one entry point for the repository's checks, for contributors, lanes and both CIs.
 #
 #   sh scripts/check.sh [--base <rev>]            the static gate: fmt hygiene repo-lint clippy deps doc
+#                                                 shear
 #   sh scripts/check.sh [--base <rev>] <step>...  only the named steps; also advisories,
-#                                                 licenses, shear, test
+#                                                 licenses, test
 #   sh scripts/check.sh --changed [--base <rev>]  rustfmt on the changed .rs files, clippy on their crates
 #   sh scripts/check.sh --list                    every step with its commands
 #
@@ -12,11 +13,13 @@
 # --changed compare the work tree with (committed, uncommitted and untracked files); without it
 # repo-lint and `test` take main when it resolves, else HEAD, and --changed looks at the
 # uncommitted files only.
-# A missing tool (cargo-deny, cargo-about, cargo-shear): without CI set the step prints SKIPPED
+# The tools beyond the toolchain (cargo-deny, cargo-shear, cargo-about, cargo-nextest) are the ones
+# ci/install-build-deps.sh pins and installs, the same on a development machine as on a runner; a
+# step puts the pinned one first on PATH (`sh ci/install-build-deps.sh --path <tool>` names it).
+# Another version on PATH is never used. A missing tool: without CI set the step prints SKIPPED
 # with the install command and the summary lists it as NOT-VERIFIED, the exit code stays; with CI
-# set the step fails. The versions come from ci/install-build-deps.sh, the one place that pins them.
-# shear is not in the default list: cargo-shear is not installed on the machine whose local checks
-# are the gate, so CI runs it by name (`sh scripts/check.sh shear`).
+# set the step fails. `test` fails without cargo-nextest everywhere: it never reports tests that
+# did not run.
 # CARGO_BUILD_JOBS limits cargo's jobs; the script passes no -j. CHECK_BUILD_SECONDS=<file>
 # receives the seconds the clippy step took (ci/target-stamp.sh).
 # --changed is what .agents/hooks/rust-stop-gate.sh (the Stop hook) and a lane's turn end run:
@@ -36,7 +39,7 @@ usage() {
   exit 2
 }
 
-default_steps="fmt hygiene repo-lint clippy deps doc"
+default_steps="fmt hygiene repo-lint clippy deps doc shear"
 mode=steps
 base=""
 steps=""
@@ -88,15 +91,22 @@ step_tool() {
     deps | advisories) echo cargo-deny ;;
     licenses) echo cargo-about ;;
     shear) echo cargo-shear ;;
+    test) echo cargo-nextest ;;
   esac
 }
 
-# The version= line of <tool>'s entry in ci/install-build-deps.sh.
+# The pinned version of <tool>.
 tool_version() {
-  awk -v entry="$1)" '
-    $1 == entry { inside = 1; next }
-    inside && $1 ~ /^version=/ { sub(/^version=/, "", $1); print $1; exit }
-    inside && $1 == ";;" { exit }' ci/install-build-deps.sh
+  sh ci/install-build-deps.sh --version "$1"
+}
+
+# The tool a step needs: its pinned version, where it comes from, the install command.
+tool_line() {
+  if found=$(sh ci/install-build-deps.sh --path "$1"); then
+    printf '  needs %s %s: %s\n' "$1" "$(tool_version "$1")" "$found"
+  else
+    printf '  needs %s %s: %s; install it with sh ci/install-build-deps.sh %s\n' "$1" "$(tool_version "$1")" "$found" "$1"
+  fi
 }
 
 # The commands of a step, one per line.
@@ -137,14 +147,8 @@ step_commands() {
         return 1
       }
       filter=$(sh scripts/affected-tests.sh "$fork" --work-tree) || return 1
-      case $filter in
-        'none()') ;;
-        'all()') echo 'cargo test --locked --no-fail-fast --workspace' ;;
-        *)
-          printf 'cargo test --locked --no-fail-fast'
-          printf '%s\n' "$filter" | tr '|' '\n' | sed -n 's/.*package(=\([A-Za-z0-9_-]*\)).*/ -p \1/p' | tr -d '\n'
-          echo ;;
-      esac ;;
+      # The filterset holds no single quote (package names and nextest operators only).
+      [ "$filter" = 'none()' ] || echo "sh ci/run-tests.sh '$filter'" ;;
   esac
 }
 
@@ -155,21 +159,37 @@ record() {
   results="$results$(printf '%-11s %s' "$1" "$2")$nl"
 }
 
+# cargo looks for a subcommand on PATH in order, but puts ${CARGO_HOME:-~/.cargo}/bin first when
+# PATH lacks it; listed last, another version there cannot shadow the pinned one.
+cargo_bin=${CARGO_HOME:-$HOME/.cargo}/bin
+command -v cygpath >/dev/null 2>&1 && cargo_bin=$(cygpath -u "$cargo_bin")
+case :$PATH: in
+  *:"$cargo_bin":*) ;;
+  *) PATH=$PATH:$cargo_bin ;;
+esac
+base_path=$PATH
+
 run_step() {
   step=$1
   printf '\n== check: %s\n' "$step"
+  PATH=$base_path
   tool=$(step_tool "$step")
-  if [ -n "$tool" ] && ! command -v "$tool" >/dev/null 2>&1; then
-    hint="cargo install --locked $tool@$(tool_version "$tool")"
-    if [ -n "${CI:-}" ]; then
-      printf 'check: %s is not installed; CI installs it with sh ci/install-build-deps.sh %s\n' "$tool" "$tool" >&2
-      record "$step" "FAIL (not installed: $tool)"
-      failed=1
+  if [ -n "$tool" ]; then
+    if found=$(sh ci/install-build-deps.sh --path "$tool"); then
+      PATH=${found%/*}:$base_path
+      printf 'check: %s\n' "$found"
     else
-      printf 'SKIPPED (not installed: %s)\n' "$hint"
-      record "$step" "NOT-VERIFIED (SKIPPED, not installed: $hint)"
+      hint="sh ci/install-build-deps.sh $tool"
+      if [ -n "${CI:-}" ] || [ "$step" = test ]; then
+        printf 'check: %s; install it with %s\n' "$found" "$hint" >&2
+        record "$step" "FAIL ($found; install it with $hint)"
+        failed=1
+      else
+        printf 'SKIPPED (%s; install it with %s)\n' "$found" "$hint"
+        record "$step" "NOT-VERIFIED (SKIPPED, $found; install it with $hint)"
+      fi
+      return
     fi
-    return
   fi
   cmds=$(step_commands "$step") || {
     record "$step" FAIL
@@ -202,23 +222,26 @@ run_step() {
 
 list() {
   printf 'Default steps (sh scripts/check.sh [--base <rev>]): %s\n' "$default_steps"
-  for step in $default_steps advisories licenses shear; do
+  for step in $default_steps advisories licenses; do
     case $step in
       advisories) printf '\nadvisories (by name; fetches the advisory database)\n' ;;
       licenses) printf '\nlicenses (by name; the licences of the six shipped targets)\n' ;;
-      shear) printf '\nshear (CI only: not in the default list; run it by name)\n' ;;
       *) printf '\n%s\n' "$step" ;;
     esac
     tool=$(step_tool "$step")
-    [ -z "$tool" ] || printf '  needs %s %s (sh ci/install-build-deps.sh %s)\n' "$tool" "$(tool_version "$tool")" "$tool"
+    [ -z "$tool" ] || tool_line "$tool"
     step_commands "$step" | sed 's/^/  /'
     if [ "$step" = repo-lint ] && [ -z "${CI:-}" ]; then
       printf '  (with CI set: sh ci/repo-lint-base.sh)\n'
     fi
   done
   printf '\ntest (by name)\n'
-  printf '  cargo test --locked --no-fail-fast -p <package>... for the filterset of sh scripts/affected-tests.sh <fork point of --base> --work-tree\n'
-  printf '  (all() runs --workspace, none() runs nothing)\n'
+  tool_line cargo-nextest
+  printf '  sh ci/run-tests.sh <filterset of sh scripts/affected-tests.sh <fork point of --base> --work-tree>, which runs\n'
+  printf '    cargo test --locked --workspace --no-run\n'
+  printf '    cargo nextest run --locked --workspace --profile default --no-fail-fast --no-tests=pass -E "(<filterset>) - binary_id(review-app::bin/CodeView)"\n'
+  printf "    review-app's test executable in crates/review-app, all its tests in one process, when the filterset selects any\n"
+  printf '  (none() runs nothing; both CIs run the same script with --profile ci, ci/test.sh)\n'
   printf '\n--changed [--base <rev>]\n'
   printf '  rustfmt --check -l <changed .rs files outside vendor/>\n'
   printf '  cargo clippy -p <crate of each changed file>... --all-targets --message-format=short\n'

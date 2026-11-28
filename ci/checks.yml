@@ -154,7 +154,7 @@ default:
     - target/ci-build-id-bins
     - target/debug/deps/*-????????????????
 
-# The default steps of scripts/check.sh (`--list` names them) and its step shear (ci/lint.sh).
+# The default steps of scripts/check.sh (`--list` names them; ci/lint.sh).
 lint:
   extends: .cargo-checks
   variables:

@@ -17,13 +17,14 @@ Thank you for helping. This page says how to set up, what to check before a pull
 
 1. Clone the repository from GitHub and install git and Rust through [rustup](https://rustup.rs). `rust-toolchain.toml` pins the toolchain; rustup installs it on the first `cargo` command.
 2. Install what your system needs: [docs/windows.md](docs/windows.md), [docs/macos.md](docs/macos.md) or [docs/linux.md](docs/linux.md).
-3. Run the app: `cargo run -p review-app --bin CodeView`.
+3. Install the check tools CI uses, in the versions it pins: `sh ci/install-build-deps.sh cargo-deny cargo-shear cargo-about cargo-nextest` (Git Bash on Windows). It checks every download against its pinned SHA-256 and unpacks each tool into a folder of its own in your user's cache folder, which every checkout shares; it never touches `~/.cargo/bin`, and `scripts/check.sh` uses only these versions (the script's header names the folders).
+4. Run the app: `cargo run -p review-app --bin CodeView`.
 
 The tests never reach the network or your token store (AGENTS.md, Invariants), so you can run them without an account. To try the app against a host, use your own account and a repository of your own.
 
 ## Before you open a pull request
 
-- Run `sh scripts/check.sh` and fix every finding (`sh scripts/check.sh --list` names its steps), then run `sh scripts/check.sh test` (the tests your change affects) ([AGENTS.md](AGENTS.md#commands), Commands). Clippy and rustdoc run with `-D warnings`, so a warning or a broken link in a doc comment fails the check. The dependency bans need cargo-deny; without it the step says SKIPPED with the install command.
+- Run `sh scripts/check.sh` and fix every finding (`sh scripts/check.sh --list` names its steps), then run `sh scripts/check.sh test` (the tests your change affects) ([AGENTS.md](AGENTS.md#commands), Commands). Clippy and rustdoc run with `-D warnings`, so a warning or a broken link in a doc comment fails the check. These are the checks and the test runner of CI's `lint` and `test` jobs. A step whose tool is missing says SKIPPED with the install command; `test` fails without cargo-nextest.
 - Add tests as [.agents/rules/testing.md](.agents/rules/testing.md) says: a regression test for every bug you fix. UI changes are proven by kittest tests that assert state, not by screenshots ([.agents/rules/ui.md](.agents/rules/ui.md)).
 - Write commit subjects in the imperative mood, in English, and put what you checked in the body (AGENTS.md, Git).
 - Keep one topic per pull request.
