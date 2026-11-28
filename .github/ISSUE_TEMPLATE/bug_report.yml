@@ -62,5 +62,5 @@ body:
     id: log
     attributes:
       label: Error text
-      description: 'The text of the error, if the app showed one: open Details under the error and click Copy details, or click Copy message on a notice. For a memory problem, the lines of `memory.log` from the time it grew (Windows: `%LOCALAPPDATA%\ReviewApp\logs`, macOS: `~/Library/Caches/ReviewApp/logs`, Linux: `$XDG_CACHE_HOME/ReviewApp/logs`, by default `~/.cache/ReviewApp/logs`); it holds numbers only. Remove any private names from the error text.'
+      description: 'The error''s message as the app shows it, and, if it has Details, the text from Copy details (or Copy message on a notice that offers it). For a memory problem, the lines of `memory.log` (and `memory.1.log`) from the time it grew (Windows: `%LOCALAPPDATA%\ReviewApp\logs`, macOS: `~/Library/Caches/ReviewApp/logs`, Linux: `$XDG_CACHE_HOME/ReviewApp/logs`, by default `~/.cache/ReviewApp/logs`); it holds numbers only. Remove any private names from the error text.'
       render: text

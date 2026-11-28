@@ -6,9 +6,11 @@
 #   2. Tracked files with secret-like names. Why: a committed secret stays in history.
 #   3. What a push would publish: the commits on HEAD that are not on origin/main.
 #      - A message that names a user folder (C:\Users\<name>, C:/Users/<name>, /c/Users/<name>,
-#        /Users/<name>, /home/<name>) whose name is no placeholder. Placeholders: a name that
-#        starts with < $ % { * ~ or ., and you, me, user, username, name, runner, public,
-#        default, shared (any case). Messages only: tracked files hold invented paths
+#        /Users/<name>, /home/<name>, also behind file:/// and WSL's /mnt/c and //wsl$/<distro>)
+#        whose name is no placeholder. Placeholders: a name that starts with < $ % { * ~ . or an
+#        ellipsis, a name of digits only (API paths like /users/123), and you, me, user,
+#        username, name, runner, runneradmin (GitHub's Windows runners), public, default,
+#        shared, all (any case). Messages only: tracked files hold invented paths
 #        (/home/ada/...) on purpose, a message never needs one.
 #      - A message or an added line that holds this machine's user folder name or login name,
 #        as a whole word in any case. The names come from USERPROFILE, HOME, USERNAME, USER and
@@ -89,7 +91,7 @@ ${LOGNAME:-}"
           seen[w] = 1
           names[++nn] = w
         }
-        placeholder = " you me user username name runner public default shared "
+        placeholder = " you me user username name runner runneradmin public default shared all "
         todo = "Reword the commit before it is merged: a sole writer whose HEAD is that commit may amend it with the shell comment # history-rewrite-ok: <reason> (rule git-flow, Always); otherwise stop and tell the owner."
       }
       function word(c) { return c ~ /[a-z0-9_]/ }
@@ -100,27 +102,37 @@ ${LOGNAME:-}"
           from = 1
           while ((p = index(substr(l, from), w)) > 0) {
             at = from + p - 1
-            if (!word(substr(l, at - 1, 1)) && !word(substr(l, at + length(w), 1))) return 1
+            # substr(l, 0, 1) is the first character in gawk and mawk, so test at == 1 first.
+            if ((at == 1 || !word(substr(l, at - 1, 1))) && !word(substr(l, at + length(w), 1))) return 1
             from = at + 1
           }
         }
         return 0
       }
       # The first user folder path with a real-looking name, as "<prefix><name>" masked; "" for none.
-      function user_folder(line,    l, from, at, rest, before, prefix, name) {
+      # A drive path may follow a slash (file:///C:/Users/...). A Unix path counts at the line
+      # start, after a non-path character, or after file://, /mnt/<drive> (WSL) or
+      # //wsl$/<distro>, so URL paths like example.com/home/x stay out.
+      function user_folder(line,    l, from, at, rest, before, lead, prefix, name) {
         l = tolower(line)
         from = 1
         while (match(substr(l, from), /[a-z]:[\\\/]+users[\\\/]+|\/[a-z]\/users\/|\/users\/|\/home\//)) {
           at = from + RSTART - 1
           prefix = substr(line, at, RLENGTH)
-          from = at + RLENGTH
-          before = substr(l, at - 1, 1)
-          if (at > 1 && before ~ /[a-z0-9_.\/-]/) continue
-          rest = substr(line, from)
+          # One step on, not past the match: file:///Users/x first matches "e:///Users/".
+          from = at + 1
+          if (at > 1) {
+            before = substr(l, at - 1, 1)
+            lead = substr(l, 1, at - 1)
+            if (prefix ~ /^[a-zA-Z]:/) {
+              if (before ~ /[a-z0-9_]/) continue
+            } else if (before ~ /[a-z0-9_.\/-]/ && lead !~ /(file:\/\/|\/mnt(\/[a-z])?|\/\/wsl(\$|\.localhost)\/[^\/ \t]+)$/) continue
+          }
+          rest = substr(line, at + length(prefix))
           if (match(rest, /^[^\\\/ \t"'"'"'`)>,;:]+/) == 0) continue
           name = substr(rest, 1, RLENGTH)
           sub(/\.+$/, "", name)
-          if (name == "" || name ~ /^[<$%{*~.]/ || index(placeholder, " " tolower(name) " ") > 0) continue
+          if (name == "" || name ~ /^[<$%{*~.]/ || substr(name, 1, 3) == "\342\200\246" || name ~ /^[0-9]+$/ || index(placeholder, " " tolower(name) " ") > 0) continue
           return prefix "<name>"
         }
         return ""
@@ -139,8 +151,12 @@ ${LOGNAME:-}"
         if (own_name($0)) report("message", "holds the user folder or login name of this machine")
         next
       }
-      /^\+\+\+ / { file = substr($0, 5); sub(/^b\//, "", file); next }
-      /^@@ / { split($3, h, ","); lineno = substr(h[1], 2) + 0; next }
+      # "+++ " names the file only in a file header (from "diff " to the first "@@"); in a hunk
+      # it is an added line that starts with "++ ".
+      /^diff / { inhdr = 1; next }
+      inhdr && /^\+\+\+ / { file = substr($0, 5); sub(/^b\//, "", file); next }
+      /^@@ / { inhdr = 0; split($3, h, ","); lineno = substr(h[1], 2) + 0; next }
+      inhdr { next }
       /^\+/ {
         if (own_name(substr($0, 2))) report(file ":" lineno, "adds a line with the user folder or login name of this machine")
         lineno++
