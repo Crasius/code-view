@@ -109,7 +109,7 @@ jobs:
           key: test-macos-${{ steps.key.outputs.key }}
           lookup-only: true
 
-  # GitLab's lint job: the default steps of scripts/check.sh and its step shear (ci/lint.sh).
+  # GitLab's lint job: the default steps of scripts/check.sh (ci/lint.sh).
   lint:
     needs: plan
     if: needs.plan.outputs.lint == 'true'

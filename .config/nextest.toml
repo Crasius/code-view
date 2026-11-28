@@ -1,6 +1,6 @@
-# cargo-nextest, the test runner of both CIs (docs/release.md, Tests). Locally, `cargo test` is the
-# runner (rule `testing`, Running); review-app's walkthroughs time out under nextest's process per
-# test (ci/test.sh).
+# cargo-nextest, the test runner of both CIs and of `sh scripts/check.sh test` (docs/release.md,
+# Tests): ci/run-tests.sh runs every test binary under it but review-app's, whose walkthroughs time
+# out under nextest's process per test. CI takes the profile `ci`, a development machine `default`.
 # No priorities: starting the long review-app walkthroughs first made the run slower (147 s against
 # 135 s) and a load-sensitive request budget test fail [observed 2026-11-26, pipeline 4901].
 

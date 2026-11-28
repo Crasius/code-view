@@ -4,10 +4,10 @@
 # crates/review-app/src/app/memory_walkthrough.rs). The build is test's (`--workspace`) plus that
 # feature, which adds no dependency, so on test's cache only review-app compiles again; `-p
 # review-app` would resolve the features of that package alone and rebuild dependencies. The
-# executable runs as ci/test.sh runs it: in the package's folder. lint checks the group's lints
+# executable runs as ci/run-tests.sh runs it: in the package's folder. lint checks the group's lints
 # (ci/lint.sh, the clippy step of scripts/check.sh).
 # nextest's list of the binaries builds them and names the executable under its binary id, in a
-# flat object (as ci/test.sh picks it).
+# flat object (as ci/run-tests.sh picks it).
 set -eu
 app_exe="$(cargo nextest list --locked --workspace --features review-app/measurements \
     --list-type binaries-only --message-format json |

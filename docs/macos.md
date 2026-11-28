@@ -39,9 +39,13 @@ You need Xcode's command-line tools (`xcode-select --install`) and Rust (rustup)
 
 ```sh
 cargo run -p review-app --bin CodeView            # debug build, runs from the terminal
+sh ci/install-build-deps.sh cargo-deny cargo-shear cargo-about cargo-nextest   # once (CONTRIBUTING.md, Set up)
 sh scripts/check.sh                               # the checks; --list names their commands
-cargo test --workspace
+sh scripts/check.sh test                          # the tests the change affects, as CI runs them
 ```
+
+cargo-deny and cargo-about publish no binary for Intel Macs; there the install script prints the
+`cargo install` command that builds the tool into the same folder.
 
 The tests never touch the login Keychain: app data in folders a test picked (`AppPaths::new`)
 keeps its tokens in its own connections file (`TokenVault::File`), the setup's check whether a
